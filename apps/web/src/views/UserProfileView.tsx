@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { CreatePostModal } from '../components/social/CreatePostModal';
+import { FriendRequestButton, type FriendshipStatus } from '../components/social/FriendRequestButton';
+import { FriendRequestsPanel } from '../components/social/FriendRequestsPanel';
 import {
   FollowButton,
   FollowListModal,
   PostCard,
   type SocialPost,
 } from '../components/social/SocialPostCard';
+import { UserSearchBar } from '../components/social/UserSearchBar';
 import { api, apiPublic } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 
@@ -17,8 +20,10 @@ type PublicProfile = {
   bio: string | null;
   followersCount: number;
   followingCount: number;
+  friendsCount: number;
   isFollowing: boolean;
   isOwnProfile: boolean;
+  friendshipStatus: FriendshipStatus;
 };
 
 type UserChip = {
@@ -26,6 +31,8 @@ type UserChip = {
   displayName: string;
   avatarUrl: string | null;
 };
+
+const API_BASE = String(import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app').replace(/\/$/, '');
 
 export function UserProfileView() {
   const { username: usernameParam } = useParams();
@@ -36,7 +43,8 @@ export function UserProfileView() {
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [followers, setFollowers] = useState<UserChip[]>([]);
   const [following, setFollowing] = useState<UserChip[]>([]);
-  const [modal, setModal] = useState<'followers' | 'following' | null>(null);
+  const [friends, setFriends] = useState<UserChip[]>([]);
+  const [modal, setModal] = useState<'followers' | 'following' | 'friends' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,14 +59,14 @@ export function UserProfileView() {
           if (token) headers.Authorization = `Bearer ${token}`;
         }
         const profileRes = await fetch(
-          `${import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app'}/api/social/profile/${encodeURIComponent(username)}`,
+          `${API_BASE}/api/social/profile/${encodeURIComponent(username)}`,
           { headers },
         );
         const profileData = (await profileRes.json()) as { profile?: PublicProfile; error?: string };
         if (!profileRes.ok) throw new Error(profileData.error || 'Perfil no encontrado');
 
         const postsData = await fetch(
-          `${import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app'}/api/social/posts/${encodeURIComponent(username)}`,
+          `${API_BASE}/api/social/posts/${encodeURIComponent(username)}`,
           { headers },
         ).then((r) => r.json() as Promise<{ posts: SocialPost[] }>);
 
@@ -96,6 +104,14 @@ export function UserProfileView() {
     setModal('following');
   }
 
+  async function openFriends() {
+    const data = await apiPublic<{ friends: UserChip[] }>(
+      `/api/social/friends/${encodeURIComponent(username)}`,
+    );
+    setFriends(data.friends);
+    setModal('friends');
+  }
+
   async function deletePost(postId: string) {
     await api(`/api/social/posts/${postId}`, { method: 'DELETE' });
     setPosts((current) => current.filter((post) => post.id !== postId));
@@ -111,6 +127,13 @@ export function UserProfileView() {
     return (
       <div className="rounded-2xl bg-zinc-900 p-6 text-center">
         <p className="text-fuchsia-400">{error}</p>
+        <p className="mt-2 text-xs text-zinc-500">
+          Guarda tu perfil en{' '}
+          <Link to="/perfil/editar" className="text-cyan-400">
+            Editar perfil
+          </Link>{' '}
+          primero.
+        </p>
         <Link to="/" className="mt-3 inline-block text-sm text-cyan-400">
           Volver al inicio
         </Link>
@@ -123,6 +146,13 @@ export function UserProfileView() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
+      {publicProfile.isOwnProfile ? (
+        <>
+          <UserSearchBar />
+          <FriendRequestsPanel />
+        </>
+      ) : null}
+
       <section className="rounded-2xl bg-zinc-900 p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           {publicProfile.avatarUrl ? (
@@ -156,6 +186,14 @@ export function UserProfileView() {
                 <strong>{publicProfile.followingCount}</strong>{' '}
                 <span className="text-zinc-400">seguidos</span>
               </button>
+              <button
+                type="button"
+                onClick={() => void openFriends()}
+                className="text-sm text-white hover:text-cyan-300"
+              >
+                <strong>{publicProfile.friendsCount}</strong>{' '}
+                <span className="text-zinc-400">amigos</span>
+              </button>
             </div>
             <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
               <FollowButton
@@ -174,9 +212,30 @@ export function UserProfileView() {
                   )
                 }
               />
+              <FriendRequestButton
+                username={publicProfile.username}
+                initialStatus={publicProfile.friendshipStatus}
+                isOwnProfile={publicProfile.isOwnProfile}
+                onChange={(status) =>
+                  setPublicProfile((current) =>
+                    current
+                      ? {
+                          ...current,
+                          friendshipStatus: status,
+                          friendsCount:
+                            status === 'friends'
+                              ? current.friendsCount + 1
+                              : status === 'none'
+                                ? Math.max(0, current.friendsCount - 1)
+                                : current.friendsCount,
+                        }
+                      : current,
+                  )
+                }
+              />
               {publicProfile.isOwnProfile ? (
                 <Link
-                  to="/perfil"
+                  to="/perfil/editar"
                   className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-zinc-200"
                 >
                   Editar perfil
@@ -221,6 +280,9 @@ export function UserProfileView() {
       ) : null}
       {modal === 'following' ? (
         <FollowListModal title="Seguidos" users={following} onClose={() => setModal(null)} />
+      ) : null}
+      {modal === 'friends' ? (
+        <FollowListModal title="Amigos" users={friends} onClose={() => setModal(null)} />
       ) : null}
     </div>
   );

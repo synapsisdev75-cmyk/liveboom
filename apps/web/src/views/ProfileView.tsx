@@ -186,7 +186,7 @@ export function ProfileView() {
             to={`/u/${encodeURIComponent(profile.handle)}`}
             className="mt-3 inline-block text-sm font-semibold text-cyan-400 hover:underline"
           >
-            Ver mi biblioteca y seguidores →
+            ← Volver a mi perfil
           </Link>
         ) : null}
 

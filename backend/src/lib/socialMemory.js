@@ -1,9 +1,11 @@
-const { findByUsername, getProfile } = require('./profileMemory');
+const { findByUsername, getProfile, listProfiles } = require('./profileMemory');
 
 const follows = new Map();
 const posts = new Map();
 const postsByUser = new Map();
 const reactions = new Map();
+const friends = new Map();
+const friendRequests = new Map();
 
 const MAX_POSTS_PER_USER = 60;
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
@@ -197,16 +199,124 @@ function reactToPost(postId, uid, reaction) {
   return { post: serializePost(post, uid) };
 }
 
+function friendsSet(uid) {
+  const key = String(uid);
+  if (!friends.has(key)) friends.set(key, new Set());
+  return friends.get(key);
+}
+
+function requestKey(fromUid, toUid) {
+  return `${fromUid}:${toUid}`;
+}
+
+function areFriends(uidA, uidB) {
+  return friendsSet(uidA).has(String(uidB));
+}
+
+function friendshipStatus(viewerUid, targetUsername) {
+  const target = resolveByUsername(targetUsername);
+  if (!target || !viewerUid) return 'none';
+  if (target.firebaseUid === viewerUid) return 'self';
+  if (areFriends(viewerUid, target.firebaseUid)) return 'friends';
+  const sent = friendRequests.get(requestKey(viewerUid, target.firebaseUid));
+  if (sent === 'pending') return 'pending_sent';
+  const received = friendRequests.get(requestKey(target.firebaseUid, viewerUid));
+  if (received === 'pending') return 'pending_received';
+  return 'none';
+}
+
+function sendFriendRequest(fromUid, targetUsername) {
+  const target = resolveByUsername(targetUsername);
+  if (!target) return { error: 'Usuario no encontrado' };
+  if (target.firebaseUid === fromUid) return { error: 'No puedes enviarte solicitud a ti mismo' };
+  if (areFriends(fromUid, target.firebaseUid)) return { error: 'Ya son amigos' };
+  const reverse = friendRequests.get(requestKey(target.firebaseUid, fromUid));
+  if (reverse === 'pending') {
+    return acceptFriendRequest(fromUid, target.username);
+  }
+  friendRequests.set(requestKey(fromUid, target.firebaseUid), 'pending');
+  return { ok: true, status: 'pending_sent', target: userSummary(target) };
+}
+
+function acceptFriendRequest(uid, fromUsername) {
+  const from = resolveByUsername(fromUsername);
+  if (!from) return { error: 'Usuario no encontrado' };
+  const key = requestKey(from.firebaseUid, uid);
+  if (friendRequests.get(key) !== 'pending') {
+    return { error: 'No hay solicitud pendiente' };
+  }
+  friendRequests.delete(key);
+  friendsSet(uid).add(from.firebaseUid);
+  friendsSet(from.firebaseUid).add(uid);
+  return { ok: true, status: 'friends', friend: userSummary(from) };
+}
+
+function rejectFriendRequest(uid, fromUsername) {
+  const from = resolveByUsername(fromUsername);
+  if (!from) return { error: 'Usuario no encontrado' };
+  friendRequests.delete(requestKey(from.firebaseUid, uid));
+  return { ok: true };
+}
+
+function cancelFriendRequest(fromUid, targetUsername) {
+  const target = resolveByUsername(targetUsername);
+  if (!target) return { error: 'Usuario no encontrado' };
+  friendRequests.delete(requestKey(fromUid, target.firebaseUid));
+  return { ok: true, status: 'none' };
+}
+
+function removeFriend(uid, targetUsername) {
+  const target = resolveByUsername(targetUsername);
+  if (!target) return { error: 'Usuario no encontrado' };
+  friendsSet(uid).delete(target.firebaseUid);
+  friendsSet(target.firebaseUid).delete(uid);
+  return { ok: true };
+}
+
+function listFriends(username) {
+  const user = resolveByUsername(username);
+  if (!user) return [];
+  const result = [];
+  for (const friendUid of friendsSet(user.firebaseUid)) {
+    const profile = getProfile(friendUid);
+    if (profile) result.push(userSummary(profile));
+  }
+  return result;
+}
+
+function listIncomingRequests(uid) {
+  const result = [];
+  const keySuffix = `:${uid}`;
+  for (const [key, status] of friendRequests.entries()) {
+    if (status !== 'pending' || !key.endsWith(keySuffix)) continue;
+    const fromUid = key.slice(0, -keySuffix.length);
+    const profile = getProfile(fromUid);
+    if (profile) result.push(userSummary(profile));
+  }
+  return result;
+}
+
+function searchUsers(query, viewerUid) {
+  return listProfiles(query, { limit: 24, excludeUid: viewerUid }).map((profile) => ({
+    ...userSummary(profile),
+    friendshipStatus: friendshipStatus(viewerUid, profile.username),
+    isFollowing: viewerUid ? isFollowing(viewerUid, profile.username) : false,
+  }));
+}
+
 function publicProfile(username, viewerUid) {
   const profile = resolveByUsername(username);
   if (!profile) return null;
   const counts = followCounts(profile.username);
+  const friendList = listFriends(profile.username);
   return {
     ...userSummary(profile),
     followersCount: counts.followers,
     followingCount: counts.following,
+    friendsCount: friendList.length,
     isFollowing: viewerUid ? isFollowing(viewerUid, profile.username) : false,
     isOwnProfile: viewerUid ? profile.firebaseUid === viewerUid : false,
+    friendshipStatus: friendshipStatus(viewerUid, profile.username),
   };
 }
 
@@ -223,4 +333,13 @@ module.exports = {
   reactToPost,
   publicProfile,
   normalizeUsername,
+  sendFriendRequest,
+  acceptFriendRequest,
+  rejectFriendRequest,
+  cancelFriendRequest,
+  removeFriend,
+  listFriends,
+  listIncomingRequests,
+  searchUsers,
+  friendshipStatus,
 };

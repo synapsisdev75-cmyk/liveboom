@@ -119,5 +119,72 @@ router.post('/posts/:postId/react', requireAuth, (req, res) => {
   res.json(result);
 });
 
+router.get('/search', optionalAuth, (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (q.length < 2) {
+    res.json({ users: [] });
+    return;
+  }
+  res.json({ users: social.searchUsers(q, req.viewerUid) });
+});
+
+router.get('/friends/requests', requireAuth, (req, res) => {
+  res.json({ requests: social.listIncomingRequests(req.user.uid) });
+});
+
+router.get('/friends/:username', (req, res) => {
+  const username = social.normalizeUsername(req.params.username);
+  if (!social.publicProfile(username)) {
+    res.status(404).json({ error: 'Usuario no encontrado' });
+    return;
+  }
+  res.json({ friends: social.listFriends(username) });
+});
+
+router.post('/friends/request/:username', requireAuth, (req, res) => {
+  const result = social.sendFriendRequest(req.user.uid, req.params.username);
+  if (result.error) {
+    res.status(result.error === 'Usuario no encontrado' ? 404 : 400).json({ error: result.error });
+    return;
+  }
+  res.status(201).json(result);
+});
+
+router.post('/friends/accept/:username', requireAuth, (req, res) => {
+  const result = social.acceptFriendRequest(req.user.uid, req.params.username);
+  if (result.error) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json(result);
+});
+
+router.post('/friends/reject/:username', requireAuth, (req, res) => {
+  const result = social.rejectFriendRequest(req.user.uid, req.params.username);
+  if (result.error) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+  res.json(result);
+});
+
+router.delete('/friends/request/:username', requireAuth, (req, res) => {
+  const result = social.cancelFriendRequest(req.user.uid, req.params.username);
+  if (result.error) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+  res.json(result);
+});
+
+router.delete('/friends/:username', requireAuth, (req, res) => {
+  const result = social.removeFriend(req.user.uid, req.params.username);
+  if (result.error) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+  res.json(result);
+});
+
 module.exports = router;
 module.exports.default = router;

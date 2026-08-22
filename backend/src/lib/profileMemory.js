@@ -32,4 +32,24 @@ function findByUsername(username) {
   return null;
 }
 
-module.exports = { getProfile, saveProfile, findByUsername };
+function listProfiles(query, { limit = 20, excludeUid } = {}) {
+  const needle = String(query || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '');
+  const results = [];
+  for (const profile of profiles.values()) {
+    if (excludeUid && profile.firebaseUid === excludeUid) continue;
+    const username = String(profile.username || '').toLowerCase();
+    const bio = String(profile.bio || '').toLowerCase();
+    if (!needle || username.includes(needle) || bio.includes(needle)) {
+      results.push(profile);
+    }
+    if (results.length >= limit) break;
+  }
+  return results.sort((a, b) =>
+    String(a.username).localeCompare(String(b.username), 'es'),
+  );
+}
+
+module.exports = { getProfile, saveProfile, findByUsername, listProfiles };
