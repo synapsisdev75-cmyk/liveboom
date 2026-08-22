@@ -1,5 +1,5 @@
 const { Server } = require('socket.io');
-const { getAuth } = require('firebase-admin/auth');
+const { verifyFirebaseIdToken } = require('./firebaseAuth');
 
 let io = null;
 
@@ -31,7 +31,7 @@ function initSocket(httpServer) {
       return;
     }
     try {
-      socket.data.user = await getAuth().verifyIdToken(token);
+      socket.data.user = await verifyFirebaseIdToken(token);
       next();
     } catch {
       next(new Error('unauthorized'));

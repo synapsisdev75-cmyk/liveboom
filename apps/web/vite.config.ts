@@ -1,35 +1,23 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  optimizeDeps: {
-    include: ['react-router-dom', 'firebase/app', 'firebase/auth'],
-  },
-  server: {
-    port: 5173,
-    strictPort: true,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
-        configure(proxy) {
-          proxy.on('error', (_error, _req, res) => {
-            if (!res.headersSent) {
-              res.writeHead(503, { 'Content-Type': 'application/json' });
-              res.end(
-                JSON.stringify({
-                  error: 'El API local no está encendido. Ejecuta npm run dev:api',
-                }),
-              );
-            }
-          });
-        },
-      },
-      '/socket.io': {
-        target: 'http://localhost:4000',
-        ws: true,
-      },
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const apiOnline = (env.VITE_API_URL || 'https://liveboom.vercel.app').replace(/\/$/, '');
+
+  return {
+    plugins: [react(), tailwindcss()],
+    optimizeDeps: {
+      include: ['react-router-dom', 'firebase/app', 'firebase/auth'],
     },
-  },
+    define: {
+      // Garantiza API en línea aunque .env venga vacío en el build de Hosting/Vercel
+      'import.meta.env.VITE_API_URL': JSON.stringify(apiOnline),
+    },
+    server: {
+      port: 5173,
+      strictPort: true,
+    },
+  };
 });

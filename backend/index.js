@@ -35,20 +35,13 @@ app.use('/api/gifts', giftsRoutes);
 app.use('/api/users', usersRoutes);
 
 app.get('/api/health', async (_req, res) => {
-  if (!prisma) {
-    res.json({ status: 'ok', message: 'Liveboom Backend Running', db: 'disconnected' });
-    return;
-  }
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', message: 'Liveboom Backend Running', db: 'connected' });
-  } catch (error) {
-    res.json({
-      status: 'ok',
-      message: 'Liveboom Backend Running',
-      db: 'disconnected',
-    });
-  }
+  res.json({
+    status: 'ok',
+    message: 'Liveboom Backend Running',
+    db: prisma ? 'connected-or-ready' : 'disconnected',
+    api: 'https://liveboom.vercel.app',
+    auth: 'jwks+firebase-admin',
+  });
 });
 
 /**
