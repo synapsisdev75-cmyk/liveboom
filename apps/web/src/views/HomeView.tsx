@@ -42,9 +42,9 @@ export function HomeView() {
   }, []);
 
   return (
-    <div className="flex min-h-full flex-col gap-4 rounded-2xl bg-zinc-900 p-6">
+    <div className="flex min-h-full flex-col gap-4 rounded-2xl bg-zinc-900 p-4 sm:p-6">
       <div>
-        <h1 className="text-xl font-bold text-white">Lives en línea</h1>
+        <h1 className="text-lg font-bold text-white sm:text-xl">Lives en línea</h1>
         <p className="mt-1 text-sm text-zinc-400">Salas activas ahora mismo en Liveboom.</p>
       </div>
       {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
@@ -54,21 +54,21 @@ export function HomeView() {
           abrir la tuya.
         </p>
       ) : null}
-      <ul className="grid gap-3 sm:grid-cols-2">
+      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {streams.map((stream) => (
           <li key={`${stream.username}-${stream.startedAt}`} className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
             <Link to={`/stream/${encodeURIComponent(stream.username)}`} className="block">
               <div className="flex items-center gap-3">
                 {stream.avatarUrl ? (
-                  <img src={stream.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+                  <img src={stream.avatarUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
                 ) : (
-                  <div className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-600/30 text-sm font-bold text-fuchsia-300">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-fuchsia-600/30 text-sm font-bold text-fuchsia-300">
                     LIVE
                   </div>
                 )}
-                <div>
-                  <p className="font-semibold text-white">{stream.title}</p>
-                  <p className="text-xs text-zinc-400">@{stream.username}</p>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-white">{stream.title}</p>
+                  <p className="truncate text-xs text-zinc-400">@{stream.username}</p>
                 </div>
               </div>
             </Link>

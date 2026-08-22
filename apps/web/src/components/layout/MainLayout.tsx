@@ -1,15 +1,20 @@
-import { Compass, Home, MessageCircle, Radio, UserRound, Wallet } from 'lucide-react';
+import { Home, Menu, Radio, UserRound, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { CoinModal, RechargeButton } from '../wallet/CoinModal';
 
-const navItems = [
+const sideNavItems = [
   { label: 'Inicio', icon: Home, to: '/' as const },
-  { label: 'Explorar', icon: Compass, to: null },
-  { label: 'Mensajes', icon: MessageCircle, to: null },
   { label: 'Mi Billetera', icon: Wallet, to: '/billetera' as const },
+  { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
+];
+
+const mobileNavItems = [
+  { label: 'Inicio', icon: Home, to: '/' as const },
+  { label: 'Live', icon: Radio, to: '/transmitir' as const },
+  { label: 'Coins', icon: Wallet, to: '/billetera' as const },
   { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
 ];
 
@@ -24,10 +29,45 @@ export function MainLayout() {
   const toast = useUiStore((state) => state.toast);
   const toastTone = useUiStore((state) => state.toastTone);
   const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-zinc-950 font-sans text-white">
-      <aside className="flex w-[20%] min-w-[220px] shrink-0 flex-col border-r border-zinc-800 px-5 py-6">
+    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-zinc-950 font-sans text-white lg:flex-row">
+      {/* Top bar — mobile only */}
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 lg:hidden">
+        <Link
+          to="/"
+          className="bg-gradient-to-r from-cyan-400 to-fuchsia-500 bg-clip-text text-xl font-extrabold tracking-tight text-transparent"
+        >
+          Liveboom
+        </Link>
+        <div className="flex items-center gap-2">
+          {profile ? (
+            <button
+              type="button"
+              onClick={() => setRechargeOpen(true)}
+              className="rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-cyan-400 ring-1 ring-cyan-500/30"
+            >
+              {profile.coinsBalance.toLocaleString('es-CO')} coins
+            </button>
+          ) : (
+            <Link to="/login" className="text-xs font-medium text-cyan-400">
+              Entrar
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className="grid h-10 w-10 place-items-center rounded-xl bg-zinc-900 text-zinc-300"
+            aria-label="Abrir menú"
+          >
+            <Menu size={18} />
+          </button>
+        </div>
+      </header>
+
+      {/* Left sidebar — desktop */}
+      <aside className="hidden w-[20%] min-w-[220px] shrink-0 flex-col border-r border-zinc-800 px-5 py-6 lg:flex">
         <Link
           to="/"
           className="bg-gradient-to-r from-cyan-400 to-fuchsia-500 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent"
@@ -36,17 +76,8 @@ export function MainLayout() {
         </Link>
 
         <nav className="mt-10 flex flex-1 flex-col gap-1">
-          {navItems.map((item) => {
+          {sideNavItems.map((item) => {
             const Icon = item.icon;
-            if (!item.to) {
-              return (
-                <span key={item.label} className={idleClass}>
-                  <Icon size={18} strokeWidth={1.8} />
-                  {item.label}
-                </span>
-              );
-            }
-
             return (
               <NavLink
                 key={item.label}
@@ -99,11 +130,12 @@ export function MainLayout() {
         </div>
       </aside>
 
-      <main className="w-[60%] min-w-[0] flex-1 overflow-y-auto p-4">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:p-4 lg:w-[60%] lg:pb-4">
         <Outlet />
       </main>
 
-      <aside className="flex w-[20%] min-w-[240px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-800/45 backdrop-blur-xl">
+      {/* Right rail — desktop */}
+      <aside className="hidden w-[20%] min-w-[240px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-800/45 backdrop-blur-xl lg:flex">
         <section className="border-b border-zinc-800 p-5">
           <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
             Top Donadores
@@ -118,11 +150,129 @@ export function MainLayout() {
         </section>
       </aside>
 
+      {/* Bottom nav — mobile */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+        <ul className="grid grid-cols-4 px-1 pt-1">
+          {mobileNavItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <li key={item.label}>
+                <NavLink
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={({ isActive }) =>
+                    `flex flex-col items-center gap-1 px-2 py-2 text-[10px] font-semibold ${
+                      isActive ? 'text-cyan-400' : 'text-zinc-500'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <span
+                        className={`grid h-9 w-9 place-items-center rounded-xl ${
+                          isActive
+                            ? 'bg-cyan-400/15 shadow-[0_0_16px_rgba(34,211,238,0.25)]'
+                            : 'bg-transparent'
+                        }`}
+                      >
+                        <Icon size={18} strokeWidth={isActive ? 2.4 : 1.8} />
+                      </span>
+                      {item.label}
+                    </>
+                  )}
+                </NavLink>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* Mobile slide-over menu */}
+      {menuOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70"
+            aria-label="Cerrar menú"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="absolute inset-y-0 right-0 flex w-[min(20rem,88vw)] flex-col border-l border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <p className="text-sm font-bold text-white">Menú</p>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-lg bg-zinc-900 text-zinc-400"
+                aria-label="Cerrar"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            {profile ? (
+              <div className="mb-5 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
+                <p className="truncate text-sm font-semibold text-white">@{profile.handle}</p>
+                <p className="mt-1 text-xs text-cyan-400">{profile.coinsBalance} coins</p>
+                <RechargeButton
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setRechargeOpen(true);
+                  }}
+                  className="mt-3 w-full text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void logout();
+                  }}
+                  className="mt-3 w-full text-left text-xs text-zinc-500 hover:text-white"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                onClick={() => setMenuOpen(false)}
+                className="mb-5 text-sm font-medium text-cyan-400"
+              >
+                Iniciar sesión
+              </Link>
+            )}
+            <nav className="flex flex-col gap-1">
+              {sideNavItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.label}
+                    to={item.to}
+                    end={item.to === '/'}
+                    onClick={() => setMenuOpen(false)}
+                    className={({ isActive }) => (isActive ? activeClass : idleClass)}
+                  >
+                    <Icon size={18} />
+                    {item.label}
+                  </NavLink>
+                );
+              })}
+              <NavLink
+                to="/transmitir"
+                onClick={() => setMenuOpen(false)}
+                className="mt-3 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 py-3 text-sm font-bold text-zinc-950"
+              >
+                <Radio size={16} />
+                Transmitir
+              </NavLink>
+            </nav>
+          </div>
+        </div>
+      ) : null}
+
       {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
 
       {toast ? (
         <div
-          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg ${
+          className={`fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-50 max-w-[90vw] -translate-x-1/2 rounded-full px-4 py-2 text-center text-sm font-semibold text-white shadow-lg lg:bottom-6 ${
             toastTone === 'success'
               ? 'bg-emerald-500'
               : toastTone === 'error'

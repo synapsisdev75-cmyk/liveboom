@@ -130,7 +130,7 @@ export function ProfileView() {
       return;
     }
     if (!USERNAME_RE.test(handle)) {
-      setError('El usuario debe tener 3-20 caracteres (a-z, 0-9, _).');
+      setError('El usuario debe tener 3-24 caracteres (a-z, 0-9, _).');
       return;
     }
     if (!bio.trim()) {

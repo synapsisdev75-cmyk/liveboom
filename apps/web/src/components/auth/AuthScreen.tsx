@@ -23,13 +23,13 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-950 px-4 py-8">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,240,255,0.12),_transparent_55%)]" />
-      <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#131417]/80 p-8 shadow-glow backdrop-blur-xl">
-        <div className="mb-8 flex justify-center">
+      <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#131417]/80 p-6 shadow-glow backdrop-blur-xl sm:p-8">
+        <div className="mb-6 flex justify-center sm:mb-8">
           <Logo />
         </div>
-        <h1 className="text-center text-2xl font-bold text-white">
+        <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
           {mode === 'login' ? 'Entra a Liveboom' : 'Crea tu cuenta'}
         </h1>
         <p className="mt-2 text-center text-sm text-zinc-400">

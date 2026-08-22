@@ -56,18 +56,20 @@ export function CoinPackagesModal({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-zinc-950 p-6 shadow-[0_0_48px_rgba(0,240,255,0.12)]">
+      <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-950 p-4 shadow-[0_0_48px_rgba(0,240,255,0.12)] sm:rounded-3xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-white">Recargar coins</h2>
-            <p className="mt-1 text-sm text-zinc-400">Elige un paquete. El pago se abre sobre esta pantalla con Wompi.</p>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-white sm:text-xl">Recargar coins</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Elige un paquete. El pago se abre sobre esta pantalla con Wompi.
+            </p>
           </div>
-          <button type="button" onClick={onClose} className="text-sm text-zinc-500 hover:text-white">
+          <button type="button" onClick={onClose} className="shrink-0 text-sm text-zinc-500 hover:text-white">
             Cerrar
           </button>
         </div>
@@ -116,12 +118,12 @@ export function CoinPackagesModal({ onClose }: Props) {
           </p>
         ) : null}
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex justify-stretch pb-[env(safe-area-inset-bottom)] sm:justify-end sm:pb-0">
           <button
             type="button"
             disabled={busy}
             onClick={() => void pay()}
-            className="rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-2 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105 disabled:opacity-60"
+            className="w-full rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-3 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105 disabled:opacity-60 sm:w-auto sm:py-2"
           >
             {busy ? 'Abriendo Wompi…' : 'Pagar'}
           </button>
