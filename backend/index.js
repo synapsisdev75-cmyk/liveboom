@@ -5,18 +5,6 @@ const express = require('express');
 const cors = require('cors');
 const { prisma } = require('./src/lib/prisma');
 const { getBalance } = require('./src/lib/walletMemory');
-const { initSocket } = require('./src/lib/socket');
-const authRoutes = require('./src/routes/auth');
-const paymentsRoutes = require('./src/routes/payments');
-const webhooksRoutes = require('./src/routes/webhooks');
-const livekitRoutes = require('./src/routes/livekit');
-const streamRoutes = require('./src/routes/stream');
-const giftsRoutes = require('./src/routes/gifts');
-const usersRoutes = require('./src/routes/users');
-
-function asRouter(mod) {
-  return mod?.default || mod;
-}
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -30,14 +18,7 @@ app.use(
 );
 app.use(express.json({ limit: '1mb' }));
 
-app.use('/api/auth', asRouter(authRoutes));
-app.use('/api/payments', asRouter(paymentsRoutes));
-app.use('/api/webhooks', asRouter(webhooksRoutes));
-app.use('/api/livekit', asRouter(livekitRoutes));
-app.use('/api/stream', asRouter(streamRoutes));
-app.use('/api/gifts', asRouter(giftsRoutes));
-app.use('/api/users', asRouter(usersRoutes));
-
+// Health primero: si una ruta falla al montar, esto igual puede responder en deploys previos.
 app.get('/api/health', async (_req, res) => {
   res.json({
     status: 'ok',
@@ -48,9 +29,33 @@ app.get('/api/health', async (_req, res) => {
   });
 });
 
-/**
- * Devuelve el saldo. Si el usuario no existe en Cloud SQL / PostgreSQL, lo crea con 0 coins.
- */
+function mount(path, loader) {
+  try {
+    const mod = loader();
+    const router =
+      (typeof mod === 'function' && mod) ||
+      (mod && typeof mod.default === 'function' && mod.default) ||
+      (mod && typeof mod.router === 'function' && mod.router) ||
+      null;
+    if (!router) {
+      console.error(`[liveboom] no se pudo montar ${path}: export inválido`, mod && Object.keys(mod));
+      return;
+    }
+    app.use(path, router);
+    console.log(`[liveboom] montado ${path}`);
+  } catch (error) {
+    console.error(`[liveboom] error montando ${path}:`, error.message);
+  }
+}
+
+mount('/api/auth', () => require('./src/routes/auth'));
+mount('/api/payments', () => require('./src/routes/payments'));
+mount('/api/webhooks', () => require('./src/routes/webhooks'));
+mount('/api/livekit', () => require('./src/routes/livekit'));
+mount('/api/stream', () => require('./src/routes/stream'));
+mount('/api/gifts', () => require('./src/routes/gifts'));
+mount('/api/users', () => require('./src/routes/users'));
+
 app.get('/api/wallet/:firebaseUid', async (req, res) => {
   const { firebaseUid } = req.params;
 
@@ -110,6 +115,7 @@ const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTI
 
 if (!isServerless) {
   try {
+    const { initSocket } = require('./src/lib/socket');
     initSocket(httpServer);
   } catch (error) {
     console.warn('[liveboom] Socket.io no iniciado:', error.message);
@@ -127,6 +133,4 @@ if (!isServerless) {
 }
 
 module.exports = app;
-
-
-
+module.exports.default = app;

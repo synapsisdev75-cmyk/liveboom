@@ -92,3 +92,4 @@ router.patch('/profile', mw(auth, 'requireAuth'), async (req, res) => {
 });
 
 module.exports = router;
+module.exports.default = router;

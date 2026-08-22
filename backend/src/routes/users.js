@@ -114,11 +114,12 @@ router.use(async (_req, _res, next) => {
   next();
 });
 
-router.get('/profile', requireAuth, requireDbUser, (req, res) => {
+router.get('/profile', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), (req, res) => {
   res.json(serializeUser(req.dbUser));
 });
 
-router.patch('/profile', requireAuth, requireDbUser, updateProfile);
-router.put('/profile', requireAuth, requireDbUser, updateProfile);
+router.patch('/profile', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), updateProfile);
+router.put('/profile', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), updateProfile);
 
 module.exports = router;
+module.exports.default = router;

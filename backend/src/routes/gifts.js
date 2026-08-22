@@ -103,3 +103,4 @@ router.post('/send', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), async (
 });
 
 module.exports = router;
+module.exports.default = router;
