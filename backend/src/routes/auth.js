@@ -1,10 +1,10 @@
 const express = require('express');
-const auth = require('../middleware/auth');
+const { mw } = require('../lib/bind');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { getBalance } = require('../lib/walletMemory');
 
 const router = express.Router();
-const requireAuth = auth.requireAuth || auth.default?.requireAuth;
+const auth = () => require('../middleware/auth');
 
 function usernameFromToken(decoded) {
   const raw = decoded.name || (decoded.email ? decoded.email.split('@')[0] : decoded.uid);
@@ -18,7 +18,7 @@ function usernameFromToken(decoded) {
   return `${base}_${decoded.uid.slice(0, 8)}`;
 }
 
-router.post('/sync', requireAuth, async (req, res) => {
+router.post('/sync', mw(auth, 'requireAuth'), async (req, res) => {
   const decoded = req.user;
   const uid = decoded.uid;
   const email = decoded.email || `${uid}@users.liveboom.local`;
@@ -72,7 +72,7 @@ router.post('/sync', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/profile', requireAuth, async (req, res) => {
+router.patch('/profile', mw(auth, 'requireAuth'), async (req, res) => {
   const bio = typeof req.body?.bio === 'string' ? req.body.bio.trim().slice(0, 280) : null;
 
   try {

@@ -1,14 +1,16 @@
 const express = require('express');
-const auth = require('../middleware/auth');
-const livekit = require('../lib/livekit');
+const { mw } = require('../lib/bind');
 
 const router = express.Router();
-const requireAuth = auth.requireAuth || auth.default?.requireAuth;
-const livekitEnabled = livekit.livekitEnabled || livekit.default?.livekitEnabled;
-const createLivekitToken = livekit.createLivekitToken || livekit.default?.createLivekitToken;
+const auth = () => require('../middleware/auth');
+const livekit = () => require('../lib/livekit');
 
-router.post('/token', requireAuth, async (req, res) => {
-  if (!livekitEnabled()) {
+router.post('/token', mw(auth, 'requireAuth'), async (req, res) => {
+  const lk = livekit();
+  const livekitEnabled = lk.livekitEnabled || lk.default?.livekitEnabled;
+  const createLivekitToken = lk.createLivekitToken || lk.default?.createLivekitToken;
+
+  if (typeof livekitEnabled !== 'function' || !livekitEnabled()) {
     res.status(503).json({ error: 'LiveKit no está configurado' });
     return;
   }

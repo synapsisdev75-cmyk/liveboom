@@ -1,14 +1,11 @@
 const express = require('express');
-const auth = require('../middleware/auth');
-const livekit = require('../lib/livekit');
+const { mw } = require('../lib/bind');
 const presence = require('../lib/livePresence');
 
 const router = express.Router();
+const auth = () => require('../middleware/auth');
+const livekit = () => require('../lib/livekit');
 
-const requireAuth = auth.requireAuth || auth.default?.requireAuth;
-const livekitEnabled = livekit.livekitEnabled || livekit.default?.livekitEnabled;
-const createLivekitToken = livekit.createLivekitToken || livekit.default?.createLivekitToken;
-const listActiveLiveRooms = livekit.listActiveLiveRooms || livekit.default?.listActiveLiveRooms;
 const upsertLive = presence.upsertLive || presence.default?.upsertLive;
 const removeLive = presence.removeLive || presence.default?.removeLive;
 const listLives = presence.listLives || presence.default?.listLives;
@@ -45,6 +42,8 @@ function isRoomHost(decoded, roomName) {
 }
 
 router.get('/live', async (_req, res) => {
+  const lk = livekit();
+  const listActiveLiveRooms = lk.listActiveLiveRooms || lk.default?.listActiveLiveRooms;
   const memory = typeof listLives === 'function' ? listLives() : [];
   const fromLivekit = typeof listActiveLiveRooms === 'function' ? await listActiveLiveRooms() : [];
   const byName = new Map();
@@ -62,14 +61,11 @@ router.get('/live', async (_req, res) => {
   res.json({ streams: Array.from(byName.values()) });
 });
 
-router.post('/live/start', requireAuth, (req, res) => {
+router.post('/live/start', mw(auth, 'requireAuth'), (req, res) => {
   const username =
     typeof req.body?.username === 'string' && req.body.username.trim()
       ? normalize(req.body.username)
       : normalize(req.user.email ? req.user.email.split('@')[0] : req.user.uid);
-  if (!isRoomHost(req.user, username) && normalize(req.user.uid) !== username) {
-    // Permitimos que el host declare su handle aunque no coincida 1:1 con el email.
-  }
   const entry = upsertLive({
     username,
     uid: req.user.uid,
@@ -80,7 +76,7 @@ router.post('/live/start', requireAuth, (req, res) => {
   res.status(201).json(entry);
 });
 
-router.post('/live/stop', requireAuth, (req, res) => {
+router.post('/live/stop', mw(auth, 'requireAuth'), (req, res) => {
   const username =
     typeof req.body?.username === 'string' && req.body.username.trim()
       ? normalize(req.body.username)
@@ -89,7 +85,11 @@ router.post('/live/stop', requireAuth, (req, res) => {
   res.json({ ok: true, username });
 });
 
-router.get('/token/:roomName', requireAuth, async (req, res) => {
+router.get('/token/:roomName', mw(auth, 'requireAuth'), async (req, res) => {
+  const lk = livekit();
+  const livekitEnabled = lk.livekitEnabled || lk.default?.livekitEnabled;
+  const createLivekitToken = lk.createLivekitToken || lk.default?.createLivekitToken;
+
   if (typeof livekitEnabled !== 'function' || !livekitEnabled()) {
     res.status(503).json({ error: 'LiveKit no está configurado en el API' });
     return;

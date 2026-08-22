@@ -1,15 +1,14 @@
 const { randomUUID } = require('crypto');
 const express = require('express');
-const auth = require('../middleware/auth');
+const { mw } = require('../lib/bind');
 const { prisma } = require('../lib/prisma');
 const { findGift } = require('../lib/gifts');
 const { emitGiftReceived } = require('../lib/socket');
 
 const router = express.Router();
-const requireAuth = auth.requireAuth || auth.default?.requireAuth;
-const requireDbUser = auth.requireDbUser || auth.default?.requireDbUser;
+const auth = () => require('../middleware/auth');
 
-router.post('/send', requireAuth, requireDbUser, async (req, res) => {
+router.post('/send', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), async (req, res) => {
   const giftId = req.body?.giftId;
   const roomName = typeof req.body?.roomName === 'string' ? req.body.roomName.trim() : '';
   const gift = findGift(giftId);
