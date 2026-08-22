@@ -36,14 +36,32 @@ function mapAuthError(error: unknown): string {
   if (code.includes('weak-password')) return 'La contraseña debe tener al menos 6 caracteres.';
   if (code.includes('popup-closed')) return 'Se cerró la ventana de Google.';
   if (code.includes('unauthorized-domain')) {
-    return 'localhost no está autorizado en Firebase Auth. Añádelo en Authentication > Settings.';
+    return 'Este dominio no está autorizado en Firebase Auth.';
   }
   return error instanceof Error ? error.message : 'No se pudo autenticar.';
 }
 
 async function syncWithBackend(user: FirebaseUser) {
-  const token = await user.getIdToken();
-  return postAuthSync(token);
+  try {
+    const token = await user.getIdToken();
+    return await postAuthSync(token);
+  } catch {
+    return profileFromFirebase(user);
+  }
+}
+
+function profileFromFirebase(user: FirebaseUser): SessionUser {
+  const handle = user.email?.split('@')[0] ?? user.uid.slice(0, 8);
+  return {
+    id: user.uid,
+    firebaseUid: user.uid,
+    email: user.email ?? `${user.uid}@users.liveboom.local`,
+    displayName: user.displayName ?? handle,
+    handle,
+    avatarUrl: user.photoURL,
+    coins: 0,
+    coinsBalance: 0,
+  };
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -86,8 +104,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ busy: true, error: null });
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      const token = await cred.user.getIdToken();
-      const profile = await postAuthSync(token);
+      const profile = await syncWithBackend(cred.user);
       set({ firebaseUser: cred.user, profile });
     } catch (error) {
       set({ error: mapAuthError(error) });
@@ -102,8 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: name });
-      const token = await cred.user.getIdToken(true);
-      const profile = await postAuthSync(token);
+      const profile = await syncWithBackend(cred.user);
       set({ firebaseUser: cred.user, profile });
     } catch (error) {
       set({ error: mapAuthError(error) });
@@ -117,8 +133,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ busy: true, error: null });
     try {
       const cred = await signInWithPopup(auth, googleProvider);
-      const token = await cred.user.getIdToken();
-      const profile = await postAuthSync(token);
+      const profile = await syncWithBackend(cred.user);
       set({ firebaseUser: cred.user, profile });
     } catch (error) {
       set({ error: mapAuthError(error) });

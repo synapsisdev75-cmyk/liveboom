@@ -8,7 +8,8 @@
         "authorizedRedirectUris": [
           "http://localhost",
           "https://liveboom-app.firebaseapp.com",
-          "https://liveboom-app.web.app"
+          "https://liveboom-app.web.app",
+          "https://liveboom.vercel.app"
         ]
       }
     }
@@ -24,6 +25,17 @@
   "hosting": {
     "public": "apps/web/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin-allow-popups"
+          }
+        ]
+      }
+    ],
     "rewrites": [
       {
         "source": "**",

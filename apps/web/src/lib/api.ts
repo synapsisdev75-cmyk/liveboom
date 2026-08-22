@@ -1,6 +1,8 @@
 import { auth } from './firebase';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '';
+const API_BASE =
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.PROD ? 'https://liveboom.vercel.app' : '');
 
 export class ApiError extends Error {
   readonly status: number;

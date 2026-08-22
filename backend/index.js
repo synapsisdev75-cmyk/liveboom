@@ -10,7 +10,25 @@ const webhooksRoutes = require('./src/routes/webhooks');
 const app = express();
 const port = Number(process.env.PORT) || 4000;
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || true }));
+const allowedOrigins = new Set([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'https://liveboom-app.web.app',
+  'https://liveboom-app.firebaseapp.com',
+  'https://liveboom.vercel.app',
+]);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin) || origin.endsWith('.vercel.app')) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origen no permitido'));
+    },
+  }),
+);
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
