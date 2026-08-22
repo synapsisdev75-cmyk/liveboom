@@ -1,4 +1,5 @@
-const admin = require('firebase-admin');
+const { initializeApp, getApps, cert } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 const { prisma } = require('../lib/prisma');
 
 function parseServiceAccount(raw) {
@@ -12,7 +13,7 @@ function parseServiceAccount(raw) {
 }
 
 function initFirebaseAdmin() {
-  if (admin.apps.length > 0) {
+  if (getApps().length > 0) {
     return;
   }
 
@@ -24,8 +25,8 @@ function initFirebaseAdmin() {
     if (typeof serviceAccount.private_key === 'string') {
       serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+    initializeApp({
+      credential: cert(serviceAccount),
       projectId: serviceAccount.project_id || projectId,
     });
     return;
@@ -34,7 +35,7 @@ function initFirebaseAdmin() {
   console.warn(
     '[auth] FIREBASE_SERVICE_ACCOUNT no está definida; se verifica el JWT con projectId',
   );
-  admin.initializeApp({ projectId });
+  initializeApp({ projectId });
 }
 
 initFirebaseAdmin();
@@ -52,8 +53,7 @@ function requireAuth(req, res, next) {
     return;
   }
 
-  admin
-    .auth()
+  getAuth()
     .verifyIdToken(token)
     .then((decoded) => {
       req.user = decoded;

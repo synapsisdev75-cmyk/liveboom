@@ -70,7 +70,9 @@ app.get('/api/wallet/:firebaseUid', async (req, res) => {
   }
 });
 
-if (require.main === module) {
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+if (!isServerless) {
   app.listen(port, () => {
     console.log(`[liveboom] backend listo en http://localhost:${port}`);
   });
