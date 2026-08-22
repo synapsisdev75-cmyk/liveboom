@@ -1,7 +1,11 @@
 const { randomUUID } = require('crypto');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { resolveCoinPackage } = require('../lib/coinPackages');
-const { createWidgetIntegritySignature } = require('../lib/wompi');
+const {
+  assertIntegrityPair,
+  cleanWompiSecret,
+  createWidgetIntegritySignature,
+} = require('../lib/wompi');
 const { credit, rememberOrder, takeOrder } = require('../lib/walletMemory');
 const dbUserFromTokenMod = require('../lib/dbUserFromToken');
 
@@ -20,20 +24,19 @@ function userForOrder(req) {
 function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey }) {
   const reference = `lb_${String(dbUser.id).slice(0, 24)}_${randomUUID().replace(/-/g, '')}`;
   const currency = 'COP';
-  let integritySignature = null;
-  try {
-    integritySignature = createWidgetIntegritySignature(
-      reference,
-      amountInCop,
-      currency,
-      process.env.WOMPI_INTEGRITY_SECRET,
-    );
-  } catch (error) {
-    console.warn('[payments] firma de integridad omitida:', error.message);
+  const integritySecret = assertIntegrityPair(publicKey, process.env.WOMPI_INTEGRITY_SECRET);
+  const integritySignature = createWidgetIntegritySignature(
+    reference,
+    amountInCop,
+    currency,
+    integritySecret,
+  );
+  if (!integritySignature) {
+    throw new Error('No se pudo generar la firma de integridad de Wompi');
   }
   return {
     reference,
-    publicKey,
+    publicKey: cleanWompiSecret(publicKey),
     amountInCop,
     amountInCents: amountInCop,
     currency,

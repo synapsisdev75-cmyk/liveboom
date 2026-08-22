@@ -82,11 +82,54 @@ function verifyWompiChecksum(payload, eventsSecret, req) {
   return safeEqualHex(courseChecksum, received);
 }
 
+/**
+ * Limpia secretos de Wompi: quita espacios y comillas que a veces se pegan en Vercel/.env.
+ */
+function cleanWompiSecret(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
+}
+
+function assertIntegrityPair(publicKey, integritySecret) {
+  const pub = cleanWompiSecret(publicKey);
+  const secret = cleanWompiSecret(integritySecret);
+  if (!secret) {
+    throw new Error(
+      'Falta WOMPI_INTEGRITY_SECRET en el API (Vercel). En el dashboard de Wompi → Desarrolladores → Secretos para integración técnica.',
+    );
+  }
+  if (secret.startsWith('test_events_') || secret.startsWith('prod_events_')) {
+    throw new Error(
+      'WOMPI_INTEGRITY_SECRET parece ser el secreto de eventos. Usa el de integridad (test_integrity_… / prod_integrity_…).',
+    );
+  }
+  const pubTest = pub.startsWith('pub_test_');
+  const pubProd = pub.startsWith('pub_prod_');
+  const secTest = secret.startsWith('test_integrity_');
+  const secProd = secret.startsWith('prod_integrity_');
+  if ((pubTest && !secTest) || (pubProd && !secProd)) {
+    throw new Error(
+      'La llave pública y el secreto de integridad no son del mismo ambiente (pruebas vs producción).',
+    );
+  }
+  return secret;
+}
+
+/**
+ * Firma del Widget: SHA256(reference + amountInCents + currency + integritySecret)
+ * amountInCents debe ser entero (p. ej. $9.500 COP → 950000).
+ */
 function createWidgetIntegritySignature(reference, amountInCents, currency, integritySecret) {
-  if (!integritySecret) {
+  const secret = cleanWompiSecret(integritySecret);
+  if (!secret) {
     return null;
   }
-  return sha256Hex(`${reference}${amountInCents}${currency}${integritySecret}`);
+  const amount = Number(amountInCents);
+  if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
+    throw new Error('amountInCents inválido para la firma de Wompi');
+  }
+  return sha256Hex(`${String(reference)}${amount}${String(currency)}${secret}`);
 }
 
 module.exports = {
@@ -94,4 +137,6 @@ module.exports = {
   computeOfficialEventChecksum,
   verifyWompiChecksum,
   createWidgetIntegritySignature,
+  cleanWompiSecret,
+  assertIntegrityPair,
 };
