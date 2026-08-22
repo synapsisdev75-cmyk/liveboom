@@ -1,6 +1,8 @@
 const express = require('express');
 const { asFn } = require('../lib/asFn');
 const presence = require('../lib/livePresence');
+const invites = require('../lib/liveInvites');
+const reelStore = require('../lib/reelStore');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -41,7 +43,11 @@ function isRoomHost(decoded, roomName) {
   );
 }
 
-router.get('/live', async (_req, res) => {
+function canGuestPublish(decoded, roomName) {
+  return invites.hasInvite(roomName, identitiesFromToken(decoded));
+}
+
+router.get('/live', async (req, res) => {
   const lk = livekit();
   const listActiveLiveRooms = lk.listActiveLiveRooms || lk.default?.listActiveLiveRooms;
   const memory = typeof listLives === 'function' ? listLives() : [];
@@ -56,9 +62,12 @@ router.get('/live', async (_req, res) => {
       viewers: Math.max(Number(prev?.viewers || 0), Number(item.viewers || 0)),
       title: item.title || prev?.title || `Live de ${item.username}`,
       displayName: item.displayName || prev?.displayName || item.username,
+      isPrivate: Boolean(item.isPrivate ?? prev?.isPrivate ?? false),
     });
   }
-  res.json({ streams: Array.from(byName.values()) });
+  const includePrivate = req.query.includePrivate === '1';
+  const streams = Array.from(byName.values()).filter((item) => includePrivate || !item.isPrivate);
+  res.json({ streams });
 });
 
 router.post('/live/start', requireAuth, (req, res) => {
@@ -72,6 +81,7 @@ router.post('/live/start', requireAuth, (req, res) => {
     displayName: req.user.name || req.user.email || username,
     avatarUrl: req.user.picture || null,
     title: typeof req.body?.title === 'string' ? req.body.title.slice(0, 80) : undefined,
+    isPrivate: Boolean(req.body?.isPrivate),
   });
   res.status(201).json(entry);
 });
@@ -82,7 +92,77 @@ router.post('/live/stop', requireAuth, (req, res) => {
       ? normalize(req.body.username)
       : normalize(req.user.email ? req.user.email.split('@')[0] : req.user.uid);
   removeLive(username);
+  invites.clearInvites(username);
   res.json({ ok: true, username });
+});
+
+router.post('/invite', requireAuth, (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const guestHandle =
+    typeof req.body?.guestHandle === 'string' ? normalize(req.body.guestHandle) : '';
+  if (!roomName || !guestHandle) {
+    res.status(400).json({ error: 'roomName y guestHandle son obligatorios' });
+    return;
+  }
+  if (!isRoomHost(req.user, roomName)) {
+    res.status(403).json({ error: 'Solo el anfitrión puede invitar a unirse al live' });
+    return;
+  }
+  const invite = invites.addInvite(roomName, guestHandle);
+  res.status(201).json({ ok: true, invite, pending: invites.listInvites(roomName) });
+});
+
+router.get('/reels', (_req, res) => {
+  res.json({ reels: reelStore.listSharedReels() });
+});
+
+router.get('/reels/:username', (req, res) => {
+  const username = normalize(req.params.username);
+  const sharedOnly = req.query.mine !== '1';
+  res.json({ reels: reelStore.listReels(username, { sharedOnly }) });
+});
+
+router.post('/reels', requireAuth, (req, res) => {
+  try {
+    const username =
+      typeof req.body?.username === 'string' ? normalize(req.body.username) : '';
+    const dataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl : '';
+    const title = typeof req.body?.title === 'string' ? req.body.title : 'Momento del live';
+    const shared = Boolean(req.body?.shared);
+    if (!username || !dataUrl.startsWith('data:video/')) {
+      res.status(400).json({ error: 'username y dataUrl (video) son obligatorios' });
+      return;
+    }
+    if (!isRoomHost(req.user, username)) {
+      res.status(403).json({ error: 'Solo el anfitrión puede guardar reels de su live' });
+      return;
+    }
+    const reel = reelStore.addReel({ username, dataUrl, title, shared });
+    res.status(201).json({ reel });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'No se pudo guardar el reel' });
+  }
+});
+
+router.patch('/reels/:reelId/share', requireAuth, (req, res) => {
+  const username =
+    typeof req.body?.username === 'string' ? normalize(req.body.username) : '';
+  const shared = Boolean(req.body?.shared);
+  if (!username) {
+    res.status(400).json({ error: 'username es obligatorio' });
+    return;
+  }
+  if (!isRoomHost(req.user, username)) {
+    res.status(403).json({ error: 'No autorizado' });
+    return;
+  }
+  const reel = reelStore.setReelShared(username, req.params.reelId, shared);
+  if (!reel) {
+    res.status(404).json({ error: 'Reel no encontrado' });
+    return;
+  }
+  res.json({ reel });
 });
 
 router.get('/token/:roomName', requireAuth, async (req, res) => {
@@ -104,7 +184,9 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
   }
 
   try {
-    const canPublish = isRoomHost(req.user, roomName);
+    const host = isRoomHost(req.user, roomName);
+    const guest = canGuestPublish(req.user, roomName);
+    const canPublish = host || guest;
     const displayName = req.user.name || req.user.email || req.user.uid.slice(0, 8);
     const token = await createLivekitToken({
       identity: req.user.uid,
@@ -113,7 +195,7 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
       canPublish,
     });
 
-    if (canPublish) {
+    if (host) {
       upsertLive({
         username: normalize(roomName),
         uid: req.user.uid,
@@ -127,6 +209,8 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
       serverUrl: process.env.LIVEKIT_URL,
       roomName,
       canPublish,
+      isHost: host,
+      isGuest: guest && !host,
     });
   } catch (error) {
     console.error('[stream/token]', error);

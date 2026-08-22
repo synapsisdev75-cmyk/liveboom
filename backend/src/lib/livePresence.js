@@ -1,19 +1,21 @@
 const lives = new Map();
 
-function upsertLive({ username, uid, displayName, avatarUrl, title }) {
+function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, viewers }) {
   const key = String(username || '')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '_');
   if (!key) return null;
+  const prev = lives.get(key);
   const entry = {
     username: key,
-    uid: String(uid || ''),
-    displayName: displayName || key,
-    avatarUrl: avatarUrl || null,
-    title: title || `Live de ${displayName || key}`,
-    startedAt: new Date().toISOString(),
-    viewers: 0,
+    uid: String(uid || prev?.uid || ''),
+    displayName: displayName || prev?.displayName || key,
+    avatarUrl: avatarUrl ?? prev?.avatarUrl ?? null,
+    title: title || prev?.title || `Live de ${displayName || key}`,
+    startedAt: prev?.startedAt || new Date().toISOString(),
+    viewers: Number(viewers ?? prev?.viewers ?? 0),
+    isPrivate: Boolean(isPrivate ?? prev?.isPrivate ?? false),
   };
   lives.set(key, entry);
   return entry;

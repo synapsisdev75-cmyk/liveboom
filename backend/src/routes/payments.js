@@ -6,6 +6,11 @@ const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
 
+router.get(
+  '/status',
+  bind(() => require('../controllers/paymentsController'), 'getPaymentStatus'),
+);
+
 router.post(
   '/create-order',
   requireAuth,
@@ -17,6 +22,13 @@ router.post(
   '/complete-widget',
   requireAuth,
   bind(() => require('../controllers/paymentsController'), 'completeWidget'),
+);
+
+router.post(
+  '/simulate-topup',
+  requireAuth,
+  requireDbUser,
+  bind(() => require('../controllers/paymentsController'), 'simulateTopup'),
 );
 
 module.exports = router;

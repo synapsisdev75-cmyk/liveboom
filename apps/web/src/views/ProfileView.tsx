@@ -2,6 +2,7 @@ import { updateProfile } from 'firebase/auth';
 import { Camera } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { MyReelsPanel } from '../components/feed/MyReelsPanel';
 import { api, mapPostgresUser, type SessionUser } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
@@ -272,6 +273,7 @@ export function ProfileView() {
           </p>
         )}
       </form>
+      {profile ? <MyReelsPanel username={profile.handle} /> : null}
     </div>
   );
 }

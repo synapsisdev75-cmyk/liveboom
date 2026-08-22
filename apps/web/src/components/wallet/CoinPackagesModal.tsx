@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { api } from '../../lib/api';
+import { useEffect, useState } from 'react';
+import { api, apiPublic } from '../../lib/api';
 import { COIN_PACKAGES, type CoinPackageId } from '../../lib/coinPackages';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
 import { useAuthStore } from '../../store/authStore';
@@ -13,6 +13,31 @@ export function CoinPackagesModal({ onClose }: Props) {
   const [selected, setSelected] = useState<CoinPackageId>('500_coins');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [simulateAvailable, setSimulateAvailable] = useState(false);
+
+  useEffect(() => {
+    void apiPublic<{ simulateAvailable?: boolean; pairOk?: boolean }>('/api/payments/status')
+      .then((data) => setSimulateAvailable(Boolean(data.simulateAvailable)))
+      .catch(() => undefined);
+  }, []);
+
+  async function simulatePay() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const paid = await api<{ coinsBalance: number }>('/api/payments/simulate-topup', {
+        method: 'POST',
+        body: JSON.stringify({ packageId: selected }),
+      });
+      useAuthStore.getState().setCoins(paid.coinsBalance);
+      await syncProfile();
+      setNote('Recarga de prueba acreditada (sin Wompi).');
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : 'No se pudo simular la recarga');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function pay() {
     setBusy(true);
@@ -44,7 +69,9 @@ export function CoinPackagesModal({ onClose }: Props) {
           return;
         }
         if (status) {
-          setNote(`El pago quedó en estado ${status}.`);
+          setNote(
+            `El pago quedó en estado ${status}. Si ves "firma inválida", usa Recarga de prueba o revisa las llaves Wompi en Vercel.`,
+          );
         }
       });
     } catch (error) {
@@ -118,14 +145,24 @@ export function CoinPackagesModal({ onClose }: Props) {
           </p>
         ) : null}
 
-        <div className="mt-6 flex justify-stretch pb-[env(safe-area-inset-bottom)] sm:justify-end sm:pb-0">
+        <div className="mt-6 flex flex-col gap-2 pb-[env(safe-area-inset-bottom)] sm:flex-row sm:justify-end sm:pb-0">
+          {simulateAvailable ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void simulatePay()}
+              className="w-full rounded-full border border-cyan-400/40 px-6 py-3 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/10 disabled:opacity-60 sm:w-auto sm:py-2"
+            >
+              Recarga de prueba (sin Wompi)
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={busy}
             onClick={() => void pay()}
             className="w-full rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-3 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105 disabled:opacity-60 sm:w-auto sm:py-2"
           >
-            {busy ? 'Abriendo Wompi…' : 'Pagar'}
+            {busy ? 'Abriendo Wompi…' : 'Pagar con Wompi'}
           </button>
         </div>
       </div>
