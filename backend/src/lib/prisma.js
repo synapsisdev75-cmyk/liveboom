@@ -1,11 +1,17 @@
 const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
+const hasDatabase = Boolean(process.env.DATABASE_URL);
+let prisma = null;
 
-prisma
-  .$executeRawUnsafe('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3)')
-  .catch(() => {
-    /* Sin DATABASE_URL o sin tabla User todavía */
-  });
+if (hasDatabase) {
+  prisma = new PrismaClient();
+  prisma
+    .$executeRawUnsafe('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3)')
+    .catch((error) => {
+      console.warn('[prisma] no se pudo asegurar birthDate:', error.message);
+    });
+} else {
+  console.warn('[prisma] DATABASE_URL no está definida; sync y pagos siguen en modo sin PostgreSQL');
+}
 
-module.exports = { prisma };
+module.exports = { prisma, hasDatabase };

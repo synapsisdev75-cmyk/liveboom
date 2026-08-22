@@ -1,6 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { prisma } = require('../lib/prisma');
+const { prisma, hasDatabase } = require('../lib/prisma');
 
 const router = express.Router();
 
@@ -24,6 +24,21 @@ router.post('/sync', requireAuth, async (req, res) => {
   const avatarUrl = decoded.picture || null;
 
   try {
+    if (!hasDatabase || !prisma) {
+      res.json({
+        id: uid,
+        firebaseUid: uid,
+        email,
+        username,
+        avatarUrl,
+        bio: null,
+        coinsBalance: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
     const user = await prisma.user.upsert({
       where: { firebaseUid: uid },
       update: {
@@ -41,21 +56,17 @@ router.post('/sync', requireAuth, async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('[auth/sync]', error);
-    if (!process.env.DATABASE_URL) {
-      res.json({
-        id: uid,
-        firebaseUid: uid,
-        email,
-        username,
-        avatarUrl,
-        bio: null,
-        coinsBalance: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      return;
-    }
-    res.status(500).json({ error: 'No se pudo sincronizar el usuario en PostgreSQL' });
+    res.json({
+      id: uid,
+      firebaseUid: uid,
+      email,
+      username,
+      avatarUrl,
+      bio: null,
+      coinsBalance: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
   }
 });
 

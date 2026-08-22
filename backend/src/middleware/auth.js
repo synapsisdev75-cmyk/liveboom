@@ -1,6 +1,6 @@
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const { prisma } = require('../lib/prisma');
+const { prisma, hasDatabase } = require('../lib/prisma');
 
 function parseServiceAccount(raw) {
   const trimmed = raw.trim();
@@ -65,21 +65,49 @@ function requireAuth(req, res, next) {
     });
 }
 
+function dbUserFromToken(decoded) {
+  const raw = decoded.name || (decoded.email ? decoded.email.split('@')[0] : decoded.uid);
+  const base =
+    String(raw)
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 20) || 'user';
+  return {
+    id: decoded.uid,
+    firebaseUid: decoded.uid,
+    email: decoded.email || `${decoded.uid}@users.liveboom.local`,
+    username: `${base}_${decoded.uid.slice(0, 8)}`,
+    avatarUrl: decoded.picture || null,
+    bio: null,
+    coinsBalance: 0,
+  };
+}
+
 async function requireDbUser(req, res, next) {
+  if (!hasDatabase || !prisma) {
+    req.dbUser = dbUserFromToken(req.user);
+    next();
+    return;
+  }
+
   try {
     const user = await prisma.user.findUnique({
       where: { firebaseUid: req.user.uid },
     });
     if (!user) {
-      res.status(409).json({ error: 'Sincroniza tu cuenta con POST /api/auth/sync' });
+      req.dbUser = dbUserFromToken(req.user);
+      next();
       return;
     }
     req.dbUser = user;
     next();
   } catch (error) {
     console.error('[auth] requireDbUser:', error);
-    res.status(500).json({ error: 'No se pudo cargar el usuario' });
+    req.dbUser = dbUserFromToken(req.user);
+    next();
   }
 }
 
-module.exports = { requireAuth, requireDbUser };
+module.exports = { requireAuth, requireDbUser, dbUserFromToken };

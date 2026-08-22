@@ -3,6 +3,8 @@ const { requireAuth } = require('../middleware/auth');
 const { prisma } = require('../lib/prisma');
 const { livekitEnabled, createLivekitToken } = require('../lib/livekit');
 
+const router = express.Router();
+
 function usernameFromToken(decoded) {
   const raw = decoded.name || (decoded.email ? decoded.email.split('@')[0] : decoded.uid);
   const base =

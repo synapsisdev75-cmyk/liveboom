@@ -96,7 +96,15 @@ export function CoinPackagesModal({ onClose }: Props) {
           })}
         </div>
 
-        {note ? <p className="mt-4 text-sm text-zinc-300">{note}</p> : null}
+        {note ? (
+          <p
+            className={`mt-4 text-sm ${
+              note.startsWith('Pago') || note.includes('aprobado') ? 'text-emerald-400' : 'text-fuchsia-400'
+            }`}
+          >
+            {note}
+          </p>
+        ) : null}
 
         <div className="mt-6 flex justify-end">
           <button

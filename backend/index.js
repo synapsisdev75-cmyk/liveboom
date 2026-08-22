@@ -47,6 +47,10 @@ app.use('/api/gifts', giftsRoutes);
 app.use('/api/users', usersRoutes);
 
 app.get('/api/health', async (_req, res) => {
+  if (!prisma) {
+    res.json({ status: 'ok', message: 'Liveboom Backend Running', db: 'disconnected' });
+    return;
+  }
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ok', message: 'Liveboom Backend Running', db: 'connected' });
@@ -65,6 +69,16 @@ app.get('/api/health', async (_req, res) => {
  */
 app.get('/api/wallet/:firebaseUid', async (req, res) => {
   const { firebaseUid } = req.params;
+
+  if (!prisma) {
+    res.json({
+      firebaseUid,
+      username: firebaseUid.slice(0, 24) || 'user',
+      coins: 0,
+      coinsBalance: 0,
+    });
+    return;
+  }
 
   try {
     const user = await prisma.user.upsert({
@@ -109,3 +123,6 @@ if (!isServerless) {
 }
 
 module.exports = app;
+
+
+

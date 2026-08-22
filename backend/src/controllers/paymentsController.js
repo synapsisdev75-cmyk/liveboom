@@ -1,7 +1,26 @@
 const { randomUUID } = require('crypto');
-const { prisma } = require('../lib/prisma');
+const { prisma, hasDatabase } = require('../lib/prisma');
 const { resolveCoinPackage } = require('../lib/coinPackages');
 const { createWidgetIntegritySignature } = require('../lib/wompi');
+
+function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey }) {
+  const reference = `lb_${dbUser.id}_${randomUUID().replace(/-/g, '')}`;
+  const currency = 'COP';
+  return {
+    reference,
+    publicKey,
+    amountInCop,
+    currency,
+    packageId,
+    coins: pack.coins,
+    integritySignature: createWidgetIntegritySignature(
+      reference,
+      amountInCop,
+      currency,
+      process.env.WOMPI_INTEGRITY_SECRET,
+    ),
+  };
+}
 
 async function createOrder(req, res) {
   const packageId = req.body?.packageId;
@@ -23,42 +42,34 @@ async function createOrder(req, res) {
   }
 
   const amountInCop = resolved.pack.amountInCop;
+  const order = buildOrderResponse({
+    dbUser: req.dbUser,
+    pack: resolved.pack,
+    packageId,
+    amountInCop,
+    publicKey,
+  });
 
-  const reference = `lb_${req.dbUser.id}_${randomUUID().replace(/-/g, '')}`;
-  const currency = 'COP';
-
-  try {
-    const transaction = await prisma.transaction.create({
-      data: {
-        userId: req.dbUser.id,
-        amount: resolved.pack.coins,
-        amountInCop,
-        type: 'deposit',
-        status: 'pending',
-        packageId,
-        reference,
-        currency,
-      },
-    });
-
-    res.status(201).json({
-      reference: transaction.reference,
-      publicKey,
-      amountInCop: transaction.amountInCop,
-      currency,
-      packageId,
-      coins: transaction.amount,
-      integritySignature: createWidgetIntegritySignature(
-        transaction.reference,
-        transaction.amountInCop,
-        currency,
-        process.env.WOMPI_INTEGRITY_SECRET,
-      ),
-    });
-  } catch (error) {
-    console.error('[payments/create-order]', error);
-    res.status(500).json({ error: 'No se pudo crear la orden de pago' });
+  if (hasDatabase && prisma) {
+    try {
+      await prisma.transaction.create({
+        data: {
+          userId: req.dbUser.id,
+          amount: resolved.pack.coins,
+          amountInCop,
+          type: 'deposit',
+          status: 'pending',
+          packageId,
+          reference: order.reference,
+          currency: order.currency,
+        },
+      });
+    } catch (error) {
+      console.error('[payments/create-order] no se persistió la orden:', error.message);
+    }
   }
+
+  res.status(201).json(order);
 }
 
 module.exports = { createOrder };

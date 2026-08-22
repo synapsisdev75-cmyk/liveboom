@@ -27,9 +27,14 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   headers.set('Authorization', `Bearer ${jwt}`);
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  const data = (await response.json().catch(() => ({}))) as { error?: string } & T;
+  let data: { error?: string; message?: string } & T;
+  try {
+    data = (await response.json()) as { error?: string; message?: string } & T;
+  } catch {
+    throw new ApiError(response.status, `El servidor respondió ${response.status} sin JSON`);
+  }
   if (!response.ok) {
-    throw new ApiError(response.status, data.error ?? 'Error de red');
+    throw new ApiError(response.status, data.error ?? data.message ?? `Error ${response.status}`);
   }
   return data;
 }

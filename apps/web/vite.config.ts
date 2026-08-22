@@ -11,7 +11,21 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': 'http://localhost:4000',
+      '/api': {
+        target: 'http://localhost:4000',
+        configure(proxy) {
+          proxy.on('error', (_error, _req, res) => {
+            if (!res.headersSent) {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  error: 'El API local no está encendido. Ejecuta npm run dev:api',
+                }),
+              );
+            }
+          });
+        },
+      },
       '/socket.io': {
         target: 'http://localhost:4000',
         ws: true,
