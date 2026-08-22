@@ -8,6 +8,7 @@ const router = express.Router();
 const requireAuth = auth.requireAuth || auth.default?.requireAuth;
 const livekitEnabled = livekit.livekitEnabled || livekit.default?.livekitEnabled;
 const createLivekitToken = livekit.createLivekitToken || livekit.default?.createLivekitToken;
+const listActiveLiveRooms = livekit.listActiveLiveRooms || livekit.default?.listActiveLiveRooms;
 const upsertLive = presence.upsertLive || presence.default?.upsertLive;
 const removeLive = presence.removeLive || presence.default?.removeLive;
 const listLives = presence.listLives || presence.default?.listLives;
@@ -43,8 +44,22 @@ function isRoomHost(decoded, roomName) {
   );
 }
 
-router.get('/live', (_req, res) => {
-  res.json({ streams: listLives() });
+router.get('/live', async (_req, res) => {
+  const memory = typeof listLives === 'function' ? listLives() : [];
+  const fromLivekit = typeof listActiveLiveRooms === 'function' ? await listActiveLiveRooms() : [];
+  const byName = new Map();
+  for (const item of [...memory, ...fromLivekit]) {
+    if (!item?.username) continue;
+    const prev = byName.get(item.username);
+    byName.set(item.username, {
+      ...prev,
+      ...item,
+      viewers: Math.max(Number(prev?.viewers || 0), Number(item.viewers || 0)),
+      title: item.title || prev?.title || `Live de ${item.username}`,
+      displayName: item.displayName || prev?.displayName || item.username,
+    });
+  }
+  res.json({ streams: Array.from(byName.values()) });
 });
 
 router.post('/live/start', requireAuth, (req, res) => {
