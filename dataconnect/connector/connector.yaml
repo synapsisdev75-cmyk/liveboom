@@ -1,0 +1,7 @@
+connectorId: liveboom
+generate:
+  javascriptSdk:
+    outputDir: ../../apps/web/src/lib/dataconnect
+    package: "@liveboom/dataconnect"
+    packageJsonDir: ../../apps/web
+    react: true

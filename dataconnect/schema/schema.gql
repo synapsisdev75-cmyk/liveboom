@@ -1,0 +1,45 @@
+type User @table {
+  firebaseUid: String! @unique
+  username: String! @unique
+  email: String! @unique
+  avatarUrl: String
+  bio: String
+  coinsBalance: Int! @default(value: 0)
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type Stream @table {
+  creator: User!
+  title: String!
+  status: String!
+  isPrivate: Boolean!
+  lockPrice: Int
+  startedAt: Timestamp! @default(expr: "request.time")
+  endedAt: Timestamp
+}
+
+type Gift @table {
+  name: String!
+  imageUrl: String!
+  coinPrice: Int!
+}
+
+type Transaction @table {
+  user: User!
+  amount: Int!
+  transactionType: String!
+  referenceId: UUID
+  status: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type StreamGift @table(key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  stream: Stream!
+  sender: User!
+  receiver: User!
+  gift: Gift!
+  quantity: Int!
+  sentAt: Timestamp! @default(expr: "request.time")
+}

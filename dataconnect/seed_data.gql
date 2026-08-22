@@ -1,0 +1,32 @@
+mutation SeedLiveboom @transaction {
+  user_insertMany(
+    data: [
+      {
+        id: "00000000-0000-0000-0000-000000000001"
+        firebaseUid: "seed-carolina"
+        username: "carolina_boom"
+        email: "carolina@liveboom.tv"
+        coinsBalance: 0
+      }
+    ]
+  )
+  gift_insertMany(
+    data: [
+      { name: "Estrella", imageUrl: "star", coinPrice: 10 }
+      { name: "Corazon", imageUrl: "heart", coinPrice: 50 }
+      { name: "Diamante", imageUrl: "diamond", coinPrice: 200 }
+      { name: "Corona", imageUrl: "crown", coinPrice: 500 }
+    ]
+  )
+  stream_insertMany(
+    data: [
+      {
+        title: "Noche de preguntas con la comunidad"
+        status: "LIVE"
+        isPrivate: false
+        lockPrice: 0
+        creator: { id: "00000000-0000-0000-0000-000000000001" }
+      }
+    ]
+  )
+}

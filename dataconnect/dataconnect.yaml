@@ -1,0 +1,12 @@
+specVersion: "v1"
+serviceId: "liveboom-app-service"
+location: "us-east4"
+schemas:
+  - source: "./schema"
+    datasource:
+      postgresql:
+        database: "liveboom-app-database"
+        cloudSql:
+          instanceId: "liveboom-app-instance"
+          schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]

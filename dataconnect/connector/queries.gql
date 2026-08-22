@@ -1,0 +1,40 @@
+query ListLiveStreams @auth(level: PUBLIC, insecureReason: "El feed de lives es público") {
+  streams(
+    where: { status: { eq: "LIVE" } }
+    orderBy: [{ startedAt: DESC }]
+    limit: 20
+  ) {
+    id
+    title
+    status
+    isPrivate
+    lockPrice
+    startedAt
+    creator {
+      id
+      username
+      avatarUrl
+      coinsBalance
+    }
+  }
+}
+
+query ListGifts @auth(level: PUBLIC, insecureReason: "El catálogo de regalos es público") {
+  gifts(orderBy: [{ coinPrice: ASC }]) {
+    id
+    name
+    imageUrl
+    coinPrice
+  }
+}
+
+query MyWallet @auth(level: USER) {
+  users(where: { firebaseUid: { eq_expr: "auth.uid" } }) {
+    id
+    username
+    email
+    avatarUrl
+    bio
+    coinsBalance
+  }
+}

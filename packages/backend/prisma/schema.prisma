@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StreamStatus {
+  IDLE
+  LIVE
+  ENDED
+}
+
+enum TransactionType {
+  TOPUP
+  GIFT_SENT
+  GIFT_RECEIVED
+  LOCK_PURCHASE
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id          String   @id @default(cuid())
+  firebaseUid String   @unique
+  email       String   @unique
+  displayName String
+  handle      String   @unique
+  avatarUrl   String?
+  coins       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hostedStreams Stream[]
+  sentGifts     GiftSend[]     @relation("GiftSender")
+  receivedGifts GiftSend[]     @relation("GiftReceiver")
+  transactions  Transaction[]
+}
+
+model Stream {
+  id          String       @id @default(cuid())
+  hostId      String
+  host        User         @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  title       String
+  category    String       @default("Live")
+  status      StreamStatus @default(LIVE)
+  isPrivate   Boolean      @default(false)
+  lockPrice   Int          @default(0)
+  coverUrl    String
+  previewUrl  String
+  livekitRoom String       @unique
+  viewerCount Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  gifts       GiftSend[]
+
+  @@index([status])
+}
+
+model Gift {
+  id       String     @id @default(cuid())
+  name     String
+  emoji    String
+  price    Int
+  accent   String
+  isActive Boolean    @default(true)
+  sends    GiftSend[]
+}
+
+model GiftSend {
+  id         String   @id @default(cuid())
+  giftId     String
+  gift       Gift     @relation(fields: [giftId], references: [id])
+  senderId   String
+  sender     User     @relation("GiftSender", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User     @relation("GiftReceiver", fields: [receiverId], references: [id])
+  streamId   String
+  stream     Stream   @relation(fields: [streamId], references: [id])
+  coins      Int
+  createdAt  DateTime @default(now())
+
+  @@index([streamId, createdAt])
+}
+
+model Transaction {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id])
+  type        TransactionType
+  status      TransactionStatus @default(PENDING)
+  coins       Int
+  amountCents Int?
+  currency    String            @default("COP")
+  provider    String?
+  providerRef String?           @unique
+  reference   String            @unique
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model CoinPackage {
+  id          String  @id @default(cuid())
+  name        String
+  coins       Int
+  amountCents Int
+  popular     Boolean @default(false)
+}

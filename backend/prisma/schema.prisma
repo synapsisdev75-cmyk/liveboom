@@ -1,0 +1,74 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  firebaseUid  String        @unique
+  username     String
+  email        String        @unique
+  avatarUrl    String?
+  bio          String?
+  coinsBalance Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  streams      Stream[]
+  transactions Transaction[]
+  streamGifts  StreamGift[]
+}
+
+model Stream {
+  id          String       @id @default(uuid())
+  hostId      String
+  host        User         @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  title       String
+  isLive      Boolean      @default(false)
+  coverUrl    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  streamGifts StreamGift[]
+}
+
+model Gift {
+  id          String       @id @default(uuid())
+  name        String
+  emoji       String       @default("🎁")
+  price       Int
+  createdAt   DateTime     @default(now())
+  streamGifts StreamGift[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Int
+  amountInCop Int
+  type        String   @default("deposit")
+  status      String   @default("pending")
+  packageId   String
+  reference   String   @unique
+  wompiTxnId  String?  @unique
+  currency    String   @default("COP")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model StreamGift {
+  id        String   @id @default(uuid())
+  streamId  String
+  stream    Stream   @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  giftId    String
+  gift      Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}

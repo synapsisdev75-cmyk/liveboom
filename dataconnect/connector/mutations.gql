@@ -1,0 +1,14 @@
+mutation CreateMyProfile(
+  $username: String!
+  $email: String!
+  $avatarUrl: String
+) @auth(level: USER) {
+  user_insert(
+    data: {
+      firebaseUid_expr: "auth.uid"
+      username: $username
+      email: $email
+      avatarUrl: $avatarUrl
+    }
+  )
+}

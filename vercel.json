@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/schema.json",
+  "installCommand": "npm install && npm install --prefix backend",
+  "buildCommand": "npm run build --workspace=@liveboom/web",
+  "outputDirectory": "apps/web/dist",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "backend/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api" }
+  ]
+}

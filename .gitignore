@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Env (nunca subir secretos)
+.env
+.env.*
+!.env.example
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Expo / React Native
+.expo/
+.expo-shared/
+android/
+ios/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Testing / coverage
+coverage/
+
+# Misc
+.cache/
+.tmp/
+.pgdata/
+packages/backend/.pgdata/
+.vercel
+dataconnect/.dataconnect/

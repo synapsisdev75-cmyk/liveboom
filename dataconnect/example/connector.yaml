@@ -1,0 +1,70 @@
+connectorId: example
+generate:
+  adminNodeSdk:
+    - outputDir: ..\..\..\metarideapp-main\src\dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ..\..\..\metarideapp-main
+    - outputDir: ..\..\..\metarideapp-cursor-2026-07-01-1tdz-eb854\src\dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ..\..\..\metarideapp-cursor-2026-07-01-1tdz-eb854
+    - outputDir: ..\..\..\metarideapp-main\functions\src\dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ..\..\..\metarideapp-main\functions
+    - outputDir: ..\..\..\metarideapp-main\metarideapp-main\src\dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ..\..\..\metarideapp-main\metarideapp-main
+    - outputDir: ..\..\..\metarideapp-cursor-2026-07-01-1tdz-eb854\functions\src\dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ..\..\..\metarideapp-cursor-2026-07-01-1tdz-eb854\functions
+    - outputDir: ..\..\..\domiclik-main\functions\src\dataconnect-admin-generated
+      package: "@dataconnect/admin-generated"
+      packageJsonDir: ..\..\..\domiclik-main\functions
+  javascriptSdk:
+    - outputDir: ..\..\..\metarideapp-main\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..\..\metarideapp-main
+      react: true
+      angular: false
+      clientCache: {}
+    - outputDir: ..\..\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..
+      react: false
+      angular: false
+      clientCache: {}
+    - outputDir: ..\..\..\metarideapp-cursor-2026-07-01-1tdz-eb854\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..\..\metarideapp-cursor-2026-07-01-1tdz-eb854
+      react: true
+      angular: false
+      clientCache: {}
+    - outputDir: ..\..\..\Macro-Realm-main\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..\..\Macro-Realm-main
+      react: true
+      angular: false
+      clientCache: {}
+    - outputDir: ..\..\..\domiclik-main\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..\..\domiclik-main
+      react: true
+      angular: false
+      clientCache: {}
+    - outputDir: ..\..\..\metarideapp-main\metarideapp-main\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..\..\metarideapp-main\metarideapp-main
+      react: true
+      angular: false
+      clientCache: {}
+    - outputDir: ..\..\backend\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..\backend
+      react: false
+      angular: false
+      clientCache: {}
+    - outputDir: ..\..\..\domiclik-main\client-web\src\dataconnect-generated
+      package: "@dataconnect/generated"
+      packageJsonDir: ..\..\..\domiclik-main\client-web
+      react: true
+      angular: false
+      clientCache: {}

@@ -1,0 +1,36 @@
+{
+  "name": "@liveboom/backend",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "db:setup": "tsx src/setupDb.ts",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.13.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "embedded-postgres": "18.4.0-beta.17",
+    "express": "^5.1.0",
+    "firebase-admin": "^13.4.0",
+    "livekit-server-sdk": "^2.13.3",
+    "socket.io": "^4.8.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.21",
+    "prisma": "^6.13.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

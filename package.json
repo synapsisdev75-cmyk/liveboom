@@ -1,0 +1,27 @@
+{
+  "name": "liveboom",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Liveboom — red social de lives, videos cortos y monetización",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "npm run dev --workspace=@liveboom/web",
+    "dev:api": "npm run dev --prefix backend",
+    "dev:mobile": "npm run start --workspace=@liveboom/mobile",
+    "dev:backend": "npm run dev --workspace=@liveboom/backend",
+    "build": "turbo run build",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
