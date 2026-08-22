@@ -181,6 +181,14 @@ export function ProfileView() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Cuenta</p>
         <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Editar perfil</h1>
         <p className="mt-1 text-sm text-zinc-400">Estos datos se guardan en PostgreSQL.</p>
+        {profile ? (
+          <Link
+            to={`/u/${encodeURIComponent(profile.handle)}`}
+            className="mt-3 inline-block text-sm font-semibold text-cyan-400 hover:underline"
+          >
+            Ver mi biblioteca y seguidores →
+          </Link>
+        ) : null}
 
         {profile ? (
           <div className="mt-6 grid gap-5 sm:mt-8">

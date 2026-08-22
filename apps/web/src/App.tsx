@@ -7,6 +7,7 @@ import { LoginView } from './views/LoginView';
 import { ProfileView } from './views/ProfileView';
 import { LiveRoom } from './views/LiveRoom';
 import { TransmitView } from './views/TransmitView';
+import { UserProfileView } from './views/UserProfileView';
 import { WalletView } from './views/WalletView';
 
 function AuthHydrator() {
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/stream/:username" element={<LiveRoom />} />
         <Route element={<MainLayout />}>
           <Route index element={<HomeView />} />
+          <Route path="u/:username" element={<UserProfileView />} />
           <Route path="billetera" element={<WalletView />} />
           <Route path="perfil" element={<ProfileView />} />
           <Route path="transmitir" element={<TransmitView />} />

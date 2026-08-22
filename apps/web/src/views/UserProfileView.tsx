@@ -1,0 +1,227 @@
+import { useEffect, useState } from 'react';
+import { Link, Navigate, useParams } from 'react-router-dom';
+import { CreatePostModal } from '../components/social/CreatePostModal';
+import {
+  FollowButton,
+  FollowListModal,
+  PostCard,
+  type SocialPost,
+} from '../components/social/SocialPostCard';
+import { api, apiPublic } from '../lib/api';
+import { useAuthStore } from '../store/authStore';
+
+type PublicProfile = {
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  followersCount: number;
+  followingCount: number;
+  isFollowing: boolean;
+  isOwnProfile: boolean;
+};
+
+type UserChip = {
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+export function UserProfileView() {
+  const { username: usernameParam } = useParams();
+  const username = usernameParam ? decodeURIComponent(usernameParam) : '';
+  const profile = useAuthStore((state) => state.profile);
+  const ready = useAuthStore((state) => state.ready);
+  const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
+  const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [followers, setFollowers] = useState<UserChip[]>([]);
+  const [following, setFollowing] = useState<UserChip[]>([]);
+  const [modal, setModal] = useState<'followers' | 'following' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!username) return;
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const headers: HeadersInit = {};
+        if (profile) {
+          const token = await import('../lib/firebase').then((m) => m.auth.currentUser?.getIdToken());
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
+        const profileRes = await fetch(
+          `${import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app'}/api/social/profile/${encodeURIComponent(username)}`,
+          { headers },
+        );
+        const profileData = (await profileRes.json()) as { profile?: PublicProfile; error?: string };
+        if (!profileRes.ok) throw new Error(profileData.error || 'Perfil no encontrado');
+
+        const postsData = await fetch(
+          `${import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app'}/api/social/posts/${encodeURIComponent(username)}`,
+          { headers },
+        ).then((r) => r.json() as Promise<{ posts: SocialPost[] }>);
+
+        if (!cancelled) {
+          setPublicProfile(profileData.profile || null);
+          setPosts(postsData.posts || []);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'No se pudo cargar el perfil');
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [username, profile]);
+
+  async function openFollowers() {
+    const data = await apiPublic<{ users: UserChip[] }>(
+      `/api/social/followers/${encodeURIComponent(username)}`,
+    );
+    setFollowers(data.users);
+    setModal('followers');
+  }
+
+  async function openFollowing() {
+    const data = await apiPublic<{ users: UserChip[] }>(
+      `/api/social/following/${encodeURIComponent(username)}`,
+    );
+    setFollowing(data.users);
+    setModal('following');
+  }
+
+  async function deletePost(postId: string) {
+    await api(`/api/social/posts/${postId}`, { method: 'DELETE' });
+    setPosts((current) => current.filter((post) => post.id !== postId));
+  }
+
+  if (!ready) {
+    return <div className="p-6 text-sm text-zinc-400">Cargando perfil…</div>;
+  }
+  if (!username) {
+    return <Navigate to="/" replace />;
+  }
+  if (error) {
+    return (
+      <div className="rounded-2xl bg-zinc-900 p-6 text-center">
+        <p className="text-fuchsia-400">{error}</p>
+        <Link to="/" className="mt-3 inline-block text-sm text-cyan-400">
+          Volver al inicio
+        </Link>
+      </div>
+    );
+  }
+  if (!publicProfile) {
+    return <div className="p-6 text-sm text-zinc-400">Cargando biblioteca…</div>;
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-6">
+      <section className="rounded-2xl bg-zinc-900 p-4 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          {publicProfile.avatarUrl ? (
+            <img
+              src={publicProfile.avatarUrl}
+              alt=""
+              className="mx-auto h-24 w-24 rounded-full object-cover ring-2 ring-cyan-400/40 sm:mx-0"
+            />
+          ) : (
+            <div className="mx-auto grid h-24 w-24 place-items-center rounded-full bg-zinc-800 text-2xl font-black text-cyan-300 sm:mx-0">
+              {publicProfile.username.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <h1 className="text-xl font-bold text-white">@{publicProfile.username}</h1>
+            {publicProfile.bio ? <p className="mt-2 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
+            <div className="mt-4 flex flex-wrap justify-center gap-4 sm:justify-start">
+              <button
+                type="button"
+                onClick={() => void openFollowers()}
+                className="text-sm text-white hover:text-cyan-300"
+              >
+                <strong>{publicProfile.followersCount}</strong>{' '}
+                <span className="text-zinc-400">seguidores</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void openFollowing()}
+                className="text-sm text-white hover:text-cyan-300"
+              >
+                <strong>{publicProfile.followingCount}</strong>{' '}
+                <span className="text-zinc-400">seguidos</span>
+              </button>
+            </div>
+            <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+              <FollowButton
+                username={publicProfile.username}
+                initialFollowing={publicProfile.isFollowing}
+                isOwnProfile={publicProfile.isOwnProfile}
+                onChange={(followingNow) =>
+                  setPublicProfile((current) =>
+                    current
+                      ? {
+                          ...current,
+                          isFollowing: followingNow,
+                          followersCount: current.followersCount + (followingNow ? 1 : -1),
+                        }
+                      : current,
+                  )
+                }
+              />
+              {publicProfile.isOwnProfile ? (
+                <Link
+                  to="/perfil"
+                  className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-zinc-200"
+                >
+                  Editar perfil
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-zinc-900 p-4 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-white">Biblioteca</h2>
+          {publicProfile.isOwnProfile ? (
+            <CreatePostModal
+              username={publicProfile.username}
+              onCreated={(post) => setPosts((current) => [post, ...current])}
+            />
+          ) : null}
+        </div>
+        {posts.length === 0 ? (
+          <p className="text-sm text-zinc-500">Sin publicaciones todavía.</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {posts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                canDelete={publicProfile.isOwnProfile}
+                onDelete={() => void deletePost(post.id)}
+                onReact={(updated) =>
+                  setPosts((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+                }
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {modal === 'followers' ? (
+        <FollowListModal title="Seguidores" users={followers} onClose={() => setModal(null)} />
+      ) : null}
+      {modal === 'following' ? (
+        <FollowListModal title="Seguidos" users={following} onClose={() => setModal(null)} />
+      ) : null}
+    </div>
+  );
+}

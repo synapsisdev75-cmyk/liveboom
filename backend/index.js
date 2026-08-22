@@ -55,6 +55,7 @@ mount('/api/livekit', () => require('./src/routes/livekit'));
 mount('/api/stream', () => require('./src/routes/stream'));
 mount('/api/gifts', () => require('./src/routes/gifts'));
 mount('/api/users', () => require('./src/routes/users'));
+mount('/api/social', () => require('./src/routes/social'));
 
 app.get('/api/wallet/:firebaseUid', async (req, res) => {
   const { firebaseUid } = req.params;
