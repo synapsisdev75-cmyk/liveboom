@@ -6,8 +6,8 @@ import {
   useRoomContext,
   useTracks,
 } from '@livekit/components-react';
-import { RoomEvent, Track } from 'livekit-client';
-import { Gift, Radio, Send } from 'lucide-react';
+import { createLocalVideoTrack, RoomEvent, Track, type LocalVideoTrack } from 'livekit-client';
+import { Eye, Gift, Radio, Send, SwitchCamera } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
@@ -55,6 +55,31 @@ function parseRoomData(payload: Uint8Array): RoomPayload | null {
   } catch {
     return null;
   }
+}
+
+function useViewerCount() {
+  const room = useRoomContext();
+  const [connected, setConnected] = useState(1);
+
+  useEffect(() => {
+    const refresh = () => {
+      setConnected(Math.max(1, room.remoteParticipants.size + 1));
+    };
+    refresh();
+    room.on(RoomEvent.ParticipantConnected, refresh);
+    room.on(RoomEvent.ParticipantDisconnected, refresh);
+    room.on(RoomEvent.Connected, refresh);
+    return () => {
+      room.off(RoomEvent.ParticipantConnected, refresh);
+      room.off(RoomEvent.ParticipantDisconnected, refresh);
+      room.off(RoomEvent.Connected, refresh);
+    };
+  }, [room]);
+
+  return {
+    connected,
+    viewers: Math.max(0, connected - 1),
+  };
 }
 
 export function LiveRoom() {
@@ -111,7 +136,11 @@ export function LiveRoom() {
   }, [profile, username]);
 
   if (!ready) {
-    return <div className="grid h-[100dvh] place-items-center bg-zinc-950 text-sm text-zinc-400">Cargando sala…</div>;
+    return (
+      <div className="grid h-[100dvh] place-items-center bg-zinc-950 text-sm text-zinc-400">
+        Cargando sala…
+      </div>
+    );
   }
   if (!profile) {
     return <Navigate to="/login" replace />;
@@ -148,26 +177,36 @@ export function LiveRoom() {
   }
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-zinc-950 p-2 sm:p-3">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-zinc-950 p-0 sm:p-3">
       <LiveKitRoom
         token={session.token}
         serverUrl={session.serverUrl}
         connect
         video={session.canPublish}
         audio={session.canPublish}
-        className="flex h-full w-full min-h-0 flex-col gap-2 lg:flex-row lg:gap-3"
+        className="relative flex h-full w-full min-h-0 flex-col lg:flex-row lg:gap-3"
       >
         <RoomAudioRenderer />
-        <CreatorStage username={username} />
-        <ChatPanel roomName={username} />
+        <CreatorStage username={username} canPublish={session.canPublish} />
+        <ChatPanel roomName={username} canPublish={session.canPublish} />
       </LiveKitRoom>
     </div>
   );
 }
 
-function CreatorStage({ username }: { username: string }) {
+function CreatorStage({
+  username,
+  canPublish,
+}: {
+  username: string;
+  canPublish: boolean;
+}) {
   const room = useRoomContext();
+  const { connected, viewers } = useViewerCount();
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
+  const [facing, setFacing] = useState<'user' | 'environment'>('user');
+  const [flipping, setFlipping] = useState(false);
+  const cameraTrackRef = useRef<LocalVideoTrack | null>(null);
 
   useEffect(() => {
     const onData = (payload: Uint8Array) => {
@@ -188,23 +227,77 @@ function CreatorStage({ username }: { username: string }) {
     };
   }, [room]);
 
+  async function flipCamera() {
+    if (!canPublish || flipping) return;
+    setFlipping(true);
+    const nextFacing = facing === 'user' ? 'environment' : 'user';
+    try {
+      const nextTrack = await createLocalVideoTrack({
+        facingMode: nextFacing,
+        resolution: { width: 720, height: 1280 },
+      });
+      const publications = Array.from(room.localParticipant.videoTrackPublications.values());
+      for (const publication of publications) {
+        if (publication.source === Track.Source.Camera && publication.track) {
+          await room.localParticipant.unpublishTrack(publication.track);
+          publication.track.stop();
+        }
+      }
+      if (cameraTrackRef.current) {
+        cameraTrackRef.current.stop();
+      }
+      await room.localParticipant.publishTrack(nextTrack, {
+        source: Track.Source.Camera,
+        name: 'camera',
+      });
+      cameraTrackRef.current = nextTrack;
+      setFacing(nextFacing);
+    } catch (error) {
+      console.error('[live] flip camera', error);
+    } finally {
+      setFlipping(false);
+    }
+  }
+
   return (
-    <section className="relative min-h-[42dvh] w-full min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_0_48px_rgba(0,240,255,0.12)] lg:w-[70%] lg:min-h-0">
+    <section className="relative min-h-0 w-full flex-1 overflow-hidden bg-black lg:w-[70%] lg:rounded-2xl lg:border lg:border-white/10 lg:shadow-[0_0_48px_rgba(0,240,255,0.12)]">
       <CreatorVideo />
-      <div className="pointer-events-none absolute left-3 top-3 flex max-w-[75%] flex-wrap items-center gap-2 sm:left-4 sm:top-4">
-        <span className="live-dot rounded-md bg-fuchsia-600 px-2 py-1 text-[11px] font-bold text-white">
-          <Radio className="mr-1 inline" size={11} /> EN VIVO
-        </span>
-        <span className="truncate rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur">
-          @{username}
-        </span>
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/70 to-transparent px-3 pb-10 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex max-w-[78%] flex-wrap items-center gap-2">
+            <span className="live-dot rounded-md bg-fuchsia-600 px-2 py-1 text-[11px] font-bold text-white">
+              <Radio className="mr-1 inline" size={11} /> EN VIVO
+            </span>
+            <span className="truncate rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur">
+              @{username}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-cyan-300 backdrop-blur">
+              <Eye size={12} />
+              {viewers} viendo · {connected} conectados
+            </span>
+          </div>
+          <div className="pointer-events-auto flex items-center gap-2">
+            {canPublish ? (
+              <button
+                type="button"
+                onClick={() => void flipCamera()}
+                disabled={flipping}
+                className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 disabled:opacity-60"
+                aria-label={facing === 'user' ? 'Cambiar a cámara trasera' : 'Cambiar a cámara frontal'}
+                title={facing === 'user' ? 'Cámara trasera' : 'Cámara frontal'}
+              >
+                <SwitchCamera size={16} />
+              </button>
+            ) : null}
+            <Link
+              to="/"
+              className="rounded-full bg-black/55 px-3 py-2 text-xs text-zinc-200 backdrop-blur hover:text-white"
+            >
+              Salir
+            </Link>
+          </div>
+        </div>
       </div>
-      <Link
-        to="/"
-        className="absolute right-3 top-3 rounded-full bg-black/50 px-3 py-1 text-xs text-zinc-200 backdrop-blur hover:text-white sm:right-4 sm:top-4"
-      >
-        Salir
-      </Link>
       {floats.map((item) => (
         <FloatingGift
           key={item.id}
@@ -229,10 +322,16 @@ function CreatorVideo() {
     );
   }
 
-  return <VideoTrack trackRef={camera} className="h-full w-full rounded-2xl object-cover" />;
+  return <VideoTrack trackRef={camera} className="h-full w-full object-cover lg:rounded-2xl" />;
 }
 
-function ChatPanel({ roomName }: { roomName: string }) {
+function ChatPanel({
+  roomName,
+  canPublish,
+}: {
+  roomName: string;
+  canPublish: boolean;
+}) {
   const room = useRoomContext();
   const profile = useAuthStore((state) => state.profile);
   const coins = profile?.coinsBalance ?? 0;
@@ -248,7 +347,7 @@ function ChatPanel({ roomName }: { roomName: string }) {
   function pushMessage(message: ChatMessage) {
     if (seen.current.has(message.id)) return;
     seen.current.add(message.id);
-    setMessages((current) => [...current, message]);
+    setMessages((current) => [...current.slice(-80), message]);
   }
 
   useEffect(() => {
@@ -299,13 +398,19 @@ function ChatPanel({ roomName }: { roomName: string }) {
   async function sendGift(giftId: string) {
     setGiftError(null);
     try {
-      const result = await api<{ senderBalance: number; gift: { id: string; giftId: string; giftName: string; emoji: string; senderName: string } }>(
-        '/api/gifts/send',
-        {
-          method: 'POST',
-          body: JSON.stringify({ giftId, roomName }),
-        },
-      );
+      const result = await api<{
+        senderBalance: number;
+        gift: {
+          id: string;
+          giftId: string;
+          giftName: string;
+          emoji: string;
+          senderName: string;
+        };
+      }>('/api/gifts/send', {
+        method: 'POST',
+        body: JSON.stringify({ giftId, roomName }),
+      });
       setCoins(result.senderBalance);
       setOpenGifts(false);
       const gift = result.gift;
@@ -329,9 +434,22 @@ function ChatPanel({ roomName }: { roomName: string }) {
   }
 
   return (
-    <aside className="flex max-h-[48dvh] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-800/45 backdrop-blur-xl lg:max-h-none lg:w-[30%] lg:min-w-[260px]">
-      <div className="border-b border-white/10 px-4 py-3">
-        <h2 className="text-sm font-bold text-white">Chat en vivo</h2>
+    <aside
+      className={`z-20 flex min-w-0 flex-col overflow-hidden border-white/10 lg:static lg:max-h-none lg:w-[30%] lg:min-w-[260px] lg:rounded-2xl lg:border lg:bg-zinc-800/45 lg:backdrop-blur-xl ${
+        canPublish
+          ? 'absolute inset-x-0 bottom-0 max-h-[46dvh] border-t bg-gradient-to-t from-black via-black/85 to-black/20 lg:relative lg:inset-auto lg:max-h-none lg:border-t-0 lg:bg-zinc-800/45 lg:from-transparent lg:via-transparent lg:to-transparent'
+          : 'relative max-h-[42dvh] border-t bg-zinc-900/95 lg:max-h-none lg:border-t-0 lg:bg-zinc-800/45'
+      }`}
+    >
+      <div className="border-b border-white/10 px-4 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-white">Chat en vivo</h2>
+          {canPublish ? (
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
+              Visible en tu live
+            </span>
+          ) : null}
+        </div>
         <p className="text-[11px] text-zinc-400">Saldo: {coins.toLocaleString('es-CO')} coins</p>
       </div>
       <div ref={listRef} className="chat-scroll min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
@@ -351,7 +469,7 @@ function ChatPanel({ roomName }: { roomName: string }) {
               </p>
             </div>
           ) : (
-            <p key={message.id} className="text-sm text-white">
+            <p key={message.id} className="text-sm text-white drop-shadow">
               <span className="font-medium text-cyan-300">{message.author}: </span>
               {message.text}
             </p>
@@ -360,7 +478,7 @@ function ChatPanel({ roomName }: { roomName: string }) {
       </div>
       <div className="relative space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {openGifts ? (
-          <div className="absolute bottom-[7.5rem] left-2 right-2 z-10 max-h-[40dvh] overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-[0_0_28px_rgba(255,0,85,0.2)] sm:left-3 sm:right-3">
+          <div className="absolute bottom-[7.5rem] left-2 right-2 z-10 max-h-[36dvh] overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-[0_0_28px_rgba(255,0,85,0.2)] sm:left-3 sm:right-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Caja de regalos
             </p>
@@ -407,7 +525,9 @@ function ChatPanel({ roomName }: { roomName: string }) {
             <Send size={16} />
           </button>
         </div>
-        <RechargeButton onClick={() => setRechargeOpen(true)} className="w-full" />
+        {!canPublish ? (
+          <RechargeButton onClick={() => setRechargeOpen(true)} className="w-full" />
+        ) : null}
       </div>
       {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
     </aside>
