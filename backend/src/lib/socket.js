@@ -1,5 +1,4 @@
 const { Server } = require('socket.io');
-const { verifyFirebaseIdToken } = require('./firebaseAuth');
 
 let io = null;
 
@@ -31,6 +30,7 @@ function initSocket(httpServer) {
       return;
     }
     try {
+      const { verifyFirebaseIdToken } = require('../middleware/auth');
       socket.data.user = await verifyFirebaseIdToken(token);
       next();
     } catch {
