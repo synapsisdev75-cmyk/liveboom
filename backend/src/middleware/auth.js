@@ -18,28 +18,36 @@ function initFirebaseAdmin() {
     return;
   }
 
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  const projectId = process.env.FIREBASE_PROJECT_ID || 'liveboom-app';
+  try {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    const projectId = process.env.FIREBASE_PROJECT_ID || 'liveboom-app';
 
-  if (raw) {
-    const serviceAccount = parseServiceAccount(raw);
-    if (typeof serviceAccount.private_key === 'string') {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    if (raw) {
+      const serviceAccount = parseServiceAccount(raw);
+      if (typeof serviceAccount.private_key === 'string') {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+      initializeApp({
+        credential: cert(serviceAccount),
+        projectId: serviceAccount.project_id || projectId,
+      });
+      return;
     }
-    initializeApp({
-      credential: cert(serviceAccount),
-      projectId: serviceAccount.project_id || projectId,
-    });
-    return;
-  }
 
-  console.warn(
-    '[auth] FIREBASE_SERVICE_ACCOUNT no está definida; se verifica el JWT con projectId',
-  );
-  initializeApp({ projectId });
+    console.warn(
+      '[auth] FIREBASE_SERVICE_ACCOUNT no está definida; se verifica el JWT con projectId',
+    );
+    initializeApp({ projectId });
+  } catch (error) {
+    console.error('[auth] no se pudo iniciar Firebase Admin:', error.message);
+  }
 }
 
-initFirebaseAdmin();
+try {
+  initFirebaseAdmin();
+} catch (error) {
+  console.error('[auth] init falló:', error.message);
+}
 
 function requireAuth(req, res, next) {
   try {

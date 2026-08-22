@@ -73,7 +73,7 @@ export function LiveRoom() {
         <div>
           <p className="text-sm font-semibold text-fuchsia-400">{error}</p>
           <p className="mt-2 text-xs text-zinc-500">
-            Asegúrate de tener el API encendido (`npm run dev:api`) e inténtalo de nuevo.
+            Revisa tu conexión e inténtalo de nuevo.
           </p>
           <button
             type="button"

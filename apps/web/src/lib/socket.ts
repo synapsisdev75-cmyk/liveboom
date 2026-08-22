@@ -1,9 +1,8 @@
 import { io, type Socket } from 'socket.io-client';
 import { auth } from './firebase';
 
-const API_BASE =
-  import.meta.env.VITE_API_URL ??
-  (import.meta.env.PROD ? 'https://liveboom.vercel.app' : '');
+const ONLINE_API = 'https://liveboom.vercel.app';
+const API_BASE = String(import.meta.env.VITE_API_URL || ONLINE_API).replace(/\/$/, '');
 
 let socket: Socket | null = null;
 

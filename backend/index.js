@@ -110,9 +110,13 @@ app.use((error, _req, res, _next) => {
 });
 
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-initSocket(httpServer);
 
 if (!isServerless) {
+  try {
+    initSocket(httpServer);
+  } catch (error) {
+    console.warn('[liveboom] Socket.io no iniciado:', error.message);
+  }
   httpServer.on('error', (error) => {
     if (error && error.code === 'EADDRINUSE') {
       console.error(`[liveboom] el puerto ${port} ya está ocupado. Cierra el otro proceso e inicia de nuevo.`);
