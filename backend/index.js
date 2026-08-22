@@ -25,7 +25,7 @@ app.get('/api/health', async (_req, res) => {
     message: 'Liveboom Backend Running',
     db: prisma ? 'connected-or-ready' : 'disconnected',
     api: 'https://liveboom.vercel.app',
-    auth: 'jwks+firebase-admin',
+    auth: 'firebase-jwt-crypto',
   });
 });
 

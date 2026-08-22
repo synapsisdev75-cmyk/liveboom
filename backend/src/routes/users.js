@@ -1,9 +1,10 @@
 const express = require('express');
-const { mw } = require('../lib/bind');
+const { asFn } = require('../lib/asFn');
 const { prisma } = require('../lib/prisma');
 
 const router = express.Router();
-const auth = () => require('../middleware/auth');
+const requireAuth = asFn(require('../middleware/requireAuth'));
+const requireDbUser = asFn(require('../middleware/requireDbUser'));
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 
 let profileColumnsReady = false;
@@ -114,12 +115,12 @@ router.use(async (_req, _res, next) => {
   next();
 });
 
-router.get('/profile', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), (req, res) => {
+router.get('/profile', requireAuth, requireDbUser, (req, res) => {
   res.json(serializeUser(req.dbUser));
 });
 
-router.patch('/profile', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), updateProfile);
-router.put('/profile', mw(auth, 'requireAuth'), mw(auth, 'requireDbUser'), updateProfile);
+router.patch('/profile', requireAuth, requireDbUser, updateProfile);
+router.put('/profile', requireAuth, requireDbUser, updateProfile);
 
 module.exports = router;
 module.exports.default = router;

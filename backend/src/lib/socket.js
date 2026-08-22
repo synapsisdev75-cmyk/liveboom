@@ -30,8 +30,12 @@ function initSocket(httpServer) {
       return;
     }
     try {
-      const { verifyFirebaseIdToken } = require('../middleware/auth');
-      socket.data.user = await verifyFirebaseIdToken(token);
+      const verifyMod = require('../lib/verifyFirebaseToken');
+      const verify =
+        typeof verifyMod === 'function'
+          ? verifyMod
+          : verifyMod.verifyFirebaseIdToken || verifyMod.default;
+      socket.data.user = await verify(token);
       next();
     } catch {
       next(new Error('unauthorized'));

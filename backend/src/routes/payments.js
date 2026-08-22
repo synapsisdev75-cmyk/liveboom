@@ -1,21 +1,22 @@
 const express = require('express');
-const { bind, mw } = require('../lib/bind');
+const { asFn } = require('../lib/asFn');
+const { bind } = require('../lib/bind');
 
 const router = express.Router();
-const auth = () => require('../middleware/auth');
-const payments = () => require('../controllers/paymentsController');
+const requireAuth = asFn(require('../middleware/requireAuth'));
+const requireDbUser = asFn(require('../middleware/requireDbUser'));
 
 router.post(
   '/create-order',
-  mw(auth, 'requireAuth'),
-  mw(auth, 'requireDbUser'),
-  bind(payments, 'createOrder'),
+  requireAuth,
+  requireDbUser,
+  bind(() => require('../controllers/paymentsController'), 'createOrder'),
 );
 
 router.post(
   '/complete-widget',
-  mw(auth, 'requireAuth'),
-  bind(payments, 'completeWidget'),
+  requireAuth,
+  bind(() => require('../controllers/paymentsController'), 'completeWidget'),
 );
 
 module.exports = router;

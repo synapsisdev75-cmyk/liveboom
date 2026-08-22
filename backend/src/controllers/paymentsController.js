@@ -3,7 +3,15 @@ const { prisma, hasDatabase } = require('../lib/prisma');
 const { resolveCoinPackage } = require('../lib/coinPackages');
 const { createWidgetIntegritySignature } = require('../lib/wompi');
 const { credit, rememberOrder, takeOrder } = require('../lib/walletMemory');
-const { dbUserFromToken } = require('../middleware/auth');
+const dbUserFromTokenMod = require('../lib/dbUserFromToken');
+
+function dbUserFromToken(decoded) {
+  const fn =
+    typeof dbUserFromTokenMod === 'function'
+      ? dbUserFromTokenMod
+      : dbUserFromTokenMod.dbUserFromToken || dbUserFromTokenMod.default;
+  return fn(decoded);
+}
 
 function userForOrder(req) {
   return req.dbUser || (req.user ? dbUserFromToken(req.user) : null);

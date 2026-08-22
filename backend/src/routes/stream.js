@@ -1,9 +1,9 @@
 const express = require('express');
-const { mw } = require('../lib/bind');
+const { asFn } = require('../lib/asFn');
 const presence = require('../lib/livePresence');
 
 const router = express.Router();
-const auth = () => require('../middleware/auth');
+const requireAuth = asFn(require('../middleware/requireAuth'));
 const livekit = () => require('../lib/livekit');
 
 const upsertLive = presence.upsertLive || presence.default?.upsertLive;
@@ -61,7 +61,7 @@ router.get('/live', async (_req, res) => {
   res.json({ streams: Array.from(byName.values()) });
 });
 
-router.post('/live/start', mw(auth, 'requireAuth'), (req, res) => {
+router.post('/live/start', requireAuth, (req, res) => {
   const username =
     typeof req.body?.username === 'string' && req.body.username.trim()
       ? normalize(req.body.username)
@@ -76,7 +76,7 @@ router.post('/live/start', mw(auth, 'requireAuth'), (req, res) => {
   res.status(201).json(entry);
 });
 
-router.post('/live/stop', mw(auth, 'requireAuth'), (req, res) => {
+router.post('/live/stop', requireAuth, (req, res) => {
   const username =
     typeof req.body?.username === 'string' && req.body.username.trim()
       ? normalize(req.body.username)
@@ -85,7 +85,7 @@ router.post('/live/stop', mw(auth, 'requireAuth'), (req, res) => {
   res.json({ ok: true, username });
 });
 
-router.get('/token/:roomName', mw(auth, 'requireAuth'), async (req, res) => {
+router.get('/token/:roomName', requireAuth, async (req, res) => {
   const lk = livekit();
   const livekitEnabled = lk.livekitEnabled || lk.default?.livekitEnabled;
   const createLivekitToken = lk.createLivekitToken || lk.default?.createLivekitToken;

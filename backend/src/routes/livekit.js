@@ -1,11 +1,11 @@
 const express = require('express');
-const { mw } = require('../lib/bind');
+const { asFn } = require('../lib/asFn');
 
 const router = express.Router();
-const auth = () => require('../middleware/auth');
+const requireAuth = asFn(require('../middleware/requireAuth'));
 const livekit = () => require('../lib/livekit');
 
-router.post('/token', mw(auth, 'requireAuth'), async (req, res) => {
+router.post('/token', requireAuth, async (req, res) => {
   const lk = livekit();
   const livekitEnabled = lk.livekitEnabled || lk.default?.livekitEnabled;
   const createLivekitToken = lk.createLivekitToken || lk.default?.createLivekitToken;
