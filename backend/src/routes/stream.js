@@ -1,25 +1,43 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
-const { prisma } = require('../lib/prisma');
 const { livekitEnabled, createLivekitToken } = require('../lib/livekit');
 
 const router = express.Router();
 
-function usernameFromToken(decoded) {
-  const raw = decoded.name || (decoded.email ? decoded.email.split('@')[0] : decoded.uid);
+function normalize(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_');
+}
+
+function identitiesFromToken(decoded) {
+  const emailHandle = decoded.email ? String(decoded.email).split('@')[0] : '';
+  const named = decoded.name || emailHandle || decoded.uid;
   const base =
-    String(raw)
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_|_$/g, '')
-      .slice(0, 20) || 'user';
-  return `${base}_${decoded.uid.slice(0, 8)}`;
+    normalize(named).replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 20) || 'user';
+  return [
+    decoded.uid,
+    emailHandle,
+    normalize(emailHandle),
+    `${base}_${String(decoded.uid).slice(0, 8)}`,
+    base,
+    named,
+  ]
+    .map((item) => normalize(item))
+    .filter(Boolean);
+}
+
+function isRoomHost(decoded, roomName) {
+  const room = normalize(roomName);
+  return identitiesFromToken(decoded).some(
+    (identity) => identity === room || identity.startsWith(room) || room.startsWith(identity),
+  );
 }
 
 router.get('/token/:roomName', requireAuth, async (req, res) => {
   if (!livekitEnabled()) {
-    res.status(503).json({ error: 'LiveKit no está configurado' });
+    res.status(503).json({ error: 'LiveKit no está configurado en el API' });
     return;
   }
 
@@ -32,41 +50,26 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
   }
 
   try {
-    let isCreator = false;
-    let displayName = req.user.name || req.user.email || req.user.uid.slice(0, 8);
-    try {
-      const dbUser = await prisma.user.findUnique({
-        where: { firebaseUid: req.user.uid },
-      });
-      const roomOwner = await prisma.user.findFirst({
-        where: { username: roomName },
-      });
-      isCreator = Boolean(
-        (dbUser && (dbUser.username === roomName || (roomOwner && roomOwner.id === dbUser.id))) ||
-          usernameFromToken(req.user) === roomName ||
-          req.user.uid === roomName,
-      );
-      displayName = req.user.name || dbUser?.username || displayName;
-    } catch {
-      isCreator = usernameFromToken(req.user) === roomName || roomName === req.user.uid;
-    }
-
+    const canPublish = isRoomHost(req.user, roomName);
+    const displayName = req.user.name || req.user.email || req.user.uid.slice(0, 8);
     const token = await createLivekitToken({
       identity: req.user.uid,
       name: displayName,
       room: roomName,
-      canPublish: isCreator,
+      canPublish,
     });
 
     res.json({
       token,
       serverUrl: process.env.LIVEKIT_URL,
       roomName,
-      canPublish: isCreator,
+      canPublish,
     });
   } catch (error) {
     console.error('[stream/token]', error);
-    res.status(500).json({ error: 'No se pudo generar el token de LiveKit' });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo generar el token de LiveKit',
+    });
   }
 });
 

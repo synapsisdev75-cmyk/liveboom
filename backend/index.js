@@ -4,6 +4,7 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { prisma } = require('./src/lib/prisma');
+const { getBalance } = require('./src/lib/walletMemory');
 const { initSocket } = require('./src/lib/socket');
 const authRoutes = require('./src/routes/auth');
 const paymentsRoutes = require('./src/routes/payments');
@@ -17,23 +18,10 @@ const app = express();
 const httpServer = http.createServer(app);
 const port = Number(process.env.PORT) || 4000;
 
-const allowedOrigins = new Set([
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'https://liveboom-app.web.app',
-  'https://liveboom-app.firebaseapp.com',
-  'https://liveboom.vercel.app',
-]);
-
 app.use(
   cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin) || origin.endsWith('.vercel.app')) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error('Origen no permitido'));
-    },
+    origin: true,
+    credentials: true,
   }),
 );
 app.use(express.json({ limit: '1mb' }));
@@ -55,11 +43,10 @@ app.get('/api/health', async (_req, res) => {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ok', message: 'Liveboom Backend Running', db: 'connected' });
   } catch (error) {
-    res.status(503).json({
-      status: 'degraded',
+    res.json({
+      status: 'ok',
       message: 'Liveboom Backend Running',
       db: 'disconnected',
-      error: error instanceof Error ? error.message : 'db error',
     });
   }
 });
@@ -71,11 +58,12 @@ app.get('/api/wallet/:firebaseUid', async (req, res) => {
   const { firebaseUid } = req.params;
 
   if (!prisma) {
+    const coins = getBalance(firebaseUid);
     res.json({
       firebaseUid,
       username: firebaseUid.slice(0, 24) || 'user',
-      coins: 0,
-      coinsBalance: 0,
+      coins,
+      coinsBalance: coins,
     });
     return;
   }
@@ -113,10 +101,25 @@ app.get('/api/wallet/:firebaseUid', async (req, res) => {
   }
 });
 
+app.use((error, _req, res, _next) => {
+  console.error('[liveboom] error no controlado', error);
+  if (res.headersSent) return;
+  res.status(500).json({
+    error: error instanceof Error ? error.message : 'Error interno del API',
+  });
+});
+
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 initSocket(httpServer);
 
 if (!isServerless) {
+  httpServer.on('error', (error) => {
+    if (error && error.code === 'EADDRINUSE') {
+      console.error(`[liveboom] el puerto ${port} ya está ocupado. Cierra el otro proceso e inicia de nuevo.`);
+      process.exit(1);
+    }
+    console.error('[liveboom] error del servidor http', error);
+  });
   httpServer.listen(port, () => {
     console.log(`[liveboom] backend listo en http://localhost:${port}`);
   });

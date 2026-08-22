@@ -27,11 +27,17 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   headers.set('Authorization', `Bearer ${jwt}`);
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const raw = await response.text();
   let data: { error?: string; message?: string } & T;
   try {
-    data = (await response.json()) as { error?: string; message?: string } & T;
+    data = JSON.parse(raw) as { error?: string; message?: string } & T;
   } catch {
-    throw new ApiError(response.status, `El servidor respondió ${response.status} sin JSON`);
+    throw new ApiError(
+      response.status,
+      raw.trim()
+        ? `El API falló (${response.status}). ¿Está encendido en el puerto 4000?`
+        : `El servidor respondió ${response.status} sin JSON`,
+    );
   }
   if (!response.ok) {
     throw new ApiError(response.status, data.error ?? data.message ?? `Error ${response.status}`);

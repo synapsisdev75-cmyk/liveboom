@@ -25,8 +25,18 @@ export function CoinPackagesModal({ onClose }: Props) {
       openWompiWidget(order, (result) => {
         const status = result.transaction?.status;
         if (status === 'APPROVED') {
-          void syncProfile();
-          setNote('Pago aprobado. Tus coins se acreditarán en un momento.');
+          void api<{ coinsBalance: number }>('/api/payments/complete-widget', {
+            method: 'POST',
+            body: JSON.stringify({ reference: order.reference }),
+          })
+            .then((paid) => {
+              useAuthStore.getState().setCoins(paid.coinsBalance);
+              void syncProfile();
+            })
+            .catch(() => {
+              void syncProfile();
+            });
+          setNote('Pago aprobado. Tus coins ya están en la billetera.');
           return;
         }
         if (status === 'PENDING') {

@@ -1,6 +1,7 @@
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const { prisma, hasDatabase } = require('../lib/prisma');
+const { getBalance } = require('../lib/walletMemory');
 
 function parseServiceAccount(raw) {
   const trimmed = raw.trim();
@@ -41,28 +42,37 @@ function initFirebaseAdmin() {
 initFirebaseAdmin();
 
 function requireAuth(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Falta el header Authorization: Bearer <token>' });
-    return;
-  }
+  try {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'Falta el header Authorization: Bearer <token>' });
+      return;
+    }
 
-  const token = header.slice('Bearer '.length).trim();
-  if (!token) {
-    res.status(401).json({ error: 'Token vacío' });
-    return;
-  }
+    const token = header.slice('Bearer '.length).trim();
+    if (!token) {
+      res.status(401).json({ error: 'Token vacío' });
+      return;
+    }
 
-  getAuth()
-    .verifyIdToken(token)
-    .then((decoded) => {
-      req.user = decoded;
-      next();
-    })
-    .catch((error) => {
-      console.error('[auth] JWT inválido:', error.message);
-      res.status(401).json({ error: 'Token inválido o expirado' });
-    });
+    getAuth()
+      .verifyIdToken(token)
+      .then((decoded) => {
+        req.user = decoded;
+        next();
+      })
+      .catch((error) => {
+        console.error('[auth] JWT inválido:', error.message);
+        if (!res.headersSent) {
+          res.status(401).json({ error: 'Token inválido o expirado' });
+        }
+      });
+  } catch (error) {
+    console.error('[auth] requireAuth:', error);
+    if (!res.headersSent) {
+      res.status(401).json({ error: 'No se pudo verificar la sesión' });
+    }
+  }
 }
 
 function dbUserFromToken(decoded) {
@@ -81,7 +91,7 @@ function dbUserFromToken(decoded) {
     username: `${base}_${decoded.uid.slice(0, 8)}`,
     avatarUrl: decoded.picture || null,
     bio: null,
-    coinsBalance: 0,
+    coinsBalance: getBalance(decoded.uid),
   };
 }
 

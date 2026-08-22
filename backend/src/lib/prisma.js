@@ -1,7 +1,17 @@
 const { PrismaClient } = require('@prisma/client');
 
-const hasDatabase = Boolean(process.env.DATABASE_URL);
+const databaseUrl = String(process.env.DATABASE_URL || '').trim();
+const localDb =
+  /127\.0\.0\.1|localhost/.test(databaseUrl) || databaseUrl.includes('55432');
+
 let prisma = null;
+let hasDatabase = Boolean(databaseUrl) && !localDb;
+
+if (localDb) {
+  console.warn(
+    '[prisma] DATABASE_URL apunta a Postgres local; se omite hasta que el servidor esté encendido',
+  );
+}
 
 if (hasDatabase) {
   prisma = new PrismaClient();
@@ -10,8 +20,6 @@ if (hasDatabase) {
     .catch((error) => {
       console.warn('[prisma] no se pudo asegurar birthDate:', error.message);
     });
-} else {
-  console.warn('[prisma] DATABASE_URL no está definida; sync y pagos siguen en modo sin PostgreSQL');
 }
 
 module.exports = { prisma, hasDatabase };

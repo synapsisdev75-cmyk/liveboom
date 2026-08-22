@@ -69,8 +69,23 @@ export function LiveRoom() {
   }
   if (error) {
     return (
-      <div className="grid h-screen place-items-center bg-zinc-950 text-sm text-fuchsia-400">
-        {error}
+      <div className="grid h-screen place-items-center bg-zinc-950 px-6 text-center">
+        <div>
+          <p className="text-sm font-semibold text-fuchsia-400">{error}</p>
+          <p className="mt-2 text-xs text-zinc-500">
+            Asegúrate de tener el API encendido (`npm run dev:api`) e inténtalo de nuevo.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-5 py-2 text-sm font-bold text-zinc-950"
+          >
+            Reintentar
+          </button>
+          <Link to="/" className="mt-3 block text-xs text-cyan-400">
+            Volver al inicio
+          </Link>
+        </div>
       </div>
     );
   }

@@ -7,15 +7,18 @@ function livekitEnabled() {
 }
 
 async function createLivekitToken({ identity, name, room, canPublish }) {
-  const token = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, {
-    identity,
-    name,
+  const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
+  const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
+  const token = new AccessToken(apiKey, apiSecret, {
+    identity: String(identity),
+    name: String(name || identity),
   });
   token.addGrant({
     roomJoin: true,
-    room,
+    room: String(room),
     canPublish: Boolean(canPublish),
     canSubscribe: true,
+    canPublishData: true,
   });
   return token.toJwt();
 }

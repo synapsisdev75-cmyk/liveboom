@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const { prisma, hasDatabase } = require('../lib/prisma');
+const { getBalance } = require('../lib/walletMemory');
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.post('/sync', requireAuth, async (req, res) => {
         username,
         avatarUrl,
         bio: null,
-        coinsBalance: 0,
+        coinsBalance: getBalance(uid),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -63,7 +64,7 @@ router.post('/sync', requireAuth, async (req, res) => {
       username,
       avatarUrl,
       bio: null,
-      coinsBalance: 0,
+      coinsBalance: getBalance(uid),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });

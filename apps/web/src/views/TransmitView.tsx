@@ -17,5 +17,5 @@ export function TransmitView() {
     );
   }
 
-  return <Navigate to={`/stream/${profile.handle}`} replace />;
+  return <Navigate to={`/stream/${encodeURIComponent(profile.handle)}`} replace />;
 }
