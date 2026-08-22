@@ -1,5 +1,6 @@
 import { listLiveStreams } from '@liveboom/dataconnect';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { dataConnect } from '../lib/firebase';
 
 export function HomeView() {
@@ -26,11 +27,13 @@ export function HomeView() {
       <ul className="grid gap-3">
         {streams.map((stream) => (
           <li key={stream.id} className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-            <p className="font-semibold text-white">{stream.title}</p>
-            <p className="text-xs text-zinc-400">
-              @{stream.creator.username}
-              {stream.isPrivate ? ' · privado' : ' · público'}
-            </p>
+            <Link to={`/stream/${stream.creator.username}`} className="block">
+              <p className="font-semibold text-white">{stream.title}</p>
+              <p className="text-xs text-zinc-400">
+                @{stream.creator.username}
+                {stream.isPrivate ? ' · privado' : ' · público'}
+              </p>
+            </Link>
           </li>
         ))}
       </ul>

@@ -61,7 +61,7 @@ export function InteractionPanel() {
   }
 
   return (
-    <aside className="hidden h-full w-[22%] min-w-[300px] max-w-[360px] flex-col border-l border-white/5 bg-[#0E0F12]/90 px-4 py-4 backdrop-blur-xl lg:flex">
+    <aside className="hidden h-full w-[22%] min-w-[300px] max-w-[360px] flex-col border-l border-white/5 bg-zinc-800/45 px-4 py-4 backdrop-blur-xl lg:flex">
       <div>
         <p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
           Top Donadores
@@ -89,17 +89,18 @@ export function InteractionPanel() {
               <div
                 className={`min-w-0 rounded-xl px-2.5 py-1.5 ${
                   msg.donation
-                    ? 'bg-boom-fuchsia/15 ring-1 ring-boom-fuchsia/30'
-                    : msg.isHost
-                      ? 'bg-boom-cyan/10'
-                      : 'bg-white/5'
+                    ? 'border border-yellow-500/50 bg-gradient-to-r from-yellow-500/20 to-fuchsia-500/20'
+                    : ''
                 }`}
               >
-                <p className="text-[11px] font-semibold text-zinc-200">{msg.author}</p>
-                <p className="text-xs leading-snug text-zinc-300">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-300">
+                  {msg.donation ? <Gift size={13} className="text-fuchsia-400" /> : null}
+                  {msg.author}
+                </p>
+                <p className="text-xs leading-snug text-white">
                   {msg.text}
                   {msg.donation ? (
-                    <span className="ml-1 font-semibold text-boom-gold">+{msg.donation}</span>
+                    <span className="ml-1 font-semibold text-yellow-300">+{msg.donation}</span>
                   ) : null}
                 </p>
               </div>
@@ -166,10 +167,10 @@ export function InteractionPanel() {
         <button
           type="button"
           onClick={() => setNav('wallet')}
-          className="flex items-center gap-1 rounded-lg bg-boom-cyan px-3 py-1.5 text-xs font-bold text-zinc-950"
+          className="rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-2 text-xs font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105"
         >
           <WalletCards size={13} />
-          Recargar
+          Recargar Coins
         </button>
       </div>
     </aside>

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { api } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useUiStore, type Donor } from '../../store/uiStore';
+import { FloatingGift } from './FloatingGift';
 import { LivePlayer } from './LivePlayer';
 
 export function LiveRoom() {
@@ -67,7 +68,7 @@ export function LiveRoom() {
 
   return (
     <section className="relative flex h-full min-w-0 flex-1 flex-col">
-      <div className="relative h-full overflow-hidden rounded-3xl border border-white/5 bg-black shadow-[0_0_80px_rgba(0,240,255,0.08)]">
+      <div className="relative h-full overflow-hidden rounded-2xl border border-white/5 bg-black shadow-[0_0_80px_rgba(0,240,255,0.08)]">
         <LivePlayer streamId={stream.id} fallbackUrl={stream.previewUrl} coverUrl={stream.coverUrl} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/35" />
 
@@ -117,19 +118,12 @@ export function LiveRoom() {
         </div>
 
         {bursts.map((burst) => (
-          <div
+          <FloatingGift
             key={burst.id}
-            className="gift-float pointer-events-none absolute bottom-24 text-3xl drop-shadow-lg"
-            style={{ left: `${burst.left}%` }}
-            onAnimationEnd={() => dismissBurst(burst.id)}
-          >
-            <div className="text-center">
-              <div>{burst.emoji}</div>
-              <p className="mt-1 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-semibold text-white">
-                {burst.label}
-              </p>
-            </div>
-          </div>
+            giftId={burst.emoji === '💎' || burst.emoji === '⭐' || burst.emoji === '👑' ? 'diamond' : 'heart'}
+            left={burst.left}
+            onComplete={() => dismissBurst(burst.id)}
+          />
         ))}
       </div>
     </section>

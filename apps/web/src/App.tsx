@@ -5,6 +5,7 @@ import { useAuthStore } from './store/authStore';
 import { HomeView } from './views/HomeView';
 import { LoginView } from './views/LoginView';
 import { ProfileView } from './views/ProfileView';
+import { LiveRoom } from './views/LiveRoom';
 import { TransmitView } from './views/TransmitView';
 import { WalletView } from './views/WalletView';
 
@@ -21,6 +22,7 @@ export default function App() {
       <AuthHydrator />
       <Routes>
         <Route path="/login" element={<LoginView />} />
+        <Route path="/stream/:username" element={<LiveRoom />} />
         <Route element={<MainLayout />}>
           <Route index element={<HomeView />} />
           <Route path="billetera" element={<WalletView />} />

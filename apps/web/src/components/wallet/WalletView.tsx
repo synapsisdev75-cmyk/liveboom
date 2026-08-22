@@ -44,9 +44,9 @@ export function WalletView() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-4 w-fit rounded-xl bg-boom-cyan px-4 py-2 text-sm font-bold text-zinc-950"
+        className="mt-4 rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-2 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105"
       >
-        Recargar
+        Recargar Coins
       </button>
 
       <h2 className="mt-8 text-sm font-semibold text-zinc-300">Historial</h2>

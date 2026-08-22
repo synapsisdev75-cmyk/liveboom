@@ -38,6 +38,7 @@ type UiState = {
   giftOpen: boolean;
   draft: string;
   toast: string | null;
+  toastTone: 'success' | 'error' | 'info';
   walletOpen: boolean;
   setNav: (nav: NavId) => void;
   setStreams: (streams: StreamDto[]) => void;
@@ -50,7 +51,7 @@ type UiState = {
   pushBurst: (burst: GiftBurst) => void;
   dismissBurst: (id: string) => void;
   toggleGifts: () => void;
-  setToast: (toast: string | null) => void;
+  setToast: (toast: string | null, tone?: 'success' | 'error' | 'info') => void;
   setWalletOpen: (open: boolean) => void;
 };
 
@@ -66,6 +67,7 @@ export const useUiStore = create<UiState>((set) => ({
   giftOpen: false,
   draft: '',
   toast: null,
+  toastTone: 'info',
   walletOpen: false,
 
   setNav: (nav) =>
@@ -92,6 +94,6 @@ export const useUiStore = create<UiState>((set) => ({
   pushBurst: (burst) => set((state) => ({ bursts: [...state.bursts, burst] })),
   dismissBurst: (id) => set((state) => ({ bursts: state.bursts.filter((item) => item.id !== id) })),
   toggleGifts: () => set((state) => ({ giftOpen: !state.giftOpen })),
-  setToast: (toast) => set({ toast }),
+  setToast: (toast, tone = 'info') => set({ toast, toastTone: tone }),
   setWalletOpen: (walletOpen) => set({ walletOpen }),
 }));

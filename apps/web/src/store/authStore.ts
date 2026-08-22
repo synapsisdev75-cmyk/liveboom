@@ -21,6 +21,7 @@ type AuthState = {
   hydrate: () => () => void;
   syncProfile: () => Promise<void>;
   setCoins: (coins: number) => void;
+  setProfile: (profile: SessionUser) => void;
   signInEmail: (email: string, password: string) => Promise<void>;
   signUpEmail: (name: string, email: string, password: string) => Promise<void>;
   signInGoogle: () => Promise<void>;
@@ -59,6 +60,8 @@ function profileFromFirebase(user: FirebaseUser): SessionUser {
     displayName: user.displayName ?? handle,
     handle,
     avatarUrl: user.photoURL,
+    bio: null,
+    birthDate: null,
     coins: 0,
     coinsBalance: 0,
   };
@@ -99,6 +102,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!profile) return;
     set({ profile: { ...profile, coins, coinsBalance: coins } });
   },
+
+  setProfile: (profile) => set({ profile }),
 
   signInEmail: async (email, password) => {
     set({ busy: true, error: null });

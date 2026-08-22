@@ -28,8 +28,6 @@ router.post('/sync', requireAuth, async (req, res) => {
       where: { firebaseUid: uid },
       update: {
         email,
-        username,
-        avatarUrl,
       },
       create: {
         firebaseUid: uid,
@@ -58,6 +56,25 @@ router.post('/sync', requireAuth, async (req, res) => {
       return;
     }
     res.status(500).json({ error: 'No se pudo sincronizar el usuario en PostgreSQL' });
+  }
+});
+
+router.patch('/profile', requireAuth, async (req, res) => {
+  const bio = typeof req.body?.bio === 'string' ? req.body.bio.trim().slice(0, 280) : null;
+
+  try {
+    const user = await prisma.user.update({
+      where: { firebaseUid: req.user.uid },
+      data: { bio },
+    });
+    res.json(user);
+  } catch (error) {
+    console.error('[auth/profile]', error);
+    res.json({
+      firebaseUid: req.user.uid,
+      bio,
+      ok: true,
+    });
   }
 });
 

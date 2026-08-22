@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS "User" (
   "email"         TEXT NOT NULL UNIQUE,
   "avatarUrl"     TEXT,
   "bio"           TEXT,
+  "birthDate"     TIMESTAMP(3),
   "coinsBalance"  INTEGER NOT NULL DEFAULT 0,
   "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP

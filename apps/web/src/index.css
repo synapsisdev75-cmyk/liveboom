@@ -49,6 +49,46 @@ body {
   animation: float-gift 2.8s ease-out forwards;
 }
 
+@keyframes neon-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.55) rotate(-10deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-220px) scale(1.2) rotate(14deg);
+  }
+}
+
+.neon-heart,
+.neon-diamond {
+  position: absolute;
+  bottom: 18%;
+  line-height: 1;
+  animation: neon-float 2.6s ease-out forwards;
+}
+
+.neon-heart {
+  color: #ff0055;
+  text-shadow:
+    0 0 8px #ff0055,
+    0 0 22px #ff0055;
+}
+
+.neon-diamond {
+  color: #00f0ff;
+  text-shadow:
+    0 0 8px #00f0ff,
+    0 0 22px #00f0ff;
+}
+
+input[type='date'] {
+  color-scheme: dark;
+}
+
 @keyframes pulse-live {
   0%,
   100% {

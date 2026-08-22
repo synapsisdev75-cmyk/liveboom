@@ -1,6 +1,9 @@
 import { Compass, Home, MessageCircle, Radio, UserRound, Wallet } from 'lucide-react';
+import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { useUiStore } from '../../store/uiStore';
+import { CoinModal, RechargeButton } from '../wallet/CoinModal';
 
 const navItems = [
   { label: 'Inicio', icon: Home, to: '/' as const },
@@ -18,6 +21,9 @@ const idleClass =
 export function MainLayout() {
   const profile = useAuthStore((state) => state.profile);
   const logout = useAuthStore((state) => state.logout);
+  const toast = useUiStore((state) => state.toast);
+  const toastTone = useUiStore((state) => state.toastTone);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-zinc-950 font-sans text-white">
@@ -76,6 +82,7 @@ export function MainLayout() {
             <>
               <p className="truncate text-sm font-semibold text-white">@{profile.handle}</p>
               <p className="mt-1 text-xs text-cyan-400">{profile.coinsBalance} coins</p>
+              <RechargeButton onClick={() => setRechargeOpen(true)} className="mt-3 w-full text-sm" />
               <button
                 type="button"
                 onClick={() => void logout()}
@@ -96,7 +103,7 @@ export function MainLayout() {
         <Outlet />
       </main>
 
-      <aside className="flex w-[20%] min-w-[240px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-900/50 backdrop-blur-md">
+      <aside className="flex w-[20%] min-w-[240px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-800/45 backdrop-blur-xl">
         <section className="border-b border-zinc-800 p-5">
           <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
             Top Donadores
@@ -110,6 +117,22 @@ export function MainLayout() {
           <p className="mt-3 text-sm text-zinc-400">Los mensajes del live se listarán aquí.</p>
         </section>
       </aside>
+
+      {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
+
+      {toast ? (
+        <div
+          className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg ${
+            toastTone === 'success'
+              ? 'bg-emerald-500'
+              : toastTone === 'error'
+                ? 'bg-fuchsia-600'
+                : 'bg-zinc-800 ring-1 ring-white/10'
+          }`}
+        >
+          {toast}
+        </div>
+      ) : null}
     </div>
   );
 }

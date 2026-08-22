@@ -46,3 +46,4 @@ coverage/
 packages/backend/.pgdata/
 .vercel
 dataconnect/.dataconnect/
+.firebase/

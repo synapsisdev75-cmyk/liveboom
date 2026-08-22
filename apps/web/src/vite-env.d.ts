@@ -13,3 +13,26 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+type WompiWidgetResult = {
+  transaction?: {
+    id: string;
+    status: string;
+    reference?: string;
+  };
+};
+
+type WompiWidgetCheckout = {
+  open: (callback?: (result: WompiWidgetResult) => void) => void;
+};
+
+interface Window {
+  WidgetCheckout?: new (config: {
+    currency: string;
+    amountInCents: number;
+    reference: string;
+    publicKey: string;
+    redirectUrl?: string;
+    signature?: { integrity: string };
+  }) => WompiWidgetCheckout;
+}

@@ -5,10 +5,8 @@ const { createWidgetIntegritySignature } = require('../lib/wompi');
 
 async function createOrder(req, res) {
   const packageId = req.body?.packageId;
-  const amountInCop = Number(req.body?.amountInCop);
-
-  if (!packageId || !Number.isInteger(amountInCop) || amountInCop <= 0) {
-    res.status(400).json({ error: 'packageId y amountInCop (centavos COP) son obligatorios' });
+  if (!packageId || typeof packageId !== 'string') {
+    res.status(400).json({ error: 'packageId es obligatorio' });
     return;
   }
 
@@ -18,11 +16,13 @@ async function createOrder(req, res) {
     return;
   }
 
-  const resolved = resolveCoinPackage(packageId, amountInCop);
+  const resolved = resolveCoinPackage(packageId, req.body?.amountInCop);
   if (resolved.error) {
     res.status(400).json({ error: resolved.error });
     return;
   }
+
+  const amountInCop = resolved.pack.amountInCop;
 
   const reference = `lb_${req.dbUser.id}_${randomUUID().replace(/-/g, '')}`;
   const currency = 'COP';

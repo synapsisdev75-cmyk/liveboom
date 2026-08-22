@@ -50,6 +50,8 @@ export type SessionUser = {
   displayName: string;
   handle: string;
   avatarUrl: string | null;
+  bio: string | null;
+  birthDate: string | null;
   coins: number;
   coinsBalance: number;
 };
@@ -61,6 +63,7 @@ type PostgresUser = {
   username: string;
   avatarUrl: string | null;
   bio: string | null;
+  birthDate?: string | null;
   coinsBalance: number;
   createdAt: string;
   updatedAt: string;
@@ -74,6 +77,8 @@ export function mapPostgresUser(user: PostgresUser): SessionUser {
     displayName: user.username,
     handle: user.username,
     avatarUrl: user.avatarUrl,
+    bio: user.bio ?? null,
+    birthDate: user.birthDate ?? null,
     coins: user.coinsBalance,
     coinsBalance: user.coinsBalance,
   };
