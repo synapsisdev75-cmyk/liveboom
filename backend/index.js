@@ -14,6 +14,10 @@ const streamRoutes = require('./src/routes/stream');
 const giftsRoutes = require('./src/routes/gifts');
 const usersRoutes = require('./src/routes/users');
 
+function asRouter(mod) {
+  return mod?.default || mod;
+}
+
 const app = express();
 const httpServer = http.createServer(app);
 const port = Number(process.env.PORT) || 4000;
@@ -26,13 +30,13 @@ app.use(
 );
 app.use(express.json({ limit: '1mb' }));
 
-app.use('/api/auth', authRoutes);
-app.use('/api/payments', paymentsRoutes);
-app.use('/api/webhooks', webhooksRoutes);
-app.use('/api/livekit', livekitRoutes);
-app.use('/api/stream', streamRoutes);
-app.use('/api/gifts', giftsRoutes);
-app.use('/api/users', usersRoutes);
+app.use('/api/auth', asRouter(authRoutes));
+app.use('/api/payments', asRouter(paymentsRoutes));
+app.use('/api/webhooks', asRouter(webhooksRoutes));
+app.use('/api/livekit', asRouter(livekitRoutes));
+app.use('/api/stream', asRouter(streamRoutes));
+app.use('/api/gifts', asRouter(giftsRoutes));
+app.use('/api/users', asRouter(usersRoutes));
 
 app.get('/api/health', async (_req, res) => {
   res.json({

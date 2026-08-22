@@ -49,13 +49,44 @@ export function LiveRoom() {
 
   useEffect(() => {
     if (!username || !profile) return;
+    let cancelled = false;
+    let announced = false;
     void api<{ token: string; serverUrl: string; canPublish: boolean }>(
       `/api/stream/token/${encodeURIComponent(username)}`,
     )
-      .then(setSession)
+      .then(async (data) => {
+        if (cancelled) return;
+        setSession(data);
+        if (data.canPublish) {
+          try {
+            await api('/api/stream/live/start', {
+              method: 'POST',
+              body: JSON.stringify({
+                username,
+                title: `Live de ${profile.displayName || profile.handle}`,
+              }),
+            });
+            announced = true;
+          } catch {
+            // La presencia es best-effort; el live igual puede continuar.
+          }
+        }
+      })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'No se pudo entrar a la sala');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'No se pudo entrar a la sala');
+        }
       });
+
+    return () => {
+      cancelled = true;
+      if (announced) {
+        void api('/api/stream/live/stop', {
+          method: 'POST',
+          body: JSON.stringify({ username }),
+        }).catch(() => undefined);
+      }
+    };
   }, [profile, username]);
 
   if (!ready) {

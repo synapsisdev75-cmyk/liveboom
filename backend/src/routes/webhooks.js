@@ -1,8 +1,11 @@
 const express = require('express');
-const { handleWompiWebhook } = require('../controllers/wompiWebhookController');
+const { bind } = require('../lib/bind');
 
 const router = express.Router();
 
-router.post('/wompi', handleWompiWebhook);
+router.post(
+  '/wompi',
+  bind(() => require('../controllers/wompiWebhookController'), 'handleWompiWebhook'),
+);
 
 module.exports = router;

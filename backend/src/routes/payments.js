@@ -1,10 +1,23 @@
 const express = require('express');
-const { requireAuth, requireDbUser } = require('../middleware/auth');
-const { createOrder, completeWidget } = require('../controllers/paymentsController');
+const auth = require('../middleware/auth');
+const { bind } = require('../lib/bind');
 
 const router = express.Router();
 
-router.post('/create-order', requireAuth, requireDbUser, createOrder);
-router.post('/complete-widget', requireAuth, completeWidget);
+const requireAuth = auth.requireAuth || auth.default?.requireAuth;
+const requireDbUser = auth.requireDbUser || auth.default?.requireDbUser;
+
+router.post(
+  '/create-order',
+  requireAuth,
+  requireDbUser,
+  bind(() => require('../controllers/paymentsController'), 'createOrder'),
+);
+
+router.post(
+  '/complete-widget',
+  requireAuth,
+  bind(() => require('../controllers/paymentsController'), 'completeWidget'),
+);
 
 module.exports = router;

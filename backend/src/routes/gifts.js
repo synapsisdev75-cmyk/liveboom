@@ -1,11 +1,13 @@
 const { randomUUID } = require('crypto');
 const express = require('express');
-const { requireAuth, requireDbUser } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 const { prisma } = require('../lib/prisma');
 const { findGift } = require('../lib/gifts');
 const { emitGiftReceived } = require('../lib/socket');
 
 const router = express.Router();
+const requireAuth = auth.requireAuth || auth.default?.requireAuth;
+const requireDbUser = auth.requireDbUser || auth.default?.requireDbUser;
 
 router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const giftId = req.body?.giftId;

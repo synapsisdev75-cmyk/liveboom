@@ -151,3 +151,5 @@ async function completeWidget(req, res) {
 }
 
 module.exports = { createOrder, completeWidget };
+module.exports.createOrder = createOrder;
+module.exports.completeWidget = completeWidget;

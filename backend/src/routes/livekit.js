@@ -1,8 +1,11 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
-const { livekitEnabled, createLivekitToken } = require('../lib/livekit');
+const auth = require('../middleware/auth');
+const livekit = require('../lib/livekit');
 
 const router = express.Router();
+const requireAuth = auth.requireAuth || auth.default?.requireAuth;
+const livekitEnabled = livekit.livekitEnabled || livekit.default?.livekitEnabled;
+const createLivekitToken = livekit.createLivekitToken || livekit.default?.createLivekitToken;
 
 router.post('/token', requireAuth, async (req, res) => {
   if (!livekitEnabled()) {

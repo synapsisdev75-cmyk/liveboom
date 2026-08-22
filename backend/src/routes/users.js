@@ -1,8 +1,10 @@
 const express = require('express');
-const { requireAuth, requireDbUser } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 const { prisma } = require('../lib/prisma');
 
 const router = express.Router();
+const requireAuth = auth.requireAuth || auth.default?.requireAuth;
+const requireDbUser = auth.requireDbUser || auth.default?.requireDbUser;
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 
 let profileColumnsReady = false;

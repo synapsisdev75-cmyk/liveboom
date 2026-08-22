@@ -1,9 +1,10 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const auth = require('../middleware/auth');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { getBalance } = require('../lib/walletMemory');
 
 const router = express.Router();
+const requireAuth = auth.requireAuth || auth.default?.requireAuth;
 
 function usernameFromToken(decoded) {
   const raw = decoded.name || (decoded.email ? decoded.email.split('@')[0] : decoded.uid);
