@@ -1,9 +1,11 @@
 const { randomUUID } = require('crypto');
 const express = require('express');
 const { asFn } = require('../lib/asFn');
-const { prisma } = require('../lib/prisma');
+const { prisma, hasDatabase } = require('../lib/prisma');
 const { findGift } = require('../lib/gifts');
 const { emitGiftReceived } = require('../lib/socket');
+const { getBalance, debit, credit } = require('../lib/walletMemory');
+const { findByUsername } = require('../lib/profileMemory');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -19,13 +21,54 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     return;
   }
 
+  const senderUid = req.user.uid;
+  const senderName =
+    req.dbUser?.username || req.user.name || req.user.email?.split('@')[0] || 'Liveboomer';
+
+  const payload = {
+    id: randomUUID(),
+    roomName,
+    giftId: gift.id,
+    giftName: gift.name,
+    emoji: gift.emoji,
+    coins: gift.coins,
+    senderName,
+  };
+
   try {
-    const creator = await prisma.user.findFirst({ where: { username: roomName } });
-    if (!creator) {
-      res.status(404).json({ error: 'No existe el creador de esta sala' });
+    if (!hasDatabase || !prisma) {
+      const next = debit(senderUid, gift.coins);
+      if (next == null) {
+        res.status(402).json({ error: 'Saldo insuficiente' });
+        return;
+      }
+      const host = findByUsername(roomName);
+      if (host?.firebaseUid && host.firebaseUid !== senderUid) {
+        credit(host.firebaseUid, gift.coins);
+      }
+      emitGiftReceived(roomName, payload);
+      res.json({
+        ok: true,
+        gift: payload,
+        senderBalance: next,
+        creatorBalance: host ? getBalance(host.firebaseUid) : 0,
+      });
       return;
     }
-    if (creator.id === req.dbUser.id) {
+
+    const creator = await prisma.user.findFirst({ where: { username: roomName } });
+    if (!creator) {
+      // Sin creador en DB: igual descuenta y deja que LiveKit propague el regalo
+      const next = debit(senderUid, gift.coins);
+      if (next == null) {
+        res.status(402).json({ error: 'Saldo insuficiente' });
+        return;
+      }
+      emitGiftReceived(roomName, payload);
+      res.json({ ok: true, gift: payload, senderBalance: next, creatorBalance: 0 });
+      return;
+    }
+    if (creator.firebaseUid === senderUid || creator.id === req.dbUser.id) {
       res.status(400).json({ error: 'No puedes enviarte un regalo a ti mismo' });
       return;
     }
@@ -76,15 +119,6 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       return { sender, creator: creatorUpdated };
     });
 
-    const payload = {
-      id: randomUUID(),
-      roomName,
-      giftId: gift.id,
-      giftName: gift.name,
-      emoji: gift.emoji,
-      coins: gift.coins,
-      senderName: req.dbUser.username,
-    };
     emitGiftReceived(roomName, payload);
 
     res.json({

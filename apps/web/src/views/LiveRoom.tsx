@@ -1,13 +1,18 @@
 import '@livekit/components-styles';
-import { LiveKitRoom, RoomAudioRenderer, VideoTrack, useTracks } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  VideoTrack,
+  useRoomContext,
+  useTracks,
+} from '@livekit/components-react';
+import { RoomEvent, Track } from 'livekit-client';
 import { Gift, Radio, Send } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { api } from '../lib/api';
-import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 
 const GIFT_CATALOG = [
@@ -28,13 +33,29 @@ type ChatMessage = {
 
 type FloatingGiftItem = { id: string; giftId: string; left: number };
 
-type GiftPayload = {
-  id: string;
-  giftId: string;
-  senderName: string;
-  giftName: string;
-  emoji: string;
-};
+type RoomPayload =
+  | { type: 'chat'; id: string; author: string; text: string }
+  | {
+      type: 'gift';
+      id: string;
+      giftId: string;
+      senderName: string;
+      giftName: string;
+      emoji: string;
+    };
+
+function publishRoomData(room: ReturnType<typeof useRoomContext>, payload: RoomPayload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  return room.localParticipant.publishData(bytes, { reliable: true });
+}
+
+function parseRoomData(payload: Uint8Array): RoomPayload | null {
+  try {
+    return JSON.parse(new TextDecoder().decode(payload)) as RoomPayload;
+  } catch {
+    return null;
+  }
+}
 
 export function LiveRoom() {
   const { username } = useParams();
@@ -68,7 +89,7 @@ export function LiveRoom() {
             });
             announced = true;
           } catch {
-            // La presencia es best-effort; el live igual puede continuar.
+            // presencia best-effort
           }
         }
       })
@@ -90,7 +111,7 @@ export function LiveRoom() {
   }, [profile, username]);
 
   if (!ready) {
-    return <div className="grid h-screen place-items-center bg-zinc-950 text-sm text-zinc-400">Cargando sala…</div>;
+    return <div className="grid h-[100dvh] place-items-center bg-zinc-950 text-sm text-zinc-400">Cargando sala…</div>;
   }
   if (!profile) {
     return <Navigate to="/login" replace />;
@@ -100,12 +121,10 @@ export function LiveRoom() {
   }
   if (error) {
     return (
-      <div className="grid h-screen place-items-center bg-zinc-950 px-6 text-center">
+      <div className="grid h-[100dvh] place-items-center bg-zinc-950 px-6 text-center">
         <div>
           <p className="text-sm font-semibold text-fuchsia-400">{error}</p>
-          <p className="mt-2 text-xs text-zinc-500">
-            Revisa tu conexión e inténtalo de nuevo.
-          </p>
+          <p className="mt-2 text-xs text-zinc-500">Revisa tu conexión e inténtalo de nuevo.</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -121,18 +140,22 @@ export function LiveRoom() {
     );
   }
   if (!session) {
-    return <div className="grid h-screen place-items-center bg-zinc-950 text-sm text-zinc-400">Conectando LiveKit…</div>;
+    return (
+      <div className="grid h-[100dvh] place-items-center bg-zinc-950 text-sm text-zinc-400">
+        Conectando LiveKit…
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-zinc-950 p-3">
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-zinc-950 p-2 sm:p-3">
       <LiveKitRoom
         token={session.token}
         serverUrl={session.serverUrl}
         connect
         video={session.canPublish}
         audio={session.canPublish}
-        className="flex h-full w-full gap-3"
+        className="flex h-full w-full min-h-0 flex-col gap-2 lg:flex-row lg:gap-3"
       >
         <RoomAudioRenderer />
         <CreatorStage username={username} />
@@ -143,46 +166,42 @@ export function LiveRoom() {
 }
 
 function CreatorStage({ username }: { username: string }) {
+  const room = useRoomContext();
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
 
   useEffect(() => {
-    let active = true;
-    let onGift: ((payload: GiftPayload) => void) | undefined;
-    void getSocket().then((socket) => {
-      socket.emit('join_room', username);
-      onGift = (payload) => {
-        if (!active) return;
-        setFloats((current) => [
-          ...current,
-          {
-            id: payload.id,
-            giftId: payload.giftId,
-            left: 18 + Math.random() * 64,
-          },
-        ]);
-      };
-      socket.on('gift_received', onGift);
-    });
-    return () => {
-      active = false;
-      void getSocket().then((socket) => {
-        if (onGift) socket.off('gift_received', onGift);
-      });
+    const onData = (payload: Uint8Array) => {
+      const data = parseRoomData(payload);
+      if (!data || data.type !== 'gift') return;
+      setFloats((current) => [
+        ...current,
+        {
+          id: data.id,
+          giftId: data.giftId,
+          left: 18 + Math.random() * 64,
+        },
+      ]);
     };
-  }, [username]);
+    room.on(RoomEvent.DataReceived, onData);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
+  }, [room]);
 
   return (
-    <section className="relative w-[70%] min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_0_48px_rgba(0,240,255,0.12)]">
+    <section className="relative min-h-[42dvh] w-full min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_0_48px_rgba(0,240,255,0.12)] lg:w-[70%] lg:min-h-0">
       <CreatorVideo />
-      <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2">
+      <div className="pointer-events-none absolute left-3 top-3 flex max-w-[75%] flex-wrap items-center gap-2 sm:left-4 sm:top-4">
         <span className="live-dot rounded-md bg-fuchsia-600 px-2 py-1 text-[11px] font-bold text-white">
           <Radio className="mr-1 inline" size={11} /> EN VIVO
         </span>
-        <span className="rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur">@{username}</span>
+        <span className="truncate rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur">
+          @{username}
+        </span>
       </div>
       <Link
         to="/"
-        className="absolute right-4 top-4 rounded-full bg-black/50 px-3 py-1 text-xs text-zinc-200 backdrop-blur hover:text-white"
+        className="absolute right-3 top-3 rounded-full bg-black/50 px-3 py-1 text-xs text-zinc-200 backdrop-blur hover:text-white sm:right-4 sm:top-4"
       >
         Salir
       </Link>
@@ -214,7 +233,9 @@ function CreatorVideo() {
 }
 
 function ChatPanel({ roomName }: { roomName: string }) {
-  const coins = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
+  const room = useRoomContext();
+  const profile = useAuthStore((state) => state.profile);
+  const coins = profile?.coinsBalance ?? 0;
   const setCoins = useAuthStore((state) => state.setCoins);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
@@ -222,34 +243,36 @@ function ChatPanel({ roomName }: { roomName: string }) {
   const [giftError, setGiftError] = useState<string | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const seen = useRef(new Set<string>());
+
+  function pushMessage(message: ChatMessage) {
+    if (seen.current.has(message.id)) return;
+    seen.current.add(message.id);
+    setMessages((current) => [...current, message]);
+  }
 
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    void getSocket().then((socket) => {
-      socket.emit('join_room', roomName);
-      const onMessage = (payload: ChatMessage) => {
-        setMessages((current) => [...current, payload]);
-      };
-      const onGift = (payload: GiftPayload) => {
-        setMessages((current) => [
-          ...current,
-          {
-            id: `gift-${payload.id}`,
-            author: payload.senderName,
-            text: `envió ${payload.giftName}`,
-            gift: { giftId: payload.giftId, emoji: payload.emoji, name: payload.giftName },
-          },
-        ]);
-      };
-      socket.on('new_message', onMessage);
-      socket.on('gift_received', onGift);
-      cleanup = () => {
-        socket.off('new_message', onMessage);
-        socket.off('gift_received', onGift);
-      };
-    });
-    return () => cleanup?.();
-  }, [roomName]);
+    const onData = (payload: Uint8Array) => {
+      const data = parseRoomData(payload);
+      if (!data) return;
+      if (data.type === 'chat') {
+        pushMessage({ id: data.id, author: data.author, text: data.text });
+        return;
+      }
+      if (data.type === 'gift') {
+        pushMessage({
+          id: `gift-${data.id}`,
+          author: data.senderName,
+          text: `envió ${data.giftName}`,
+          gift: { giftId: data.giftId, emoji: data.emoji, name: data.giftName },
+        });
+      }
+    };
+    room.on(RoomEvent.DataReceived, onData);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
+  }, [room]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
@@ -258,32 +281,60 @@ function ChatPanel({ roomName }: { roomName: string }) {
   async function sendMessage() {
     const value = text.trim();
     if (!value) return;
-    const socket = await getSocket();
-    socket.emit('send_message', { roomName, text: value });
+    const author = profile?.displayName || profile?.handle || 'Liveboomer';
+    const message: ChatMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      author,
+      text: value,
+    };
+    pushMessage(message);
     setText('');
+    try {
+      await publishRoomData(room, { type: 'chat', ...message });
+    } catch (error) {
+      console.error('[chat] publishData', error);
+    }
   }
 
   async function sendGift(giftId: string) {
     setGiftError(null);
     try {
-      const result = await api<{ senderBalance: number }>('/api/gifts/send', {
-        method: 'POST',
-        body: JSON.stringify({ giftId, roomName }),
-      });
+      const result = await api<{ senderBalance: number; gift: { id: string; giftId: string; giftName: string; emoji: string; senderName: string } }>(
+        '/api/gifts/send',
+        {
+          method: 'POST',
+          body: JSON.stringify({ giftId, roomName }),
+        },
+      );
       setCoins(result.senderBalance);
       setOpenGifts(false);
+      const gift = result.gift;
+      pushMessage({
+        id: `gift-${gift.id}`,
+        author: gift.senderName,
+        text: `envió ${gift.giftName}`,
+        gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
+      });
+      await publishRoomData(room, {
+        type: 'gift',
+        id: gift.id,
+        giftId: gift.giftId,
+        senderName: gift.senderName,
+        giftName: gift.giftName,
+        emoji: gift.emoji,
+      });
     } catch (err) {
       setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
     }
   }
 
   return (
-    <aside className="flex w-[30%] min-w-[260px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-800/45 backdrop-blur-xl">
+    <aside className="flex max-h-[48dvh] w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-800/45 backdrop-blur-xl lg:max-h-none lg:w-[30%] lg:min-w-[260px]">
       <div className="border-b border-white/10 px-4 py-3">
         <h2 className="text-sm font-bold text-white">Chat en vivo</h2>
         <p className="text-[11px] text-zinc-400">Saldo: {coins.toLocaleString('es-CO')} coins</p>
       </div>
-      <div ref={listRef} className="chat-scroll flex-1 space-y-2 overflow-y-auto px-3 py-3">
+      <div ref={listRef} className="chat-scroll min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
         {messages.length === 0 ? (
           <p className="text-xs text-zinc-500">Sé el primero en saludar.</p>
         ) : null}
@@ -307,13 +358,13 @@ function ChatPanel({ roomName }: { roomName: string }) {
           ),
         )}
       </div>
-      <div className="relative space-y-2 border-t border-white/10 p-3">
+      <div className="relative space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {openGifts ? (
-          <div className="absolute bottom-[7.5rem] left-3 right-3 rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-[0_0_28px_rgba(255,0,85,0.2)]">
+          <div className="absolute bottom-[7.5rem] left-2 right-2 z-10 max-h-[40dvh] overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-[0_0_28px_rgba(255,0,85,0.2)] sm:left-3 sm:right-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Caja de regalos
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {GIFT_CATALOG.map((gift) => (
                 <button
                   key={gift.id}

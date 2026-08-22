@@ -1,26 +1,32 @@
 const express = require('express');
 const { asFn } = require('../lib/asFn');
-const { prisma } = require('../lib/prisma');
+const { prisma, hasDatabase } = require('../lib/prisma');
+const { getBalance } = require('../lib/walletMemory');
+const { getProfile, saveProfile, findByUsername } = require('../lib/profileMemory');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
-const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
-
-let profileColumnsReady = false;
+const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
 
 function serializeUser(user) {
+  const birth =
+    user.birthDate == null
+      ? null
+      : typeof user.birthDate === 'string'
+        ? user.birthDate.slice(0, 10)
+        : new Date(user.birthDate).toISOString().slice(0, 10);
   return {
     id: user.id,
     firebaseUid: user.firebaseUid,
     email: user.email,
     username: user.username,
-    avatarUrl: user.avatarUrl,
-    bio: user.bio,
-    birthDate: user.birthDate ? new Date(user.birthDate).toISOString().slice(0, 10) : null,
-    coinsBalance: user.coinsBalance,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
+    avatarUrl: user.avatarUrl ?? null,
+    bio: user.bio ?? null,
+    birthDate: birth,
+    coinsBalance: Number(user.coinsBalance ?? 0),
+    createdAt: user.createdAt || new Date().toISOString(),
+    updatedAt: user.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -41,14 +47,6 @@ function yearsOld(isoDate) {
   return age;
 }
 
-async function ensureProfileColumns() {
-  if (profileColumnsReady) return;
-  await prisma.$executeRawUnsafe(
-    'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3)',
-  );
-  profileColumnsReady = true;
-}
-
 async function updateProfile(req, res) {
   const username = parseUsername(req.body?.username);
   const bio = typeof req.body?.bio === 'string' ? req.body.bio.trim().slice(0, 280) : '';
@@ -57,7 +55,7 @@ async function updateProfile(req, res) {
   const birthDateRaw = typeof req.body?.birthDate === 'string' ? req.body.birthDate.trim() : '';
 
   if (!USERNAME_RE.test(username)) {
-    res.status(400).json({ error: 'El usuario debe tener 3-20 caracteres (a-z, 0-9, _).' });
+    res.status(400).json({ error: 'El usuario debe tener 3-24 caracteres (a-z, 0-9, _).' });
     return;
   }
   if (!birthDateRaw) {
@@ -74,13 +72,37 @@ async function updateProfile(req, res) {
     return;
   }
 
+  const uid = req.user.uid;
+
   try {
-    await ensureProfileColumns();
+    if (!hasDatabase || !prisma) {
+      const existing = findByUsername(username);
+      if (existing && existing.firebaseUid !== uid) {
+        res.status(409).json({ error: 'Ese nombre de usuario ya está en uso.' });
+        return;
+      }
+      const saved = saveProfile(uid, {
+        id: uid,
+        firebaseUid: uid,
+        email: req.dbUser?.email || req.user.email || `${uid}@users.liveboom.local`,
+        username,
+        bio: bio || null,
+        avatarUrl: avatarUrl || req.dbUser?.avatarUrl || req.user.picture || null,
+        birthDate: birthDateRaw,
+        coinsBalance: getBalance(uid),
+      });
+      res.json(serializeUser(saved));
+      return;
+    }
+
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3)',
+    ).catch(() => undefined);
 
     const taken = await prisma.user.findFirst({
       where: {
         username,
-        NOT: { id: req.dbUser.id },
+        NOT: { firebaseUid: uid },
       },
       select: { id: true },
     });
@@ -89,34 +111,61 @@ async function updateProfile(req, res) {
       return;
     }
 
-    const user = await prisma.user.update({
-      where: { id: req.dbUser.id },
-      data: {
+    const user = await prisma.user.upsert({
+      where: { firebaseUid: uid },
+      update: {
         username,
         bio: bio || null,
-        avatarUrl: avatarUrl || req.dbUser.avatarUrl,
+        avatarUrl: avatarUrl || undefined,
         birthDate: new Date(`${birthDateRaw}T00:00:00.000Z`),
+        email: req.user.email || undefined,
+      },
+      create: {
+        firebaseUid: uid,
+        email: req.user.email || `${uid}@users.liveboom.local`,
+        username,
+        bio: bio || null,
+        avatarUrl: avatarUrl || null,
+        birthDate: new Date(`${birthDateRaw}T00:00:00.000Z`),
+        coinsBalance: 0,
       },
     });
 
     res.json(serializeUser(user));
   } catch (error) {
     console.error('[users/profile]', error);
-    res.status(500).json({ error: 'No se pudo actualizar el perfil en PostgreSQL' });
+    // Fallback online sin Postgres
+    const saved = saveProfile(uid, {
+      id: uid,
+      firebaseUid: uid,
+      email: req.dbUser?.email || req.user.email || `${uid}@users.liveboom.local`,
+      username,
+      bio: bio || null,
+      avatarUrl: avatarUrl || req.dbUser?.avatarUrl || null,
+      birthDate: birthDateRaw,
+      coinsBalance: getBalance(uid),
+    });
+    res.json(serializeUser(saved));
   }
 }
 
-router.use(async (_req, _res, next) => {
-  try {
-    await ensureProfileColumns();
-  } catch {
-    /* ignore */
-  }
-  next();
-});
-
 router.get('/profile', requireAuth, requireDbUser, (req, res) => {
-  res.json(serializeUser(req.dbUser));
+  const memory = getProfile(req.user.uid);
+  if (memory) {
+    res.json(
+      serializeUser({
+        ...memory,
+        coinsBalance: getBalance(req.user.uid),
+      }),
+    );
+    return;
+  }
+  res.json(
+    serializeUser({
+      ...req.dbUser,
+      coinsBalance: getBalance(req.user.uid),
+    }),
+  );
 });
 
 router.patch('/profile', requireAuth, requireDbUser, updateProfile);

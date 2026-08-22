@@ -15,6 +15,13 @@ function credit(uid, coins) {
   return setBalance(uid, getBalance(uid) + Math.max(0, Number(coins) || 0));
 }
 
+function debit(uid, coins) {
+  const amount = Math.max(0, Number(coins) || 0);
+  const current = getBalance(uid);
+  if (current < amount) return null;
+  return setBalance(uid, current - amount);
+}
+
 function rememberOrder(order) {
   pendingOrders.set(order.reference, {
     uid: String(order.uid),
@@ -32,4 +39,4 @@ function takeOrder(reference, uid) {
   return order;
 }
 
-module.exports = { getBalance, setBalance, credit, rememberOrder, takeOrder };
+module.exports = { getBalance, setBalance, credit, debit, rememberOrder, takeOrder };

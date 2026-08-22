@@ -9,7 +9,7 @@ import { useUiStore } from '../store/uiStore';
 const fieldClass =
   'h-11 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500';
 
-const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
 
 type ProfilePayload = {
   id: string;
@@ -176,15 +176,15 @@ export function ProfileView() {
 
   return (
     <div className="mx-auto w-full max-w-xl">
-      <form onSubmit={(event) => void save(event)} className="rounded-xl bg-zinc-900 p-8">
+      <form onSubmit={(event) => void save(event)} className="rounded-xl bg-zinc-900 p-4 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Cuenta</p>
-        <h1 className="mt-1 text-2xl font-bold text-white">Editar perfil</h1>
+        <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Editar perfil</h1>
         <p className="mt-1 text-sm text-zinc-400">Estos datos se guardan en PostgreSQL.</p>
 
         {profile ? (
-          <div className="mt-8 grid gap-5">
-            <div className="flex items-center gap-4">
-              <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-zinc-950 ring-2 ring-cyan-500/40">
+          <div className="mt-6 grid gap-5 sm:mt-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="relative mx-auto h-20 w-20 shrink-0 overflow-hidden rounded-full bg-zinc-950 ring-2 ring-cyan-500/40 sm:mx-0">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
                 ) : (

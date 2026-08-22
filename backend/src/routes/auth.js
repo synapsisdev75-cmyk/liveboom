@@ -2,6 +2,7 @@ const express = require('express');
 const { asFn } = require('../lib/asFn');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { getBalance } = require('../lib/walletMemory');
+const { getProfile } = require('../lib/profileMemory');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -18,6 +19,22 @@ function usernameFromToken(decoded) {
   return `${base}_${decoded.uid.slice(0, 8)}`;
 }
 
+function fallbackUser(uid, email, username, avatarUrl) {
+  const memory = getProfile(uid);
+  return {
+    id: uid,
+    firebaseUid: uid,
+    email: memory?.email || email,
+    username: memory?.username || username,
+    avatarUrl: memory?.avatarUrl ?? avatarUrl,
+    bio: memory?.bio ?? null,
+    birthDate: memory?.birthDate ?? null,
+    coinsBalance: getBalance(uid),
+    createdAt: memory?.createdAt || new Date().toISOString(),
+    updatedAt: memory?.updatedAt || new Date().toISOString(),
+  };
+}
+
 router.post('/sync', requireAuth, async (req, res) => {
   const decoded = req.user;
   const uid = decoded.uid;
@@ -27,17 +44,7 @@ router.post('/sync', requireAuth, async (req, res) => {
 
   try {
     if (!hasDatabase || !prisma) {
-      res.json({
-        id: uid,
-        firebaseUid: uid,
-        email,
-        username,
-        avatarUrl,
-        bio: null,
-        coinsBalance: getBalance(uid),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      res.json(fallbackUser(uid, email, username, avatarUrl));
       return;
     }
 
@@ -56,37 +63,17 @@ router.post('/sync', requireAuth, async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('[auth/sync]', error);
-    res.json({
-      id: uid,
-      firebaseUid: uid,
-      email,
-      username,
-      avatarUrl,
-      bio: null,
-      coinsBalance: getBalance(uid),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    res.json(fallbackUser(uid, email, username, avatarUrl));
   }
 });
 
 router.patch('/profile', requireAuth, async (req, res) => {
   const bio = typeof req.body?.bio === 'string' ? req.body.bio.trim().slice(0, 280) : null;
-
-  try {
-    const user = await prisma.user.update({
-      where: { firebaseUid: req.user.uid },
-      data: { bio },
-    });
-    res.json(user);
-  } catch (error) {
-    console.error('[auth/profile]', error);
-    res.json({
-      firebaseUid: req.user.uid,
-      bio,
-      ok: true,
-    });
-  }
+  res.json({
+    firebaseUid: req.user.uid,
+    bio,
+    ok: true,
+  });
 });
 
 module.exports = router;
