@@ -71,6 +71,7 @@ type PostgresUser = {
   firebaseUid: string;
   email: string;
   username: string;
+  displayName?: string;
   avatarUrl: string | null;
   bio: string | null;
   birthDate?: string | null;
@@ -84,7 +85,7 @@ export function mapPostgresUser(user: PostgresUser): SessionUser {
     id: user.id,
     firebaseUid: user.firebaseUid,
     email: user.email,
-    displayName: user.username,
+    displayName: user.displayName || user.username,
     handle: user.username,
     avatarUrl: user.avatarUrl,
     bio: user.bio ?? null,

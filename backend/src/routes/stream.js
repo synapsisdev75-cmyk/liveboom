@@ -3,6 +3,9 @@ const { asFn } = require('../lib/asFn');
 const presence = require('../lib/livePresence');
 const invites = require('../lib/liveInvites');
 const reelStore = require('../lib/reelStore');
+const liveHistory = require('../lib/liveHistory');
+const social = require('../lib/socialMemory');
+const { getProfile, findByUsername } = require('../lib/profileMemory');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -219,6 +222,68 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     });
   }
 });
+
+router.get('/history', optionalAuth, (req, res) => {
+  const username =
+    typeof req.query.username === 'string' ? normalize(req.query.username) : null;
+  res.json({ lives: liveHistory.listHistory({ username, limit: 16 }) });
+});
+
+router.get('/friends-live', requireAuth, async (req, res) => {
+  const lk = livekit();
+  const listActiveLiveRooms = lk.listActiveLiveRooms || lk.default?.listActiveLiveRooms;
+  const memory = typeof listLives === 'function' ? listLives() : [];
+  const fromLivekit = typeof listActiveLiveRooms === 'function' ? await listActiveLiveRooms() : [];
+  const active = new Map();
+  for (const item of [...memory, ...fromLivekit]) {
+    if (item?.username) active.set(item.username, item);
+  }
+  const me = getProfile(req.user.uid) || findByUsername(req.user.email?.split('@')[0]);
+  const myHandle = me?.username;
+  const friends = myHandle ? social.listFriends(myHandle) : [];
+  const friendUsernames = new Set(friends.map((f) => f.username));
+  const online = [];
+  for (const [username, stream] of active.entries()) {
+    if (friendUsernames.has(username)) {
+      online.push(stream);
+    }
+  }
+  res.json({ streams: online });
+});
+
+router.get('/friends-history', requireAuth, (req, res) => {
+  const me = getProfile(req.user.uid) || findByUsername(req.user.email?.split('@')[0]);
+  const friends = me?.username ? social.listFriends(me.username) : [];
+  const friendSet = new Set(friends.map((f) => f.username));
+  const lives = liveHistory
+    .listHistory({ limit: 40 })
+    .filter((item) => friendSet.has(item.username))
+    .slice(0, 12);
+  res.json({ lives });
+});
+
+function optionalAuth(req, _res, next) {
+  const header = req.headers.authorization || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    req.viewerUid = null;
+    next();
+    return;
+  }
+  const verifyMod = require('../lib/verifyFirebaseToken');
+  const verifyFirebaseIdToken =
+    typeof verifyMod === 'function' ? verifyMod : verifyMod.verifyFirebaseIdToken || verifyMod.default;
+  verifyFirebaseIdToken(match[1])
+    .then((decoded) => {
+      req.viewerUid = decoded.uid;
+      req.user = decoded;
+      next();
+    })
+    .catch(() => {
+      req.viewerUid = null;
+      next();
+    });
+}
 
 module.exports = router;
 module.exports.default = router;

@@ -21,6 +21,7 @@ function serializeUser(user) {
     firebaseUid: user.firebaseUid,
     email: user.email,
     username: user.username,
+    displayName: user.displayName || user.username,
     avatarUrl: user.avatarUrl ?? null,
     bio: user.bio ?? null,
     birthDate: birth,
@@ -49,6 +50,8 @@ function yearsOld(isoDate) {
 
 async function updateProfile(req, res) {
   const username = parseUsername(req.body?.username);
+  const displayName =
+    typeof req.body?.displayName === 'string' ? req.body.displayName.trim().slice(0, 48) : '';
   const bio = typeof req.body?.bio === 'string' ? req.body.bio.trim().slice(0, 280) : '';
   const avatarUrl =
     typeof req.body?.avatarUrl === 'string' ? req.body.avatarUrl.trim().slice(0, 350000) : '';
@@ -86,6 +89,7 @@ async function updateProfile(req, res) {
         firebaseUid: uid,
         email: req.dbUser?.email || req.user.email || `${uid}@users.liveboom.local`,
         username,
+        displayName: displayName || username,
         bio: bio || null,
         avatarUrl: avatarUrl || req.dbUser?.avatarUrl || req.user.picture || null,
         birthDate: birthDateRaw,
@@ -140,6 +144,7 @@ async function updateProfile(req, res) {
       firebaseUid: uid,
       email: req.dbUser?.email || req.user.email || `${uid}@users.liveboom.local`,
       username,
+      displayName: displayName || username,
       bio: bio || null,
       avatarUrl: avatarUrl || req.dbUser?.avatarUrl || null,
       birthDate: birthDateRaw,

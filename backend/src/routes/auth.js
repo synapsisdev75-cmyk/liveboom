@@ -2,13 +2,20 @@ const express = require('express');
 const { asFn } = require('../lib/asFn');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { getBalance } = require('../lib/walletMemory');
-const { getProfile } = require('../lib/profileMemory');
+const { getProfile, saveProfile } = require('../lib/profileMemory');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 
 function usernameFromToken(decoded) {
-  const raw = decoded.name || (decoded.email ? decoded.email.split('@')[0] : decoded.uid);
+  const fromName = String(decoded.name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 20);
+  if (fromName && fromName.length >= 3) return fromName;
+  const raw = decoded.email ? decoded.email.split('@')[0] : decoded.uid;
   const base =
     String(raw)
       .toLowerCase()
@@ -19,19 +26,22 @@ function usernameFromToken(decoded) {
   return `${base}_${decoded.uid.slice(0, 8)}`;
 }
 
-function fallbackUser(uid, email, username, avatarUrl) {
+function fallbackUser(uid, email, username, avatarUrl, displayName) {
   const memory = getProfile(uid);
-  return {
+  const saved = saveProfile(uid, {
     id: uid,
     firebaseUid: uid,
     email: memory?.email || email,
     username: memory?.username || username,
+    displayName: memory?.displayName || displayName || memory?.username || username,
     avatarUrl: memory?.avatarUrl ?? avatarUrl,
     bio: memory?.bio ?? null,
     birthDate: memory?.birthDate ?? null,
     coinsBalance: getBalance(uid),
-    createdAt: memory?.createdAt || new Date().toISOString(),
-    updatedAt: memory?.updatedAt || new Date().toISOString(),
+  });
+  return {
+    ...saved,
+    coinsBalance: getBalance(uid),
   };
 }
 
@@ -41,10 +51,11 @@ router.post('/sync', requireAuth, async (req, res) => {
   const email = decoded.email || `${uid}@users.liveboom.local`;
   const username = usernameFromToken(decoded);
   const avatarUrl = decoded.picture || null;
+  const displayName = decoded.name || username;
 
   try {
     if (!hasDatabase || !prisma) {
-      res.json(fallbackUser(uid, email, username, avatarUrl));
+      res.json(fallbackUser(uid, email, username, avatarUrl, displayName));
       return;
     }
 
@@ -63,7 +74,7 @@ router.post('/sync', requireAuth, async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('[auth/sync]', error);
-    res.json(fallbackUser(uid, email, username, avatarUrl));
+    res.json(fallbackUser(uid, email, username, avatarUrl, displayName));
   }
 });
 

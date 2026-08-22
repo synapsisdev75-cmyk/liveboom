@@ -1,4 +1,5 @@
 const lives = new Map();
+const liveHistory = require('./liveHistory');
 
 function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, viewers }) {
   const key = String(username || '')
@@ -26,6 +27,8 @@ function removeLive(username) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '_');
+  const entry = lives.get(key);
+  if (entry) liveHistory.archiveLive(entry);
   lives.delete(key);
 }
 

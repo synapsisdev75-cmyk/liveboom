@@ -9,7 +9,8 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
-import { postAuthSync, type SessionUser } from '../lib/api';
+import { postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
+import { storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
 
 type AuthState = {
@@ -23,7 +24,7 @@ type AuthState = {
   setCoins: (coins: number) => void;
   setProfile: (profile: SessionUser) => void;
   signInEmail: (email: string, password: string) => Promise<void>;
-  signUpEmail: (name: string, email: string, password: string) => Promise<void>;
+  signUpEmail: (name: string, email: string, password: string, birthYear: number) => Promise<void>;
   signInGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -43,9 +44,30 @@ function mapAuthError(error: unknown): string {
 }
 
 async function syncWithBackend(user: FirebaseUser) {
+  const apiBase = String(import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app').replace(
+    /\/$/,
+    '',
+  );
   try {
     const token = await user.getIdToken();
-    return await postAuthSync(token);
+    const synced = await postAuthSync(token);
+    try {
+      const response = await fetch(`${apiBase}/api/users/profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = (await response.json().catch(() => ({}))) as Parameters<
+        typeof mapPostgresUser
+      >[0];
+      if (response.ok && data.id && data.firebaseUid && data.username) {
+        return mapPostgresUser(data);
+      }
+    } catch {
+      // perfil completo opcional tras sync
+    }
+    return synced;
   } catch {
     return profileFromFirebase(user);
   }
@@ -119,11 +141,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signUpEmail: async (name, email, password) => {
+  signUpEmail: async (name, email, password, birthYear) => {
     set({ busy: true, error: null });
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: name });
+      storePendingBirthYear(cred.user.uid, birthYear);
       const profile = await syncWithBackend(cred.user);
       set({ firebaseUser: cred.user, profile });
     } catch (error) {

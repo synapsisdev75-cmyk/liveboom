@@ -1,6 +1,21 @@
+const persist = require('./persist');
+
 const reelsByUser = new Map();
 const MAX_REELS_PER_USER = 12;
 const MAX_REEL_BYTES = 4 * 1024 * 1024;
+
+function hydrate() {
+  const data = persist.load('reels', {});
+  for (const [username, list] of Object.entries(data)) {
+    reelsByUser.set(username, list);
+  }
+}
+
+function flush() {
+  persist.debouncedSave('reels', Object.fromEntries(reelsByUser));
+}
+
+hydrate();
 
 function normalize(value) {
   return String(value || '')
@@ -27,6 +42,7 @@ function addReel({ username, dataUrl, title, shared = false }) {
   };
   list.unshift(reel);
   reelsByUser.set(key, list.slice(0, MAX_REELS_PER_USER));
+  flush();
   return reel;
 }
 
@@ -52,6 +68,7 @@ function setReelShared(username, reelId, shared) {
   const reel = list.find((item) => item.id === reelId);
   if (!reel) return null;
   reel.shared = Boolean(shared);
+  flush();
   return reel;
 }
 

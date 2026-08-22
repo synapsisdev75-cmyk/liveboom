@@ -1,12 +1,19 @@
 import { useState, type FormEvent } from 'react';
 import { Logo } from '../brand/Logo';
+import { ageFromBirthYear } from '../../lib/birthDate';
 import { useAuthStore } from '../../store/authStore';
+
+const currentYear = new Date().getFullYear();
+const minBirthYear = currentYear - 100;
+const maxBirthYear = currentYear - 18;
 
 export function AuthScreen() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [birthYear, setBirthYear] = useState(String(maxBirthYear));
+  const [localError, setLocalError] = useState<string | null>(null);
   const busy = useAuthStore((s) => s.busy);
   const error = useAuthStore((s) => s.error);
   const signInEmail = useAuthStore((s) => s.signInEmail);
@@ -15,11 +22,22 @@ export function AuthScreen() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    setLocalError(null);
     if (mode === 'login') {
       await signInEmail(email, password).catch(() => undefined);
       return;
     }
-    await signUpEmail(name, email, password).catch(() => undefined);
+    const year = Number(birthYear);
+    if (!Number.isFinite(year) || year < minBirthYear || year > maxBirthYear) {
+      setLocalError('Ingresa un año de nacimiento válido (mayor de 18 años).');
+      return;
+    }
+    const age = ageFromBirthYear(year);
+    if (age < 18) {
+      setLocalError('Debes ser mayor de 18 años para registrarte.');
+      return;
+    }
+    await signUpEmail(name, email, password, year).catch(() => undefined);
   }
 
   return (
@@ -46,6 +64,20 @@ export function AuthScreen() {
               className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
             />
           ) : null}
+          {mode === 'register' ? (
+            <label className="block text-left text-xs text-zinc-400">
+              Año de nacimiento
+              <input
+                required
+                type="number"
+                min={minBirthYear}
+                max={maxBirthYear}
+                value={birthYear}
+                onChange={(e) => setBirthYear(e.target.value)}
+                className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+              />
+            </label>
+          ) : null}
           <input
             required
             type="email"
@@ -63,6 +95,7 @@ export function AuthScreen() {
             placeholder="Contraseña"
             className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
           />
+          {localError ? <p className="text-sm text-boom-fuchsia">{localError}</p> : null}
           {error ? <p className="text-sm text-boom-fuchsia">{error}</p> : null}
           <button
             type="submit"

@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
 import { api, mapPostgresUser, type SessionUser } from '../lib/api';
+import {
+  adultCutoffDate,
+  ageFromIsoDate,
+  clearPendingBirth,
+  readPendingBirthDate,
+} from '../lib/birthDate';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
 
@@ -17,6 +23,7 @@ type ProfilePayload = {
   firebaseUid: string;
   email: string;
   username: string;
+  displayName?: string;
   avatarUrl: string | null;
   bio: string | null;
   birthDate: string | null;
@@ -24,24 +31,6 @@ type ProfilePayload = {
   createdAt: string;
   updatedAt: string;
 };
-
-function adultCutoffDate() {
-  const date = new Date();
-  date.setFullYear(date.getFullYear() - 18);
-  return date.toISOString().slice(0, 10);
-}
-
-function ageFrom(isoDate: string) {
-  const birth = new Date(`${isoDate}T00:00:00`);
-  if (Number.isNaN(birth.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDelta = today.getMonth() - birth.getMonth();
-  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < birth.getDate())) {
-    age -= 1;
-  }
-  return age;
-}
 
 function cropToAvatar(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -79,6 +68,7 @@ export function ProfileView() {
   const setProfile = useAuthStore((state) => state.setProfile);
   const setToast = useUiStore((state) => state.setToast);
 
+  const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
   const [username, setUsername] = useState(profile?.handle ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
   const [birthDate, setBirthDate] = useState(profile?.birthDate ?? '');
@@ -86,9 +76,11 @@ export function ProfileView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const maxBirthDate = useMemo(() => adultCutoffDate(), []);
+  const calculatedAge = useMemo(() => (birthDate ? ageFromIsoDate(birthDate) : null), [birthDate]);
 
   useEffect(() => {
     if (!profile) return;
+    setDisplayName(profile.displayName);
     setUsername(profile.handle);
     setBio(profile.bio ?? '');
     setBirthDate(profile.birthDate ?? '');
@@ -96,15 +88,30 @@ export function ProfileView() {
   }, [profile]);
 
   useEffect(() => {
+    if (!firebaseUser) return;
+    if (firebaseUser.displayName && !displayName) {
+      setDisplayName(firebaseUser.displayName);
+    }
+    if (firebaseUser.photoURL && !avatarUrl) {
+      setAvatarUrl(firebaseUser.photoURL);
+    }
+    const pending = readPendingBirthDate(firebaseUser.uid);
+    if (pending && !birthDate) {
+      setBirthDate(pending);
+    }
+  }, [firebaseUser?.uid]);
+
+  useEffect(() => {
     if (!profile) return;
     void api<ProfilePayload>('/api/users/profile')
       .then((user) => {
         const next: SessionUser = mapPostgresUser(user);
         setProfile({ ...next, coins: profile.coins, coinsBalance: profile.coinsBalance });
+        setDisplayName(user.displayName || user.username);
         setUsername(user.username);
         setBio(user.bio ?? '');
-        setBirthDate(user.birthDate ?? '');
-        setAvatarUrl(user.avatarUrl ?? '');
+        setBirthDate(user.birthDate ?? readPendingBirthDate(profile.firebaseUid) ?? '');
+        setAvatarUrl(user.avatarUrl ?? firebaseUser?.photoURL ?? '');
       })
       .catch(() => undefined);
   }, [profile?.firebaseUid, setProfile]);
@@ -124,10 +131,15 @@ export function ProfileView() {
     if (!firebaseUser || !profile) return;
 
     const handle = username.trim().replace(/^@/, '').toLowerCase();
+    const name = displayName.trim();
     setError(null);
 
+    if (!name) {
+      setError('El nombre es obligatorio.');
+      return;
+    }
     if (!avatarUrl.trim()) {
-      setError('Agrega una imagen o URL de avatar.');
+      setError('Agrega una foto de perfil.');
       return;
     }
     if (!USERNAME_RE.test(handle)) {
@@ -142,7 +154,7 @@ export function ProfileView() {
       setError('La fecha de nacimiento es obligatoria.');
       return;
     }
-    const age = ageFrom(birthDate);
+    const age = ageFromIsoDate(birthDate);
     if (age == null || age < 18) {
       setError('Debes ser mayor de 18 años para usar Liveboom.');
       return;
@@ -154,6 +166,7 @@ export function ProfileView() {
         method: 'PATCH',
         body: JSON.stringify({
           username: handle,
+          displayName: name,
           bio: bio.trim(),
           avatarUrl: avatarUrl.trim(),
           birthDate,
@@ -161,7 +174,8 @@ export function ProfileView() {
       });
       const next = mapPostgresUser(updated);
       setProfile({ ...next, coins: profile.coinsBalance, coinsBalance: profile.coinsBalance });
-      const firebasePatch: { displayName: string; photoURL?: string } = { displayName: handle };
+      clearPendingBirth(firebaseUser.uid);
+      const firebasePatch: { displayName: string; photoURL?: string } = { displayName: name };
       if (updated.avatarUrl?.startsWith('http')) {
         firebasePatch.photoURL = updated.avatarUrl;
       }
@@ -180,7 +194,6 @@ export function ProfileView() {
       <form onSubmit={(event) => void save(event)} className="rounded-xl bg-zinc-900 p-4 sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Cuenta</p>
         <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Editar perfil</h1>
-        <p className="mt-1 text-sm text-zinc-400">Estos datos se guardan en PostgreSQL.</p>
         {profile ? (
           <Link
             to={`/u/${encodeURIComponent(profile.handle)}`}
@@ -203,21 +216,25 @@ export function ProfileView() {
                 )}
               </div>
               <label className="grid min-w-0 flex-1 gap-1.5 text-sm">
-                <span className="font-medium text-zinc-300">Avatar</span>
+                <span className="font-medium text-zinc-300">Foto de perfil</span>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={(event) => void onPickAvatar(event.target.files?.[0])}
                   className="text-xs text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-zinc-950"
                 />
-                <input
-                  value={avatarUrl.startsWith('data:') ? '' : avatarUrl}
-                  onChange={(event) => setAvatarUrl(event.target.value)}
-                  placeholder="https://tu-avatar.jpg"
-                  className={fieldClass}
-                />
               </label>
             </div>
+
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-zinc-300">Nombre</span>
+              <input
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="Tu nombre público"
+                className={fieldClass}
+              />
+            </label>
 
             <label className="grid gap-1.5 text-sm">
               <span className="font-medium text-zinc-300">Nombre de usuario</span>
@@ -253,7 +270,11 @@ export function ProfileView() {
                 onChange={(event) => setBirthDate(event.target.value)}
                 className={`${fieldClass} [color-scheme:dark] accent-cyan-500`}
               />
-              <span className="text-xs text-zinc-500">Debes ser mayor de 18 años.</span>
+              {calculatedAge != null ? (
+                <span className="text-xs text-cyan-400">Edad: {calculatedAge} años</span>
+              ) : (
+                <span className="text-xs text-zinc-500">Debes ser mayor de 18 años.</span>
+              )}
             </label>
 
             {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
@@ -269,7 +290,7 @@ export function ProfileView() {
         ) : (
           <p className="mt-6 text-sm text-zinc-400">
             {firebaseUser ? (
-              'Firebase autenticó, pero falta sincronizar PostgreSQL.'
+              'Completa tu perfil para empezar a transmitir.'
             ) : (
               <>
                 <Link to="/login" className="text-cyan-400 underline">

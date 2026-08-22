@@ -1,4 +1,19 @@
+const persist = require('./persist');
+
 const profiles = new Map();
+
+function hydrate() {
+  const rows = persist.load('profiles', []);
+  for (const row of rows) {
+    if (row?.firebaseUid) profiles.set(String(row.firebaseUid), row);
+  }
+}
+
+function flush() {
+  persist.debouncedSave('profiles', Array.from(profiles.values()));
+}
+
+hydrate();
 
 function getProfile(uid) {
   return profiles.get(String(uid)) || null;
@@ -16,6 +31,7 @@ function saveProfile(uid, data) {
     createdAt: prev.createdAt || data.createdAt || new Date().toISOString(),
   };
   profiles.set(key, next);
+  flush();
   return next;
 }
 
@@ -42,7 +58,8 @@ function listProfiles(query, { limit = 20, excludeUid } = {}) {
     if (excludeUid && profile.firebaseUid === excludeUid) continue;
     const username = String(profile.username || '').toLowerCase();
     const bio = String(profile.bio || '').toLowerCase();
-    if (!needle || username.includes(needle) || bio.includes(needle)) {
+    const displayName = String(profile.displayName || '').toLowerCase();
+    if (!needle || username.includes(needle) || bio.includes(needle) || displayName.includes(needle)) {
       results.push(profile);
     }
     if (results.length >= limit) break;

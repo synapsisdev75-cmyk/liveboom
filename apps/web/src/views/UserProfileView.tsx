@@ -11,6 +11,7 @@ import {
 } from '../components/social/SocialPostCard';
 import { UserSearchBar } from '../components/social/UserSearchBar';
 import { api, apiPublic } from '../lib/api';
+import { ageFromIsoDate } from '../lib/birthDate';
 import { useAuthStore } from '../store/authStore';
 
 type PublicProfile = {
@@ -167,7 +168,19 @@ export function UserProfileView() {
             </div>
           )}
           <div className="min-w-0 flex-1 text-center sm:text-left">
-            <h1 className="text-xl font-bold text-white">@{publicProfile.username}</h1>
+            <h1 className="text-xl font-bold text-white">
+              {publicProfile.displayName !== publicProfile.username
+                ? publicProfile.displayName
+                : null}
+              <span className={publicProfile.displayName !== publicProfile.username ? 'block text-base text-zinc-400' : ''}>
+                @{publicProfile.username}
+              </span>
+            </h1>
+            {publicProfile.isOwnProfile && profile?.birthDate ? (
+              <p className="mt-1 text-xs text-cyan-400">
+                {ageFromIsoDate(profile.birthDate)} años
+              </p>
+            ) : null}
             {publicProfile.bio ? <p className="mt-2 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
             <div className="mt-4 flex flex-wrap justify-center gap-4 sm:justify-start">
               <button

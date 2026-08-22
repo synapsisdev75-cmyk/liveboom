@@ -44,6 +44,7 @@ coverage/
 .tmp/
 .pgdata/
 packages/backend/.pgdata/
+backend/.data/
 .vercel
 dataconnect/.dataconnect/
 .firebase/

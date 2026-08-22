@@ -1,14 +1,17 @@
-import { Home, Menu, Radio, UserRound, Wallet, X } from 'lucide-react';
+import { Home, Menu, Radio, Search, Settings, UserRound, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { CoinModal, RechargeButton } from '../wallet/CoinModal';
+import { NotificationBell, SideRailPanel } from './SideRailPanel';
 
 const sideNavItems = [
   { label: 'Inicio', icon: Home, to: '/' as const },
   { label: 'Mi Billetera', icon: Wallet, to: '/billetera' as const },
   { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
+  { label: 'Buscar amigos', icon: Search, to: '/buscar' as const },
+  { label: 'Configuración', icon: Settings, to: '/perfil/editar' as const },
 ];
 
 const mobileNavItems = [
@@ -42,6 +45,7 @@ export function MainLayout() {
           Liveboom
         </Link>
         <div className="flex items-center gap-2">
+          {profile ? <NotificationBell /> : null}
           {profile ? (
             <button
               type="button"
@@ -134,21 +138,7 @@ export function MainLayout() {
         <Outlet />
       </main>
 
-      {/* Right rail — desktop */}
-      <aside className="hidden w-[20%] min-w-[240px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-800/45 backdrop-blur-xl lg:flex">
-        <section className="border-b border-zinc-800 p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Top Donadores
-          </h2>
-          <p className="mt-3 text-sm text-zinc-400">El ranking aparecerá aquí.</p>
-        </section>
-        <section className="flex flex-1 flex-col p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Chat en vivo
-          </h2>
-          <p className="mt-3 text-sm text-zinc-400">Los mensajes del live se listarán aquí.</p>
-        </section>
-      </aside>
+      <SideRailPanel />
 
       {/* Bottom nav — mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
