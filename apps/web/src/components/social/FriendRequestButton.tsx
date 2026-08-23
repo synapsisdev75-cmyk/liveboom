@@ -1,13 +1,17 @@
 import { UserCheck, UserPlus, UserX } from 'lucide-react';
-import { useState } from 'react';
-import { api } from '../../lib/api';
+import { useEffect, useState } from 'react';
+import {
+  acceptFriendRequest,
+  cancelFriendRequest,
+  getFriendshipStatus,
+  rejectFriendRequest,
+  removeFriendship,
+  sendFriendRequest,
+  type FriendshipStatus,
+} from '../../lib/socialFirestore';
+import { useAuthStore } from '../../store/authStore';
 
-export type FriendshipStatus =
-  | 'none'
-  | 'friends'
-  | 'pending_sent'
-  | 'pending_received'
-  | 'self';
+export type { FriendshipStatus };
 
 type Props = {
   username: string;
@@ -24,60 +28,47 @@ export function FriendRequestButton({
   compact,
   onChange,
 }: Props) {
+  const profile = useAuthStore((state) => state.profile);
   const [status, setStatus] = useState(initialStatus);
   const [busy, setBusy] = useState(false);
 
-  if (isOwnProfile || status === 'self') return null;
+  useEffect(() => {
+    setStatus(initialStatus);
+  }, [initialStatus, username]);
 
-  async function sendRequest() {
-    setBusy(true);
-    try {
-      await api(`/api/social/friends/request/${encodeURIComponent(username)}`, { method: 'POST' });
-      setStatus('pending_sent');
-      onChange?.('pending_sent');
-    } catch {
-      // ignore
-    } finally {
-      setBusy(false);
-    }
-  }
+  useEffect(() => {
+    if (!profile || isOwnProfile) return;
+    void getFriendshipStatus(profile.firebaseUid, username).then((next) => {
+      setStatus(next);
+      onChange?.(next);
+    });
+  }, [profile?.firebaseUid, username, isOwnProfile]);
 
-  async function cancelRequest() {
-    setBusy(true);
-    try {
-      await api(`/api/social/friends/request/${encodeURIComponent(username)}`, { method: 'DELETE' });
-      setStatus('none');
-      onChange?.('none');
-    } catch {
-      // ignore
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeFriend() {
-    setBusy(true);
-    try {
-      await api(`/api/social/friends/${encodeURIComponent(username)}`, { method: 'DELETE' });
-      setStatus('none');
-      onChange?.('none');
-    } catch {
-      // ignore
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (isOwnProfile || status === 'self' || !profile) return null;
 
   const className = compact
     ? 'shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-60'
     : 'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold disabled:opacity-60';
+
+  async function run(action: () => Promise<void>, next: FriendshipStatus) {
+    setBusy(true);
+    try {
+      await action();
+      setStatus(next);
+      onChange?.(next);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (status === 'friends') {
     return (
       <button
         type="button"
         disabled={busy}
-        onClick={() => void removeFriend()}
+        onClick={() =>
+          void run(() => removeFriendship(profile.firebaseUid, username), 'none')
+        }
         className={`${className} border border-emerald-500/40 bg-emerald-500/10 text-emerald-300`}
       >
         <UserCheck size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}
@@ -91,7 +82,9 @@ export function FriendRequestButton({
       <button
         type="button"
         disabled={busy}
-        onClick={() => void cancelRequest()}
+        onClick={() =>
+          void run(() => cancelFriendRequest(profile.firebaseUid, username), 'none')
+        }
         className={`${className} border border-zinc-600 bg-zinc-800 text-zinc-300`}
       >
         {compact ? 'Pendiente' : 'Solicitud enviada'}
@@ -105,16 +98,9 @@ export function FriendRequestButton({
         <button
           type="button"
           disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await api(`/api/social/friends/accept/${encodeURIComponent(username)}`, { method: 'POST' });
-              setStatus('friends');
-              onChange?.('friends');
-            } finally {
-              setBusy(false);
-            }
-          }}
+          onClick={() =>
+            void run(() => acceptFriendRequest(profile.firebaseUid, username), 'friends')
+          }
           className={`${className} bg-emerald-500/20 text-emerald-300`}
         >
           <UserCheck size={compact ? 14 : 16} /> Aceptar
@@ -122,16 +108,9 @@ export function FriendRequestButton({
         <button
           type="button"
           disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await api(`/api/social/friends/reject/${encodeURIComponent(username)}`, { method: 'POST' });
-              setStatus('none');
-              onChange?.('none');
-            } finally {
-              setBusy(false);
-            }
-          }}
+          onClick={() =>
+            void run(() => rejectFriendRequest(profile.firebaseUid, username), 'none')
+          }
           className={`${className} border border-zinc-600 text-zinc-400`}
         >
           <UserX size={compact ? 14 : 16} /> Rechazar
@@ -144,7 +123,21 @@ export function FriendRequestButton({
     <button
       type="button"
       disabled={busy}
-      onClick={() => void sendRequest()}
+      onClick={() =>
+        void run(
+          () =>
+            sendFriendRequest(
+              {
+                firebaseUid: profile.firebaseUid,
+                handle: profile.handle,
+                displayName: profile.displayName,
+                avatarUrl: profile.avatarUrl,
+              },
+              username,
+            ),
+          'pending_sent',
+        )
+      }
       className={`${className} bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950`}
     >
       <UserPlus size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}

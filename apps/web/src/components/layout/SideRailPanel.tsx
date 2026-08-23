@@ -1,8 +1,10 @@
 import { Bell, Compass, Lock, Radio, Shield, Sparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useMatch } from 'react-router-dom';
 import { ReelsRow } from '../feed/ReelsRow';
+import { playFriendRequestAlert, playPostAlert } from '../../lib/alertSound';
 import { api, apiPublic } from '../../lib/api';
+import { listenIncomingRequests, listenRecentPosts } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 
 type LiveRecord = {
@@ -67,6 +69,8 @@ function DiscoveryRail() {
   const [friendsLives, setFriendsLives] = useState<LiveRecord[]>([]);
   const [friendsOnline, setFriendsOnline] = useState<ActiveStream[]>([]);
   const [notifications, setNotifications] = useState<string[]>([]);
+  const knownRequestIds = useRef<Set<string> | null>(null);
+  const knownPostIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     const handle = profile?.handle;
@@ -87,11 +91,6 @@ function DiscoveryRail() {
         setMyLives(historyRes.lives || []);
         setFriendsLives(friendsHistRes.lives || []);
         setFriendsOnline(onlineRes.streams || []);
-        const notes: string[] = [];
-        for (const stream of onlineRes.streams || []) {
-          notes.push(`${stream.displayName || stream.username} está en vivo`);
-        }
-        setNotifications(notes);
       } catch {
         if (!cancelled) {
           setMyLives([]);
@@ -109,7 +108,53 @@ function DiscoveryRail() {
     };
   }, [profile?.handle]);
 
+  useEffect(() => {
+    if (!profile) return;
+
+    const unsubRequests = listenIncomingRequests(profile.firebaseUid, (list) => {
+      if (knownRequestIds.current == null) {
+        knownRequestIds.current = new Set(list.map((item) => item.id));
+      } else {
+        const fresh = list.filter((item) => !knownRequestIds.current!.has(item.id));
+        if (fresh.length > 0) playFriendRequestAlert();
+        knownRequestIds.current = new Set(list.map((item) => item.id));
+      }
+      setNotifications((current) => {
+        const liveNotes = friendsOnline.map(
+          (stream) => `${stream.displayName || stream.username} está en vivo`,
+        );
+        const requestNotes = list.map((item) => `@${item.username} te envió solicitud de amistad`);
+        const postNotes = current.filter((note) => note.includes('publicó'));
+        return [...requestNotes, ...liveNotes, ...postNotes].slice(0, 12);
+      });
+    });
+
+    const unsubPosts = listenRecentPosts((list) => {
+      if (knownPostIds.current == null) {
+        knownPostIds.current = new Set(list.map((item) => item.id));
+        return;
+      }
+      const fresh = list.filter(
+        (item) => !knownPostIds.current!.has(item.id) && item.authorUid !== profile.firebaseUid,
+      );
+      if (fresh.length > 0) {
+        playPostAlert();
+        setNotifications((current) => {
+          const notes = fresh.map((item) => `@${item.username} publicó algo nuevo`);
+          return [...notes, ...current].slice(0, 12);
+        });
+      }
+      knownPostIds.current = new Set(list.map((item) => item.id));
+    });
+
+    return () => {
+      unsubRequests();
+      unsubPosts();
+    };
+  }, [profile?.firebaseUid, friendsOnline]);
+
   const onlineCount = friendsOnline.length;
+  const alertCount = notifications.length;
 
   return (
     <aside className="hidden w-[20%] min-w-[240px] shrink-0 flex-col overflow-y-auto border-l border-zinc-800 bg-zinc-800/45 backdrop-blur-xl lg:flex">
@@ -119,7 +164,11 @@ function DiscoveryRail() {
             <Bell size={14} />
             Notificaciones
           </h2>
-          {onlineCount > 0 ? (
+          {alertCount > 0 ? (
+            <span className="rounded-full bg-fuchsia-500 px-2 py-0.5 text-[10px] font-bold text-white">
+              {alertCount}
+            </span>
+          ) : onlineCount > 0 ? (
             <span className="rounded-full bg-fuchsia-500 px-2 py-0.5 text-[10px] font-bold text-white">
               {onlineCount}
             </span>
@@ -236,29 +285,23 @@ function DiscoveryRail() {
 export function NotificationBell() {
   const profile = useAuthStore((state) => state.profile);
   const [count, setCount] = useState(0);
+  const knownIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (!profile) {
       setCount(0);
       return;
     }
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const data = await api<{ streams: ActiveStream[] }>('/api/stream/friends-live');
-        if (!cancelled) setCount((data.streams || []).length);
-      } catch {
-        if (!cancelled) setCount(0);
+    return listenIncomingRequests(profile.firebaseUid, (list) => {
+      if (knownIds.current == null) {
+        knownIds.current = new Set(list.map((item) => item.id));
+      } else {
+        const fresh = list.filter((item) => !knownIds.current!.has(item.id));
+        if (fresh.length > 0) playFriendRequestAlert();
+        knownIds.current = new Set(list.map((item) => item.id));
       }
-    }
-
-    void poll();
-    const timer = window.setInterval(() => void poll(), 20000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
+      setCount(list.length);
+    });
   }, [profile?.firebaseUid]);
 
   if (!profile || count === 0) {
@@ -271,9 +314,9 @@ export function NotificationBell() {
 
   return (
     <Link
-      to="/"
+      to="/buscar"
       className="relative grid h-9 w-9 place-items-center rounded-xl bg-zinc-900 text-cyan-400 ring-1 ring-cyan-500/30"
-      aria-label={`${count} amigos en vivo`}
+      aria-label={`${count} solicitudes`}
     >
       <Bell size={16} />
       <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-fuchsia-500 px-1 text-[9px] font-bold text-white">

@@ -10,8 +10,8 @@ import {
   type SocialPost,
 } from '../components/social/SocialPostCard';
 import { UserSearchBar } from '../components/social/UserSearchBar';
-import { api, apiPublic } from '../lib/api';
 import { ageFromIsoDate } from '../lib/birthDate';
+import { deletePost as deleteFsPost, getFriendshipStatus, listenFriends, listenPostsByUsername } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
 
 type PublicProfile = {
@@ -32,8 +32,6 @@ type UserChip = {
   displayName: string;
   avatarUrl: string | null;
 };
-
-const API_BASE = String(import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app').replace(/\/$/, '');
 
 export function UserProfileView() {
   const { username: usernameParam } = useParams();
@@ -57,6 +55,13 @@ export function UserProfileView() {
         const { fetchPublicUserByUsername } = await import('../lib/profileFirestore');
         const fsUser = await fetchPublicUserByUsername(username);
         if (fsUser) {
+          let friendshipStatus: FriendshipStatus = 'none';
+          if (profile) {
+            friendshipStatus =
+              profile.firebaseUid === fsUser.firebaseUid
+                ? 'self'
+                : await getFriendshipStatus(profile.firebaseUid, fsUser.username);
+          }
           if (!cancelled) {
             setPublicProfile({
               username: fsUser.username,
@@ -68,7 +73,7 @@ export function UserProfileView() {
               friendsCount: 0,
               isFollowing: false,
               isOwnProfile: Boolean(profile && profile.firebaseUid === fsUser.firebaseUid),
-              friendshipStatus: profile && profile.firebaseUid === fsUser.firebaseUid ? 'self' : 'none',
+              friendshipStatus,
             });
             setError(null);
           }
@@ -91,45 +96,6 @@ export function UserProfileView() {
         } else {
           throw new Error('Usuario no encontrado');
         }
-
-        try {
-          const headers: HeadersInit = {};
-          if (profile) {
-            const token = await import('../lib/firebase').then((m) => m.auth.currentUser?.getIdToken());
-            if (token) headers.Authorization = `Bearer ${token}`;
-          }
-          const [socialRes, postsData] = await Promise.all([
-            fetch(`${API_BASE}/api/social/profile/${encodeURIComponent(username)}`, { headers })
-              .then(async (r) => {
-                const body = (await r.json()) as { profile?: PublicProfile };
-                return r.ok ? body.profile : null;
-              })
-              .catch(() => null),
-            fetch(`${API_BASE}/api/social/posts/${encodeURIComponent(username)}`, { headers })
-              .then((r) => r.json() as Promise<{ posts: SocialPost[] }>)
-              .catch(() => ({ posts: [] as SocialPost[] })),
-          ]);
-          if (!cancelled) {
-            if (socialRes) {
-              setPublicProfile((current) =>
-                current
-                  ? {
-                      ...current,
-                      followersCount: socialRes.followersCount,
-                      followingCount: socialRes.followingCount,
-                      friendsCount: socialRes.friendsCount,
-                      isFollowing: socialRes.isFollowing,
-                      friendshipStatus: socialRes.friendshipStatus,
-                      isOwnProfile: socialRes.isOwnProfile || current.isOwnProfile,
-                    }
-                  : socialRes,
-              );
-            }
-            setPosts(postsData.posts || []);
-          }
-        } catch {
-          if (!cancelled) setPosts([]);
-        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'No se pudo cargar el perfil');
@@ -141,35 +107,54 @@ export function UserProfileView() {
     return () => {
       cancelled = true;
     };
-  }, [username, profile]);
+  }, [username, profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!username) return;
+    return listenPostsByUsername(username, (list) => {
+      setPosts(
+        list.map((item) => ({
+          id: item.id,
+          authorUsername: item.username,
+          type: item.type,
+          caption: item.caption,
+          mediaUrl: item.mediaUrl,
+          createdAt: item.createdAt,
+          likes: item.likes,
+          dislikes: 0,
+          viewerReaction: null,
+        })),
+      );
+    });
+  }, [username]);
+
+  useEffect(() => {
+    if (!publicProfile?.isOwnProfile || !profile) return;
+    return listenFriends(profile.firebaseUid, (list) => {
+      setFriends(list);
+      setPublicProfile((current) =>
+        current ? { ...current, friendsCount: list.length } : current,
+      );
+    });
+  }, [publicProfile?.isOwnProfile, profile?.firebaseUid]);
 
   async function openFollowers() {
-    const data = await apiPublic<{ users: UserChip[] }>(
-      `/api/social/followers/${encodeURIComponent(username)}`,
-    );
-    setFollowers(data.users);
+    setFollowers([]);
     setModal('followers');
   }
 
   async function openFollowing() {
-    const data = await apiPublic<{ users: UserChip[] }>(
-      `/api/social/following/${encodeURIComponent(username)}`,
-    );
-    setFollowing(data.users);
+    setFollowing([]);
     setModal('following');
   }
 
   async function openFriends() {
-    const data = await apiPublic<{ friends: UserChip[] }>(
-      `/api/social/friends/${encodeURIComponent(username)}`,
-    );
-    setFriends(data.friends);
     setModal('friends');
   }
 
   async function deletePost(postId: string) {
-    await api(`/api/social/posts/${postId}`, { method: 'DELETE' });
-    setPosts((current) => current.filter((post) => post.id !== postId));
+    if (!profile) return;
+    await deleteFsPost(postId, profile.firebaseUid);
   }
 
   if (!ready) {

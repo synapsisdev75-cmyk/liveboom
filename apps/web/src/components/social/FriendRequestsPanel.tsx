@@ -1,39 +1,45 @@
 import { Bell, Check, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../lib/api';
-
-type RequestUser = {
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-};
+import { playFriendRequestAlert } from '../../lib/alertSound';
+import {
+  acceptFriendRequest,
+  listenIncomingRequests,
+  rejectFriendRequest,
+  type FriendRequest,
+} from '../../lib/socialFirestore';
+import { useAuthStore } from '../../store/authStore';
 
 export function FriendRequestsPanel() {
-  const [requests, setRequests] = useState<RequestUser[]>([]);
+  const profile = useAuthStore((state) => state.profile);
+  const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [open, setOpen] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-
-  async function load() {
-    try {
-      const data = await api<{ requests: RequestUser[] }>('/api/social/friends/requests');
-      const list = data.requests || [];
-      setRequests(list);
-      if (list.length > 0) setOpen(true);
-    } catch {
-      // ignore
-    }
-  }
+  const knownIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
-    void load();
-  }, []);
+    if (!profile) return;
+    return listenIncomingRequests(profile.firebaseUid, (list) => {
+      if (knownIds.current == null) {
+        knownIds.current = new Set(list.map((item) => item.id));
+      } else {
+        const fresh = list.filter((item) => !knownIds.current!.has(item.id));
+        if (fresh.length > 0) {
+          playFriendRequestAlert();
+          setOpen(true);
+        }
+        knownIds.current = new Set(list.map((item) => item.id));
+      }
+      setRequests(list);
+    });
+  }, [profile?.firebaseUid]);
+
+  if (!profile) return null;
 
   async function accept(username: string) {
     setBusy(username);
     try {
-      await api(`/api/social/friends/accept/${encodeURIComponent(username)}`, { method: 'POST' });
-      setRequests((current) => current.filter((user) => user.username !== username));
+      await acceptFriendRequest(profile!.firebaseUid, username);
     } finally {
       setBusy(null);
     }
@@ -42,8 +48,7 @@ export function FriendRequestsPanel() {
   async function reject(username: string) {
     setBusy(username);
     try {
-      await api(`/api/social/friends/reject/${encodeURIComponent(username)}`, { method: 'POST' });
-      setRequests((current) => current.filter((user) => user.username !== username));
+      await rejectFriendRequest(profile!.firebaseUid, username);
     } finally {
       setBusy(null);
     }
@@ -72,13 +77,12 @@ export function FriendRequestsPanel() {
         <ul className="mt-3 space-y-2">
           {requests.length === 0 ? (
             <li className="rounded-xl border border-dashed border-white/10 bg-zinc-950/60 px-3 py-4 text-center text-xs text-zinc-500">
-              No tienes solicitudes pendientes. Cuando alguien te envíe una, aparecerá aquí con el botón
-              para aceptar.
+              No tienes solicitudes pendientes. Llegan aquí al instante, con sonido.
             </li>
           ) : (
             requests.map((user) => (
               <li
-                key={user.username}
+                key={user.id}
                 className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2"
               >
                 <Link to={`/u/${encodeURIComponent(user.username)}`} className="flex min-w-0 flex-1 items-center gap-2">

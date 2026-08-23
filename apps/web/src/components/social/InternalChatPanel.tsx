@@ -1,86 +1,140 @@
 import { MessageCircle, Send } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../lib/api';
-
-type Conversation = {
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-  lastMessage: string | null;
-  lastAt: string | null;
-};
-
-type ChatMessage = {
-  id: string;
-  text: string;
-  mine: boolean;
-  createdAt: string;
-};
+import { playMessageAlert } from '../../lib/alertSound';
+import {
+  ensureChat,
+  listenConversations,
+  listenFriends,
+  listenMessages,
+  sendChatMessage,
+  type ChatMessage,
+  type Conversation,
+  type FriendChip,
+} from '../../lib/socialFirestore';
+import { useAuthStore } from '../../store/authStore';
 
 type Props = {
   compact?: boolean;
 };
 
 export function InternalChatPanel({ compact = false }: Props) {
+  const profile = useAuthStore((state) => state.profile);
+  const [friends, setFriends] = useState<FriendChip[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [active, setActive] = useState<string | null>(null);
+  const [activeUid, setActiveUid] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastMsgCount = useRef(0);
 
   useEffect(() => {
-    void api<{ conversations: Conversation[] }>('/api/messages/conversations')
-      .then((data) => {
-        const list = data.conversations || [];
-        setConversations(list);
-        if (!compact && list.length > 0) {
-          const first = list[0];
-          if (first) setActive((current) => current ?? first.username);
-        }
-      })
-      .catch(() => undefined);
-  }, [compact]);
+    if (!profile) return;
+    return listenFriends(profile.firebaseUid, setFriends);
+  }, [profile?.firebaseUid]);
 
   useEffect(() => {
-    if (!active) {
+    if (!profile) return;
+    return listenConversations(profile.firebaseUid, setConversations);
+  }, [profile?.firebaseUid]);
+
+  const people = useMemo(() => {
+    const map = new Map<string, FriendChip & { lastMessage?: string | null; lastAt?: string | null }>();
+    for (const friend of friends) {
+      map.set(friend.uid, friend);
+    }
+    for (const chat of conversations) {
+      map.set(chat.uid, {
+        uid: chat.uid,
+        username: chat.username,
+        displayName: chat.displayName,
+        avatarUrl: chat.avatarUrl,
+        lastMessage: chat.lastMessage,
+        lastAt: chat.lastAt,
+      });
+    }
+    return [...map.values()].sort((a, b) =>
+      String(b.lastAt || '').localeCompare(String(a.lastAt || '')),
+    );
+  }, [friends, conversations]);
+
+  useEffect(() => {
+    if (!compact && people.length > 0 && !activeUid) {
+      const first = people[0];
+      if (first) setActiveUid(first.uid);
+    }
+  }, [people, compact, activeUid]);
+
+  const activeFriend = people.find((item) => item.uid === activeUid) || null;
+
+  useEffect(() => {
+    if (!profile || !activeFriend) {
+      setChatId(null);
       setMessages([]);
       return;
     }
-    void api<{ messages: ChatMessage[] }>(`/api/messages/${encodeURIComponent(active)}`)
-      .then((data) => setMessages(data.messages || []))
-      .catch(() => setMessages([]));
-  }, [active]);
+    let unsub: (() => void) | undefined;
+    void ensureChat(
+      {
+        firebaseUid: profile.firebaseUid,
+        handle: profile.handle,
+        displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+      },
+      activeFriend,
+    ).then((id) => {
+      setChatId(id);
+      lastMsgCount.current = 0;
+      unsub = listenMessages(id, profile.firebaseUid, (list) => {
+        if (list.length > lastMsgCount.current && lastMsgCount.current > 0) {
+          const newest = list[list.length - 1];
+          if (newest && !newest.mine) playMessageAlert();
+        }
+        lastMsgCount.current = list.length;
+        setMessages(list);
+      });
+    });
+    return () => unsub?.();
+  }, [profile?.firebaseUid, activeFriend?.uid]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, active]);
+  }, [messages, activeUid]);
 
   async function send() {
     const text = draft.trim();
-    if (!active || !text || busy) return;
+    if (!profile || !activeFriend || !text || busy) return;
     setBusy(true);
+    setError(null);
     try {
-      const data = await api<{ message: ChatMessage }>(
-        `/api/messages/${encodeURIComponent(active)}`,
-        { method: 'POST', body: JSON.stringify({ text }) },
+      await sendChatMessage(
+        {
+          firebaseUid: profile.firebaseUid,
+          handle: profile.handle,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+        },
+        activeFriend,
+        text,
       );
-      setMessages((current) => [...current, { ...data.message, mine: true }]);
       setDraft('');
-      setConversations((current) =>
-        current.map((item) =>
-          item.username === active
-            ? { ...item, lastMessage: text, lastAt: data.message.createdAt }
-            : item,
-        ),
-      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo enviar');
     } finally {
       setBusy(false);
     }
   }
 
-  const activeFriend = conversations.find((item) => item.username === active);
+  if (!profile) {
+    return (
+      <section className="rounded-2xl border border-white/10 bg-zinc-900 p-4 text-sm text-zinc-400">
+        Inicia sesión para chatear.
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-2xl border border-white/10 bg-zinc-900 p-4">
@@ -95,22 +149,22 @@ export function InternalChatPanel({ compact = false }: Props) {
           </Link>
         ) : null}
       </div>
-      <p className="mt-1 text-xs text-zinc-500">Mensajes privados solo con tus amigos.</p>
+      <p className="mt-1 text-xs text-zinc-500">Mensajes en tiempo real con tus amigos.</p>
 
-      {conversations.length === 0 ? (
+      {people.length === 0 ? (
         <p className="mt-3 rounded-xl border border-dashed border-white/10 bg-zinc-950/60 px-3 py-4 text-center text-xs text-zinc-500">
-          Aún no tienes amigos con chat. Acepta solicitudes o envía una para empezar a conversar.
+          Aún no tienes amigos. Acepta una solicitud para empezar a chatear.
         </p>
       ) : (
         <div className={`mt-3 grid gap-3 ${compact ? '' : 'md:grid-cols-[9rem_minmax(0,1fr)]'}`}>
           <ul className={`space-y-1 ${compact ? 'max-h-28 overflow-y-auto' : 'max-h-72 overflow-y-auto'}`}>
-            {conversations.map((friend) => (
-              <li key={friend.username}>
+            {people.map((friend) => (
+              <li key={friend.uid}>
                 <button
                   type="button"
-                  onClick={() => setActive(friend.username)}
+                  onClick={() => setActiveUid(friend.uid)}
                   className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs transition ${
-                    active === friend.username
+                    activeUid === friend.uid
                       ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30'
                       : 'text-zinc-300 hover:bg-zinc-800'
                   }`}
@@ -133,6 +187,7 @@ export function InternalChatPanel({ compact = false }: Props) {
               <>
                 <div className="border-b border-white/10 px-3 py-2 text-xs font-semibold text-white">
                   Chat con @{activeFriend.username}
+                  {chatId ? <span className="ml-2 text-[10px] font-normal text-emerald-400">en vivo</span> : null}
                 </div>
                 <div className={`flex-1 space-y-2 overflow-y-auto p-3 ${compact ? 'max-h-40' : 'max-h-64'}`}>
                   {messages.length === 0 ? (
@@ -153,6 +208,7 @@ export function InternalChatPanel({ compact = false }: Props) {
                   )}
                   <div ref={bottomRef} />
                 </div>
+                {error ? <p className="px-3 text-[11px] text-fuchsia-300">{error}</p> : null}
                 <form
                   className="flex items-center gap-2 border-t border-white/10 p-2"
                   onSubmit={(event) => {

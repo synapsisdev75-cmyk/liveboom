@@ -1,6 +1,7 @@
 import { Image, PenLine, Video } from 'lucide-react';
 import { useState } from 'react';
-import { api } from '../../lib/api';
+import { createPost } from '../../lib/socialFirestore';
+import { useAuthStore } from '../../store/authStore';
 import type { SocialPost } from './SocialPostCard';
 
 type Props = {
@@ -11,6 +12,7 @@ type Props = {
 type PostKind = 'photo' | 'video' | 'text';
 
 export function CreatePostModal({ username, onCreated }: Props) {
+  const profile = useAuthStore((state) => state.profile);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<PostKind>('text');
   const [caption, setCaption] = useState('');
@@ -50,19 +52,31 @@ export function CreatePostModal({ username, onCreated }: Props) {
   }
 
   async function publish() {
+    if (!profile) {
+      setError('Inicia sesión para publicar.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const result = await api<{ post: SocialPost }>('/api/social/posts', {
-        method: 'POST',
-        body: JSON.stringify({
-          username,
-          type: kind,
-          caption,
-          mediaUrl: kind === 'text' ? undefined : mediaUrl,
-        }),
+      const id = await createPost({
+        authorUid: profile.firebaseUid,
+        username,
+        type: kind,
+        caption,
+        mediaUrl: kind === 'text' ? null : mediaUrl,
       });
-      onCreated(result.post);
+      onCreated({
+        id,
+        authorUsername: username,
+        type: kind,
+        caption: caption.trim() || null,
+        mediaUrl: kind === 'text' ? null : mediaUrl,
+        createdAt: new Date().toISOString(),
+        likes: 0,
+        dislikes: 0,
+        viewerReaction: null,
+      });
       reset();
       setOpen(false);
     } catch (err) {
