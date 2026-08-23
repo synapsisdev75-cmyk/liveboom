@@ -4,7 +4,7 @@ type BrandVideoProps = {
   className?: string;
 };
 
-/** Logo animado pequeño (sin caja negra del video). */
+/** Logo principal en pantallas de auth. */
 export function BrandVideo({ className = '' }: BrandVideoProps) {
-  return <Logo iconOnly large className={className} />;
+  return <Logo large className={className} />;
 }

@@ -6,6 +6,7 @@ import { useUiStore } from '../../store/uiStore';
 import { CoinModal, RechargeButton } from '../wallet/CoinModal';
 import { NotificationBell, SideRailPanel } from './SideRailPanel';
 import { LegalFooter } from '../legal/LegalFooter';
+import { Logo } from '../brand/Logo';
 
 const sideNavItems = [
   { label: 'Inicio', icon: Home, to: '/' as const },
@@ -39,11 +40,8 @@ export function MainLayout() {
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-zinc-950 font-sans text-white lg:flex-row">
       {/* Top bar — mobile only */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 lg:hidden">
-        <Link
-          to="/"
-          className="bg-gradient-to-r from-cyan-400 to-fuchsia-500 bg-clip-text text-xl font-extrabold tracking-tight text-transparent"
-        >
-          Liveboom
+        <Link to="/" className="block">
+          <Logo compact />
         </Link>
         <div className="flex items-center gap-2">
           {profile ? <NotificationBell /> : null}
@@ -73,11 +71,8 @@ export function MainLayout() {
 
       {/* Left sidebar — desktop */}
       <aside className="hidden w-[20%] min-w-[220px] shrink-0 flex-col border-r border-zinc-800 px-5 py-6 lg:flex">
-        <Link
-          to="/"
-          className="bg-gradient-to-r from-cyan-400 to-fuchsia-500 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent"
-        >
-          Liveboom
+        <Link to="/" className="block">
+          <Logo />
         </Link>
 
         <nav className="mt-10 flex flex-1 flex-col gap-1">
