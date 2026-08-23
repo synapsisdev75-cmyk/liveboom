@@ -54,27 +54,81 @@ export function UserProfileView() {
 
     async function load() {
       try {
-        const headers: HeadersInit = {};
-        if (profile) {
-          const token = await import('../lib/firebase').then((m) => m.auth.currentUser?.getIdToken());
-          if (token) headers.Authorization = `Bearer ${token}`;
+        const { fetchPublicUserByUsername } = await import('../lib/profileDataConnect');
+        const dcUser = await fetchPublicUserByUsername(username);
+        if (dcUser) {
+          if (!cancelled) {
+            setPublicProfile({
+              username: dcUser.username,
+              displayName: dcUser.displayName,
+              avatarUrl: dcUser.avatarUrl,
+              bio: dcUser.bio,
+              followersCount: 0,
+              followingCount: 0,
+              friendsCount: 0,
+              isFollowing: false,
+              isOwnProfile: Boolean(profile && profile.firebaseUid === dcUser.firebaseUid),
+              friendshipStatus: profile && profile.firebaseUid === dcUser.firebaseUid ? 'self' : 'none',
+            });
+            setError(null);
+          }
+        } else if (profile && profile.handle.toLowerCase() === username.toLowerCase()) {
+          if (!cancelled) {
+            setPublicProfile({
+              username: profile.handle,
+              displayName: profile.displayName,
+              avatarUrl: profile.avatarUrl,
+              bio: profile.bio,
+              followersCount: 0,
+              followingCount: 0,
+              friendsCount: 0,
+              isFollowing: false,
+              isOwnProfile: true,
+              friendshipStatus: 'self',
+            });
+            setError(null);
+          }
+        } else {
+          throw new Error('Usuario no encontrado');
         }
-        const profileRes = await fetch(
-          `${API_BASE}/api/social/profile/${encodeURIComponent(username)}`,
-          { headers },
-        );
-        const profileData = (await profileRes.json()) as { profile?: PublicProfile; error?: string };
-        if (!profileRes.ok) throw new Error(profileData.error || 'Perfil no encontrado');
 
-        const postsData = await fetch(
-          `${API_BASE}/api/social/posts/${encodeURIComponent(username)}`,
-          { headers },
-        ).then((r) => r.json() as Promise<{ posts: SocialPost[] }>);
-
-        if (!cancelled) {
-          setPublicProfile(profileData.profile || null);
-          setPosts(postsData.posts || []);
-          setError(null);
+        try {
+          const headers: HeadersInit = {};
+          if (profile) {
+            const token = await import('../lib/firebase').then((m) => m.auth.currentUser?.getIdToken());
+            if (token) headers.Authorization = `Bearer ${token}`;
+          }
+          const [socialRes, postsData] = await Promise.all([
+            fetch(`${API_BASE}/api/social/profile/${encodeURIComponent(username)}`, { headers })
+              .then(async (r) => {
+                const body = (await r.json()) as { profile?: PublicProfile };
+                return r.ok ? body.profile : null;
+              })
+              .catch(() => null),
+            fetch(`${API_BASE}/api/social/posts/${encodeURIComponent(username)}`, { headers })
+              .then((r) => r.json() as Promise<{ posts: SocialPost[] }>)
+              .catch(() => ({ posts: [] as SocialPost[] })),
+          ]);
+          if (!cancelled) {
+            if (socialRes) {
+              setPublicProfile((current) =>
+                current
+                  ? {
+                      ...current,
+                      followersCount: socialRes.followersCount,
+                      followingCount: socialRes.followingCount,
+                      friendsCount: socialRes.friendsCount,
+                      isFollowing: socialRes.isFollowing,
+                      friendshipStatus: socialRes.friendshipStatus,
+                      isOwnProfile: socialRes.isOwnProfile || current.isOwnProfile,
+                    }
+                  : socialRes,
+              );
+            }
+            setPosts(postsData.posts || []);
+          }
+        } catch {
+          if (!cancelled) setPosts([]);
         }
       } catch (err) {
         if (!cancelled) {

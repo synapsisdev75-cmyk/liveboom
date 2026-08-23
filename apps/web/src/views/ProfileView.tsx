@@ -214,43 +214,61 @@ export function ProfileView() {
         uid: firebaseUser.uid,
         email: profile.email,
         username: handle,
+        displayName: name,
         avatarUrl: avatarToSave || null,
         bio: bio.trim(),
+        birthDate,
+        category,
       });
 
-      const updated = await api<ProfilePayload>('/api/users/profile', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          username: handle,
-          displayName: name,
-          bio: bio.trim(),
-          avatarUrl: avatarToSave,
-          birthDate,
-          category,
-        }),
-      });
-      const next = mapPostgresUser(updated);
-      const merged = dcSaved
-        ? {
-            ...next,
-            handle: dcSaved.handle,
+      if (!dcSaved) {
+        throw new Error('No se pudo guardar el perfil en Firebase.');
+      }
+
+      let next = {
+        ...dcSaved,
+        displayName: name,
+        birthDate,
+        category,
+      };
+
+      try {
+        const updated = await api<ProfilePayload>('/api/users/profile', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            username: handle,
             displayName: name,
-            avatarUrl: dcSaved.avatarUrl ?? next.avatarUrl,
-            bio: dcSaved.bio ?? next.bio,
-          }
-        : next;
+            bio: bio.trim(),
+            avatarUrl: avatarToSave,
+            birthDate,
+            category,
+          }),
+        });
+        next = {
+          ...mapPostgresUser(updated),
+          handle: dcSaved.handle,
+          displayName: name,
+          avatarUrl: dcSaved.avatarUrl ?? updated.avatarUrl,
+          bio: dcSaved.bio ?? updated.bio,
+          birthDate: updated.birthDate ?? birthDate,
+          category: updated.category ?? category,
+        };
+      } catch {
+        // Firebase ya guardó; Vercel es opcional
+      }
+
       setProfile({
-        ...merged,
-        coins: profile.coinsBalance,
-        coinsBalance: profile.coinsBalance,
+        ...next,
+        coins: next.coinsBalance,
+        coinsBalance: next.coinsBalance,
       });
       clearPendingBirth(firebaseUser.uid);
       const firebasePatch: { displayName: string; photoURL?: string } = { displayName: name };
-      if (updated.avatarUrl?.startsWith('http')) {
-        firebasePatch.photoURL = updated.avatarUrl;
+      if (avatarToSave.startsWith('http')) {
+        firebasePatch.photoURL = avatarToSave;
       }
       await updateProfile(firebaseUser, firebasePatch).catch(() => undefined);
-      setToast('Perfil guardado correctamente.', 'success');
+      setToast('Perfil guardado en Firebase.', 'success');
       window.setTimeout(() => setToast(null), 2800);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar el perfil');

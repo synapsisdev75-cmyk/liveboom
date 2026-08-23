@@ -2,6 +2,7 @@ mutation CreateMyProfile(
   $username: String!
   $email: String!
   $avatarUrl: String
+  $bio: String
 ) @auth(level: USER) {
   user_insert(
     data: {
@@ -9,6 +10,7 @@ mutation CreateMyProfile(
       username: $username
       email: $email
       avatarUrl: $avatarUrl
+      bio: $bio
     }
   )
 }
@@ -27,6 +29,82 @@ mutation UpdateMyProfile(
       avatarUrl: $avatarUrl
       bio: $bio
       updatedAt_expr: "request.time"
+    }
+  )
+}
+
+mutation StartMyStream(
+  $title: String!
+  $isPrivate: Boolean!
+  $lockPrice: Int
+) @auth(level: USER) @transaction {
+  query {
+    user: user(first: { where: { firebaseUid: { eq_expr: "auth.uid" } } }) {
+      id
+      username
+    }
+  }
+  stream_insert(
+    data: {
+      creatorId_expr: "response.query.user.id"
+      title: $title
+      status: "LIVE"
+      isPrivate: $isPrivate
+      lockPrice: $lockPrice
+    }
+  )
+}
+
+mutation EndMyStream($streamId: UUID!) @auth(level: USER, insecureReason: "El creador cierra su propio live; validamos ownership en app") {
+  stream_update(
+    id: $streamId
+    data: {
+      status: "ENDED"
+      endedAt_expr: "request.time"
+    }
+  )
+}
+
+mutation CreateMyTransaction(
+  $amount: Int!
+  $transactionType: String!
+  $status: String!
+  $referenceId: UUID
+) @auth(level: USER) @transaction {
+  query {
+    user: user(first: { where: { firebaseUid: { eq_expr: "auth.uid" } } }) {
+      id
+    }
+  }
+  transaction_insert(
+    data: {
+      userId_expr: "response.query.user.id"
+      amount: $amount
+      transactionType: $transactionType
+      status: $status
+      referenceId: $referenceId
+    }
+  )
+}
+
+mutation SendStreamGift(
+  $streamId: UUID!
+  $receiverId: UUID!
+  $giftId: UUID!
+  $quantity: Int!
+) @auth(level: USER) @transaction {
+  query {
+    sender: user(first: { where: { firebaseUid: { eq_expr: "auth.uid" } } }) {
+      id
+    }
+  }
+  streamGift_insert(
+    data: {
+      streamId: $streamId
+      senderId_expr: "response.query.sender.id"
+      receiverId: $receiverId
+      giftId: $giftId
+      quantity: $quantity
     }
   )
 }

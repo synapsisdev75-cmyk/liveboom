@@ -30,14 +30,42 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
     const value = query.trim();
     const timer = window.setTimeout(() => {
       setBusy(true);
-      const params = new URLSearchParams();
-      if (value.length >= 1) params.set('q', value);
-      if (category) params.set('category', category);
-      if (!value && !category) params.set('browse', '1');
-      void api<{ users: SearchUser[] }>(`/api/social/search?${params.toString()}`)
-        .then((data) => setResults(data.users || []))
-        .catch(() => setResults([]))
-        .finally(() => setBusy(false));
+      void (async () => {
+        try {
+          if (value.length >= 1) {
+            const { searchDataConnectUsers } = await import('../../lib/profileDataConnect');
+            const dcUsers = await searchDataConnectUsers(value);
+            let mapped: SearchUser[] = dcUsers
+              .filter((user) => !category || user.category === category)
+              .map((user) => ({
+                username: user.username,
+                displayName: user.displayName,
+                avatarUrl: user.avatarUrl,
+                bio: user.bio,
+                category: user.category,
+                friendshipStatus: 'none' as const,
+                isFollowing: false,
+              }));
+            if (mapped.length === 0) {
+              const params = new URLSearchParams({ q: value });
+              if (category) params.set('category', category);
+              const data = await api<{ users: SearchUser[] }>(`/api/social/search?${params.toString()}`);
+              mapped = data.users || [];
+            }
+            setResults(mapped);
+          } else {
+            const params = new URLSearchParams();
+            if (category) params.set('category', category);
+            else params.set('browse', '1');
+            const data = await api<{ users: SearchUser[] }>(`/api/social/search?${params.toString()}`);
+            setResults(data.users || []);
+          }
+        } catch {
+          setResults([]);
+        } finally {
+          setBusy(false);
+        }
+      })();
     }, 280);
     return () => window.clearTimeout(timer);
   }, [query, category]);

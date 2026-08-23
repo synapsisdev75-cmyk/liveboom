@@ -38,3 +38,49 @@ query MyWallet @auth(level: USER) {
     coinsBalance
   }
 }
+
+query GetUserByUsername($username: String!) @auth(level: PUBLIC, insecureReason: "Los perfiles públicos son visibles") {
+  users(where: { username: { eq: $username } }, limit: 1) {
+    id
+    firebaseUid
+    username
+    email
+    avatarUrl
+    bio
+    coinsBalance
+    createdAt
+  }
+}
+
+query SearchUsers($needle: String!) @auth(level: PUBLIC, insecureReason: "La búsqueda de creadores es pública") {
+  users(
+    where: {
+      _or: [
+        { username: { contains: $needle } }
+        { bio: { contains: $needle } }
+      ]
+    }
+    limit: 24
+  ) {
+    id
+    username
+    avatarUrl
+    bio
+    coinsBalance
+  }
+}
+
+query MyTransactions @auth(level: USER) {
+  transactions(
+    where: { user: { firebaseUid: { eq_expr: "auth.uid" } } }
+    orderBy: [{ createdAt: DESC }]
+    limit: 50
+  ) {
+    id
+    amount
+    transactionType
+    status
+    createdAt
+    referenceId
+  }
+}
