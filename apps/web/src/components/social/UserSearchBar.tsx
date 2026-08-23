@@ -28,22 +28,21 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
 
   useEffect(() => {
     const value = query.trim();
-    if (value.length < 2 && !category) {
-      setResults([]);
-      return;
-    }
     const timer = window.setTimeout(() => {
       setBusy(true);
       const params = new URLSearchParams();
-      if (value.length >= 2) params.set('q', value);
+      if (value.length >= 1) params.set('q', value);
       if (category) params.set('category', category);
+      if (!value && !category) params.set('browse', '1');
       void api<{ users: SearchUser[] }>(`/api/social/search?${params.toString()}`)
         .then((data) => setResults(data.users || []))
         .catch(() => setResults([]))
         .finally(() => setBusy(false));
-    }, 300);
+    }, 280);
     return () => window.clearTimeout(timer);
   }, [query, category]);
+
+  const showEmpty = !busy && results.length === 0 && (query.trim().length >= 1 || Boolean(category));
 
   return (
     <section className="rounded-2xl border border-white/10 bg-zinc-900 p-4">
@@ -53,21 +52,20 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar usuarios por @nombre o bio…"
+          placeholder="Buscar por @usuario, nombre o bio…"
           className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
         />
       </label>
-      {category && query.trim().length < 2 ? (
-        <p className="mt-2 text-xs text-zinc-500">
-          Mostrando creadores en {categoryLabel(category)}.
-        </p>
+      {!query && !category && results.length > 0 ? (
+        <p className="mt-2 text-xs text-zinc-500">Creadores en Liveboom</p>
+      ) : null}
+      {category && query.trim().length < 1 ? (
+        <p className="mt-2 text-xs text-zinc-500">Creadores en {categoryLabel(category)}.</p>
       ) : null}
       {busy ? <p className="mt-2 text-xs text-zinc-500">Buscando…</p> : null}
-      {(query.trim().length >= 2 || category) && !busy && results.length === 0 ? (
-        <p className="mt-2 text-xs text-zinc-500">Sin resultados.</p>
-      ) : null}
+      {showEmpty ? <p className="mt-2 text-xs text-zinc-500">Sin resultados.</p> : null}
       {results.length > 0 ? (
-        <ul className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+        <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
           {results.map((user) => (
             <li
               key={user.username}
@@ -82,7 +80,12 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white">@{user.username}</p>
+                  <p className="truncate text-sm font-semibold text-white">
+                    {user.displayName && user.displayName !== user.username
+                      ? user.displayName
+                      : `@${user.username}`}
+                  </p>
+                  <p className="truncate text-xs text-zinc-400">@{user.username}</p>
                   {user.category ? (
                     <p className="text-[10px] text-cyan-400">{categoryLabel(user.category)}</p>
                   ) : null}

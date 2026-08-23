@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Logo } from '../brand/Logo';
+import { BrandBackground } from './BrandBackground';
 import { BrandVideo } from './BrandVideo';
 import { LegalFooter } from '../legal/LegalFooter';
 import { ageFromBirthYear } from '../../lib/birthDate';
@@ -49,133 +49,124 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="grid min-h-[100dvh] bg-boom-bg lg:grid-cols-2">
-      <aside className="relative hidden items-center justify-center overflow-hidden bg-black lg:flex">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(0,240,255,0.08),_transparent_60%)]" />
-        <BrandVideo className="relative z-10 w-full max-w-lg px-8" />
-      </aside>
+    <div className="relative flex min-h-[100dvh] items-center justify-center px-4 py-8">
+      <BrandBackground />
 
-      <div className="relative flex flex-col justify-center px-4 py-8 sm:px-8">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,240,255,0.1),_transparent_55%)] lg:hidden" />
-        <div className="relative mx-auto w-full max-w-md">
-          <div className="mb-6 flex justify-center lg:hidden">
-            <BrandVideo className="h-40 w-full max-w-xs" />
-          </div>
+      <div className="relative z-10 w-full max-w-md">
+        <div className="mb-6 flex justify-center">
+          <BrandVideo />
+        </div>
 
-          <div className="rounded-3xl border border-white/10 bg-boom-panel/90 p-6 shadow-glow backdrop-blur-xl sm:p-8">
-            <div className="mb-6 hidden justify-center lg:flex">
-              <Logo />
-            </div>
-            <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
-              {mode === 'login' ? 'Entra a Liveboom' : 'Crea tu cuenta'}
-            </h1>
-            <p className="mt-2 text-center text-sm text-zinc-400">
-              Lives, regalos y comunidad en un solo lugar.
-            </p>
+        <div className="rounded-3xl border border-white/10 bg-boom-panel/88 p-6 shadow-glow backdrop-blur-xl sm:p-8">
+          <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
+            {mode === 'login' ? 'Entra a Liveboom' : 'Crea tu cuenta'}
+          </h1>
+          <p className="mt-2 text-center text-sm text-zinc-400">
+            Lives, regalos y comunidad en un solo lugar.
+          </p>
 
-            <form className="mt-8 space-y-3" onSubmit={(event) => void onSubmit(event)}>
-              {mode === 'register' ? (
+          <form className="mt-8 space-y-3" onSubmit={(event) => void onSubmit(event)}>
+            {mode === 'register' ? (
+              <input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nombre"
+                className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+              />
+            ) : null}
+            {mode === 'register' ? (
+              <label className="block text-left text-xs text-zinc-400">
+                Año de nacimiento
                 <input
                   required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Nombre"
-                  className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+                  type="number"
+                  min={minBirthYear}
+                  max={maxBirthYear}
+                  value={birthYear}
+                  onChange={(e) => setBirthYear(e.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
                 />
-              ) : null}
-              {mode === 'register' ? (
-                <label className="block text-left text-xs text-zinc-400">
-                  Año de nacimiento
-                  <input
-                    required
-                    type="number"
-                    min={minBirthYear}
-                    max={maxBirthYear}
-                    value={birthYear}
-                    onChange={(e) => setBirthYear(e.target.value)}
-                    className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-                  />
-                </label>
-              ) : null}
-              <input
-                required
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Correo"
-                className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-              />
-              <input
-                required
-                type="password"
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Contraseña"
-                className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-              />
-              {mode === 'register' ? (
-                <label className="flex items-start gap-2 text-left text-xs text-zinc-400">
-                  <input
-                    type="checkbox"
-                    checked={acceptedTerms}
-                    onChange={(e) => setAcceptedTerms(e.target.checked)}
-                    className="mt-0.5 accent-boom-cyan"
-                  />
-                  <span>
-                    Acepto los{' '}
-                    <Link to="/legal/terminos" className="text-boom-cyan underline">
-                      Términos y Condiciones
-                    </Link>
-                    , el{' '}
-                    <Link to="/legal/privacidad" className="text-boom-cyan underline">
-                      Aviso de Privacidad
-                    </Link>{' '}
-                    y la{' '}
-                    <Link to="/legal/cookies" className="text-boom-cyan underline">
-                      Política de Cookies
-                    </Link>
-                    .
-                  </span>
-                </label>
-              ) : null}
-              {localError ? <p className="text-sm text-boom-fuchsia">{localError}</p> : null}
-              {error ? <p className="text-sm text-boom-fuchsia">{error}</p> : null}
-              <button
-                type="submit"
-                disabled={busy}
-                className="h-11 w-full rounded-xl bg-gradient-to-r from-boom-cyan to-boom-orange text-sm font-bold text-zinc-950 transition hover:brightness-110 disabled:opacity-60"
-              >
-                {busy ? 'Entrando…' : mode === 'login' ? 'Continuar' : 'Crear cuenta'}
-              </button>
-            </form>
-
-            <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-              <span className="h-px flex-1 bg-white/10" />
-              o
-              <span className="h-px flex-1 bg-white/10" />
-            </div>
-
+              </label>
+            ) : null}
+            <input
+              required
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Correo"
+              className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+            />
+            <input
+              required
+              type="password"
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Contraseña"
+              className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+            />
+            {mode === 'register' ? (
+              <label className="flex items-start gap-2 text-left text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 accent-boom-cyan"
+                />
+                <span>
+                  Acepto los{' '}
+                  <Link to="/legal/terminos" className="text-boom-cyan underline">
+                    Términos y Condiciones
+                  </Link>
+                  , el{' '}
+                  <Link to="/legal/privacidad" className="text-boom-cyan underline">
+                    Aviso de Privacidad
+                  </Link>{' '}
+                  y la{' '}
+                  <Link to="/legal/cookies" className="text-boom-cyan underline">
+                    Política de Cookies
+                  </Link>
+                  .
+                </span>
+              </label>
+            ) : null}
+            {localError ? <p className="text-sm text-boom-fuchsia">{localError}</p> : null}
+            {error ? <p className="text-sm text-boom-fuchsia">{error}</p> : null}
             <button
-              type="button"
+              type="submit"
               disabled={busy}
-              onClick={() => void signInGoogle().catch(() => undefined)}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900"
+              className="h-11 w-full rounded-xl bg-gradient-to-r from-boom-cyan to-boom-orange text-sm font-bold text-zinc-950 transition hover:brightness-110 disabled:opacity-60"
             >
-              <GoogleIcon />
-              Continuar con Google
+              {busy ? 'Entrando…' : mode === 'login' ? 'Continuar' : 'Crear cuenta'}
             </button>
+          </form>
 
-            <button
-              type="button"
-              className="mt-6 w-full text-center text-sm text-zinc-400 hover:text-white"
-              onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-            >
-              {mode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
-            </button>
-
-            <LegalFooter compact />
+          <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+            <span className="h-px flex-1 bg-white/10" />
+            o
+            <span className="h-px flex-1 bg-white/10" />
           </div>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void signInGoogle().catch(() => undefined)}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900"
+          >
+            <GoogleIcon />
+            Continuar con Google
+          </button>
+
+          <button
+            type="button"
+            className="mt-6 w-full text-center text-sm text-zinc-400 hover:text-white"
+            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+          >
+            {mode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+          </button>
+
+          <LegalFooter compact />
         </div>
       </div>
     </div>

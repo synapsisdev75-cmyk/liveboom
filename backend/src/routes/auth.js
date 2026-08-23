@@ -71,7 +71,21 @@ router.post('/sync', requireAuth, async (req, res) => {
       },
     });
 
-    res.json(user);
+    const memory = getProfile(uid);
+    const saved = saveProfile(uid, {
+      id: user.id,
+      firebaseUid: user.firebaseUid,
+      email: user.email,
+      username: memory?.username || user.username,
+      displayName: memory?.displayName || displayName || user.username,
+      avatarUrl: memory?.avatarUrl ?? user.avatarUrl ?? avatarUrl,
+      bio: memory?.bio ?? user.bio ?? null,
+      birthDate: memory?.birthDate ?? (user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null),
+      category: memory?.category ?? null,
+      coinsBalance: getBalance(uid),
+    });
+
+    res.json({ ...saved, coinsBalance: getBalance(uid) });
   } catch (error) {
     console.error('[auth/sync]', error);
     res.json(fallbackUser(uid, email, username, avatarUrl, displayName));

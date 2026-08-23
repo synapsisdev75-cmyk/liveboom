@@ -1,16 +1,10 @@
-export function BrandVideo({ className = '' }: { className?: string }) {
-  return (
-    <video
-      className={`object-contain ${className}`}
-      autoPlay
-      loop
-      muted
-      playsInline
-      preload="auto"
-      poster="/brand/logo.png"
-      aria-label="Animación de marca Liveboom"
-    >
-      <source src="/brand/logo-reveal.mp4" type="video/mp4" />
-    </video>
-  );
+import { Logo } from '../brand/Logo';
+
+type BrandVideoProps = {
+  className?: string;
+};
+
+/** Logo animado pequeño (sin caja negra del video). */
+export function BrandVideo({ className = '' }: BrandVideoProps) {
+  return <Logo iconOnly large className={className} />;
 }

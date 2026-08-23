@@ -19,7 +19,7 @@ function getProfile(uid) {
   return profiles.get(String(uid)) || null;
 }
 
-function saveProfile(uid, data) {
+function saveProfile(uid, data, { persist: shouldPersist = true } = {}) {
   const key = String(uid);
   const prev = profiles.get(key) || {};
   const next = {
@@ -31,9 +31,63 @@ function saveProfile(uid, data) {
     createdAt: prev.createdAt || data.createdAt || new Date().toISOString(),
   };
   profiles.set(key, next);
-  flush();
+  if (shouldPersist) flush();
   return next;
 }
+
+function profileHaystack(profile) {
+  return [
+    profile.username,
+    profile.displayName,
+    profile.bio,
+    profile.email,
+    profile.category,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function matchesProfile(profile, needle, cat) {
+  if (cat && String(profile.category || '').toLowerCase() !== cat) return false;
+  if (!needle) return true;
+  const tokens = needle.split(/\s+/).filter(Boolean);
+  const haystack = profileHaystack(profile);
+  return tokens.every((token) => haystack.includes(token));
+}
+
+async function hydrateFromDatabase() {
+  const { prisma, hasDatabase } = require('./prisma');
+  if (!hasDatabase || !prisma) return;
+  try {
+    const users = await prisma.user.findMany({ take: 500, orderBy: { updatedAt: 'desc' } });
+    for (const user of users) {
+      const existing = getProfile(user.firebaseUid);
+      saveProfile(
+        user.firebaseUid,
+        {
+          id: user.id,
+          firebaseUid: user.firebaseUid,
+          email: user.email,
+          username: user.username,
+          displayName: existing?.displayName || user.username,
+          avatarUrl: user.avatarUrl,
+          bio: user.bio,
+          birthDate: user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null,
+          category: existing?.category || null,
+        },
+        { persist: false },
+      );
+    }
+    flush();
+  } catch (error) {
+    console.warn('[profileMemory] hydrateFromDatabase:', error.message);
+  }
+}
+
+void hydrateFromDatabase();
 
 function findByUsername(username) {
   const needle = String(username || '')
@@ -59,18 +113,12 @@ function listProfiles(query, { limit = 20, excludeUid, category } = {}) {
   const results = [];
   for (const profile of profiles.values()) {
     if (excludeUid && profile.firebaseUid === excludeUid) continue;
-    if (cat && String(profile.category || '').toLowerCase() !== cat) continue;
-    const username = String(profile.username || '').toLowerCase();
-    const bio = String(profile.bio || '').toLowerCase();
-    const displayName = String(profile.displayName || '').toLowerCase();
-    if (!needle || username.includes(needle) || bio.includes(needle) || displayName.includes(needle)) {
-      results.push(profile);
-    }
-    if (results.length >= limit) break;
+    if (!matchesProfile(profile, needle, cat)) continue;
+    results.push(profile);
   }
-  return results.sort((a, b) =>
-    String(a.username).localeCompare(String(b.username), 'es'),
-  );
+  return results
+    .sort((a, b) => String(a.username).localeCompare(String(b.username), 'es'))
+    .slice(0, limit);
 }
 
 module.exports = { getProfile, saveProfile, findByUsername, listProfiles };
