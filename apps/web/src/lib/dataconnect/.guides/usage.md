@@ -12,10 +12,12 @@ For each operation, there is a wrapper hook that can be used to call the operati
 
 Here are all of the hooks that get generated:
 ```ts
-import { useCreateMyProfile, useListLiveStreams, useListGifts, useMyWallet } from '@liveboom/dataconnect/react';
+import { useCreateMyProfile, useUpdateMyProfile, useListLiveStreams, useListGifts, useMyWallet } from '@liveboom/dataconnect/react';
 // The types of these hooks are available in react/index.d.ts
 
 const { data, isPending, isSuccess, isError, error } = useCreateMyProfile(createMyProfileVars);
+
+const { data, isPending, isSuccess, isError, error } = useUpdateMyProfile(updateMyProfileVars);
 
 const { data, isPending, isSuccess, isError, error } = useListLiveStreams();
 
@@ -60,11 +62,14 @@ If a user is not using a supported framework, they can use the generated SDK dir
 Here's an example of how to use it with the first 5 operations:
 
 ```js
-import { createMyProfile, listLiveStreams, listGifts, myWallet } from '@liveboom/dataconnect';
+import { createMyProfile, updateMyProfile, listLiveStreams, listGifts, myWallet } from '@liveboom/dataconnect';
 
 
 // Operation CreateMyProfile:  For variables, look at type CreateMyProfileVars in ../index.d.ts
 const { data } = await CreateMyProfile(dataConnect, createMyProfileVars);
+
+// Operation UpdateMyProfile:  For variables, look at type UpdateMyProfileVars in ../index.d.ts
+const { data } = await UpdateMyProfile(dataConnect, updateMyProfileVars);
 
 // Operation ListLiveStreams: 
 const { data } = await ListLiveStreams(dataConnect);

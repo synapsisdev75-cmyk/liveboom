@@ -77,6 +77,17 @@ export interface Transaction_Key {
   __typename?: 'Transaction_Key';
 }
 
+export interface UpdateMyProfileData {
+  user_updateMany: number;
+}
+
+export interface UpdateMyProfileVariables {
+  username: string;
+  email: string;
+  avatarUrl?: string | null;
+  bio?: string | null;
+}
+
 export interface User_Key {
   id: UUIDString;
   __typename?: 'User_Key';
@@ -93,6 +104,18 @@ export const createMyProfileRef: CreateMyProfileRef;
 
 export function createMyProfile(vars: CreateMyProfileVariables): MutationPromise<CreateMyProfileData, CreateMyProfileVariables>;
 export function createMyProfile(dc: DataConnect, vars: CreateMyProfileVariables): MutationPromise<CreateMyProfileData, CreateMyProfileVariables>;
+
+interface UpdateMyProfileRef {
+  /* Allow users to create refs without passing in DataConnect */
+  (vars: UpdateMyProfileVariables): MutationRef<UpdateMyProfileData, UpdateMyProfileVariables>;
+  /* Allow users to pass in custom DataConnect instances */
+  (dc: DataConnect, vars: UpdateMyProfileVariables): MutationRef<UpdateMyProfileData, UpdateMyProfileVariables>;
+  operationName: string;
+}
+export const updateMyProfileRef: UpdateMyProfileRef;
+
+export function updateMyProfile(vars: UpdateMyProfileVariables): MutationPromise<UpdateMyProfileData, UpdateMyProfileVariables>;
+export function updateMyProfile(dc: DataConnect, vars: UpdateMyProfileVariables): MutationPromise<UpdateMyProfileData, UpdateMyProfileVariables>;
 
 interface ListLiveStreamsRef {
   /* Allow users to create refs without passing in DataConnect */

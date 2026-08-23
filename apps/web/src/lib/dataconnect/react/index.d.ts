@@ -1,4 +1,4 @@
-import { CreateMyProfileData, CreateMyProfileVariables, ListLiveStreamsData, ListGiftsData, MyWalletData } from '../';
+import { CreateMyProfileData, CreateMyProfileVariables, UpdateMyProfileData, UpdateMyProfileVariables, ListLiveStreamsData, ListGiftsData, MyWalletData } from '../';
 import { UseDataConnectQueryResult, useDataConnectQueryOptions, UseDataConnectMutationResult, useDataConnectMutationOptions} from '@tanstack-query-firebase/react/data-connect';
 import { UseQueryResult, UseMutationResult} from '@tanstack/react-query';
 import { DataConnect } from 'firebase/data-connect';
@@ -7,6 +7,9 @@ import { FirebaseError } from 'firebase/app';
 
 export function useCreateMyProfile(options?: useDataConnectMutationOptions<CreateMyProfileData, FirebaseError, CreateMyProfileVariables>): UseDataConnectMutationResult<CreateMyProfileData, CreateMyProfileVariables>;
 export function useCreateMyProfile(dc: DataConnect, options?: useDataConnectMutationOptions<CreateMyProfileData, FirebaseError, CreateMyProfileVariables>): UseDataConnectMutationResult<CreateMyProfileData, CreateMyProfileVariables>;
+
+export function useUpdateMyProfile(options?: useDataConnectMutationOptions<UpdateMyProfileData, FirebaseError, UpdateMyProfileVariables>): UseDataConnectMutationResult<UpdateMyProfileData, UpdateMyProfileVariables>;
+export function useUpdateMyProfile(dc: DataConnect, options?: useDataConnectMutationOptions<UpdateMyProfileData, FirebaseError, UpdateMyProfileVariables>): UseDataConnectMutationResult<UpdateMyProfileData, UpdateMyProfileVariables>;
 
 export function useListLiveStreams(options?: useDataConnectQueryOptions<ListLiveStreamsData>): UseDataConnectQueryResult<ListLiveStreamsData, undefined>;
 export function useListLiveStreams(dc: DataConnect, options?: useDataConnectQueryOptions<ListLiveStreamsData>): UseDataConnectQueryResult<ListLiveStreamsData, undefined>;

@@ -12,3 +12,21 @@ mutation CreateMyProfile(
     }
   )
 }
+
+mutation UpdateMyProfile(
+  $username: String!
+  $email: String!
+  $avatarUrl: String
+  $bio: String
+) @auth(level: USER) {
+  user_updateMany(
+    where: { firebaseUid: { eq_expr: "auth.uid" } }
+    data: {
+      username: $username
+      email: $email
+      avatarUrl: $avatarUrl
+      bio: $bio
+      updatedAt_expr: "request.time"
+    }
+  )
+}

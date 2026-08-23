@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { api, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
+import { ensureDataConnectProfile, fetchDataConnectProfile } from '../lib/profileDataConnect';
 import { storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
 
@@ -50,6 +51,50 @@ async function syncWithBackend(user: FirebaseUser) {
     /\/$/,
     '',
   );
+  const email = user.email ?? `${user.uid}@users.liveboom.local`;
+
+  try {
+    const dcProfile =
+      (await fetchDataConnectProfile(user.uid)) ??
+      (await ensureDataConnectProfile({
+        uid: user.uid,
+        email,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+      }));
+
+    if (dcProfile) {
+      try {
+        const token = await user.getIdToken();
+        await postAuthSync(token);
+        const response = await fetch(`${apiBase}/api/users/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        const data = (await response.json().catch(() => ({}))) as Parameters<
+          typeof mapPostgresUser
+        >[0];
+        if (response.ok && data.birthDate) {
+          return {
+            ...dcProfile,
+            displayName: data.displayName || dcProfile.displayName,
+            birthDate: data.birthDate ?? dcProfile.birthDate,
+            category: data.category ?? dcProfile.category,
+            coins: data.coinsBalance ?? dcProfile.coinsBalance,
+            coinsBalance: data.coinsBalance ?? dcProfile.coinsBalance,
+          };
+        }
+      } catch {
+        // campos extra opcionales desde API legacy
+      }
+      return dcProfile;
+    }
+  } catch {
+    // fallback al API si Data Connect no responde
+  }
+
   try {
     const token = await user.getIdToken();
     const synced = await postAuthSync(token);

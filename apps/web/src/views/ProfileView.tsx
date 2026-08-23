@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
 import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
 import { api, mapPostgresUser, type SessionUser } from '../lib/api';
+import { saveDataConnectProfile, fetchDataConnectProfile } from '../lib/profileDataConnect';
+import { dataUrlToBlob, isHttpUrl, uploadUserAvatar } from '../lib/storage';
 import {
   adultCutoffDate,
   ageFromIsoDate,
@@ -108,8 +110,39 @@ export function ProfileView() {
 
   useEffect(() => {
     if (!profile) return;
-    void api<ProfilePayload>('/api/users/profile')
-      .then((user) => {
+    void (async () => {
+      try {
+        const dcUser = await fetchDataConnectProfile(profile.firebaseUid);
+        let user: ProfilePayload | null = null;
+        if (dcUser) {
+          user = {
+            id: dcUser.id,
+            firebaseUid: dcUser.firebaseUid,
+            email: dcUser.email,
+            username: dcUser.handle,
+            displayName: dcUser.displayName,
+            avatarUrl: dcUser.avatarUrl,
+            bio: dcUser.bio,
+            birthDate: dcUser.birthDate,
+            category: dcUser.category,
+            coinsBalance: dcUser.coinsBalance,
+            createdAt: '',
+            updatedAt: '',
+          };
+        } else {
+          user = await api<ProfilePayload>('/api/users/profile');
+        }
+        try {
+          const legacy = await api<ProfilePayload>('/api/users/profile');
+          user = {
+            ...user,
+            birthDate: legacy.birthDate ?? user.birthDate,
+            category: legacy.category ?? user.category,
+            displayName: legacy.displayName || user.displayName,
+          };
+        } catch {
+          // campos extra solo en API legacy
+        }
         const next: SessionUser = mapPostgresUser(user);
         setProfile({ ...next, coins: profile.coins, coinsBalance: profile.coinsBalance });
         setDisplayName(user.displayName || user.username);
@@ -118,8 +151,10 @@ export function ProfileView() {
         setBirthDate(user.birthDate ?? readPendingBirthDate(profile.firebaseUid) ?? '');
         setCategory(user.category ?? 'musica');
         setAvatarUrl(user.avatarUrl ?? firebaseUser?.photoURL ?? '');
-      })
-      .catch(() => undefined);
+      } catch {
+        // ignore
+      }
+    })();
   }, [profile?.firebaseUid, setProfile]);
 
   async function onPickAvatar(file: File | undefined) {
@@ -168,19 +203,47 @@ export function ProfileView() {
 
     setBusy(true);
     try {
+      let avatarToSave = avatarUrl.trim();
+      if (avatarToSave && !isHttpUrl(avatarToSave)) {
+        const blob = await dataUrlToBlob(avatarToSave);
+        avatarToSave = await uploadUserAvatar(firebaseUser.uid, blob);
+        setAvatarUrl(avatarToSave);
+      }
+
+      const dcSaved = await saveDataConnectProfile({
+        uid: firebaseUser.uid,
+        email: profile.email,
+        username: handle,
+        avatarUrl: avatarToSave || null,
+        bio: bio.trim(),
+      });
+
       const updated = await api<ProfilePayload>('/api/users/profile', {
         method: 'PATCH',
         body: JSON.stringify({
           username: handle,
           displayName: name,
           bio: bio.trim(),
-          avatarUrl: avatarUrl.trim(),
+          avatarUrl: avatarToSave,
           birthDate,
           category,
         }),
       });
       const next = mapPostgresUser(updated);
-      setProfile({ ...next, coins: profile.coinsBalance, coinsBalance: profile.coinsBalance });
+      const merged = dcSaved
+        ? {
+            ...next,
+            handle: dcSaved.handle,
+            displayName: name,
+            avatarUrl: dcSaved.avatarUrl ?? next.avatarUrl,
+            bio: dcSaved.bio ?? next.bio,
+          }
+        : next;
+      setProfile({
+        ...merged,
+        coins: profile.coinsBalance,
+        coinsBalance: profile.coinsBalance,
+      });
       clearPendingBirth(firebaseUser.uid);
       const firebasePatch: { displayName: string; photoURL?: string } = { displayName: name };
       if (updated.avatarUrl?.startsWith('http')) {
