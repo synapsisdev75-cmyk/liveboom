@@ -64,172 +64,161 @@ export type FsPost = {
   viewerReaction: string | null;
 };
 
+type MeProfile = {
+  firebaseUid: string;
+  handle: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
 function chatIdFor(a: string, b: string) {
   return [a, b].sort().join('_');
 }
 
-function friendshipId(a: string, b: string) {
-  return [a, b].sort().join('_');
-}
-
 function asIso(value: unknown) {
-  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: () => Date }).toDate === 'function') {
+  if (
+    value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof (value as { toDate: () => Date }).toDate === 'function'
+  ) {
     return (value as { toDate: () => Date }).toDate().toISOString();
   }
   if (typeof value === 'string') return value;
   return new Date().toISOString();
 }
 
-export async function getFriendshipStatus(viewerUid: string, targetUsername: string): Promise<FriendshipStatus> {
+function chipFromData(uid: string, data: Record<string, unknown>): FriendChip {
+  return {
+    uid,
+    username: String(data.username || ''),
+    displayName: String(data.displayName || data.username || ''),
+    avatarUrl: (data.avatarUrl as string | null) ?? null,
+  };
+}
+
+function meToChip(me: MeProfile): FriendChip {
+  return {
+    uid: me.firebaseUid,
+    username: me.handle,
+    displayName: me.displayName,
+    avatarUrl: me.avatarUrl,
+  };
+}
+
+export async function getFriendshipStatus(
+  viewerUid: string,
+  targetUsername: string,
+): Promise<FriendshipStatus> {
   const target = await fetchPublicUserByUsername(targetUsername);
   if (!target) return 'none';
   if (target.firebaseUid === viewerUid) return 'self';
 
-  const friendSnap = await getDoc(doc(db, 'friendships', friendshipId(viewerUid, target.firebaseUid)));
+  const friendSnap = await getDoc(doc(db, 'users', viewerUid, 'friends', target.firebaseUid));
   if (friendSnap.exists()) return 'friends';
 
-  const sentQ = query(
-    collection(db, 'friendRequests'),
-    where('fromUid', '==', viewerUid),
-    where('toUid', '==', target.firebaseUid),
-    where('status', '==', 'pending'),
-    limit(1),
-  );
-  const sent = await getDocs(sentQ);
-  if (!sent.empty) return 'pending_sent';
+  const sentSnap = await getDoc(doc(db, 'users', viewerUid, 'outgoingRequests', target.firebaseUid));
+  if (sentSnap.exists()) return 'pending_sent';
 
-  const recvQ = query(
-    collection(db, 'friendRequests'),
-    where('fromUid', '==', target.firebaseUid),
-    where('toUid', '==', viewerUid),
-    where('status', '==', 'pending'),
-    limit(1),
-  );
-  const recv = await getDocs(recvQ);
-  if (!recv.empty) return 'pending_received';
+  const recvSnap = await getDoc(doc(db, 'users', viewerUid, 'incomingRequests', target.firebaseUid));
+  if (recvSnap.exists()) return 'pending_received';
 
   return 'none';
 }
 
-export async function sendFriendRequest(from: PublicFsUser | {
-  firebaseUid: string;
-  handle: string;
-  displayName: string;
-  avatarUrl: string | null;
-}, toUsername: string) {
+export async function sendFriendRequest(from: MeProfile | PublicFsUser, toUsername: string) {
+  const fromUid = from.firebaseUid;
+  const fromUsername = 'handle' in from ? from.handle : from.username;
   const target = await fetchPublicUserByUsername(toUsername);
-  if (!target) throw new Error('Usuario no encontrado');
-  if (target.firebaseUid === from.firebaseUid) throw new Error('No puedes enviarte solicitud a ti mismo');
+  if (!target) throw new Error('Usuario no encontrado en Firebase. Pídele que guarde su perfil.');
+  if (target.firebaseUid === fromUid) throw new Error('No puedes enviarte solicitud a ti mismo');
 
-  const status = await getFriendshipStatus(from.firebaseUid, toUsername);
+  const status = await getFriendshipStatus(fromUid, toUsername);
   if (status === 'friends') return;
   if (status === 'pending_sent') return;
   if (status === 'pending_received') {
-    await acceptFriendRequest(from.firebaseUid, toUsername);
+    await acceptFriendRequest(fromUid, toUsername);
     return;
   }
 
-  await addDoc(collection(db, 'friendRequests'), {
-    fromUid: from.firebaseUid,
-    toUid: target.firebaseUid,
-    fromUsername: 'handle' in from ? from.handle : from.username,
-    fromDisplayName: from.displayName,
-    fromAvatarUrl: from.avatarUrl,
-    toUsername: target.username,
-    status: 'pending',
+  const fromChip = {
+    username: fromUsername,
+    displayName: from.displayName,
+    avatarUrl: from.avatarUrl,
     createdAt: serverTimestamp(),
-  });
+  };
+  const toChip = {
+    username: target.username,
+    displayName: target.displayName,
+    avatarUrl: target.avatarUrl,
+    createdAt: serverTimestamp(),
+  };
+
+  await setDoc(doc(db, 'users', target.firebaseUid, 'incomingRequests', fromUid), fromChip);
+  await setDoc(doc(db, 'users', fromUid, 'outgoingRequests', target.firebaseUid), toChip);
 }
 
 export async function cancelFriendRequest(fromUid: string, toUsername: string) {
   const target = await fetchPublicUserByUsername(toUsername);
   if (!target) return;
-  const q = query(
-    collection(db, 'friendRequests'),
-    where('fromUid', '==', fromUid),
-    where('toUid', '==', target.firebaseUid),
-    where('status', '==', 'pending'),
-  );
-  const snaps = await getDocs(q);
-  await Promise.all(snaps.docs.map((item) => deleteDoc(item.ref)));
+  await deleteDoc(doc(db, 'users', fromUid, 'outgoingRequests', target.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', target.firebaseUid, 'incomingRequests', fromUid)).catch(() => undefined);
 }
 
 export async function rejectFriendRequest(toUid: string, fromUsername: string) {
   const from = await fetchPublicUserByUsername(fromUsername);
   if (!from) return;
-  const q = query(
-    collection(db, 'friendRequests'),
-    where('fromUid', '==', from.firebaseUid),
-    where('toUid', '==', toUid),
-    where('status', '==', 'pending'),
-  );
-  const snaps = await getDocs(q);
-  await Promise.all(snaps.docs.map((item) => deleteDoc(item.ref)));
+  await deleteDoc(doc(db, 'users', toUid, 'incomingRequests', from.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', from.firebaseUid, 'outgoingRequests', toUid)).catch(() => undefined);
 }
 
 export async function acceptFriendRequest(toUid: string, fromUsername: string) {
   const from = await fetchPublicUserByUsername(fromUsername);
-  const to = await getDoc(doc(db, 'users', toUid));
-  if (!from || !to.exists()) throw new Error('Usuario no encontrado');
-  const toData = to.data() as {
+  const toSnap = await getDoc(doc(db, 'users', toUid));
+  if (!from || !toSnap.exists()) throw new Error('Usuario no encontrado');
+  const toData = toSnap.data() as {
     username?: string;
     displayName?: string;
     avatarUrl?: string | null;
   };
 
-  const q = query(
-    collection(db, 'friendRequests'),
-    where('fromUid', '==', from.firebaseUid),
-    where('toUid', '==', toUid),
-    where('status', '==', 'pending'),
-  );
-  const snaps = await getDocs(q);
-  await Promise.all(snaps.docs.map((item) => updateDoc(item.ref, { status: 'accepted' })));
-
-  const id = friendshipId(toUid, from.firebaseUid);
-  await setDoc(doc(db, 'friendships', id), {
-    uids: [toUid, from.firebaseUid],
-    users: {
-      [toUid]: {
-        username: toData.username || '',
-        displayName: toData.displayName || toData.username || '',
-        avatarUrl: toData.avatarUrl ?? null,
-      },
-      [from.firebaseUid]: {
-        username: from.username,
-        displayName: from.displayName,
-        avatarUrl: from.avatarUrl,
-      },
-    },
+  const toChip = {
+    username: toData.username || '',
+    displayName: toData.displayName || toData.username || '',
+    avatarUrl: toData.avatarUrl ?? null,
     createdAt: serverTimestamp(),
-  });
+  };
+  const fromChip = {
+    username: from.username,
+    displayName: from.displayName,
+    avatarUrl: from.avatarUrl,
+    createdAt: serverTimestamp(),
+  };
+
+  await setDoc(doc(db, 'users', toUid, 'friends', from.firebaseUid), fromChip);
+  await setDoc(doc(db, 'users', from.firebaseUid, 'friends', toUid), toChip);
+  await deleteDoc(doc(db, 'users', toUid, 'incomingRequests', from.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', from.firebaseUid, 'outgoingRequests', toUid)).catch(() => undefined);
 }
 
 export async function removeFriendship(uid: string, otherUsername: string) {
   const other = await fetchPublicUserByUsername(otherUsername);
   if (!other) return;
-  await deleteDoc(doc(db, 'friendships', friendshipId(uid, other.firebaseUid)));
+  await deleteDoc(doc(db, 'users', uid, 'friends', other.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', other.firebaseUid, 'friends', uid)).catch(() => undefined);
 }
 
 export function listenIncomingRequests(
   uid: string,
   onChange: (requests: FriendRequest[]) => void,
 ): Unsubscribe {
-  const q = query(
-    collection(db, 'friendRequests'),
-    where('toUid', '==', uid),
-    where('status', '==', 'pending'),
-  );
-  return onSnapshot(q, (snap) => {
+  return onSnapshot(collection(db, 'users', uid, 'incomingRequests'), (snap) => {
     const list = snap.docs
       .map((item) => {
-        const data = item.data();
+        const data = item.data() as Record<string, unknown>;
         return {
           id: item.id,
-          uid: String(data.fromUid || ''),
-          username: String(data.fromUsername || ''),
-          displayName: String(data.fromDisplayName || data.fromUsername || ''),
-          avatarUrl: (data.fromAvatarUrl as string | null) ?? null,
+          ...chipFromData(item.id, data),
           createdAt: asIso(data.createdAt),
         };
       })
@@ -239,27 +228,76 @@ export function listenIncomingRequests(
 }
 
 export function listenFriends(uid: string, onChange: (friends: FriendChip[]) => void): Unsubscribe {
-  const q = query(collection(db, 'friendships'), where('uids', 'array-contains', uid));
-  return onSnapshot(q, (snap) => {
-    const friends: FriendChip[] = [];
-    for (const item of snap.docs) {
-      const data = item.data() as {
-        uids?: string[];
-        users?: Record<string, { username?: string; displayName?: string; avatarUrl?: string | null }>;
-      };
-      const otherUid = (data.uids || []).find((value) => value !== uid);
-      if (!otherUid || !data.users?.[otherUid]) continue;
-      const profile = data.users[otherUid];
-      friends.push({
-        uid: otherUid,
-        username: profile.username || '',
-        displayName: profile.displayName || profile.username || '',
-        avatarUrl: profile.avatarUrl ?? null,
-      });
-    }
-    friends.sort((a, b) => a.username.localeCompare(b.username, 'es'));
+  return onSnapshot(collection(db, 'users', uid, 'friends'), (snap) => {
+    const friends = snap.docs
+      .map((item) => chipFromData(item.id, item.data() as Record<string, unknown>))
+      .sort((a, b) => a.username.localeCompare(b.username, 'es'));
     onChange(friends);
   });
+}
+
+export async function listFriends(uid: string): Promise<FriendChip[]> {
+  const snap = await getDocs(collection(db, 'users', uid, 'friends'));
+  return snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>));
+}
+
+export async function followUser(me: MeProfile, targetUsername: string) {
+  const target = await fetchPublicUserByUsername(targetUsername);
+  if (!target) throw new Error('Usuario no encontrado');
+  if (target.firebaseUid === me.firebaseUid) throw new Error('No puedes seguirte a ti mismo');
+
+  const meChip = meToChip(me);
+  const targetChip = {
+    uid: target.firebaseUid,
+    username: target.username,
+    displayName: target.displayName,
+    avatarUrl: target.avatarUrl,
+  };
+
+  await setDoc(doc(db, 'users', me.firebaseUid, 'following', target.firebaseUid), {
+    ...targetChip,
+    createdAt: serverTimestamp(),
+  });
+  await setDoc(doc(db, 'users', target.firebaseUid, 'followers', me.firebaseUid), {
+    ...meChip,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function unfollowUser(meUid: string, targetUsername: string) {
+  const target = await fetchPublicUserByUsername(targetUsername);
+  if (!target) return;
+  await deleteDoc(doc(db, 'users', meUid, 'following', target.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', target.firebaseUid, 'followers', meUid)).catch(() => undefined);
+}
+
+export async function isFollowing(viewerUid: string, targetUsername: string) {
+  const target = await fetchPublicUserByUsername(targetUsername);
+  if (!target) return false;
+  const snap = await getDoc(doc(db, 'users', viewerUid, 'following', target.firebaseUid));
+  return snap.exists();
+}
+
+export function listenFollowers(uid: string, onChange: (users: FriendChip[]) => void): Unsubscribe {
+  return onSnapshot(collection(db, 'users', uid, 'followers'), (snap) => {
+    onChange(snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>)));
+  });
+}
+
+export function listenFollowing(uid: string, onChange: (users: FriendChip[]) => void): Unsubscribe {
+  return onSnapshot(collection(db, 'users', uid, 'following'), (snap) => {
+    onChange(snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>)));
+  });
+}
+
+export async function listFollowers(uid: string) {
+  const snap = await getDocs(collection(db, 'users', uid, 'followers'));
+  return snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>));
+}
+
+export async function listFollowing(uid: string) {
+  const snap = await getDocs(collection(db, 'users', uid, 'following'));
+  return snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>));
 }
 
 export function listenConversations(
@@ -314,10 +352,7 @@ export function listenMessages(
   });
 }
 
-export async function ensureChat(
-  me: { firebaseUid: string; handle: string; displayName: string; avatarUrl: string | null },
-  friend: FriendChip,
-) {
+export async function ensureChat(me: MeProfile, friend: FriendChip) {
   const id = chatIdFor(me.firebaseUid, friend.uid);
   const ref = doc(db, 'chats', id);
   const existing = await getDoc(ref);
@@ -344,11 +379,7 @@ export async function ensureChat(
   return id;
 }
 
-export async function sendChatMessage(
-  me: { firebaseUid: string; handle: string; displayName: string; avatarUrl: string | null },
-  friend: FriendChip,
-  text: string,
-) {
+export async function sendChatMessage(me: MeProfile, friend: FriendChip, text: string) {
   const body = text.trim().slice(0, 2000);
   if (!body) throw new Error('Escribe un mensaje');
   const id = await ensureChat(me, friend);
@@ -364,15 +395,8 @@ export async function sendChatMessage(
   return id;
 }
 
-export function listenPostsByUsername(
-  username: string,
-  onChange: (posts: FsPost[]) => void,
-): Unsubscribe {
-  const q = query(
-    collection(db, 'posts'),
-    where('username', '==', username.toLowerCase()),
-    limit(60),
-  );
+export function listenPostsByUsername(username: string, onChange: (posts: FsPost[]) => void): Unsubscribe {
+  const q = query(collection(db, 'posts'), where('username', '==', username.toLowerCase()), limit(60));
   return onSnapshot(
     q,
     (snap) => {
@@ -429,7 +453,11 @@ export async function createPost(input: {
   let mediaUrl = input.mediaUrl || null;
   if (mediaUrl?.startsWith('data:')) {
     const blob = await (await fetch(mediaUrl)).blob();
-    mediaUrl = await uploadUserMedia(input.authorUid, blob, input.type === 'video' ? 'clip.mp4' : 'photo.jpg');
+    mediaUrl = await uploadUserMedia(
+      input.authorUid,
+      blob,
+      input.type === 'video' ? 'clip.mp4' : 'photo.jpg',
+    );
   }
   const ref = await addDoc(collection(db, 'posts'), {
     authorUid: input.authorUid,

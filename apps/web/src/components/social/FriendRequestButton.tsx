@@ -31,6 +31,7 @@ export function FriendRequestButton({
   const profile = useAuthStore((state) => state.profile);
   const [status, setStatus] = useState(initialStatus);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setStatus(initialStatus);
@@ -38,10 +39,12 @@ export function FriendRequestButton({
 
   useEffect(() => {
     if (!profile || isOwnProfile) return;
-    void getFriendshipStatus(profile.firebaseUid, username).then((next) => {
-      setStatus(next);
-      onChange?.(next);
-    });
+    void getFriendshipStatus(profile.firebaseUid, username)
+      .then((next) => {
+        setStatus(next);
+        onChange?.(next);
+      })
+      .catch(() => undefined);
   }, [profile?.firebaseUid, username, isOwnProfile]);
 
   if (isOwnProfile || status === 'self' || !profile) return null;
@@ -52,96 +55,104 @@ export function FriendRequestButton({
 
   async function run(action: () => Promise<void>, next: FriendshipStatus) {
     setBusy(true);
+    setError(null);
     try {
       await action();
       setStatus(next);
       onChange?.(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo completar la acción');
     } finally {
       setBusy(false);
     }
   }
 
-  if (status === 'friends') {
+  const body = (() => {
+    if (status === 'friends') {
+      return (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void run(() => removeFriendship(profile.firebaseUid, username), 'none')}
+          className={`${className} border border-emerald-500/40 bg-emerald-500/10 text-emerald-300`}
+        >
+          <UserCheck size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}
+          {compact ? 'Amigos' : 'Amigos · Quitar'}
+        </button>
+      );
+    }
+
+    if (status === 'pending_sent') {
+      return (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void run(() => cancelFriendRequest(profile.firebaseUid, username), 'none')}
+          className={`${className} border border-zinc-600 bg-zinc-800 text-zinc-300`}
+        >
+          {compact ? 'Pendiente' : 'Solicitud enviada'}
+        </button>
+      );
+    }
+
+    if (status === 'pending_received') {
+      return (
+        <div className={`flex gap-2 ${compact ? 'flex-col' : ''}`}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(() => acceptFriendRequest(profile.firebaseUid, username), 'friends')
+            }
+            className={`${className} bg-emerald-500/20 text-emerald-300`}
+          >
+            <UserCheck size={compact ? 14 : 16} /> Aceptar
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(() => rejectFriendRequest(profile.firebaseUid, username), 'none')
+            }
+            className={`${className} border border-zinc-600 text-zinc-400`}
+          >
+            <UserX size={compact ? 14 : 16} /> Rechazar
+          </button>
+        </div>
+      );
+    }
+
     return (
       <button
         type="button"
         disabled={busy}
         onClick={() =>
-          void run(() => removeFriendship(profile.firebaseUid, username), 'none')
+          void run(
+            () =>
+              sendFriendRequest(
+                {
+                  firebaseUid: profile.firebaseUid,
+                  handle: profile.handle,
+                  displayName: profile.displayName,
+                  avatarUrl: profile.avatarUrl,
+                },
+                username,
+              ),
+            'pending_sent',
+          )
         }
-        className={`${className} border border-emerald-500/40 bg-emerald-500/10 text-emerald-300`}
+        className={`${className} bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950`}
       >
-        <UserCheck size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}
-        {compact ? 'Amigos' : 'Amigos · Quitar'}
+        <UserPlus size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}
+        {compact ? 'Amistad' : 'Solicitud de amistad'}
       </button>
     );
-  }
-
-  if (status === 'pending_sent') {
-    return (
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() =>
-          void run(() => cancelFriendRequest(profile.firebaseUid, username), 'none')
-        }
-        className={`${className} border border-zinc-600 bg-zinc-800 text-zinc-300`}
-      >
-        {compact ? 'Pendiente' : 'Solicitud enviada'}
-      </button>
-    );
-  }
-
-  if (status === 'pending_received') {
-    return (
-      <div className={`flex gap-2 ${compact ? 'flex-col' : ''}`}>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            void run(() => acceptFriendRequest(profile.firebaseUid, username), 'friends')
-          }
-          className={`${className} bg-emerald-500/20 text-emerald-300`}
-        >
-          <UserCheck size={compact ? 14 : 16} /> Aceptar
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() =>
-            void run(() => rejectFriendRequest(profile.firebaseUid, username), 'none')
-          }
-          className={`${className} border border-zinc-600 text-zinc-400`}
-        >
-          <UserX size={compact ? 14 : 16} /> Rechazar
-        </button>
-      </div>
-    );
-  }
+  })();
 
   return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() =>
-        void run(
-          () =>
-            sendFriendRequest(
-              {
-                firebaseUid: profile.firebaseUid,
-                handle: profile.handle,
-                displayName: profile.displayName,
-                avatarUrl: profile.avatarUrl,
-              },
-              username,
-            ),
-          'pending_sent',
-        )
-      }
-      className={`${className} bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950`}
-    >
-      <UserPlus size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}
-      {compact ? 'Amistad' : 'Solicitud de amistad'}
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      {body}
+      {error ? <p className="max-w-[12rem] text-right text-[10px] text-fuchsia-300">{error}</p> : null}
+    </div>
   );
 }

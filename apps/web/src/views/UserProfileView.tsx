@@ -11,7 +11,7 @@ import {
 } from '../components/social/SocialPostCard';
 import { UserSearchBar } from '../components/social/UserSearchBar';
 import { ageFromIsoDate } from '../lib/birthDate';
-import { deletePost as deleteFsPost, getFriendshipStatus, listenFriends, listenPostsByUsername } from '../lib/socialFirestore';
+import { deletePost as deleteFsPost, getFriendshipStatus, isFollowing, listenFollowers, listenFollowing, listenFriends, listenPostsByUsername, listFollowers, listFollowing, listFriends } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
 
 type PublicProfile = {
@@ -19,6 +19,7 @@ type PublicProfile = {
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;
+  uid: string;
   followersCount: number;
   followingCount: number;
   friendsCount: number;
@@ -56,14 +57,19 @@ export function UserProfileView() {
         const fsUser = await fetchPublicUserByUsername(username);
         if (fsUser) {
           let friendshipStatus: FriendshipStatus = 'none';
+          let followingNow = false;
           if (profile) {
             friendshipStatus =
               profile.firebaseUid === fsUser.firebaseUid
                 ? 'self'
                 : await getFriendshipStatus(profile.firebaseUid, fsUser.username);
+            if (friendshipStatus !== 'self') {
+              followingNow = await isFollowing(profile.firebaseUid, fsUser.username);
+            }
           }
           if (!cancelled) {
             setPublicProfile({
+              uid: fsUser.firebaseUid,
               username: fsUser.username,
               displayName: fsUser.displayName,
               avatarUrl: fsUser.avatarUrl,
@@ -71,7 +77,7 @@ export function UserProfileView() {
               followersCount: 0,
               followingCount: 0,
               friendsCount: 0,
-              isFollowing: false,
+              isFollowing: followingNow,
               isOwnProfile: Boolean(profile && profile.firebaseUid === fsUser.firebaseUid),
               friendshipStatus,
             });
@@ -80,6 +86,7 @@ export function UserProfileView() {
         } else if (profile && profile.handle.toLowerCase() === username.toLowerCase()) {
           if (!cancelled) {
             setPublicProfile({
+              uid: profile.firebaseUid,
               username: profile.handle,
               displayName: profile.displayName,
               avatarUrl: profile.avatarUrl,
@@ -129,26 +136,47 @@ export function UserProfileView() {
   }, [username]);
 
   useEffect(() => {
-    if (!publicProfile?.isOwnProfile || !profile) return;
-    return listenFriends(profile.firebaseUid, (list) => {
+    if (!publicProfile?.uid) return;
+    const unsubFriends = listenFriends(publicProfile.uid, (list) => {
       setFriends(list);
       setPublicProfile((current) =>
         current ? { ...current, friendsCount: list.length } : current,
       );
     });
-  }, [publicProfile?.isOwnProfile, profile?.firebaseUid]);
+    const unsubFollowers = listenFollowers(publicProfile.uid, (list) => {
+      setFollowers(list);
+      setPublicProfile((current) =>
+        current ? { ...current, followersCount: list.length } : current,
+      );
+    });
+    const unsubFollowing = listenFollowing(publicProfile.uid, (list) => {
+      setFollowing(list);
+      setPublicProfile((current) =>
+        current ? { ...current, followingCount: list.length } : current,
+      );
+    });
+    return () => {
+      unsubFriends();
+      unsubFollowers();
+      unsubFollowing();
+    };
+  }, [publicProfile?.uid]);
 
   async function openFollowers() {
-    setFollowers([]);
+    if (!publicProfile) return;
+    setFollowers(await listFollowers(publicProfile.uid));
     setModal('followers');
   }
 
   async function openFollowing() {
-    setFollowing([]);
+    if (!publicProfile) return;
+    setFollowing(await listFollowing(publicProfile.uid));
     setModal('following');
   }
 
   async function openFriends() {
+    if (!publicProfile) return;
+    setFriends(await listFriends(publicProfile.uid));
     setModal('friends');
   }
 

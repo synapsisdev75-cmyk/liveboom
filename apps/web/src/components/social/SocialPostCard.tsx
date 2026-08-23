@@ -1,7 +1,8 @@
 import { ThumbsDown, ThumbsUp, UserMinus, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../lib/api';
+import { followUser, isFollowing, unfollowUser } from '../../lib/socialFirestore';
+import { useAuthStore } from '../../store/authStore';
 
 type Props = {
   username: string;
@@ -11,44 +12,70 @@ type Props = {
 };
 
 export function FollowButton({ username, initialFollowing, isOwnProfile, onChange }: Props) {
+  const profile = useAuthStore((state) => state.profile);
   const [following, setFollowing] = useState(initialFollowing);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  if (isOwnProfile) return null;
+  useEffect(() => {
+    setFollowing(initialFollowing);
+  }, [initialFollowing, username]);
+
+  useEffect(() => {
+    if (!profile || isOwnProfile) return;
+    void isFollowing(profile.firebaseUid, username).then((value) => {
+      setFollowing(value);
+      onChange?.(value);
+    });
+  }, [profile?.firebaseUid, username, isOwnProfile]);
+
+  if (isOwnProfile || !profile) return null;
 
   async function toggle() {
     setBusy(true);
+    setError(null);
     try {
       if (following) {
-        await api(`/api/social/follow/${encodeURIComponent(username)}`, { method: 'DELETE' });
+        await unfollowUser(profile!.firebaseUid, username);
         setFollowing(false);
         onChange?.(false);
       } else {
-        await api(`/api/social/follow/${encodeURIComponent(username)}`, { method: 'POST' });
+        await followUser(
+          {
+            firebaseUid: profile!.firebaseUid,
+            handle: profile!.handle,
+            displayName: profile!.displayName,
+            avatarUrl: profile!.avatarUrl,
+          },
+          username,
+        );
         setFollowing(true);
         onChange?.(true);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo actualizar');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() => void toggle()}
-      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition disabled:opacity-60 ${
-        following
-          ? 'border border-zinc-600 bg-zinc-800 text-zinc-200 hover:border-fuchsia-400'
-          : 'bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-zinc-950'
-      }`}
-    >
-      {following ? <UserMinus size={16} /> : <UserPlus size={16} />}
-      {following ? 'Siguiendo' : 'Seguir'}
-    </button>
+    <div className="flex flex-col items-start gap-1">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void toggle()}
+        className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition disabled:opacity-60 ${
+          following
+            ? 'border border-zinc-600 bg-zinc-800 text-zinc-200 hover:border-fuchsia-400'
+            : 'bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-zinc-950'
+        }`}
+      >
+        {following ? <UserMinus size={16} /> : <UserPlus size={16} />}
+        {following ? 'Siguiendo' : 'Seguir'}
+      </button>
+      {error ? <p className="text-[10px] text-fuchsia-300">{error}</p> : null}
+    </div>
   );
 }
 
@@ -143,17 +170,24 @@ export function PostCard({
     try {
       const next =
         reaction === 'none'
-          ? 'none'
+          ? null
           : post.viewerReaction === reaction
-            ? 'none'
+            ? null
             : reaction;
-      const result = await api<{ post: SocialPost }>(`/api/social/posts/${post.id}/react`, {
-        method: 'POST',
-        body: JSON.stringify({ reaction: next }),
+      const likes =
+        post.likes +
+        (next === 'like' && post.viewerReaction !== 'like' ? 1 : 0) -
+        (post.viewerReaction === 'like' && next !== 'like' ? 1 : 0);
+      const dislikes =
+        post.dislikes +
+        (next === 'dislike' && post.viewerReaction !== 'dislike' ? 1 : 0) -
+        (post.viewerReaction === 'dislike' && next !== 'dislike' ? 1 : 0);
+      onReact?.({
+        ...post,
+        likes: Math.max(0, likes),
+        dislikes: Math.max(0, dislikes),
+        viewerReaction: next,
       });
-      onReact?.(result.post);
-    } catch {
-      // ignore
     } finally {
       setBusy(false);
     }
