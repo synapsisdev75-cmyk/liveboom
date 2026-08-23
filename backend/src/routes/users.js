@@ -25,6 +25,7 @@ function serializeUser(user) {
     avatarUrl: user.avatarUrl ?? null,
     bio: user.bio ?? null,
     birthDate: birth,
+    category: user.category ?? null,
     coinsBalance: Number(user.coinsBalance ?? 0),
     createdAt: user.createdAt || new Date().toISOString(),
     updatedAt: user.updatedAt || new Date().toISOString(),
@@ -56,6 +57,8 @@ async function updateProfile(req, res) {
   const avatarUrl =
     typeof req.body?.avatarUrl === 'string' ? req.body.avatarUrl.trim().slice(0, 350000) : '';
   const birthDateRaw = typeof req.body?.birthDate === 'string' ? req.body.birthDate.trim() : '';
+  const category =
+    typeof req.body?.category === 'string' ? req.body.category.trim().toLowerCase() : '';
 
   if (!USERNAME_RE.test(username)) {
     res.status(400).json({ error: 'El usuario debe tener 3-24 caracteres (a-z, 0-9, _).' });
@@ -91,6 +94,7 @@ async function updateProfile(req, res) {
         username,
         displayName: displayName || username,
         bio: bio || null,
+        category: category || null,
         avatarUrl: avatarUrl || req.dbUser?.avatarUrl || req.user.picture || null,
         birthDate: birthDateRaw,
         coinsBalance: getBalance(uid),
@@ -146,6 +150,7 @@ async function updateProfile(req, res) {
       username,
       displayName: displayName || username,
       bio: bio || null,
+      category: category || null,
       avatarUrl: avatarUrl || req.dbUser?.avatarUrl || null,
       birthDate: birthDateRaw,
       coinsBalance: getBalance(uid),

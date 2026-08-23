@@ -354,9 +354,19 @@ function listIncomingRequests(uid) {
   return result;
 }
 
-function searchUsers(query, viewerUid) {
-  return listProfiles(query, { limit: 24, excludeUid: viewerUid }).map((profile) => ({
+function searchUsers(query, viewerUid, { category } = {}) {
+  return listProfiles(query, { limit: 24, excludeUid: viewerUid, category }).map((profile) => ({
     ...userSummary(profile),
+    category: profile.category || null,
+    friendshipStatus: friendshipStatus(viewerUid, profile.username),
+    isFollowing: viewerUid ? isFollowing(viewerUid, profile.username) : false,
+  }));
+}
+
+function listByCategory(category, viewerUid) {
+  return listProfiles('', { limit: 24, excludeUid: viewerUid, category }).map((profile) => ({
+    ...userSummary(profile),
+    category: profile.category || null,
     friendshipStatus: friendshipStatus(viewerUid, profile.username),
     isFollowing: viewerUid ? isFollowing(viewerUid, profile.username) : false,
   }));
@@ -399,5 +409,6 @@ module.exports = {
   listFriends,
   listIncomingRequests,
   searchUsers,
+  listByCategory,
   friendshipStatus,
 };

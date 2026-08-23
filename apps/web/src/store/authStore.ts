@@ -84,6 +84,7 @@ function profileFromFirebase(user: FirebaseUser): SessionUser {
     avatarUrl: user.photoURL,
     bio: null,
     birthDate: null,
+    category: null,
     coins: 0,
     coinsBalance: 0,
   };

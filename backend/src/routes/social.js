@@ -121,11 +121,16 @@ router.post('/posts/:postId/react', requireAuth, (req, res) => {
 
 router.get('/search', optionalAuth, (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+  if (category && q.length < 2) {
+    res.json({ users: social.listByCategory(category, req.viewerUid) });
+    return;
+  }
   if (q.length < 2) {
     res.json({ users: [] });
     return;
   }
-  res.json({ users: social.searchUsers(q, req.viewerUid) });
+  res.json({ users: social.searchUsers(q, req.viewerUid, { category }) });
 });
 
 router.get('/friends/requests', requireAuth, (req, res) => {

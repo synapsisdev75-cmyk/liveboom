@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { LiveFeedCard } from '../components/feed/LiveFeedCard';
 import { ReelsRow } from '../components/feed/ReelsRow';
+import { CategoryChips } from '../components/search/CategoryChips';
+import { categoryLabel } from '../lib/categories';
 import { apiPublic } from '../lib/api';
 
 type LiveStream = {
@@ -12,10 +14,12 @@ type LiveStream = {
   startedAt: string;
   viewers: number;
   isPrivate?: boolean;
+  category?: string;
 };
 
 export function HomeView() {
   const [streams, setStreams] = useState<LiveStream[]>([]);
+  const [category, setCategory] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,7 +27,8 @@ export function HomeView() {
 
     async function load() {
       try {
-        const data = await apiPublic<{ streams: LiveStream[] }>('/api/stream/live');
+        const query = category ? `?category=${encodeURIComponent(category)}` : '';
+        const data = await apiPublic<{ streams: LiveStream[] }>(`/api/stream/live${query}`);
         if (!cancelled) {
           setStreams(data.streams || []);
           setError(null);
@@ -41,19 +46,29 @@ export function HomeView() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [category]);
 
   return (
     <div className="flex min-h-full flex-col gap-6 rounded-2xl bg-zinc-900 p-4 sm:p-6">
       <div>
         <h1 className="text-lg font-bold text-white sm:text-xl">Lives en línea</h1>
-        <p className="mt-1 text-sm text-zinc-400">Salas activas ahora mismo en Liveboom.</p>
+        <p className="mt-1 text-sm text-zinc-400">
+          {category
+            ? `Categoría: ${categoryLabel(category)}`
+            : 'Salas activas ahora mismo en Liveboom.'}
+        </p>
       </div>
+
+      <CategoryChips value={category} onChange={setCategory} />
+
       {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
       {streams.length === 0 && !error ? (
         <p className="text-sm text-zinc-400">
-          No hay transmisiones LIVE todavía. Pulsa <span className="text-cyan-400">Transmitir</span> para abrir la
-          tuya.
+          {category
+            ? `No hay lives en ${categoryLabel(category)} ahora.`
+            : 'No hay transmisiones LIVE todavía. Pulsa '}
+          {!category ? <span className="text-cyan-400">Transmitir</span> : null}
+          {!category ? ' para abrir la tuya.' : null}
         </p>
       ) : null}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">

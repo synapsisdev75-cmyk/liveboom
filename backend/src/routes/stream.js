@@ -69,7 +69,12 @@ router.get('/live', async (req, res) => {
     });
   }
   const includePrivate = req.query.includePrivate === '1';
-  const streams = Array.from(byName.values()).filter((item) => includePrivate || !item.isPrivate);
+  const category =
+    typeof req.query.category === 'string' ? normalize(req.query.category) : '';
+  let streams = Array.from(byName.values()).filter((item) => includePrivate || !item.isPrivate);
+  if (category) {
+    streams = streams.filter((item) => normalize(item.category || 'otro') === category);
+  }
   res.json({ streams });
 });
 
@@ -85,6 +90,7 @@ router.post('/live/start', requireAuth, (req, res) => {
     avatarUrl: req.user.picture || null,
     title: typeof req.body?.title === 'string' ? req.body.title.slice(0, 80) : undefined,
     isPrivate: Boolean(req.body?.isPrivate),
+    category: typeof req.body?.category === 'string' ? normalize(req.body.category) : 'otro',
   });
   res.status(201).json(entry);
 });

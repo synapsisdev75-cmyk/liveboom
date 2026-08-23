@@ -10,6 +10,8 @@ import { LiveRoom } from './views/LiveRoom';
 import { TransmitView } from './views/TransmitView';
 import { UserProfileView } from './views/UserProfileView';
 import { SearchView } from './views/SearchView';
+import { LegalView } from './views/LegalView';
+import { CookieBanner } from './components/legal/CookieBanner';
 import { WalletView } from './views/WalletView';
 
 function AuthHydrator() {
@@ -25,6 +27,7 @@ export default function App() {
       <AuthHydrator />
       <Routes>
         <Route path="/login" element={<LoginView />} />
+        <Route path="/legal/:slug" element={<LegalView />} />
         <Route path="/stream/:username" element={<LiveRoom />} />
         <Route element={<MainLayout />}>
           <Route index element={<HomeView />} />
@@ -37,6 +40,7 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <CookieBanner />
     </BrowserRouter>
   );
 }

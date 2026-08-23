@@ -10,6 +10,8 @@ export default {
           elevated: '#1A1C22',
           line: '#2A2D36',
           cyan: '#00F0FF',
+          blue: '#2563EB',
+          orange: '#F97316',
           fuchsia: '#FF0055',
           gold: '#F5C84C',
         },

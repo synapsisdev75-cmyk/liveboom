@@ -1,7 +1,7 @@
 const lives = new Map();
 const liveHistory = require('./liveHistory');
 
-function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, viewers }) {
+function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, viewers, category }) {
   const key = String(username || '')
     .trim()
     .toLowerCase()
@@ -17,6 +17,7 @@ function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, v
     startedAt: prev?.startedAt || new Date().toISOString(),
     viewers: Number(viewers ?? prev?.viewers ?? 0),
     isPrivate: Boolean(isPrivate ?? prev?.isPrivate ?? false),
+    category: category || prev?.category || 'otro',
   };
   lives.set(key, entry);
   return entry;

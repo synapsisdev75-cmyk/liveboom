@@ -10,6 +10,7 @@ import {
   clearPendingBirth,
   readPendingBirthDate,
 } from '../lib/birthDate';
+import { LIVE_CATEGORIES } from '../lib/categories';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
 
@@ -27,6 +28,7 @@ type ProfilePayload = {
   avatarUrl: string | null;
   bio: string | null;
   birthDate: string | null;
+  category?: string | null;
   coinsBalance: number;
   createdAt: string;
   updatedAt: string;
@@ -72,6 +74,7 @@ export function ProfileView() {
   const [username, setUsername] = useState(profile?.handle ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
   const [birthDate, setBirthDate] = useState(profile?.birthDate ?? '');
+  const [category, setCategory] = useState(profile?.category ?? 'musica');
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +87,7 @@ export function ProfileView() {
     setUsername(profile.handle);
     setBio(profile.bio ?? '');
     setBirthDate(profile.birthDate ?? '');
+    setCategory(profile.category ?? 'musica');
     setAvatarUrl(profile.avatarUrl ?? '');
   }, [profile]);
 
@@ -111,6 +115,7 @@ export function ProfileView() {
         setUsername(user.username);
         setBio(user.bio ?? '');
         setBirthDate(user.birthDate ?? readPendingBirthDate(profile.firebaseUid) ?? '');
+        setCategory(user.category ?? 'musica');
         setAvatarUrl(user.avatarUrl ?? firebaseUser?.photoURL ?? '');
       })
       .catch(() => undefined);
@@ -170,6 +175,7 @@ export function ProfileView() {
           bio: bio.trim(),
           avatarUrl: avatarUrl.trim(),
           birthDate,
+          category,
         }),
       });
       const next = mapPostgresUser(updated);
@@ -259,6 +265,21 @@ export function ProfileView() {
                 placeholder="Cuéntale a tus viewers quién eres"
                 className="min-h-[108px] w-full resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
               />
+            </label>
+
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-zinc-300">Categoría principal</span>
+              <select
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                className={`${fieldClass} [color-scheme:dark]`}
+              >
+                {LIVE_CATEGORIES.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.emoji} {item.label}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="grid gap-1.5 text-sm">

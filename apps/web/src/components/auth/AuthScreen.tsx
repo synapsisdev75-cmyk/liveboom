@@ -1,5 +1,8 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { Logo } from '../brand/Logo';
+import { BrandVideo } from './BrandVideo';
+import { LegalFooter } from '../legal/LegalFooter';
 import { ageFromBirthYear } from '../../lib/birthDate';
 import { useAuthStore } from '../../store/authStore';
 
@@ -13,6 +16,7 @@ export function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [birthYear, setBirthYear] = useState(String(maxBirthYear));
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const busy = useAuthStore((s) => s.busy);
   const error = useAuthStore((s) => s.error);
@@ -23,6 +27,10 @@ export function AuthScreen() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setLocalError(null);
+    if (mode === 'register' && !acceptedTerms) {
+      setLocalError('Debes aceptar los Términos y el Aviso de Privacidad.');
+      return;
+    }
     if (mode === 'login') {
       await signInEmail(email, password).catch(() => undefined);
       return;
@@ -41,94 +49,134 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-950 px-4 py-8">
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,240,255,0.12),_transparent_55%)]" />
-      <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-[#131417]/80 p-6 shadow-glow backdrop-blur-xl sm:p-8">
-        <div className="mb-6 flex justify-center sm:mb-8">
-          <Logo />
-        </div>
-        <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
-          {mode === 'login' ? 'Entra a Liveboom' : 'Crea tu cuenta'}
-        </h1>
-        <p className="mt-2 text-center text-sm text-zinc-400">
-          Lives, regalos y comunidad en un solo lugar.
-        </p>
+    <div className="grid min-h-[100dvh] bg-boom-bg lg:grid-cols-2">
+      <aside className="relative hidden items-center justify-center overflow-hidden bg-black lg:flex">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(0,240,255,0.08),_transparent_60%)]" />
+        <BrandVideo className="relative z-10 w-full max-w-lg px-8" />
+      </aside>
 
-        <form className="mt-8 space-y-3" onSubmit={(event) => void onSubmit(event)}>
-          {mode === 'register' ? (
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nombre"
-              className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-            />
-          ) : null}
-          {mode === 'register' ? (
-            <label className="block text-left text-xs text-zinc-400">
-              Año de nacimiento
+      <div className="relative flex flex-col justify-center px-4 py-8 sm:px-8">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,240,255,0.1),_transparent_55%)] lg:hidden" />
+        <div className="relative mx-auto w-full max-w-md">
+          <div className="mb-6 flex justify-center lg:hidden">
+            <BrandVideo className="h-40 w-full max-w-xs" />
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-boom-panel/90 p-6 shadow-glow backdrop-blur-xl sm:p-8">
+            <div className="mb-6 hidden justify-center lg:flex">
+              <Logo />
+            </div>
+            <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
+              {mode === 'login' ? 'Entra a Liveboom' : 'Crea tu cuenta'}
+            </h1>
+            <p className="mt-2 text-center text-sm text-zinc-400">
+              Lives, regalos y comunidad en un solo lugar.
+            </p>
+
+            <form className="mt-8 space-y-3" onSubmit={(event) => void onSubmit(event)}>
+              {mode === 'register' ? (
+                <input
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nombre"
+                  className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+                />
+              ) : null}
+              {mode === 'register' ? (
+                <label className="block text-left text-xs text-zinc-400">
+                  Año de nacimiento
+                  <input
+                    required
+                    type="number"
+                    min={minBirthYear}
+                    max={maxBirthYear}
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+                  />
+                </label>
+              ) : null}
               <input
                 required
-                type="number"
-                min={minBirthYear}
-                max={maxBirthYear}
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Correo"
+                className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
               />
-            </label>
-          ) : null}
-          <input
-            required
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Correo"
-            className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-          />
-          <input
-            required
-            type="password"
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Contraseña"
-            className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-          />
-          {localError ? <p className="text-sm text-boom-fuchsia">{localError}</p> : null}
-          {error ? <p className="text-sm text-boom-fuchsia">{error}</p> : null}
-          <button
-            type="submit"
-            disabled={busy}
-            className="h-11 w-full rounded-xl bg-boom-cyan text-sm font-bold text-zinc-950 transition hover:brightness-110 disabled:opacity-60"
-          >
-            {busy ? 'Entrando…' : mode === 'login' ? 'Continuar' : 'Crear cuenta'}
-          </button>
-        </form>
+              <input
+                required
+                type="password"
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Contraseña"
+                className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+              />
+              {mode === 'register' ? (
+                <label className="flex items-start gap-2 text-left text-xs text-zinc-400">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-0.5 accent-boom-cyan"
+                  />
+                  <span>
+                    Acepto los{' '}
+                    <Link to="/legal/terminos" className="text-boom-cyan underline">
+                      Términos y Condiciones
+                    </Link>
+                    , el{' '}
+                    <Link to="/legal/privacidad" className="text-boom-cyan underline">
+                      Aviso de Privacidad
+                    </Link>{' '}
+                    y la{' '}
+                    <Link to="/legal/cookies" className="text-boom-cyan underline">
+                      Política de Cookies
+                    </Link>
+                    .
+                  </span>
+                </label>
+              ) : null}
+              {localError ? <p className="text-sm text-boom-fuchsia">{localError}</p> : null}
+              {error ? <p className="text-sm text-boom-fuchsia">{error}</p> : null}
+              <button
+                type="submit"
+                disabled={busy}
+                className="h-11 w-full rounded-xl bg-gradient-to-r from-boom-cyan to-boom-orange text-sm font-bold text-zinc-950 transition hover:brightness-110 disabled:opacity-60"
+              >
+                {busy ? 'Entrando…' : mode === 'login' ? 'Continuar' : 'Crear cuenta'}
+              </button>
+            </form>
 
-        <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-          <span className="h-px flex-1 bg-white/10" />
-          o
-          <span className="h-px flex-1 bg-white/10" />
+            <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+              <span className="h-px flex-1 bg-white/10" />
+              o
+              <span className="h-px flex-1 bg-white/10" />
+            </div>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void signInGoogle().catch(() => undefined)}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900"
+            >
+              <GoogleIcon />
+              Continuar con Google
+            </button>
+
+            <button
+              type="button"
+              className="mt-6 w-full text-center text-sm text-zinc-400 hover:text-white"
+              onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+            >
+              {mode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+            </button>
+
+            <LegalFooter compact />
+          </div>
         </div>
-
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void signInGoogle().catch(() => undefined)}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900"
-        >
-          <GoogleIcon />
-          Continuar con Google
-        </button>
-
-        <button
-          type="button"
-          className="mt-6 w-full text-center text-sm text-zinc-400 hover:text-white"
-          onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-        >
-          {mode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
-        </button>
       </div>
     </div>
   );

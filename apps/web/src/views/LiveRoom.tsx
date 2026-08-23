@@ -40,6 +40,7 @@ type LiveLaunchState = {
   goLive?: boolean;
   title?: string;
   isPrivate?: boolean;
+  category?: string;
 };
 
 type ChatMessage = {
@@ -156,6 +157,7 @@ export function LiveRoom() {
         username,
         title: launch.title || `Live de ${profile.displayName || profile.handle}`,
         isPrivate: Boolean(launch.isPrivate),
+        category: launch.category || profile.category || 'otro',
       }),
     })
       .then(() => {
@@ -169,7 +171,7 @@ export function LiveRoom() {
     return () => {
       cancelled = true;
     };
-  }, [username, profile, session, launch.goLive, launch.title, launch.isPrivate, liveStarted]);
+  }, [username, profile, session, launch.goLive, launch.title, launch.isPrivate, launch.category, liveStarted]);
 
   useEffect(() => {
     return () => {

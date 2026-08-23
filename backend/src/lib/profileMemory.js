@@ -48,14 +48,18 @@ function findByUsername(username) {
   return null;
 }
 
-function listProfiles(query, { limit = 20, excludeUid } = {}) {
+function listProfiles(query, { limit = 20, excludeUid, category } = {}) {
   const needle = String(query || '')
     .trim()
     .toLowerCase()
     .replace(/^@/, '');
+  const cat = String(category || '')
+    .trim()
+    .toLowerCase();
   const results = [];
   for (const profile of profiles.values()) {
     if (excludeUid && profile.firebaseUid === excludeUid) continue;
+    if (cat && String(profile.category || '').toLowerCase() !== cat) continue;
     const username = String(profile.username || '').toLowerCase();
     const bio = String(profile.bio || '').toLowerCase();
     const displayName = String(profile.displayName || '').toLowerCase();

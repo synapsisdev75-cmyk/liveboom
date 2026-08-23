@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { CoinModal, RechargeButton } from '../wallet/CoinModal';
 import { NotificationBell, SideRailPanel } from './SideRailPanel';
+import { LegalFooter } from '../legal/LegalFooter';
 
 const sideNavItems = [
   { label: 'Inicio', icon: Home, to: '/' as const },
@@ -132,6 +133,7 @@ export function MainLayout() {
             </Link>
           )}
         </div>
+        <LegalFooter compact />
       </aside>
 
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:p-4 lg:w-[60%] lg:pb-4">

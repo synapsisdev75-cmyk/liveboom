@@ -1,6 +1,7 @@
 import { Globe, Lock, Radio } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { LIVE_CATEGORIES } from '../lib/categories';
 import { useAuthStore } from '../store/authStore';
 
 export function TransmitView() {
@@ -8,6 +9,7 @@ export function TransmitView() {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [category, setCategory] = useState('musica');
   const [confirmed, setConfirmed] = useState(false);
 
   if (!profile) {
@@ -33,6 +35,7 @@ export function TransmitView() {
         goLive: true,
         title: displayTitle,
         isPrivate,
+        category,
       },
     });
   }
@@ -57,6 +60,21 @@ export function TransmitView() {
           placeholder={`Live de ${profile.displayName || profile.handle}`}
           className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none ring-cyan-400/40 focus:ring-2"
         />
+      </label>
+
+      <label className="block space-y-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Categoría</span>
+        <select
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-none ring-cyan-400/40 focus:ring-2"
+        >
+          {LIVE_CATEGORIES.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.emoji} {item.label}
+            </option>
+          ))}
+        </select>
       </label>
 
       <div className="grid grid-cols-2 gap-3">
