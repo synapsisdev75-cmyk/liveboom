@@ -32,6 +32,7 @@ function dbUserFromToken(decoded) {
       avatarUrl: saved.avatarUrl ?? decoded.picture ?? null,
       bio: saved.bio ?? null,
       birthDate: saved.birthDate ?? null,
+      category: saved.category ?? null,
       coinsBalance: getBalance(decoded.uid),
     };
   }

@@ -63,7 +63,11 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
         <p className="mt-2 text-xs text-zinc-500">Creadores en {categoryLabel(category)}.</p>
       ) : null}
       {busy ? <p className="mt-2 text-xs text-zinc-500">Buscando…</p> : null}
-      {showEmpty ? <p className="mt-2 text-xs text-zinc-500">Sin resultados.</p> : null}
+      {showEmpty ? (
+        <p className="mt-2 text-xs text-zinc-500">
+          Sin resultados. Prueba con @usuario o revisa que el creador haya guardado su perfil.
+        </p>
+      ) : null}
       {results.length > 0 ? (
         <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
           {results.map((user) => (

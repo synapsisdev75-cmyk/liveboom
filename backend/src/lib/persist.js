@@ -39,6 +39,13 @@ function save(name, data) {
   }
 }
 
+function saveNow(name, data) {
+  const prev = timers.get(name);
+  if (prev) clearTimeout(prev);
+  timers.delete(name);
+  save(name, data);
+}
+
 function debouncedSave(name, data, delayMs = 400) {
   const prev = timers.get(name);
   if (prev) clearTimeout(prev);
@@ -51,4 +58,4 @@ function debouncedSave(name, data, delayMs = 400) {
   );
 }
 
-module.exports = { load, save, debouncedSave, DATA_DIR };
+module.exports = { load, save, saveNow, debouncedSave, DATA_DIR };

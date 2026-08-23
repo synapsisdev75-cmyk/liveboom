@@ -1,4 +1,4 @@
-import { Home, Menu, Radio, Search, Settings, UserRound, Wallet, X } from 'lucide-react';
+import { Home, Menu, MessageCircle, Radio, Search, Settings, UserRound, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
@@ -13,6 +13,7 @@ const sideNavItems = [
   { label: 'Mi Billetera', icon: Wallet, to: '/billetera' as const },
   { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
   { label: 'Buscar amigos', icon: Search, to: '/buscar' as const },
+  { label: 'Mensajes', icon: MessageCircle, to: '/mensajes' as const },
   { label: 'Configuración', icon: Settings, to: '/perfil/editar' as const },
 ];
 

@@ -4,7 +4,9 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiOnline = (env.VITE_API_URL || 'https://liveboom.vercel.app').replace(/\/$/, '');
+  const defaultApi =
+    mode === 'development' ? 'http://localhost:4000' : 'https://liveboom.vercel.app';
+  const apiOnline = (env.VITE_API_URL || defaultApi).replace(/\/$/, '');
 
   return {
     plugins: [react(), tailwindcss()],

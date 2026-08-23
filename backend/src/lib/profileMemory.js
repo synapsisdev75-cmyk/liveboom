@@ -10,7 +10,7 @@ function hydrate() {
 }
 
 function flush() {
-  persist.debouncedSave('profiles', Array.from(profiles.values()));
+  persist.saveNow('profiles', Array.from(profiles.values()));
 }
 
 hydrate();
@@ -50,12 +50,34 @@ function profileHaystack(profile) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+function normalizeNeedle(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function fieldValues(profile) {
+  return [
+    profile.username,
+    profile.displayName,
+    profile.bio,
+    profile.email?.split('@')[0],
+    profile.email,
+    profile.category,
+  ]
+    .filter(Boolean)
+    .map((value) => normalizeNeedle(value));
+}
+
 function matchesProfile(profile, needle, cat) {
   if (cat && String(profile.category || '').toLowerCase() !== cat) return false;
   if (!needle) return true;
-  const tokens = needle.split(/\s+/).filter(Boolean);
-  const haystack = profileHaystack(profile);
-  return tokens.every((token) => haystack.includes(token));
+  const tokens = normalizeNeedle(needle).split(/\s+/).filter(Boolean);
+  const fields = fieldValues(profile);
+  return tokens.every((token) => fields.some((field) => field.includes(token)));
 }
 
 async function hydrateFromDatabase() {
@@ -65,6 +87,9 @@ async function hydrateFromDatabase() {
     const users = await prisma.user.findMany({ take: 500, orderBy: { updatedAt: 'desc' } });
     for (const user of users) {
       const existing = getProfile(user.firebaseUid);
+      const dbUpdated = user.updatedAt ? new Date(user.updatedAt).getTime() : 0;
+      const memUpdated = existing?.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+      if (existing && memUpdated >= dbUpdated) continue;
       saveProfile(
         user.firebaseUid,
         {
@@ -121,4 +146,9 @@ function listProfiles(query, { limit = 20, excludeUid, category } = {}) {
     .slice(0, limit);
 }
 
-module.exports = { getProfile, saveProfile, findByUsername, listProfiles };
+function deleteProfile(uid) {
+  profiles.delete(String(uid));
+  flush();
+}
+
+module.exports = { getProfile, saveProfile, findByUsername, listProfiles, deleteProfile };

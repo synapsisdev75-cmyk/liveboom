@@ -13,6 +13,7 @@ import { SearchView } from './views/SearchView';
 import { LegalView } from './views/LegalView';
 import { CookieBanner } from './components/legal/CookieBanner';
 import { WalletView } from './views/WalletView';
+import { MessagesView } from './views/MessagesView';
 
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="perfil" element={<ProfileRedirectView />} />
           <Route path="perfil/editar" element={<ProfileView />} />
           <Route path="buscar" element={<SearchView />} />
+          <Route path="mensajes" element={<MessagesView />} />
           <Route path="transmitir" element={<TransmitView />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

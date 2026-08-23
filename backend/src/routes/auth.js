@@ -80,7 +80,8 @@ router.post('/sync', requireAuth, async (req, res) => {
       displayName: memory?.displayName || displayName || user.username,
       avatarUrl: memory?.avatarUrl ?? user.avatarUrl ?? avatarUrl,
       bio: memory?.bio ?? user.bio ?? null,
-      birthDate: memory?.birthDate ?? (user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null),
+      birthDate:
+        memory?.birthDate ?? (user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null),
       category: memory?.category ?? null,
       coinsBalance: getBalance(uid),
     });

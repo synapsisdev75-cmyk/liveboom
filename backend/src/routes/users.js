@@ -49,6 +49,45 @@ function yearsOld(isoDate) {
   return age;
 }
 
+function mergeProfileRecord(uid, dbUser, memory) {
+  const coinsBalance = getBalance(uid);
+  if (!memory) {
+    return serializeUser({ ...dbUser, coinsBalance });
+  }
+  const memUpdated = memory.updatedAt ? new Date(memory.updatedAt).getTime() : 0;
+  const dbUpdated = dbUser?.updatedAt ? new Date(dbUser.updatedAt).getTime() : 0;
+  const preferMemory = memUpdated >= dbUpdated;
+  const base = preferMemory ? { ...dbUser, ...memory } : { ...memory, ...dbUser };
+  return serializeUser({
+    ...base,
+    id: memory.id || dbUser?.id || uid,
+    firebaseUid: uid,
+    email: memory.email || dbUser?.email,
+    username: memory.username || dbUser?.username,
+    displayName: memory.displayName || dbUser?.displayName || memory.username || dbUser?.username,
+    avatarUrl: memory.avatarUrl ?? dbUser?.avatarUrl ?? null,
+    bio: memory.bio ?? dbUser?.bio ?? null,
+    birthDate: memory.birthDate ?? dbUser?.birthDate ?? null,
+    category: memory.category ?? dbUser?.category ?? null,
+    coinsBalance,
+  });
+}
+
+function buildProfilePayload(uid, req, fields) {
+  return {
+    id: fields.id || uid,
+    firebaseUid: uid,
+    email: fields.email || req.dbUser?.email || req.user.email || `${uid}@users.liveboom.local`,
+    username: fields.username,
+    displayName: fields.displayName || fields.username,
+    bio: fields.bio || null,
+    category: fields.category || null,
+    avatarUrl: fields.avatarUrl || req.dbUser?.avatarUrl || req.user.picture || null,
+    birthDate: fields.birthDate,
+    coinsBalance: getBalance(uid),
+  };
+}
+
 async function updateProfile(req, res) {
   const username = parseUsername(req.body?.username);
   const displayName =
@@ -79,6 +118,14 @@ async function updateProfile(req, res) {
   }
 
   const uid = req.user.uid;
+  const profileFields = {
+    username,
+    displayName: displayName || username,
+    bio: bio || null,
+    category: category || null,
+    avatarUrl: avatarUrl || req.dbUser?.avatarUrl || req.user.picture || null,
+    birthDate: birthDateRaw,
+  };
 
   try {
     if (!hasDatabase || !prisma) {
@@ -87,24 +134,19 @@ async function updateProfile(req, res) {
         res.status(409).json({ error: 'Ese nombre de usuario ya está en uso.' });
         return;
       }
-      const saved = saveProfile(uid, {
-        id: uid,
-        firebaseUid: uid,
-        email: req.dbUser?.email || req.user.email || `${uid}@users.liveboom.local`,
-        username,
-        displayName: displayName || username,
-        bio: bio || null,
-        category: category || null,
-        avatarUrl: avatarUrl || req.dbUser?.avatarUrl || req.user.picture || null,
-        birthDate: birthDateRaw,
-        coinsBalance: getBalance(uid),
-      });
+      const saved = saveProfile(uid, buildProfilePayload(uid, req, profileFields));
       res.json(serializeUser(saved));
       return;
     }
 
     await prisma.$executeRawUnsafe(
       'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3)',
+    ).catch(() => undefined);
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "displayName" TEXT',
+    ).catch(() => undefined);
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "category" TEXT',
     ).catch(() => undefined);
 
     const taken = await prisma.user.findFirst({
@@ -139,47 +181,52 @@ async function updateProfile(req, res) {
       },
     });
 
-    res.json(serializeUser(user));
+    try {
+      const { Prisma } = require('@prisma/client');
+      await prisma.$executeRaw(
+        Prisma.sql`UPDATE "User" SET "displayName" = ${profileFields.displayName}, "category" = ${profileFields.category} WHERE "firebaseUid" = ${uid}`,
+      );
+    } catch {
+      // columnas opcionales según migración
+    }
+
+    const saved = saveProfile(uid, buildProfilePayload(uid, req, { ...profileFields, id: user.id }));
+    res.json(serializeUser(saved));
   } catch (error) {
     console.error('[users/profile]', error);
-    // Fallback online sin Postgres
-    const saved = saveProfile(uid, {
-      id: uid,
-      firebaseUid: uid,
-      email: req.dbUser?.email || req.user.email || `${uid}@users.liveboom.local`,
-      username,
-      displayName: displayName || username,
-      bio: bio || null,
-      category: category || null,
-      avatarUrl: avatarUrl || req.dbUser?.avatarUrl || null,
-      birthDate: birthDateRaw,
-      coinsBalance: getBalance(uid),
-    });
+    const saved = saveProfile(uid, buildProfilePayload(uid, req, profileFields));
     res.json(serializeUser(saved));
   }
 }
 
 router.get('/profile', requireAuth, requireDbUser, (req, res) => {
   const memory = getProfile(req.user.uid);
-  if (memory) {
-    res.json(
-      serializeUser({
-        ...memory,
-        coinsBalance: getBalance(req.user.uid),
-      }),
-    );
-    return;
-  }
-  res.json(
-    serializeUser({
-      ...req.dbUser,
-      coinsBalance: getBalance(req.user.uid),
-    }),
-  );
+  res.json(mergeProfileRecord(req.user.uid, req.dbUser, memory));
 });
 
 router.patch('/profile', requireAuth, requireDbUser, updateProfile);
 router.put('/profile', requireAuth, requireDbUser, updateProfile);
+
+router.delete('/account', requireAuth, async (req, res) => {
+  const uid = req.user.uid;
+  const social = require('../lib/socialMemory');
+  const messages = require('../lib/messageMemory');
+  const { deleteProfile } = require('../lib/profileMemory');
+
+  social.purgeUser(uid);
+  messages.purgeUser(uid);
+  deleteProfile(uid);
+
+  if (hasDatabase && prisma) {
+    try {
+      await prisma.user.delete({ where: { firebaseUid: uid } });
+    } catch {
+      // el usuario puede no existir en la base de datos
+    }
+  }
+
+  res.json({ ok: true });
+});
 
 module.exports = router;
 module.exports.default = router;

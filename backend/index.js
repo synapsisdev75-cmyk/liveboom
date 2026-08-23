@@ -1,4 +1,12 @@
-require('dotenv').config();
+const path = require('path');
+const envPaths = [
+  path.join(__dirname, '.env'),
+  path.join(__dirname, '../.env'),
+  path.join(__dirname, '../packages/backend/.env'),
+];
+for (const envPath of envPaths) {
+  require('dotenv').config({ path: envPath, override: false });
+}
 
 const http = require('http');
 const express = require('express');
@@ -56,6 +64,7 @@ mount('/api/stream', () => require('./src/routes/stream'));
 mount('/api/gifts', () => require('./src/routes/gifts'));
 mount('/api/users', () => require('./src/routes/users'));
 mount('/api/social', () => require('./src/routes/social'));
+mount('/api/messages', () => require('./src/routes/messages'));
 
 app.get('/api/wallet/:firebaseUid', async (req, res) => {
   const { firebaseUid } = req.params;

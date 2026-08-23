@@ -372,6 +372,27 @@ function listByCategory(category, viewerUid) {
   }));
 }
 
+function purgeUser(uid) {
+  const key = String(uid);
+  follows.delete(key);
+  for (const set of follows.values()) set.delete(key);
+  friends.delete(key);
+  for (const set of friends.values()) set.delete(key);
+  for (const request of [...friendRequests.keys()]) {
+    if (request.startsWith(`${key}:`) || request.endsWith(`:${key}`)) {
+      friendRequests.delete(request);
+    }
+  }
+  const postIds = postsByUser.get(key) || [];
+  for (const postId of postIds) {
+    posts.delete(postId);
+    reactions.delete(postId);
+  }
+  postsByUser.delete(key);
+  for (const map of reactions.values()) map.delete(key);
+  flush();
+}
+
 function publicProfile(username, viewerUid) {
   const profile = resolveByUsername(username);
   if (!profile) return null;
@@ -411,4 +432,6 @@ module.exports = {
   searchUsers,
   listByCategory,
   friendshipStatus,
+  areFriends,
+  purgeUser,
 };

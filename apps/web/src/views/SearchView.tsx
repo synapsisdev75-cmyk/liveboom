@@ -1,8 +1,10 @@
-import { useState } from 'react';
 import { FriendRequestsPanel } from '../components/social/FriendRequestsPanel';
+import { InternalChatPanel } from '../components/social/InternalChatPanel';
 import { UserSearchBar } from '../components/social/UserSearchBar';
+import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
 import { useAuthStore } from '../store/authStore';
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 
 export function SearchView() {
   const profile = useAuthStore((state) => state.profile);
@@ -22,6 +24,8 @@ export function SearchView() {
         <>
           <UserSearchBar category={category} onCategoryChange={setCategory} />
           <FriendRequestsPanel />
+          <InternalChatPanel compact />
+          <DeleteAccountSection />
         </>
       ) : (
         <div className="rounded-2xl bg-zinc-900 p-6 text-center text-sm text-zinc-400">

@@ -3,6 +3,7 @@ import { Camera } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
+import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
 import { api, mapPostgresUser, type SessionUser } from '../lib/api';
 import {
   adultCutoffDate,
@@ -324,6 +325,7 @@ export function ProfileView() {
         )}
       </form>
       {profile ? <MyReelsPanel username={profile.handle} /> : null}
+      {profile ? <DeleteAccountSection /> : null}
     </div>
   );
 }

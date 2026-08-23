@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -9,7 +10,7 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
-import { postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
+import { api, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
 import { storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
 
@@ -27,6 +28,7 @@ type AuthState = {
   signUpEmail: (name: string, email: string, password: string, birthYear: number) => Promise<void>;
   signInGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 
 function mapAuthError(error: unknown): string {
@@ -176,5 +178,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     disconnectSocket();
     await signOut(auth);
     set({ firebaseUser: null, profile: null });
+  },
+
+  deleteAccount: async () => {
+    set({ busy: true, error: null });
+    try {
+      await api('/api/users/account', { method: 'DELETE' });
+      const user = auth.currentUser;
+      if (user) {
+        try {
+          await deleteUser(user);
+        } catch {
+          // puede requerir reautenticación; los datos del servidor ya se borraron
+        }
+      }
+      disconnectSocket();
+      await signOut(auth);
+      set({ firebaseUser: null, profile: null });
+    } catch (error) {
+      set({ error: mapAuthError(error) });
+      throw error;
+    } finally {
+      set({ busy: false });
+    }
   },
 }));
