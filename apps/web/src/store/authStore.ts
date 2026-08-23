@@ -11,7 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { api, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
-import { ensureDataConnectProfile, fetchDataConnectProfile } from '../lib/profileDataConnect';
+import { ensureFirestoreProfile, fetchFirestoreProfile } from '../lib/profileFirestore';
 import { storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
 
@@ -54,16 +54,16 @@ async function syncWithBackend(user: FirebaseUser) {
   const email = user.email ?? `${user.uid}@users.liveboom.local`;
 
   try {
-    const dcProfile =
-      (await fetchDataConnectProfile(user.uid)) ??
-      (await ensureDataConnectProfile({
+    const fsProfile =
+      (await fetchFirestoreProfile(user.uid)) ??
+      (await ensureFirestoreProfile({
         uid: user.uid,
         email,
         displayName: user.displayName,
         photoURL: user.photoURL,
       }));
 
-    if (dcProfile) {
+    if (fsProfile) {
       try {
         const token = await user.getIdToken();
         await postAuthSync(token);
@@ -76,23 +76,20 @@ async function syncWithBackend(user: FirebaseUser) {
         const data = (await response.json().catch(() => ({}))) as Parameters<
           typeof mapPostgresUser
         >[0];
-        if (response.ok && data.birthDate) {
+        if (response.ok && data.coinsBalance != null) {
           return {
-            ...dcProfile,
-            displayName: data.displayName || dcProfile.displayName,
-            birthDate: data.birthDate ?? dcProfile.birthDate,
-            category: data.category ?? dcProfile.category,
-            coins: data.coinsBalance ?? dcProfile.coinsBalance,
-            coinsBalance: data.coinsBalance ?? dcProfile.coinsBalance,
+            ...fsProfile,
+            coins: data.coinsBalance,
+            coinsBalance: data.coinsBalance,
           };
         }
       } catch {
-        // campos extra opcionales desde API legacy
+        // coins opcionales desde API
       }
-      return dcProfile;
+      return fsProfile;
     }
   } catch {
-    // fallback al API si Data Connect no responde
+    // fallback al API si Firestore no responde
   }
 
   try {

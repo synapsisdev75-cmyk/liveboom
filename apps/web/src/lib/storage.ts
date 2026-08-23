@@ -1,8 +1,5 @@
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { getStorage } from 'firebase/storage';
-import { firebaseApp } from './firebase';
-
-const storage = getStorage(firebaseApp);
+import { storage } from './firebase';
 
 export async function uploadUserAvatar(uid: string, blob: Blob, ext = 'jpg'): Promise<string> {
   const safeExt = ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'jpg';

@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
 import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
 import { api, mapPostgresUser, type SessionUser } from '../lib/api';
-import { saveDataConnectProfile, fetchDataConnectProfile } from '../lib/profileDataConnect';
+import { fetchFirestoreProfile, saveFirestoreProfile } from '../lib/profileFirestore';
 import { dataUrlToBlob, isHttpUrl, uploadUserAvatar } from '../lib/storage';
 import {
   adultCutoffDate,
@@ -112,36 +112,25 @@ export function ProfileView() {
     if (!profile) return;
     void (async () => {
       try {
-        const dcUser = await fetchDataConnectProfile(profile.firebaseUid);
+        const fsUser = await fetchFirestoreProfile(profile.firebaseUid);
         let user: ProfilePayload | null = null;
-        if (dcUser) {
+        if (fsUser) {
           user = {
-            id: dcUser.id,
-            firebaseUid: dcUser.firebaseUid,
-            email: dcUser.email,
-            username: dcUser.handle,
-            displayName: dcUser.displayName,
-            avatarUrl: dcUser.avatarUrl,
-            bio: dcUser.bio,
-            birthDate: dcUser.birthDate,
-            category: dcUser.category,
-            coinsBalance: dcUser.coinsBalance,
+            id: fsUser.id,
+            firebaseUid: fsUser.firebaseUid,
+            email: fsUser.email,
+            username: fsUser.handle,
+            displayName: fsUser.displayName,
+            avatarUrl: fsUser.avatarUrl,
+            bio: fsUser.bio,
+            birthDate: fsUser.birthDate,
+            category: fsUser.category,
+            coinsBalance: fsUser.coinsBalance,
             createdAt: '',
             updatedAt: '',
           };
         } else {
           user = await api<ProfilePayload>('/api/users/profile');
-        }
-        try {
-          const legacy = await api<ProfilePayload>('/api/users/profile');
-          user = {
-            ...user,
-            birthDate: legacy.birthDate ?? user.birthDate,
-            category: legacy.category ?? user.category,
-            displayName: legacy.displayName || user.displayName,
-          };
-        } catch {
-          // campos extra solo en API legacy
         }
         const next: SessionUser = mapPostgresUser(user);
         setProfile({ ...next, coins: profile.coins, coinsBalance: profile.coinsBalance });
@@ -210,7 +199,7 @@ export function ProfileView() {
         setAvatarUrl(avatarToSave);
       }
 
-      const dcSaved = await saveDataConnectProfile({
+      const fsSaved = await saveFirestoreProfile({
         uid: firebaseUser.uid,
         email: profile.email,
         username: handle,
@@ -221,12 +210,8 @@ export function ProfileView() {
         category,
       });
 
-      if (!dcSaved) {
-        throw new Error('No se pudo guardar el perfil en Firebase.');
-      }
-
       let next = {
-        ...dcSaved,
+        ...fsSaved,
         displayName: name,
         birthDate,
         category,
@@ -246,15 +231,15 @@ export function ProfileView() {
         });
         next = {
           ...mapPostgresUser(updated),
-          handle: dcSaved.handle,
+          handle: fsSaved.handle,
           displayName: name,
-          avatarUrl: dcSaved.avatarUrl ?? updated.avatarUrl,
-          bio: dcSaved.bio ?? updated.bio,
-          birthDate: updated.birthDate ?? birthDate,
-          category: updated.category ?? category,
+          avatarUrl: fsSaved.avatarUrl ?? updated.avatarUrl,
+          bio: fsSaved.bio ?? updated.bio,
+          birthDate: fsSaved.birthDate ?? updated.birthDate ?? birthDate,
+          category: fsSaved.category ?? updated.category ?? category,
         };
       } catch {
-        // Firebase ya guardó; Vercel es opcional
+        // Firestore ya guardó; Vercel es opcional
       }
 
       setProfile({

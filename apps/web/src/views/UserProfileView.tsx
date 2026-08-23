@@ -54,21 +54,21 @@ export function UserProfileView() {
 
     async function load() {
       try {
-        const { fetchPublicUserByUsername } = await import('../lib/profileDataConnect');
-        const dcUser = await fetchPublicUserByUsername(username);
-        if (dcUser) {
+        const { fetchPublicUserByUsername } = await import('../lib/profileFirestore');
+        const fsUser = await fetchPublicUserByUsername(username);
+        if (fsUser) {
           if (!cancelled) {
             setPublicProfile({
-              username: dcUser.username,
-              displayName: dcUser.displayName,
-              avatarUrl: dcUser.avatarUrl,
-              bio: dcUser.bio,
+              username: fsUser.username,
+              displayName: fsUser.displayName,
+              avatarUrl: fsUser.avatarUrl,
+              bio: fsUser.bio,
               followersCount: 0,
               followingCount: 0,
               friendsCount: 0,
               isFollowing: false,
-              isOwnProfile: Boolean(profile && profile.firebaseUid === dcUser.firebaseUid),
-              friendshipStatus: profile && profile.firebaseUid === dcUser.firebaseUid ? 'self' : 'none',
+              isOwnProfile: Boolean(profile && profile.firebaseUid === fsUser.firebaseUid),
+              friendshipStatus: profile && profile.firebaseUid === fsUser.firebaseUid ? 'self' : 'none',
             });
             setError(null);
           }

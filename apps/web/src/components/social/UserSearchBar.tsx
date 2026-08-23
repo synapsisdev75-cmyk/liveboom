@@ -33,9 +33,9 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
       void (async () => {
         try {
           if (value.length >= 1) {
-            const { searchDataConnectUsers } = await import('../../lib/profileDataConnect');
-            const dcUsers = await searchDataConnectUsers(value);
-            let mapped: SearchUser[] = dcUsers
+            const { searchFirestoreUsers } = await import('../../lib/profileFirestore');
+            const fsUsers = await searchFirestoreUsers(value);
+            let mapped: SearchUser[] = fsUsers
               .filter((user) => !category || user.category === category)
               .map((user) => ({
                 username: user.username,

@@ -1,5 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { getDataConnect } from 'firebase/data-connect';
 import { connectorConfig } from '@liveboom/dataconnect';
 
@@ -18,6 +20,8 @@ if (!firebaseConfig.apiKey) {
 
 export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);
+export const db = getFirestore(firebaseApp);
+export const storage = getStorage(firebaseApp);
 export const dataConnect = getDataConnect(firebaseApp, connectorConfig);
 
 export const googleProvider = new GoogleAuthProvider();
