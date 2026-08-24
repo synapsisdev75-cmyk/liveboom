@@ -202,6 +202,17 @@ service cloud.firestore {
           && request.resource.data.senderName is string;
         allow delete: if signedIn() && resource.data.senderUid == request.auth.uid;
       }
+
+      match /messages/{messageId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.clientId is string
+          && request.resource.data.author is string
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
+      }
     }
 
     match /{document=**} {

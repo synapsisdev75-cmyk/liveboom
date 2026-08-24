@@ -30,7 +30,7 @@ import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, ApiError } from '../lib/api';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
-import { listenLiveGifts, publishLiveGift } from '../lib/liveGiftsFirestore';
+import { listenLiveGifts, publishLiveGift, listenLiveChat, publishLiveChatMessage } from '../lib/liveGiftsFirestore';
 import { LIVEBOOM_GIFTS, GIFT_LEVEL_FX, findLiveGift } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
@@ -1084,11 +1084,18 @@ function ChatPanel({
   }
 
   useEffect(() => {
-    void api<{ messages: ChatMessage[] }>(`/api/stream/chat/${encodeURIComponent(roomName)}`)
-      .then((data) => {
-        for (const msg of data.messages || []) pushMessage(msg);
-      })
-      .catch(() => undefined);
+    seen.current = new Set();
+    setMessages([]);
+    return listenLiveChat(roomName, (list) => {
+      for (const msg of list) {
+        pushMessage({
+          id: msg.id,
+          author: msg.author,
+          text: msg.text,
+          gift: msg.gift || undefined,
+        });
+      }
+    });
   }, [roomName]);
 
   useEffect(() => {
@@ -1150,8 +1157,8 @@ function ChatPanel({
   }
   async function sendMessage() {
     const value = text.trim();
-    if (!value) return;
-    const author = profile?.displayName || profile?.handle || 'Liveboomer';
+    if (!value || !profile) return;
+    const author = profile.displayName || profile.handle || 'Liveboomer';
     const message: ChatMessage = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       author,
@@ -1159,12 +1166,14 @@ function ChatPanel({
     };
     pushMessage(message);
     setText('');
+    void publishLiveChatMessage(roomName, {
+      clientId: message.id,
+      authorUid: profile.firebaseUid,
+      author,
+      text: value,
+    }).catch((error) => console.error('[chat] firestore', error));
     try {
       await publishRoomData(room, { type: 'chat', ...message });
-      void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
-        method: 'POST',
-        body: JSON.stringify(message),
-      }).catch(() => undefined);
     } catch (error) {
       console.error('[chat] publishData', error);
     }
@@ -1221,6 +1230,13 @@ function ChatPanel({
       senderUid: profile.firebaseUid,
       coins: catalog.coins,
     }).catch((error) => console.error('[gift] firestore', error));
+    void publishLiveChatMessage(roomName, {
+      clientId: chatGift.id,
+      authorUid: profile.firebaseUid,
+      author: senderName,
+      text: chatGift.text,
+      gift: chatGift.gift,
+    }).catch((error) => console.error('[gift] chat-history', error));
 
     try {
       const result = await api<{

@@ -1,7 +1,10 @@
 import {
   addDoc,
   collection,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
@@ -69,5 +72,74 @@ export async function publishLiveGift(
     senderUid: gift.senderUid,
     coins: gift.coins,
     createdAt: serverTimestamp(),
+  });
+}
+
+export type LiveChatMessage = {
+  id: string;
+  author: string;
+  authorUid: string;
+  text: string;
+  gift?: { giftId: string; emoji: string; name: string } | null;
+  createdAtMs: number;
+};
+
+export function listenLiveChat(
+  roomName: string,
+  onChange: (messages: LiveChatMessage[]) => void,
+): Unsubscribe {
+  const q = query(
+    collection(db, 'liveRooms', roomKey(roomName), 'messages'),
+    orderBy('createdAtMs', 'asc'),
+    limit(400),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        snap.docs.map((item) => {
+          const data = item.data() as Record<string, unknown>;
+          const giftRaw = data.gift && typeof data.gift === 'object' ? (data.gift as Record<string, unknown>) : null;
+          return {
+            id: String(data.clientId || item.id),
+            author: String(data.author || 'Liveboomer'),
+            authorUid: String(data.authorUid || ''),
+            text: String(data.text || ''),
+            gift: giftRaw
+              ? {
+                  giftId: String(giftRaw.giftId || ''),
+                  emoji: String(giftRaw.emoji || '🎁'),
+                  name: String(giftRaw.name || 'Regalo'),
+                }
+              : null,
+            createdAtMs: Number(data.createdAtMs || 0),
+          };
+        }),
+      );
+    },
+    (err) => {
+      console.error('No se pudo cargar el historial del chat', err);
+    },
+  );
+}
+
+export async function publishLiveChatMessage(
+  roomName: string,
+  message: {
+    clientId: string;
+    authorUid: string;
+    author: string;
+    text: string;
+    gift?: { giftId: string; emoji: string; name: string } | null;
+  },
+) {
+  await addDoc(collection(db, 'liveRooms', roomKey(roomName), 'messages'), {
+    clientId: message.clientId,
+    authorUid: message.authorUid,
+    author: message.author,
+    text: message.text.slice(0, 500),
+    gift: message.gift || null,
+    createdAt: serverTimestamp(),
+    createdAtMs: Date.now(),
   });
 }
