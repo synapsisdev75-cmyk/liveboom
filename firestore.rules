@@ -53,26 +53,63 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
+      function createOtherUid() {
+        return request.auth.uid == request.resource.data.participants[0]
+          ? request.resource.data.participants[1]
+          : request.resource.data.participants[0];
+      }
+      function chatParts() {
+        return get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      }
+      function messageOtherUid() {
+        return request.auth.uid == chatParts()[0] ? chatParts()[1] : chatParts()[0];
+      }
+      function isFriendOf(otherUid) {
+        return exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(otherUid));
+      }
+
       allow read, update: if signedIn() && request.auth.uid in resource.data.participants;
-      allow create: if signedIn() && request.auth.uid in request.resource.data.participants;
+      allow create: if signedIn()
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants.size() == 2
+        && isFriendOf(createOtherUid());
 
       match /messages/{messageId} {
-        allow read: if signedIn()
-          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow read: if signedIn() && request.auth.uid in chatParts();
         allow create: if signedIn()
-          && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+          && request.auth.uid in chatParts()
           && request.resource.data.fromUid == request.auth.uid
           && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000;
+          && request.resource.data.text.size() <= 2000
+          && (
+            request.resource.data.text.size() > 0
+            || request.resource.data.mediaUrl is string
+            || request.resource.data.linkUrl is string
+          )
+          && isFriendOf(messageOtherUid());
       }
     }
 
     match /posts/{postId} {
-      allow read: if true;
+      function postVis() {
+        return request.resource.data.visibility;
+      }
+      function canReadPost() {
+        return resource.data.visibility == null
+          || resource.data.visibility == 'public'
+          || (signedIn() && resource.data.authorUid == request.auth.uid)
+          || (
+            signedIn()
+            && resource.data.visibility == 'friends'
+            && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(resource.data.authorUid))
+          );
+      }
+
+      allow read: if canReadPost();
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
-        && request.resource.data.username is string;
+        && request.resource.data.username is string
+        && (postVis() == 'public' || postVis() == 'friends' || postVis() == 'private');
       allow update, delete: if signedIn() && resource.data.authorUid == request.auth.uid;
     }
 

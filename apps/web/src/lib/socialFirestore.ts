@@ -44,6 +44,9 @@ export type ChatMessage = {
   fromUid: string;
   mine: boolean;
   createdAt: string;
+  mediaUrl?: string | null;
+  mediaType?: 'image' | 'audio' | 'file' | null;
+  linkUrl?: string | null;
 };
 
 export type Conversation = FriendChip & {
@@ -59,6 +62,7 @@ export type FsPost = {
   type: 'photo' | 'video' | 'text';
   caption: string | null;
   mediaUrl: string | null;
+  visibility: 'public' | 'friends' | 'private';
   createdAt: string;
   likes: number;
   viewerReaction: string | null;
@@ -182,9 +186,10 @@ export async function acceptFriendRequest(toUid: string, fromUsername: string) {
     avatarUrl?: string | null;
   };
 
+  const toHandle = String(toData.username || '').toLowerCase();
   const toChip = {
-    username: toData.username || '',
-    displayName: toData.displayName || toData.username || '',
+    username: toHandle,
+    displayName: toData.displayName || toHandle,
     avatarUrl: toData.avatarUrl ?? null,
     createdAt: serverTimestamp(),
   };
@@ -199,6 +204,22 @@ export async function acceptFriendRequest(toUid: string, fromUsername: string) {
   await setDoc(doc(db, 'users', from.firebaseUid, 'friends', toUid), toChip);
   await deleteDoc(doc(db, 'users', toUid, 'incomingRequests', from.firebaseUid)).catch(() => undefined);
   await deleteDoc(doc(db, 'users', from.firebaseUid, 'outgoingRequests', toUid)).catch(() => undefined);
+
+  // Empareja chat privado en cuanto quedan amigos (permisos requieren amistad).
+  await ensureChat(
+    {
+      firebaseUid: toUid,
+      handle: toHandle,
+      displayName: String(toData.displayName || toHandle),
+      avatarUrl: toData.avatarUrl ?? null,
+    },
+    {
+      uid: from.firebaseUid,
+      username: from.username,
+      displayName: from.displayName,
+      avatarUrl: from.avatarUrl,
+    },
+  );
 }
 
 export async function removeFriendship(uid: string, otherUsername: string) {
@@ -346,27 +367,41 @@ export function listenMessages(
           fromUid: String(data.fromUid || ''),
           mine: data.fromUid === viewerUid,
           createdAt: asIso(data.createdAt),
+          mediaUrl: (data.mediaUrl as string | null) ?? null,
+          mediaType: (data.mediaType as ChatMessage['mediaType']) ?? null,
+          linkUrl: (data.linkUrl as string | null) ?? null,
         };
       }),
     );
   });
 }
 
+async function assertAreFriends(meUid: string, friendUid: string) {
+  const snap = await getDoc(doc(db, 'users', meUid, 'friends', friendUid));
+  if (!snap.exists()) {
+    throw new Error('Solo puedes enviar mensajes privados a tus amigos');
+  }
+}
+
 export async function ensureChat(me: MeProfile, friend: FriendChip) {
+  if (!friend.uid) throw new Error('Amigo inválido');
+  await assertAreFriends(me.firebaseUid, friend.uid);
+
   const id = chatIdFor(me.firebaseUid, friend.uid);
   const ref = doc(db, 'chats', id);
   const existing = await getDoc(ref);
   if (!existing.exists()) {
+    const participants = [me.firebaseUid, friend.uid].sort();
     await setDoc(ref, {
-      participants: [me.firebaseUid, friend.uid],
+      participants,
       profiles: {
         [me.firebaseUid]: {
-          username: me.handle,
+          username: me.handle.toLowerCase(),
           displayName: me.displayName,
           avatarUrl: me.avatarUrl,
         },
         [friend.uid]: {
-          username: friend.username,
+          username: friend.username.toLowerCase(),
           displayName: friend.displayName,
           avatarUrl: friend.avatarUrl,
         },
@@ -379,67 +414,113 @@ export async function ensureChat(me: MeProfile, friend: FriendChip) {
   return id;
 }
 
-export async function sendChatMessage(me: MeProfile, friend: FriendChip, text: string) {
+export async function sendChatMessage(
+  me: MeProfile,
+  friend: FriendChip,
+  text: string,
+  extras?: {
+    mediaUrl?: string | null;
+    mediaType?: 'image' | 'audio' | 'file' | null;
+    linkUrl?: string | null;
+  },
+) {
   const body = text.trim().slice(0, 2000);
-  if (!body) throw new Error('Escribe un mensaje');
+  const mediaUrl = extras?.mediaUrl || null;
+  const linkUrl = extras?.linkUrl?.trim() || null;
+  if (!body && !mediaUrl && !linkUrl) throw new Error('Escribe un mensaje o adjunta algo');
+  await assertAreFriends(me.firebaseUid, friend.uid);
   const id = await ensureChat(me, friend);
   await addDoc(collection(db, 'chats', id, 'messages'), {
-    text: body,
+    text: body || (mediaUrl ? '📎 Adjunto' : linkUrl || ''),
     fromUid: me.firebaseUid,
+    mediaUrl,
+    mediaType: extras?.mediaType || null,
+    linkUrl,
     createdAt: serverTimestamp(),
   });
   await updateDoc(doc(db, 'chats', id), {
-    lastMessage: body,
+    lastMessage: body || (mediaUrl ? 'Adjunto' : linkUrl) || '',
     lastAt: serverTimestamp(),
   });
   return id;
 }
 
-export function listenPostsByUsername(username: string, onChange: (posts: FsPost[]) => void): Unsubscribe {
-  const q = query(collection(db, 'posts'), where('username', '==', username.toLowerCase()), limit(60));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const list = snap.docs.map((item) => {
-        const data = item.data();
-        return {
-          id: item.id,
-          authorUid: String(data.authorUid || ''),
-          username: String(data.username || ''),
-          type: (data.type as FsPost['type']) || 'text',
-          caption: (data.caption as string | null) ?? null,
-          mediaUrl: (data.mediaUrl as string | null) ?? null,
-          createdAt: asIso(data.createdAt),
-          likes: Number(data.likes ?? 0),
-          viewerReaction: null,
-        };
-      });
-      list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-      onChange(list);
-    },
-    () => onChange([]),
-  );
+function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
+  return {
+    id,
+    authorUid: String(data.authorUid || ''),
+    username: String(data.username || ''),
+    type: (data.type as FsPost['type']) || 'text',
+    caption: (data.caption as string | null) ?? null,
+    mediaUrl: (data.mediaUrl as string | null) ?? null,
+    visibility: (data.visibility as FsPost['visibility']) || 'public',
+    createdAt: asIso(data.createdAt),
+    likes: Number(data.likes ?? 0),
+    viewerReaction: null,
+  };
+}
+
+export function listenPostsByUsername(
+  username: string,
+  onChange: (posts: FsPost[]) => void,
+  viewer?: { uid: string; isFriend?: boolean; isOwner?: boolean } | null,
+): Unsubscribe {
+  const uname = username.toLowerCase();
+  const postsCol = collection(db, 'posts');
+  const buckets = new Map<string, FsPost[]>();
+  const unsubs: Unsubscribe[] = [];
+
+  function emit() {
+    const list = Array.from(buckets.values()).flat();
+    list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    onChange(list);
+  }
+
+  function attach(q: ReturnType<typeof query>, key: string) {
+    unsubs.push(
+      onSnapshot(
+        q,
+        (snap) => {
+          buckets.set(key, snap.docs.map((docSnap) => postFromDoc(docSnap.id, docSnap.data() as Record<string, unknown>)));
+          emit();
+        },
+        () => {
+          buckets.set(key, []);
+          emit();
+        },
+      ),
+    );
+  }
+
+  if (viewer?.isOwner) {
+    attach(query(postsCol, where('username', '==', uname), limit(60)), 'all');
+  } else {
+    attach(
+      query(postsCol, where('username', '==', uname), where('visibility', '==', 'public'), limit(40)),
+      'public',
+    );
+    if (viewer?.isFriend) {
+      attach(
+        query(postsCol, where('username', '==', uname), where('visibility', '==', 'friends'), limit(40)),
+        'friends',
+      );
+    }
+  }
+
+  return () => {
+    unsubs.forEach((stop) => stop());
+  };
 }
 
 export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscribe {
-  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(30));
+  const q = query(
+    collection(db, 'posts'),
+    where('visibility', '==', 'public'),
+    orderBy('createdAt', 'desc'),
+    limit(30),
+  );
   return onSnapshot(q, (snap) => {
-    onChange(
-      snap.docs.map((item) => {
-        const data = item.data();
-        return {
-          id: item.id,
-          authorUid: String(data.authorUid || ''),
-          username: String(data.username || ''),
-          type: (data.type as FsPost['type']) || 'text',
-          caption: (data.caption as string | null) ?? null,
-          mediaUrl: (data.mediaUrl as string | null) ?? null,
-          createdAt: asIso(data.createdAt),
-          likes: Number(data.likes ?? 0),
-          viewerReaction: null,
-        };
-      }),
-    );
+    onChange(snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>)));
   });
 }
 
@@ -448,27 +529,47 @@ export async function createPost(input: {
   username: string;
   type: 'photo' | 'video' | 'text';
   caption: string;
+  mediaFile?: File | Blob | null;
   mediaUrl?: string | null;
-}) {
-  let mediaUrl = input.mediaUrl || null;
-  if (mediaUrl?.startsWith('data:')) {
-    const blob = await (await fetch(mediaUrl)).blob();
-    mediaUrl = await uploadUserMedia(
-      input.authorUid,
-      blob,
-      input.type === 'video' ? 'clip.mp4' : 'photo.jpg',
-    );
+  visibility?: 'public' | 'friends' | 'private';
+}): Promise<{ id: string; mediaUrl: string | null; visibility: 'public' | 'friends' | 'private' }> {
+  let mediaUrl: string | null = null;
+  const visibility = input.visibility || 'public';
+
+  if (input.type === 'photo' || input.type === 'video') {
+    if (input.mediaFile) {
+      const fileName =
+        input.mediaFile instanceof File && input.mediaFile.name
+          ? input.mediaFile.name
+          : input.type === 'video'
+            ? 'clip.mp4'
+            : 'photo.jpg';
+      mediaUrl = await uploadUserMedia(input.authorUid, input.mediaFile, fileName);
+    } else if (input.mediaUrl?.startsWith('data:')) {
+      const blob = await (await fetch(input.mediaUrl)).blob();
+      mediaUrl = await uploadUserMedia(
+        input.authorUid,
+        blob,
+        input.type === 'video' ? 'clip.mp4' : 'photo.jpg',
+      );
+    } else if (input.mediaUrl && /^https?:\/\//i.test(input.mediaUrl)) {
+      mediaUrl = input.mediaUrl;
+    } else {
+      throw new Error(input.type === 'video' ? 'Elige un video para publicar' : 'Elige una foto para publicar');
+    }
   }
+
   const ref = await addDoc(collection(db, 'posts'), {
     authorUid: input.authorUid,
     username: input.username.toLowerCase(),
     type: input.type,
     caption: input.caption.trim().slice(0, 2000) || null,
     mediaUrl,
+    visibility,
     likes: 0,
     createdAt: serverTimestamp(),
   });
-  return ref.id;
+  return { id: ref.id, mediaUrl, visibility };
 }
 
 export async function deletePost(postId: string, authorUid: string) {

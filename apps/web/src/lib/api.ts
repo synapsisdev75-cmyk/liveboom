@@ -5,9 +5,11 @@ const API_BASE = String(import.meta.env.VITE_API_URL || ONLINE_API).replace(/\/$
 
 export class ApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly data: Record<string, unknown>;
+  constructor(status: number, message: string, data: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -39,7 +41,11 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     );
   }
   if (!response.ok) {
-    throw new ApiError(response.status, data.error ?? data.message ?? `Error ${response.status}`);
+    throw new ApiError(
+      response.status,
+      data.error ?? data.message ?? `Error ${response.status}`,
+      data as Record<string, unknown>,
+    );
   }
   return data;
 }

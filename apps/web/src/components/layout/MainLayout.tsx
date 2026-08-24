@@ -1,6 +1,6 @@
 import { Home, Menu, MessageCircle, Radio, Search, Settings, UserRound, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { CoinModal, RechargeButton } from '../wallet/CoinModal';
@@ -36,10 +36,13 @@ export function MainLayout() {
   const toastTone = useUiStore((state) => state.toastTone);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  const chatFull = location.pathname.startsWith('/mensajes');
 
   return (
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-zinc-950 font-sans text-white lg:flex-row">
       {/* Top bar — mobile only */}
+      {!chatFull ? (
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 lg:hidden">
         <Link to="/" className="block">
           <Logo compact />
@@ -69,8 +72,10 @@ export function MainLayout() {
           </button>
         </div>
       </header>
+      ) : null}
 
       {/* Left sidebar — desktop */}
+      {!chatFull ? (
       <aside className="hidden w-[20%] min-w-[220px] shrink-0 flex-col border-r border-zinc-800 px-5 py-6 lg:flex">
         <Link to="/" className="block">
           <Logo />
@@ -131,14 +136,20 @@ export function MainLayout() {
         </div>
         <LegalFooter compact />
       </aside>
+      ) : null}
 
-      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:p-4 lg:w-[60%] lg:pb-4">
+      <main className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${
+        chatFull
+          ? 'p-0'
+          : 'p-3 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:p-4 lg:w-[60%] lg:pb-4'
+      }`}>
         <Outlet />
       </main>
 
-      <SideRailPanel />
+      {!chatFull ? <SideRailPanel /> : null}
 
       {/* Bottom nav — mobile */}
+      {!chatFull ? (
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
         <ul className="grid grid-cols-4 px-1 pt-1">
           {mobileNavItems.map((item) => {
@@ -174,6 +185,7 @@ export function MainLayout() {
           })}
         </ul>
       </nav>
+      ) : null}
 
       {/* Mobile slide-over menu */}
       {menuOpen ? (

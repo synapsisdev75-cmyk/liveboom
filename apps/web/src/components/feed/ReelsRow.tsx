@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { apiPublic } from '../../lib/api';
+import { Link } from 'react-router-dom';
+import { listenRecentPosts, type FsPost } from '../../lib/socialFirestore';
 
 export type ReelItem = {
   id: string;
@@ -10,19 +11,29 @@ export type ReelItem = {
   createdAt: string;
 };
 
-export function ReelsRow({ title = 'Reels del live' }: { title?: string }) {
+function toReel(post: FsPost): ReelItem {
+  return {
+    id: post.id,
+    username: post.username,
+    title: post.caption || 'Video',
+    dataUrl: post.mediaUrl || '',
+    shared: true,
+    createdAt: post.createdAt,
+  };
+}
+
+export function ReelsRow({ title = 'Reels' }: { title?: string }) {
   const [reels, setReels] = useState<ReelItem[]>([]);
 
   useEffect(() => {
-    let cancelled = false;
-    void apiPublic<{ reels: ReelItem[] }>('/api/stream/reels')
-      .then((data: { reels: ReelItem[] }) => {
-        if (!cancelled) setReels(data.reels || []);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
+    return listenRecentPosts((posts) => {
+      setReels(
+        posts
+          .filter((post) => post.type === 'video' && post.mediaUrl)
+          .map(toReel)
+          .slice(0, 24),
+      );
+    });
   }, []);
 
   if (reels.length === 0) return null;
@@ -39,7 +50,9 @@ export function ReelsRow({ title = 'Reels del live' }: { title?: string }) {
             <video src={reel.dataUrl} className="aspect-[9/16] w-full object-cover" muted playsInline controls />
             <div className="space-y-0.5 p-2">
               <p className="line-clamp-2 text-[11px] font-semibold text-white">{reel.title}</p>
-              <p className="truncate text-[10px] text-zinc-500">@{reel.username}</p>
+              <Link to={`/u/${encodeURIComponent(reel.username)}`} className="truncate text-[10px] text-cyan-400">
+                @{reel.username}
+              </Link>
             </div>
           </article>
         ))}

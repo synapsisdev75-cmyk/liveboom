@@ -146,6 +146,7 @@ export type SocialPost = {
   type: 'photo' | 'video' | 'text';
   caption: string | null;
   mediaUrl: string | null;
+  visibility?: 'public' | 'friends' | 'private';
   createdAt: string;
   likes: number;
   dislikes: number;
@@ -195,6 +196,11 @@ export function PostCard({
 
   return (
     <article className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
+      {post.visibility && post.visibility !== 'public' ? (
+        <p className="border-b border-white/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+          {post.visibility === 'friends' ? 'Solo amigos' : 'Privado'}
+        </p>
+      ) : null}
       {post.type === 'photo' && post.mediaUrl ? (
         <img src={post.mediaUrl} alt="" className="aspect-square w-full object-cover" />
       ) : null}

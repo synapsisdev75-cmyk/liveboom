@@ -1,3 +1,7 @@
+/** Equivalente justo de retiro: 1 coin = $20 COP (mismo del pack inicial). */
+const COIN_TO_COP = 20;
+const MIN_WITHDRAW_COINS = 50;
+
 const COIN_PACKAGES = {
   '100_coins': { coins: 100, amountInCop: 200000 },
   '500_coins': { coins: 500, amountInCop: 950000 },
@@ -20,4 +24,14 @@ function resolveCoinPackage(packageId, amountInCop) {
   return { pack };
 }
 
-module.exports = { COIN_PACKAGES, resolveCoinPackage };
+function coinsToCop(coins) {
+  return Math.max(0, Math.floor(Number(coins) || 0)) * COIN_TO_COP;
+}
+
+module.exports = {
+  COIN_PACKAGES,
+  COIN_TO_COP,
+  MIN_WITHDRAW_COINS,
+  resolveCoinPackage,
+  coinsToCop,
+};

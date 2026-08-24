@@ -29,7 +29,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         heading: '5. Coins y pagos',
-        body: 'Los coins son créditos virtuales para uso dentro de la plataforma. Las compras procesadas por proveedores de pago (por ejemplo Wompi) están sujetas a sus políticas. Los reembolsos se evalúan según la ley aplicable y las políticas de la tienda de pagos.',
+        body: 'Los coins son créditos virtuales para uso dentro de la plataforma. Las compras procesadas por proveedores de pago (por ejemplo Wompi) están sujetas a sus políticas. El retiro de coins a pesos colombianos (COP) usa el equivalente justo de 1 coin = $20 COP, sujeto a verificación de identidad y medios de pago. Los reembolsos se evalúan según la ley aplicable y las políticas de la tienda de pagos.',
       },
       {
         heading: '6. Lives y privacidad',

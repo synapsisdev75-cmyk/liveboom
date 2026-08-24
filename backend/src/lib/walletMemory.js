@@ -2,14 +2,19 @@ const persist = require('./persist');
 
 const balances = new Map();
 const pendingOrders = new Map();
+/** @type {Map<string, object[]>} */
+const withdrawalsByUid = new Map();
 
 function hydrate() {
-  const data = persist.load('wallet', { balances: {}, pendingOrders: {} });
+  const data = persist.load('wallet', { balances: {}, pendingOrders: {}, withdrawals: {} });
   for (const [uid, coins] of Object.entries(data.balances || {})) {
     balances.set(uid, Number(coins) || 0);
   }
   for (const [ref, order] of Object.entries(data.pendingOrders || {})) {
     pendingOrders.set(ref, order);
+  }
+  for (const [uid, list] of Object.entries(data.withdrawals || {})) {
+    withdrawalsByUid.set(uid, Array.isArray(list) ? list : []);
   }
 }
 
@@ -17,6 +22,7 @@ function flush() {
   persist.debouncedSave('wallet', {
     balances: Object.fromEntries(balances),
     pendingOrders: Object.fromEntries(pendingOrders),
+    withdrawals: Object.fromEntries(withdrawalsByUid),
   });
 }
 
@@ -63,4 +69,28 @@ function takeOrder(reference, uid) {
   return order;
 }
 
-module.exports = { getBalance, setBalance, credit, debit, rememberOrder, takeOrder };
+function listWithdrawals(uid) {
+  return [...(withdrawalsByUid.get(String(uid)) || [])].sort((a, b) =>
+    String(b.createdAt || '').localeCompare(String(a.createdAt || '')),
+  );
+}
+
+function addWithdrawal(uid, record) {
+  const key = String(uid);
+  const list = withdrawalsByUid.get(key) || [];
+  list.unshift(record);
+  withdrawalsByUid.set(key, list.slice(0, 80));
+  flush();
+  return record;
+}
+
+module.exports = {
+  getBalance,
+  setBalance,
+  credit,
+  debit,
+  rememberOrder,
+  takeOrder,
+  listWithdrawals,
+  addWithdrawal,
+};

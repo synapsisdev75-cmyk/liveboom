@@ -39,6 +39,11 @@ body {
   border-radius: 999px;
 }
 
+.mask-fade {
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
+}
+
 @keyframes float-gift {
   0% {
     opacity: 0;

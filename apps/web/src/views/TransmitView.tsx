@@ -102,7 +102,7 @@ export function TransmitView() {
         >
           <Lock className="mb-2 text-fuchsia-300" size={20} />
           <p className="font-semibold text-white">Privado</p>
-          <p className="mt-1 text-xs text-zinc-400">Solo con enlace directo (candado).</p>
+          <p className="mt-1 text-xs text-zinc-400">Solo con enlace. El candado de regalo se activa en el live (arriba izquierda).</p>
         </button>
       </div>
 

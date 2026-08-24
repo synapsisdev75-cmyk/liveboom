@@ -2,10 +2,13 @@ const express = require('express');
 const { asFn } = require('../lib/asFn');
 const presence = require('../lib/livePresence');
 const invites = require('../lib/liveInvites');
+const liveLocks = require('../lib/liveLocks');
 const reelStore = require('../lib/reelStore');
 const liveHistory = require('../lib/liveHistory');
 const social = require('../lib/socialMemory');
 const { getProfile, findByUsername } = require('../lib/profileMemory');
+const { findGift } = require('../lib/gifts');
+const { debit, credit, getBalance } = require('../lib/walletMemory');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -14,6 +17,7 @@ const livekit = () => require('../lib/livekit');
 const upsertLive = presence.upsertLive || presence.default?.upsertLive;
 const removeLive = presence.removeLive || presence.default?.removeLive;
 const listLives = presence.listLives || presence.default?.listLives;
+const getLive = presence.getLive || presence.default?.getLive;
 
 function normalize(value) {
   return String(value || '')
@@ -102,6 +106,12 @@ router.post('/live/stop', requireAuth, (req, res) => {
       : normalize(req.user.email ? req.user.email.split('@')[0] : req.user.uid);
   removeLive(username);
   invites.clearInvites(username);
+  liveLocks.clearLock(username);
+  try {
+    require('../lib/liveChat').clearRoom(username);
+  } catch {
+    // optional
+  }
   res.json({ ok: true, username });
 });
 
@@ -118,8 +128,125 @@ router.post('/invite', requireAuth, (req, res) => {
     res.status(403).json({ error: 'Solo el anfitrión puede invitar a unirse al live' });
     return;
   }
-  const invite = invites.addInvite(roomName, guestHandle);
-  res.status(201).json({ ok: true, invite, pending: invites.listInvites(roomName) });
+  const guestProfile = findByUsername(guestHandle);
+  invites.addInvite(roomName, guestHandle);
+  if (guestProfile?.firebaseUid) invites.addInvite(roomName, guestProfile.firebaseUid);
+  if (guestProfile?.username) invites.addInvite(roomName, guestProfile.username);
+  if (guestProfile?.email) {
+    invites.addInvite(roomName, String(guestProfile.email).split('@')[0]);
+  }
+  res.status(201).json({
+    ok: true,
+    invite: { room: roomName, guest: guestHandle, uid: guestProfile?.firebaseUid || null },
+    pending: invites.listInvites(roomName),
+  });
+});
+
+/** Candado en vivo: el host elige el regalo que desbloquea la entrada. */
+router.post('/lock', requireAuth, (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const giftId = typeof req.body?.giftId === 'string' ? req.body.giftId.trim() : '';
+  const clear = Boolean(req.body?.clear);
+  if (!roomName) {
+    res.status(400).json({ error: 'roomName es obligatorio' });
+    return;
+  }
+  if (!isRoomHost(req.user, roomName)) {
+    res.status(403).json({ error: 'Solo quien transmite puede activar el candado' });
+    return;
+  }
+  if (clear || !giftId) {
+    liveLocks.clearLock(roomName);
+    if (typeof upsertLive === 'function') {
+      upsertLive({ username: roomName, lockGiftId: null });
+    }
+    res.json({ ok: true, locked: false });
+    return;
+  }
+  const gift = findGift(giftId);
+  if (!gift) {
+    res.status(400).json({ error: 'Regalo de candado inválido' });
+    return;
+  }
+  const lock = liveLocks.setLock(roomName, {
+    giftId: gift.id,
+    giftName: gift.name,
+    coins: gift.coins,
+    emoji: gift.emoji,
+  });
+  if (typeof upsertLive === 'function') {
+    upsertLive({
+      username: roomName,
+      lockGiftId: gift.id,
+      lockGiftName: gift.name,
+      lockCoins: gift.coins,
+      lockEmoji: gift.emoji,
+    });
+  }
+  res.json({ ok: true, locked: true, lock });
+});
+
+router.get('/lock/:roomName', requireAuth, (req, res) => {
+  const roomName = normalize(req.params.roomName);
+  const lock = liveLocks.getLock(roomName);
+  const host = isRoomHost(req.user, roomName);
+  res.json({
+    locked: Boolean(lock),
+    lock,
+    unlocked: host || liveLocks.isUnlocked(roomName, req.user.uid),
+    isHost: host,
+  });
+});
+
+/** Espectador envía el regalo del candado para poder entrar. */
+router.post('/unlock', requireAuth, async (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  if (!roomName) {
+    res.status(400).json({ error: 'roomName es obligatorio' });
+    return;
+  }
+  if (isRoomHost(req.user, roomName)) {
+    res.json({ ok: true, unlocked: true, host: true });
+    return;
+  }
+  const lock = liveLocks.getLock(roomName);
+  if (!lock) {
+    res.json({ ok: true, unlocked: true, locked: false });
+    return;
+  }
+  if (liveLocks.isUnlocked(roomName, req.user.uid)) {
+    res.json({ ok: true, unlocked: true, lock });
+    return;
+  }
+  const gift = findGift(lock.giftId);
+  if (!gift) {
+    res.status(400).json({ error: 'Regalo de candado no disponible' });
+    return;
+  }
+  const next = debit(req.user.uid, gift.coins);
+  if (next == null) {
+    res.status(402).json({
+      error: 'Saldo insuficiente',
+      requiredCoins: gift.coins,
+      balance: getBalance(req.user.uid),
+      lock,
+    });
+    return;
+  }
+  const host = findByUsername(roomName);
+  if (host?.firebaseUid && host.firebaseUid !== req.user.uid) {
+    credit(host.firebaseUid, gift.coins);
+  }
+  liveLocks.markUnlocked(roomName, req.user.uid);
+  res.json({
+    ok: true,
+    unlocked: true,
+    lock,
+    senderBalance: next,
+    gift: { id: gift.id, name: gift.name, emoji: gift.emoji, coins: gift.coins },
+  });
 });
 
 router.get('/reels', (_req, res) => {
@@ -195,7 +322,20 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
   try {
     const host = isRoomHost(req.user, roomName);
     const guest = canGuestPublish(req.user, roomName);
-    const canPublish = host || guest;
+    const isDirectCall = /^dm[_-]/.test(roomName);
+
+    if (!host && !isDirectCall && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
+      const lock = liveLocks.getLock(roomName);
+      res.status(402).json({
+        error: 'Live con candado',
+        code: 'LIVE_LOCKED',
+        lock,
+        message: `Envía ${lock?.emoji || '🎁'} ${lock?.giftName || 'el regalo'} (${lock?.coins || 0} coins) para entrar`,
+      });
+      return;
+    }
+
+    const canPublish = host || guest || isDirectCall;
     const displayName = req.user.name || req.user.email || req.user.uid.slice(0, 8);
     const token = await createLivekitToken({
       identity: req.user.uid,
@@ -220,6 +360,7 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
       canPublish,
       isHost: host,
       isGuest: guest && !host,
+      lock: liveLocks.getLock(roomName),
     });
   } catch (error) {
     console.error('[stream/token]', error);
@@ -227,6 +368,24 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
       error: error instanceof Error ? error.message : 'No se pudo generar el token de LiveKit',
     });
   }
+});
+
+router.get('/chat/:roomName', requireAuth, (req, res) => {
+  const roomName = normalize(req.params.roomName);
+  const liveChat = require('../lib/liveChat');
+  res.json({ messages: liveChat.listMessages(roomName, { limit: 300 }) });
+});
+
+router.post('/chat/:roomName', requireAuth, (req, res) => {
+  const roomName = normalize(req.params.roomName);
+  const liveChat = require('../lib/liveChat');
+  const message = liveChat.appendMessage(roomName, {
+    id: req.body?.id,
+    author: req.body?.author,
+    text: req.body?.text,
+    gift: req.body?.gift || null,
+  });
+  res.status(201).json({ message });
 });
 
 router.get('/history', optionalAuth, (req, res) => {

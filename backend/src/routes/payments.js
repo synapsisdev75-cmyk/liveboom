@@ -31,5 +31,19 @@ router.post(
   bind(() => require('../controllers/paymentsController'), 'simulateTopup'),
 );
 
+router.get(
+  '/withdrawals',
+  requireAuth,
+  requireDbUser,
+  bind(() => require('../controllers/paymentsController'), 'listMyWithdrawals'),
+);
+
+router.post(
+  '/withdraw',
+  requireAuth,
+  requireDbUser,
+  bind(() => require('../controllers/paymentsController'), 'withdrawCoins'),
+);
+
 module.exports = router;
 module.exports.default = router;

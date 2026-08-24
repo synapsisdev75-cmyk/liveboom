@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
+import { MessageCircle } from 'lucide-react';
 import { CreatePostModal } from '../components/social/CreatePostModal';
 import { FriendRequestButton, type FriendshipStatus } from '../components/social/FriendRequestButton';
 import { FriendRequestsPanel } from '../components/social/FriendRequestsPanel';
@@ -117,24 +118,33 @@ export function UserProfileView() {
   }, [username, profile?.firebaseUid]);
 
   useEffect(() => {
-    if (!username) return;
-    return listenPostsByUsername(username, (list) => {
-      setPosts(
-        list.map((item) => ({
-          id: item.id,
-          authorUsername: item.username,
-          type: item.type,
-          caption: item.caption,
-          mediaUrl: item.mediaUrl,
-          createdAt: item.createdAt,
-          likes: item.likes,
-          dislikes: 0,
-          viewerReaction: null,
-        })),
-      );
-    });
-  }, [username]);
-
+    if (!username || !publicProfile) return;
+    const viewerUid = profile?.firebaseUid;
+    const isOwner = Boolean(viewerUid && viewerUid === publicProfile.uid);
+    const isFriend = publicProfile.friendshipStatus === 'friends';
+    return listenPostsByUsername(
+      username,
+      (list) => {
+        setPosts(
+          list.map((item) => ({
+            id: item.id,
+            authorUsername: item.username,
+            type: item.type,
+            caption: item.caption,
+            mediaUrl: item.mediaUrl,
+            visibility: item.visibility,
+            createdAt: item.createdAt,
+            likes: item.likes,
+            dislikes: 0,
+            viewerReaction: null,
+          })),
+        );
+      },
+      viewerUid
+        ? { uid: viewerUid, isFriend, isOwner }
+        : null,
+    );
+  }, [username, publicProfile?.uid, publicProfile?.friendshipStatus, profile?.firebaseUid]);
   useEffect(() => {
     if (!publicProfile?.uid) return;
     const unsubFriends = listenFriends(publicProfile.uid, (list) => {
@@ -292,27 +302,37 @@ export function UserProfileView() {
                   )
                 }
               />
-              <FriendRequestButton
-                username={publicProfile.username}
-                initialStatus={publicProfile.friendshipStatus}
-                isOwnProfile={publicProfile.isOwnProfile}
-                onChange={(status) =>
-                  setPublicProfile((current) =>
-                    current
-                      ? {
-                          ...current,
-                          friendshipStatus: status,
-                          friendsCount:
-                            status === 'friends'
-                              ? current.friendsCount + 1
-                              : status === 'none'
-                                ? Math.max(0, current.friendsCount - 1)
-                                : current.friendsCount,
-                        }
-                      : current,
-                  )
-                }
-              />
+              {!publicProfile.isOwnProfile && publicProfile.friendshipStatus === 'friends' ? (
+                <Link
+                  to={`/mensajes?con=${encodeURIComponent(publicProfile.username)}`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-400/30"
+                >
+                  <MessageCircle size={16} />
+                  Mensaje
+                </Link>
+              ) : !publicProfile.isOwnProfile ? (
+                <FriendRequestButton
+                  username={publicProfile.username}
+                  initialStatus={publicProfile.friendshipStatus}
+                  isOwnProfile={publicProfile.isOwnProfile}
+                  onChange={(status) =>
+                    setPublicProfile((current) =>
+                      current
+                        ? {
+                            ...current,
+                            friendshipStatus: status,
+                            friendsCount:
+                              status === 'friends'
+                                ? current.friendsCount + 1
+                                : status === 'none'
+                                  ? Math.max(0, current.friendsCount - 1)
+                                  : current.friendsCount,
+                          }
+                        : current,
+                    )
+                  }
+                />
+              ) : null}
               {publicProfile.isOwnProfile ? (
                 <Link
                   to="/perfil/editar"
