@@ -132,15 +132,33 @@ export function LiveRoom() {
 
   async function fetchToken() {
     if (!username || !profile) return;
+    // Marca el live antes del token para que el host se reconozca por uid/username.
+    if (isOwnRoom) {
+      await api('/api/stream/live/start', {
+        method: 'POST',
+        body: JSON.stringify({
+          username,
+          title: launch.title || `Live de ${profile.displayName || profile.handle}`,
+          isPrivate: Boolean(launch.isPrivate ?? isPrivate),
+          category: launch.category || profile.category || 'otro',
+        }),
+      }).catch(() => undefined);
+      setLiveStarted(true);
+      if (typeof launch.isPrivate === 'boolean') setIsPrivate(launch.isPrivate);
+    }
+    const handle = encodeURIComponent(profile.handle);
     const data = await api<{
       token: string;
       serverUrl: string;
       canPublish: boolean;
       isHost?: boolean;
-    }>(`/api/stream/token/${encodeURIComponent(username)}`);
+    }>(`/api/stream/token/${encodeURIComponent(username)}?handle=${handle}`);
     setSession(data);
     setGateLock(null);
     setError(null);
+    if (!data.canPublish && isOwnRoom) {
+      setError('No se pudo activar tu cámara como anfitrión. Recarga e intenta de nuevo.');
+    }
   }
 
   useEffect(() => {
@@ -153,7 +171,9 @@ export function LiveRoom() {
           unlocked: boolean;
           isHost: boolean;
           lock: LockInfo | null;
-        }>(`/api/stream/lock/${encodeURIComponent(username)}`);
+        }>(
+          `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(profile.handle)}`,
+        );
         if (cancelled) return;
         if (lockState.locked && !lockState.unlocked && !lockState.isHost && lockState.lock) {
           setGateLock(lockState.lock);
@@ -195,42 +215,21 @@ export function LiveRoom() {
     }
   }
   useEffect(() => {
-    if (!username || !profile || !session?.canPublish || !session.isHost) return;
-    if (!launch.goLive || liveStarted) return;
-
-    let cancelled = false;
-    void api('/api/stream/live/start', {
-      method: 'POST',
-      body: JSON.stringify({
-        username,
-        title: launch.title || `Live de ${profile.displayName || profile.handle}`,
-        isPrivate: Boolean(launch.isPrivate),
-        category: launch.category || profile.category || 'otro',
-      }),
-    })
-      .then(() => {
-        if (!cancelled) {
-          setLiveStarted(true);
-          setIsPrivate(Boolean(launch.isPrivate));
-        }
-      })
-      .catch(() => undefined);
-
     return () => {
-      cancelled = true;
-    };
-  }, [username, profile, session, launch.goLive, launch.title, launch.isPrivate, launch.category, liveStarted]);
-
-  useEffect(() => {
-    return () => {
-      if (liveStarted && username) {
+      if (liveStarted && username && isOwnRoom) {
         void api('/api/stream/live/stop', {
           method: 'POST',
           body: JSON.stringify({ username }),
         }).catch(() => undefined);
       }
     };
-  }, [liveStarted, username]);
+  }, [liveStarted, username, isOwnRoom]);
+
+  // live/start ya se hace en fetchToken para el anfitrión
+  useEffect(() => {
+    if (!username || !profile || !session?.isHost || !launch.goLive || liveStarted) return;
+    setLiveStarted(true);
+  }, [username, profile, session?.isHost, launch.goLive, liveStarted]);
 
   if (!ready) {
     return (
@@ -319,8 +318,15 @@ export function LiveRoom() {
         token={session.token}
         serverUrl={session.serverUrl}
         connect
-        video={session.canPublish}
-        audio={session.canPublish}
+        video={false}
+        audio={false}
+        options={{
+          adaptiveStream: true,
+          dynacast: true,
+          reconnectPolicy: {
+            nextRetryDelayInMs: (context) => Math.min(1000 * 2 ** context.retryCount, 10000),
+          },
+        }}
         className="relative flex h-full w-full min-h-0 flex-col lg:flex-row lg:gap-3"
       >
         <RoomAudioRenderer />
@@ -383,7 +389,9 @@ function CreatorStage({
 
   useEffect(() => {
     if (!isHost) return;
-    void api<{ lock: LockInfo | null }>(`/api/stream/lock/${encodeURIComponent(username)}`)
+    void api<{ lock: LockInfo | null }>(
+      `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(profile?.handle || username)}`,
+    )
       .then((data) => setLock(data.lock))
       .catch(() => undefined);
   }, [isHost, username]);
@@ -485,7 +493,9 @@ function CreatorStage({
       const result = await api<{ lock: LockInfo | null; locked: boolean }>('/api/stream/lock', {
         method: 'POST',
         body: JSON.stringify(
-          giftId ? { roomName: username, giftId } : { roomName: username, clear: true },
+          giftId
+            ? { roomName: username, giftId, handle: profile?.handle }
+            : { roomName: username, clear: true, handle: profile?.handle },
         ),
       });
       const next = result.locked ? result.lock : null;
@@ -536,7 +546,7 @@ function CreatorStage({
     try {
       await api('/api/stream/invite', {
         method: 'POST',
-        body: JSON.stringify({ roomName: username, guestHandle }),
+        body: JSON.stringify({ roomName: username, guestHandle, handle: profile?.handle }),
       });
       await publishRoomData(room, {
         type: 'invite',
@@ -613,7 +623,7 @@ function CreatorStage({
             ref={stageVideoRef}
             className="relative aspect-[9/16] h-full max-h-full w-auto max-w-full overflow-hidden bg-black lg:rounded-2xl"
           >
-            <CreatorVideo />
+            <CreatorVideo canPublish={canPublish} facing={facing} cameraTrackRef={cameraTrackRef} />
             <FaceMeshGiftOverlay containerRef={stageVideoRef} active={faceGift} />
           </div>
         </div>
@@ -767,18 +777,109 @@ function CreatorStage({
   );
 }
 
-function CreatorVideo() {
+function waitConnected(room: ReturnType<typeof useRoomContext>, ms = 20000) {
+  if (room.state === 'connected') return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      room.off(RoomEvent.Connected, onOk);
+      reject(new Error('Tiempo de espera agotado al conectar LiveKit'));
+    }, ms);
+    const onOk = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    room.once(RoomEvent.Connected, onOk);
+  });
+}
+
+function CreatorVideo({
+  canPublish,
+  facing,
+  cameraTrackRef,
+}: {
+  canPublish: boolean;
+  facing: 'user' | 'environment';
+  cameraTrackRef: React.MutableRefObject<LocalVideoTrack | null>;
+}) {
+  const room = useRoomContext();
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }]);
+  const [camError, setCamError] = useState<string | null>(null);
+  const [camBusy, setCamBusy] = useState(false);
+  const [retry, setRetry] = useState(0);
+
   const cameras = tracks
     .filter((track): track is TrackReference => Boolean(track.publication))
     .sort((a, b) => Number(a.participant.joinedAt) - Number(b.participant.joinedAt));
-  const main = cameras[0];
-  const guests = cameras.slice(1);
+  const local = cameras.find((track) => track.participant.isLocal) || null;
+  const remotes = cameras.filter((track) => !track.participant.isLocal);
+  const main = local || remotes[0] || null;
+  const guests = local ? remotes : remotes.slice(1);
+
+  useEffect(() => {
+    if (!canPublish) return;
+    let cancelled = false;
+
+    async function publishMedia() {
+      setCamBusy(true);
+      setCamError(null);
+      try {
+        await waitConnected(room);
+        if (cancelled) return;
+
+        // Publicación explícita (más estable que solo video={true} del LiveKitRoom).
+        await room.localParticipant.setCameraEnabled(true, {
+          facingMode: facing,
+          resolution: { width: 720, height: 1280, frameRate: 24 },
+        });
+        await room.localParticipant.setMicrophoneEnabled(true);
+
+        const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
+          (item) => item.source === Track.Source.Camera,
+        );
+        if (pub?.track && 'mediaStreamTrack' in pub.track) {
+          cameraTrackRef.current = pub.track as LocalVideoTrack;
+        }
+        if (!cancelled) setCamError(null);
+      } catch (err) {
+        console.error('[live] publish camera', err);
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : 'No se pudo abrir la cámara';
+          setCamError(
+            /Permission|NotAllowed|Denied/i.test(msg)
+              ? 'Permiso de cámara/micrófono denegado. Permite el acceso y reintenta.'
+              : msg,
+          );
+        }
+      } finally {
+        if (!cancelled) setCamBusy(false);
+      }
+    }
+
+    void publishMedia();
+    return () => {
+      cancelled = true;
+    };
+  }, [canPublish, room, facing, retry, cameraTrackRef]);
 
   if (!main) {
     return (
-      <div className="grid h-full w-full place-items-center text-sm text-zinc-500">
-        Esperando la cámara del creador…
+      <div className="grid h-full w-full place-items-center gap-3 px-6 text-center text-sm text-zinc-400">
+        <p>
+          {canPublish
+            ? camBusy
+              ? 'Activando tu cámara…'
+              : camError || 'Preparando transmisión…'
+            : 'Esperando la cámara del creador…'}
+        </p>
+        {canPublish && camError ? (
+          <button
+            type="button"
+            onClick={() => setRetry((n) => n + 1)}
+            className="rounded-full bg-cyan-500 px-4 py-2 text-xs font-bold text-zinc-950"
+          >
+            Reintentar cámara
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -797,6 +898,17 @@ function CreatorVideo() {
           </p>
         </div>
       ))}
+      {canPublish && camError ? (
+        <div className="absolute inset-x-0 bottom-24 z-20 flex justify-center px-3">
+          <button
+            type="button"
+            onClick={() => setRetry((n) => n + 1)}
+            className="rounded-full bg-fuchsia-600/90 px-3 py-1.5 text-[11px] font-bold text-white"
+          >
+            Cámara con error · Reintentar
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }

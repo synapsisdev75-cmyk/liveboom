@@ -6,7 +6,7 @@ const liveLocks = require('../lib/liveLocks');
 const reelStore = require('../lib/reelStore');
 const liveHistory = require('../lib/liveHistory');
 const social = require('../lib/socialMemory');
-const { getProfile, findByUsername } = require('../lib/profileMemory');
+const { getProfile, findByUsername, saveProfile } = require('../lib/profileMemory');
 const { findGift } = require('../lib/gifts');
 const { debit, credit, getBalance } = require('../lib/walletMemory');
 
@@ -31,6 +31,7 @@ function identitiesFromToken(decoded) {
   const named = decoded.name || emailHandle || decoded.uid;
   const base =
     normalize(named).replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 20) || 'user';
+  const profile = getProfile(decoded.uid);
   return [
     decoded.uid,
     emailHandle,
@@ -38,13 +39,44 @@ function identitiesFromToken(decoded) {
     `${base}_${String(decoded.uid).slice(0, 8)}`,
     base,
     named,
+    profile?.username,
   ]
     .map((item) => normalize(item))
     .filter(Boolean);
 }
 
-function isRoomHost(decoded, roomName) {
+/**
+ * Host = dueño del username de la sala (perfil) o identidades del token Firebase.
+ * Si el cliente manda ?handle= igual a la sala, vinculamos ese username al uid
+ * (Firestore/perfil real) para que canPublish no falle al transmitir.
+ */
+function isRoomHost(decoded, roomName, claimedHandle) {
   const room = normalize(roomName);
+  const uid = String(decoded.uid || '');
+  if (!room || !uid) return false;
+
+  const claimed = normalize(claimedHandle || '');
+  if (claimed && claimed === room) {
+    const owner = findByUsername(room);
+    if (!owner || owner.firebaseUid === uid) {
+      const prev = getProfile(uid) || {};
+      saveProfile(uid, {
+        ...prev,
+        firebaseUid: uid,
+        username: room,
+        email: prev.email || decoded.email || `${uid}@users.liveboom.local`,
+        displayName: prev.displayName || decoded.name || room,
+        avatarUrl: prev.avatarUrl ?? decoded.picture ?? null,
+      });
+    }
+  }
+
+  const owner = findByUsername(room);
+  if (owner?.firebaseUid && owner.firebaseUid === uid) return true;
+
+  const profile = getProfile(uid);
+  if (profile?.username && normalize(profile.username) === room) return true;
+
   return identitiesFromToken(decoded).some(
     (identity) => identity === room || identity.startsWith(room) || room.startsWith(identity),
   );
@@ -124,7 +156,7 @@ router.post('/invite', requireAuth, (req, res) => {
     res.status(400).json({ error: 'roomName y guestHandle son obligatorios' });
     return;
   }
-  if (!isRoomHost(req.user, roomName)) {
+  if (!isRoomHost(req.user, roomName, req.body?.handle)) {
     res.status(403).json({ error: 'Solo el anfitrión puede invitar a unirse al live' });
     return;
   }
@@ -152,7 +184,7 @@ router.post('/lock', requireAuth, (req, res) => {
     res.status(400).json({ error: 'roomName es obligatorio' });
     return;
   }
-  if (!isRoomHost(req.user, roomName)) {
+  if (!isRoomHost(req.user, roomName, req.body?.handle)) {
     res.status(403).json({ error: 'Solo quien transmite puede activar el candado' });
     return;
   }
@@ -189,8 +221,9 @@ router.post('/lock', requireAuth, (req, res) => {
 
 router.get('/lock/:roomName', requireAuth, (req, res) => {
   const roomName = normalize(req.params.roomName);
+  const claimed = typeof req.query.handle === 'string' ? req.query.handle : undefined;
   const lock = liveLocks.getLock(roomName);
-  const host = isRoomHost(req.user, roomName);
+  const host = isRoomHost(req.user, roomName, claimed);
   res.json({
     locked: Boolean(lock),
     lock,
@@ -311,16 +344,16 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     return;
   }
 
-  const roomName = String(req.params.roomName || '')
-    .trim()
-    .slice(0, 64);
+  const roomName = normalize(req.params.roomName).slice(0, 64);
   if (!roomName) {
     res.status(400).json({ error: 'roomName es obligatorio' });
     return;
   }
 
   try {
-    const host = isRoomHost(req.user, roomName);
+    const claimedHandle =
+      typeof req.query.handle === 'string' ? req.query.handle : req.body?.handle;
+    const host = isRoomHost(req.user, roomName, claimedHandle);
     const guest = canGuestPublish(req.user, roomName);
     const isDirectCall = /^dm[_-]/.test(roomName);
 
@@ -346,7 +379,7 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
 
     if (host) {
       upsertLive({
-        username: normalize(roomName),
+        username: roomName,
         uid: req.user.uid,
         displayName,
         avatarUrl: req.user.picture || null,
