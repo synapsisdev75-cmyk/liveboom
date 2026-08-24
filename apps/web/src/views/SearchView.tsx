@@ -16,7 +16,8 @@ export function SearchView() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-400">Comunidad</p>
         <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Buscar amigos</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Encuentra creadores por @usuario, nombre, biografía o categoría.
+          Encuentra creadores por @usuario, nombre, biografía o categoría. Abajo ves las solicitudes
+          recibidas y las que tú enviaste, en tiempo real.
         </p>
       </div>
 

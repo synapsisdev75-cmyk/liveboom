@@ -133,6 +133,24 @@ service cloud.firestore {
         );
       }
 
+      function loadedPost() {
+        return get(/databases/$(database)/documents/posts/$(postId)).data;
+      }
+      function canReadLoadedPost() {
+        return signedIn() && (
+          loadedPost().authorUid == request.auth.uid
+          || loadedPost().visibility == 'public'
+          || loadedPost().visibility == null
+          || (
+            loadedPost().visibility == 'friends'
+            && (
+              exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(loadedPost().authorUid))
+              || exists(/databases/$(database)/documents/users/$(loadedPost().authorUid)/friends/$(request.auth.uid))
+            )
+          )
+        );
+      }
+
       allow read: if canReadPost();
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
@@ -143,6 +161,32 @@ service cloud.firestore {
         && request.resource.data.authorUid == resource.data.authorUid
         && validVisibility(postVis());
       allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+
+      match /reactions/{reactorId} {
+        allow read: if canReadLoadedPost();
+        allow create, update: if signedIn()
+          && request.auth.uid == reactorId
+          && canReadLoadedPost()
+          && request.resource.data.type in ['like', 'dislike'];
+        allow delete: if signedIn() && request.auth.uid == reactorId;
+      }
+
+      match /comments/{commentId} {
+        allow read: if canReadLoadedPost();
+        allow create: if signedIn()
+          && canReadLoadedPost()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.username is string
+          && request.resource.data.username.size() >= 3
+          && request.resource.data.username.size() <= 24
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
+        allow delete: if signedIn() && (
+          resource.data.authorUid == request.auth.uid
+          || loadedPost().authorUid == request.auth.uid
+        );
+      }
     }
 
     match /{document=**} {

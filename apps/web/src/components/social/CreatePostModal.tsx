@@ -65,7 +65,7 @@ export function CreatePostModal({ username, onCreated }: Props) {
     try {
       const created = await createPost({
         authorUid: profile.firebaseUid,
-        username,
+        username: profile.handle || username,
         type: kind,
         caption,
         mediaFile: kind === 'text' ? null : mediaFile,
@@ -73,7 +73,8 @@ export function CreatePostModal({ username, onCreated }: Props) {
       });
       onCreated({
         id: created.id,
-        authorUsername: username,
+        authorUid: profile.firebaseUid,
+        authorUsername: profile.handle || username,
         type: kind,
         caption: caption.trim() || null,
         mediaUrl: created.mediaUrl,

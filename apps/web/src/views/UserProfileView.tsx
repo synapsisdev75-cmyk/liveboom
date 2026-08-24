@@ -68,6 +68,7 @@ export function UserProfileView() {
   const [friends, setFriends] = useState<UserChip[]>([]);
   const [modal, setModal] = useState<'followers' | 'following' | 'friends' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [libraryError, setLibraryError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!username && !uidHint) return;
@@ -176,9 +177,11 @@ export function UserProfileView() {
     return listenPostsByUsername(
       handle,
       (list) => {
+        setLibraryError(null);
         setPosts(
           list.map((item) => ({
             id: item.id,
+            authorUid: item.authorUid,
             authorUsername: item.username,
             type: item.type,
             caption: item.caption,
@@ -243,7 +246,12 @@ export function UserProfileView() {
 
   async function deletePost(postId: string) {
     if (!profile) return;
-    await deleteFsPost(postId, profile.firebaseUid);
+    try {
+      await deleteFsPost(postId, profile.firebaseUid);
+      setPosts((current) => current.filter((item) => item.id !== postId));
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : 'No se pudo eliminar la publicación');
+    }
   }
 
   if (!ready) {
@@ -473,10 +481,14 @@ export function UserProfileView() {
           {publicProfile.isOwnProfile ? (
             <CreatePostModal
               username={publicProfile.username}
-              onCreated={(post) => setPosts((current) => [post, ...current])}
+              onCreated={(post) => {
+                setLibraryError(null);
+                setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+              }}
             />
           ) : null}
         </div>
+        {libraryError ? <p className="mb-3 text-sm text-fuchsia-400">{libraryError}</p> : null}
         {posts.length === 0 ? (
           <p className="text-sm text-zinc-500">
             {profile
@@ -496,11 +508,16 @@ export function UserProfileView() {
                   if (!profile) return;
                   void updatePostVisibility(post.id, profile.firebaseUid, visibility)
                     .then(() => {
+                      setLibraryError(null);
                       setPosts((current) =>
                         current.map((item) => (item.id === post.id ? { ...item, visibility } : item)),
                       );
                     })
-                    .catch(() => undefined);
+                    .catch((err) => {
+                      setLibraryError(
+                        err instanceof Error ? err.message : 'No se pudo guardar la privacidad',
+                      );
+                    });
                 }}
                 onReact={(updated) =>
                   setPosts((current) => current.map((item) => (item.id === updated.id ? updated : item)))

@@ -367,11 +367,12 @@ export async function unblockUser(meUid: string, targetUid: string) {
   await deleteDoc(doc(db, 'users', meUid, 'blocked', targetUid)).catch(() => undefined);
 }
 
-export function listenIncomingRequests(
+function listenRequestCollection(
   uid: string,
+  subcollection: 'incomingRequests' | 'outgoingRequests',
   onChange: (requests: FriendRequest[]) => void,
 ): Unsubscribe {
-  return onSnapshot(collection(db, 'users', uid, 'incomingRequests'), (snap) => {
+  return onSnapshot(collection(db, 'users', uid, subcollection), (snap) => {
     const list = snap.docs
       .map((item) => {
         const data = item.data() as Record<string, unknown>;
@@ -384,6 +385,20 @@ export function listenIncomingRequests(
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     onChange(list);
   });
+}
+
+export function listenIncomingRequests(
+  uid: string,
+  onChange: (requests: FriendRequest[]) => void,
+): Unsubscribe {
+  return listenRequestCollection(uid, 'incomingRequests', onChange);
+}
+
+export function listenOutgoingRequests(
+  uid: string,
+  onChange: (requests: FriendRequest[]) => void,
+): Unsubscribe {
+  return listenRequestCollection(uid, 'outgoingRequests', onChange);
 }
 
 export function listenFriends(uid: string, onChange: (friends: FriendChip[]) => void): Unsubscribe {
@@ -636,12 +651,19 @@ export function listenPostsByUsername(
 ): Unsubscribe {
   const handle = username.toLowerCase();
 
-  if (viewer?.isOwner) {
-    const q = query(collection(db, 'posts'), where('username', '==', handle), limit(80));
+  // Owner queries must filter by authorUid. A username-only query is rejected by
+  // Firestore rules (rules are not filters) and the error handler used to wipe the library.
+  if (viewer?.isOwner && viewer.uid) {
+    const q = query(collection(db, 'posts'), where('authorUid', '==', viewer.uid), limit(80));
     return onSnapshot(
       q,
-      (snap) => onChange(sortPosts(snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>)))),
-      () => onChange([]),
+      (snap) =>
+        onChange(
+          sortPosts(snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))),
+        ),
+      (err) => {
+        console.error('No se pudieron cargar las publicaciones del perfil', err);
+      },
     );
   }
 
@@ -669,13 +691,8 @@ export function listenPostsByUsername(
         }
         onChange(sortPosts([...merged.values()]));
       },
-      () => {
-        buckets[index] = [];
-        const merged = new Map<string, FsPost>();
-        for (const list of buckets) {
-          for (const post of list) merged.set(post.id, post);
-        }
-        onChange(sortPosts([...merged.values()]));
+      (err) => {
+        console.error('No se pudieron cargar publicaciones', visibility, err);
       },
     );
   });
@@ -788,4 +805,116 @@ export async function deletePost(postId: string, authorUid: string) {
     throw new Error('No autorizado');
   }
   await deleteDoc(ref);
+}
+
+export type PostReactionStats = {
+  likes: number;
+  dislikes: number;
+  viewerReaction: 'like' | 'dislike' | null;
+};
+
+export function listenPostReactions(
+  postId: string,
+  viewerUid: string | null | undefined,
+  onChange: (stats: PostReactionStats) => void,
+): Unsubscribe {
+  return onSnapshot(collection(db, 'posts', postId, 'reactions'), (snap) => {
+    let likes = 0;
+    let dislikes = 0;
+    let viewerReaction: PostReactionStats['viewerReaction'] = null;
+    for (const item of snap.docs) {
+      const type = String(item.data().type || '');
+      if (type === 'like') likes += 1;
+      if (type === 'dislike') dislikes += 1;
+      if (viewerUid && item.id === viewerUid && (type === 'like' || type === 'dislike')) {
+        viewerReaction = type;
+      }
+    }
+    onChange({ likes, dislikes, viewerReaction });
+  });
+}
+
+export async function setPostReaction(
+  postId: string,
+  uid: string,
+  reaction: 'like' | 'dislike' | null,
+) {
+  const ref = doc(db, 'posts', postId, 'reactions', uid);
+  if (!reaction) {
+    await deleteDoc(ref);
+    return;
+  }
+  await setDoc(ref, { type: reaction, updatedAt: serverTimestamp() });
+}
+
+export type PostComment = {
+  id: string;
+  authorUid: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  text: string;
+  createdAt: string;
+};
+
+function commentsFromSnap(snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): PostComment[] {
+  return snap.docs.map((item) => {
+    const data = item.data();
+    return {
+      id: item.id,
+      authorUid: String(data.authorUid || ''),
+      username: String(data.username || ''),
+      displayName: String(data.displayName || data.username || ''),
+      avatarUrl: (data.avatarUrl as string | null) ?? null,
+      text: String(data.text || ''),
+      createdAt: asIso(data.createdAt),
+    };
+  });
+}
+
+export function listenPostComments(
+  postId: string,
+  onChange: (comments: PostComment[]) => void,
+): Unsubscribe {
+  const col = collection(db, 'posts', postId, 'comments');
+  const q = query(col, orderBy('createdAt', 'asc'), limit(80));
+  let fallback: Unsubscribe | null = null;
+  const primary = onSnapshot(
+    q,
+    (snap) => onChange(commentsFromSnap(snap)),
+    () => {
+      fallback = onSnapshot(col, (snap) => {
+        onChange(
+          commentsFromSnap(snap)
+            .sort((a, b) => (a.createdAt > b.createdAt ? 1 : -1))
+            .slice(0, 80),
+        );
+      });
+    },
+  );
+  return () => {
+    primary();
+    fallback?.();
+  };
+}
+
+export async function addPostComment(
+  postId: string,
+  author: MeProfile,
+  text: string,
+) {
+  const body = text.trim().slice(0, 500);
+  if (!body) throw new Error('Escribe un comentario');
+  await addDoc(collection(db, 'posts', postId, 'comments'), {
+    authorUid: author.firebaseUid,
+    username: author.handle.toLowerCase(),
+    displayName: author.displayName || author.handle,
+    avatarUrl: author.avatarUrl,
+    text: body,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function deletePostComment(postId: string, commentId: string) {
+  await deleteDoc(doc(db, 'posts', postId, 'comments', commentId));
 }

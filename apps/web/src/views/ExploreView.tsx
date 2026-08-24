@@ -10,6 +10,7 @@ type Filter = 'all' | 'photo' | 'video' | 'text';
 function toSocial(post: FsPost): SocialPost {
   return {
     id: post.id,
+    authorUid: post.authorUid,
     authorUsername: post.username,
     type: post.type,
     caption: post.caption,
