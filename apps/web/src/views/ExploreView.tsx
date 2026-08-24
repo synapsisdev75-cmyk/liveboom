@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PostCard, type SocialPost } from '../components/social/SocialPostCard';
 import { listenRecentPosts, type FsPost } from '../lib/socialFirestore';
+import { useAuthStore } from '../store/authStore';
 
 type Filter = 'all' | 'photo' | 'video' | 'text';
 
@@ -22,14 +23,20 @@ function toSocial(post: FsPost): SocialPost {
 }
 
 export function ExploreView() {
+  const profile = useAuthStore((state) => state.profile);
+  const ready = useAuthStore((state) => state.ready);
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
 
   useEffect(() => {
+    if (!profile) {
+      setPosts([]);
+      return;
+    }
     return listenRecentPosts((list) => {
       setPosts(list.map(toSocial));
     });
-  }, []);
+  }, [profile?.firebaseUid]);
 
   const visible = useMemo(() => {
     if (filter === 'all') return posts;
@@ -54,7 +61,7 @@ export function ExploreView() {
           Explorar
         </h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Publicaciones públicas: fotos, reels, videos y posts de la comunidad.
+          Publicaciones públicas para cuentas registradas: fotos, reels, videos y posts.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           {(
@@ -85,7 +92,20 @@ export function ExploreView() {
         </div>
       </header>
 
-      {visible.length === 0 ? (
+      {!ready ? (
+        <p className="rounded-2xl bg-zinc-900 px-4 py-10 text-center text-sm text-zinc-500">Cargando…</p>
+      ) : !profile ? (
+        <p className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/60 px-4 py-10 text-center text-sm text-zinc-500">
+          <Link to="/login" className="text-cyan-400 underline">
+            Inicia sesión
+          </Link>{' '}
+          o{' '}
+          <Link to="/registro" className="text-cyan-400 underline">
+            crea una cuenta
+          </Link>{' '}
+          para ver las publicaciones públicas.
+        </p>
+      ) : visible.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-white/10 bg-zinc-900/60 px-4 py-10 text-center text-sm text-zinc-500">
           Aún no hay publicaciones públicas. Sé el primero desde tu perfil.
         </p>

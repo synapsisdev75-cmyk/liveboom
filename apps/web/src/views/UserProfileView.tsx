@@ -12,7 +12,7 @@ import {
 } from '../components/social/SocialPostCard';
 import { UserSearchBar } from '../components/social/UserSearchBar';
 import { ageFromIsoDate } from '../lib/birthDate';
-import { deletePost as deleteFsPost, getFriendshipStatus, isFollowing, listenFollowers, listenFollowing, listenFriends, listenPostsByUsername, listFollowers, listFollowing, listFriends } from '../lib/socialFirestore';
+import { deletePost as deleteFsPost, getFriendshipStatus, isFollowing, listenFollowers, listenFollowing, listenFriends, listenPostsByUsername, listFollowers, listFollowing, listFriends, updatePostVisibility } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
 
 type PublicProfile = {
@@ -357,7 +357,11 @@ export function UserProfileView() {
           ) : null}
         </div>
         {posts.length === 0 ? (
-          <p className="text-sm text-zinc-500">Sin publicaciones todavía.</p>
+          <p className="text-sm text-zinc-500">
+            {profile
+              ? 'Sin publicaciones todavía.'
+              : 'Inicia sesión para ver las publicaciones públicas de esta cuenta.'}
+          </p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {posts.map((post) => (
@@ -365,7 +369,18 @@ export function UserProfileView() {
                 key={post.id}
                 post={post}
                 canDelete={publicProfile.isOwnProfile}
+                canChangeVisibility={publicProfile.isOwnProfile}
                 onDelete={() => void deletePost(post.id)}
+                onChangeVisibility={(visibility) => {
+                  if (!profile) return;
+                  void updatePostVisibility(post.id, profile.firebaseUid, visibility)
+                    .then(() => {
+                      setPosts((current) =>
+                        current.map((item) => (item.id === post.id ? { ...item, visibility } : item)),
+                      );
+                    })
+                    .catch(() => undefined);
+                }}
                 onReact={(updated) =>
                   setPosts((current) => current.map((item) => (item.id === updated.id ? updated : item)))
                 }

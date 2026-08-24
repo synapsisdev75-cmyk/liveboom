@@ -2,16 +2,73 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+    function isFriend(userId) {
+      return signedIn() && (
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/friends/$(userId))
+        || firestore.exists(/databases/(default)/documents/users/$(userId)/friends/$(request.auth.uid))
+      );
+    }
+    function canReadPostFile(userId) {
+      return isOwner(userId)
+        || (
+          signedIn()
+          && resource.metadata.visibility == 'public'
+        )
+        || (
+          resource.metadata.visibility == 'friends'
+          && isFriend(userId)
+        );
+    }
+
+    match /users/{userId}/.keep {
+      allow read: if true;
+      allow write: if isOwner(userId) && request.resource.size < 1024;
+    }
+
+    match /users/{userId}/avatar/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /users/{userId}/posts/{fileName} {
+      allow read: if canReadPostFile(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 50 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
+    match /users/{userId}/chat/{fileName} {
+      allow read: if signedIn();
+      allow write: if isOwner(userId)
+        && request.resource.size < 12 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('audio/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
     match /avatars/{userId}/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId
+      allow write: if isOwner(userId)
         && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
     match /posts/{userId}/{fileName} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId
+      allow read: if canReadPostFile(userId) || (signedIn() && resource.metadata.visibility == null);
+      allow write: if isOwner(userId)
         && request.resource.size < 50 * 1024 * 1024
         && (
           request.resource.contentType.matches('image/.*')
@@ -20,8 +77,8 @@ service firebase.storage {
     }
 
     match /chat/{userId}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId
+      allow read: if signedIn();
+      allow write: if isOwner(userId)
         && request.resource.size < 12 * 1024 * 1024
         && (
           request.resource.contentType.matches('image/.*')
@@ -36,7 +93,7 @@ service firebase.storage {
     }
 
     match /{allPaths=**} {
-      allow read: if true;
+      allow read: if false;
       allow write: if false;
     }
   }

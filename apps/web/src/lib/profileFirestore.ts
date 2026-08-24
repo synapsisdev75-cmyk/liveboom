@@ -13,6 +13,7 @@ import {
 import { getFirestore } from 'firebase/firestore';
 import type { SessionUser } from './api';
 import { firebaseApp } from './firebase';
+import { ensureUserStorageFolder } from './storage';
 
 const db: Firestore = getFirestore(firebaseApp);
 
@@ -146,6 +147,7 @@ export async function ensureFirestoreProfile(input: {
     birthDate: null,
     category: 'musica',
   });
+  void ensureUserStorageFolder(input.uid).catch(() => undefined);
   return fetchFirestoreProfile(input.uid);
 }
 
@@ -214,5 +216,6 @@ export async function saveFirestoreProfile(input: {
 
   const saved = await fetchFirestoreProfile(input.uid);
   if (!saved) throw new Error('No se pudo leer el perfil guardado en Firebase.');
+  void ensureUserStorageFolder(input.uid).catch(() => undefined);
   return saved;
 }

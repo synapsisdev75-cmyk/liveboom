@@ -1,4 +1,4 @@
-import { ThumbsDown, ThumbsUp, UserMinus, UserPlus } from 'lucide-react';
+import { Globe, Lock, ThumbsDown, ThumbsUp, UserMinus, UserPlus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { followUser, isFollowing, unfollowUser } from '../../lib/socialFirestore';
@@ -156,13 +156,17 @@ export type SocialPost = {
 export function PostCard({
   post,
   canDelete,
+  canChangeVisibility,
   onDelete,
   onReact,
+  onChangeVisibility,
 }: {
   post: SocialPost;
   canDelete?: boolean;
+  canChangeVisibility?: boolean;
   onDelete?: () => void;
   onReact?: (post: SocialPost) => void;
+  onChangeVisibility?: (visibility: 'public' | 'friends' | 'private') => void;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -196,9 +200,13 @@ export function PostCard({
 
   return (
     <article className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
-      {post.visibility && post.visibility !== 'public' ? (
+      {post.visibility ? (
         <p className="border-b border-white/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          {post.visibility === 'friends' ? 'Solo amigos' : 'Privado'}
+          {post.visibility === 'public'
+            ? 'Público · registrados'
+            : post.visibility === 'friends'
+              ? 'Solo amigos'
+              : 'Privado'}
         </p>
       ) : null}
       {post.type === 'photo' && post.mediaUrl ? (
@@ -213,6 +221,43 @@ export function PostCard({
         </div>
       ) : post.caption ? (
         <p className="border-t border-white/5 px-3 py-2 text-sm text-zinc-300">{post.caption}</p>
+      ) : null}
+      {canChangeVisibility ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
+          <div className="flex items-center gap-1">
+            {(
+              [
+                ['public', Globe, 'Público'],
+                ['friends', Users, 'Amigos'],
+                ['private', Lock, 'Privado'],
+              ] as const
+            ).map(([value, Icon, label]) => (
+              <button
+                key={value}
+                type="button"
+                title={`Cambiar a ${label.toLowerCase()}`}
+                onClick={() => onChangeVisibility?.(value)}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold ${
+                  post.visibility === value
+                    ? 'bg-emerald-500/15 text-emerald-300'
+                    : 'text-zinc-500 hover:text-zinc-200'
+                }`}
+              >
+                <Icon size={12} />
+                {label}
+              </button>
+            ))}
+          </div>
+          {canDelete ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="text-[11px] text-zinc-500 hover:text-fuchsia-400"
+            >
+              Eliminar
+            </button>
+          ) : null}
+        </div>
       ) : null}
       <div className="flex items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
         <div className="flex items-center gap-2">
@@ -239,7 +284,7 @@ export function PostCard({
             <ThumbsDown size={14} /> {post.dislikes}
           </button>
         </div>
-        {canDelete ? (
+        {canDelete && !canChangeVisibility ? (
           <button
             type="button"
             onClick={onDelete}

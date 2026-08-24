@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { playMessageAlert } from '../../lib/alertSound';
 import { api } from '../../lib/api';
-import { uploadUserMedia } from '../../lib/storage';
+import { uploadChatMedia } from '../../lib/storage';
 import {
   callRoomName,
   ensureChat,
@@ -211,7 +211,7 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
     setBusy(true);
     setError(null);
     try {
-      const url = await uploadUserMedia(profile.firebaseUid, file, file.name);
+      const url = await uploadChatMedia(profile.firebaseUid, file, file.name);
       await send('🎤 Audio', { mediaUrl: url, mediaType: 'audio' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo subir');
@@ -225,7 +225,7 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
     setBusy(true);
     setError(null);
     try {
-      const url = await uploadUserMedia(profile.firebaseUid, pendingImage.file, pendingImage.file.name);
+      const url = await uploadChatMedia(profile.firebaseUid, pendingImage.file, pendingImage.file.name);
       await send('📷 Foto', { mediaUrl: url, mediaType: 'image' });
       URL.revokeObjectURL(pendingImage.url);
       setPendingImage(null);

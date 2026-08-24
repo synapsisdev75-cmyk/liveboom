@@ -228,10 +228,10 @@ export function CreatePostModal({ username, onCreated }: Props) {
             </div>
             <p className="mt-2 text-[11px] text-zinc-500">
               {visibility === 'public'
-                ? 'Visible para todos.'
+                ? 'Visible para todas las cuentas registradas.'
                 : visibility === 'friends'
                   ? 'Solo tus amigos.'
-                  : 'Solo tú en tu perfil.'}
+                  : 'Solo tú en tu perfil. Puedes cambiarlo después.'}
             </p>
 
             {error ? <p className="mt-2 text-sm text-fuchsia-400">{error}</p> : null}

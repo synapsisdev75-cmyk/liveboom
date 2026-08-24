@@ -110,26 +110,34 @@ service cloud.firestore {
       function postVis() {
         return request.resource.data.visibility;
       }
+      function validVisibility(value) {
+        return value == 'public' || value == 'friends' || value == 'private';
+      }
       function canReadPost() {
-        return resource.data.visibility == null
+        return signedIn() && (
+          resource.data.authorUid == request.auth.uid
           || resource.data.visibility == 'public'
-          || (signedIn() && resource.data.authorUid == request.auth.uid)
+          || resource.data.visibility == null
           || (
-            signedIn()
-            && resource.data.visibility == 'friends'
+            resource.data.visibility == 'friends'
             && (
               exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(resource.data.authorUid))
               || exists(/databases/$(database)/documents/users/$(resource.data.authorUid)/friends/$(request.auth.uid))
             )
-          );
+          )
+        );
       }
 
       allow read: if canReadPost();
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.username is string
-        && (postVis() == 'public' || postVis() == 'friends' || postVis() == 'private');
-      allow update, delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+        && validVisibility(postVis());
+      allow update: if signedIn()
+        && resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorUid == resource.data.authorUid
+        && validVisibility(postVis());
+      allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
     }
 
     match /{document=**} {

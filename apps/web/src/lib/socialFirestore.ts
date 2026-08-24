@@ -15,9 +15,9 @@ import {
   where,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { fetchPublicUserByUsername, type PublicFsUser } from './profileFirestore';
-import { uploadUserMedia } from './storage';
+import { updateStoredMediaVisibility, uploadUserMedia } from './storage';
 
 export type FriendshipStatus =
   | 'none'
@@ -76,6 +76,7 @@ export type FsPost = {
   caption: string | null;
   mediaUrl: string | null;
   visibility: 'public' | 'friends' | 'private';
+  storagePath: string | null;
   createdAt: string;
   likes: number;
   viewerReaction: string | null;
@@ -556,10 +557,15 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     caption: (data.caption as string | null) ?? null,
     mediaUrl: (data.mediaUrl as string | null) ?? null,
     visibility: (data.visibility as FsPost['visibility']) || 'public',
+    storagePath: (data.storagePath as string | null) ?? null,
     createdAt: asIso(data.createdAt),
     likes: Number(data.likes ?? 0),
     viewerReaction: null,
   };
+}
+
+function sortPosts(list: FsPost[]) {
+  return [...list].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 export function listenPostsByUsername(
@@ -567,43 +573,69 @@ export function listenPostsByUsername(
   onChange: (posts: FsPost[]) => void,
   viewer?: { uid: string; isFriend?: boolean; isOwner?: boolean } | null,
 ): Unsubscribe {
-  // Consulta simple (sin índice compuesto). La visibilidad se filtra en el cliente.
-  const q = query(
-    collection(db, 'posts'),
-    where('username', '==', username.toLowerCase()),
-    limit(60),
-  );
-  return onSnapshot(
-    q,
-    (snap) => {
-      const list = snap.docs
-        .map((docSnap) => postFromDoc(docSnap.id, docSnap.data() as Record<string, unknown>))
-        .filter((post) => {
-          if (post.visibility === 'public' || !post.visibility) return true;
-          if (!viewer?.uid) return false;
-          if (viewer.isOwner || post.authorUid === viewer.uid) return true;
-          if (post.visibility === 'friends') return Boolean(viewer.isFriend);
-          return false;
-        });
-      list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-      onChange(list);
-    },
-    () => onChange([]),
-  );
+  const handle = username.toLowerCase();
+
+  if (viewer?.isOwner) {
+    const q = query(collection(db, 'posts'), where('username', '==', handle), limit(80));
+    return onSnapshot(
+      q,
+      (snap) => onChange(sortPosts(snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>)))),
+      () => onChange([]),
+    );
+  }
+
+  if (!viewer?.uid) {
+    onChange([]);
+    return () => undefined;
+  }
+
+  const visibilities: Array<FsPost['visibility']> = viewer.isFriend ? ['public', 'friends'] : ['public'];
+  const buckets: Array<FsPost[]> = visibilities.map(() => []);
+  const unsubs = visibilities.map((visibility, index) => {
+    const q = query(
+      collection(db, 'posts'),
+      where('username', '==', handle),
+      where('visibility', '==', visibility),
+      limit(60),
+    );
+    return onSnapshot(
+      q,
+      (snap) => {
+        buckets[index] = snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>));
+        const merged = new Map<string, FsPost>();
+        for (const list of buckets) {
+          for (const post of list) merged.set(post.id, post);
+        }
+        onChange(sortPosts([...merged.values()]));
+      },
+      () => {
+        buckets[index] = [];
+        const merged = new Map<string, FsPost>();
+        for (const list of buckets) {
+          for (const post of list) merged.set(post.id, post);
+        }
+        onChange(sortPosts([...merged.values()]));
+      },
+    );
+  });
+  return () => unsubs.forEach((stop) => stop());
 }
 
 export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscribe {
-  // Sin where+orderBy compuesto: evita errores mientras los índices se construyen.
-  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(80));
+  if (!auth.currentUser) {
+    onChange([]);
+    return () => undefined;
+  }
+  const q = query(
+    collection(db, 'posts'),
+    where('visibility', '==', 'public'),
+    orderBy('createdAt', 'desc'),
+    limit(80),
+  );
   return onSnapshot(
     q,
     (snap) => {
-      onChange(
-        snap.docs
-          .map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))
-          .filter((post) => !post.visibility || post.visibility === 'public')
-          .slice(0, 60),
-      );
+      onChange(snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>)).slice(0, 60));
     },
     () => onChange([]),
   );
@@ -617,8 +649,14 @@ export async function createPost(input: {
   mediaFile?: File | Blob | null;
   mediaUrl?: string | null;
   visibility?: 'public' | 'friends' | 'private';
-}): Promise<{ id: string; mediaUrl: string | null; visibility: 'public' | 'friends' | 'private' }> {
+}): Promise<{
+  id: string;
+  mediaUrl: string | null;
+  storagePath: string | null;
+  visibility: 'public' | 'friends' | 'private';
+}> {
   let mediaUrl: string | null = null;
+  let storagePath: string | null = null;
   const visibility = input.visibility || 'public';
 
   if (input.type === 'photo' || input.type === 'video') {
@@ -629,14 +667,19 @@ export async function createPost(input: {
           : input.type === 'video'
             ? 'clip.mp4'
             : 'photo.jpg';
-      mediaUrl = await uploadUserMedia(input.authorUid, input.mediaFile, fileName);
+      const uploaded = await uploadUserMedia(input.authorUid, input.mediaFile, fileName, visibility);
+      mediaUrl = uploaded.url;
+      storagePath = uploaded.storagePath;
     } else if (input.mediaUrl?.startsWith('data:')) {
       const blob = await (await fetch(input.mediaUrl)).blob();
-      mediaUrl = await uploadUserMedia(
+      const uploaded = await uploadUserMedia(
         input.authorUid,
         blob,
         input.type === 'video' ? 'clip.mp4' : 'photo.jpg',
+        visibility,
       );
+      mediaUrl = uploaded.url;
+      storagePath = uploaded.storagePath;
     } else if (input.mediaUrl && /^https?:\/\//i.test(input.mediaUrl)) {
       mediaUrl = input.mediaUrl;
     } else {
@@ -650,11 +693,30 @@ export async function createPost(input: {
     type: input.type,
     caption: input.caption.trim().slice(0, 2000) || null,
     mediaUrl,
+    storagePath,
     visibility,
     likes: 0,
     createdAt: serverTimestamp(),
   });
-  return { id: ref.id, mediaUrl, visibility };
+  return { id: ref.id, mediaUrl, storagePath, visibility };
+}
+
+export async function updatePostVisibility(
+  postId: string,
+  authorUid: string,
+  visibility: 'public' | 'friends' | 'private',
+) {
+  const ref = doc(db, 'posts', postId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('Publicación no encontrada');
+  if (String(snap.data().authorUid || '') !== authorUid) {
+    throw new Error('No autorizado');
+  }
+  await updateDoc(ref, { visibility });
+  const storagePath = String(snap.data().storagePath || '');
+  if (storagePath) {
+    await updateStoredMediaVisibility(storagePath, visibility).catch(() => undefined);
+  }
 }
 
 export async function deletePost(postId: string, authorUid: string) {

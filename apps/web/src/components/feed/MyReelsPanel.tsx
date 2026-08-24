@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listenPostsByUsername, type FsPost } from '../../lib/socialFirestore';
+import { useAuthStore } from '../../store/authStore';
 import type { ReelItem } from './ReelsRow';
 
 type Props = {
@@ -18,13 +19,14 @@ function toReel(post: FsPost): ReelItem {
 }
 
 export function MyReelsPanel({ username }: Props) {
+  const profile = useAuthStore((state) => state.profile);
   const [reels, setReels] = useState<ReelItem[]>([]);
 
   useEffect(() => {
     return listenPostsByUsername(username, (posts) => {
       setReels(posts.filter((post) => post.type === 'video' && post.mediaUrl).map(toReel));
-    });
-  }, [username]);
+    }, profile ? { uid: profile.firebaseUid, isOwner: true } : null);
+  }, [username, profile?.firebaseUid]);
 
   if (reels.length === 0) return null;
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listenRecentPosts, type FsPost } from '../../lib/socialFirestore';
+import { useAuthStore } from '../../store/authStore';
 
 export type ReelItem = {
   id: string;
@@ -23,9 +24,14 @@ function toReel(post: FsPost): ReelItem {
 }
 
 export function ReelsRow({ title = 'Reels' }: { title?: string }) {
+  const profile = useAuthStore((state) => state.profile);
   const [reels, setReels] = useState<ReelItem[]>([]);
 
   useEffect(() => {
+    if (!profile) {
+      setReels([]);
+      return;
+    }
     return listenRecentPosts((posts) => {
       setReels(
         posts
@@ -34,7 +40,7 @@ export function ReelsRow({ title = 'Reels' }: { title?: string }) {
           .slice(0, 24),
       );
     });
-  }, []);
+  }, [profile?.firebaseUid]);
 
   if (reels.length === 0) return null;
 
