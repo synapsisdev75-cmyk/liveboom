@@ -29,10 +29,16 @@ export function SearchView() {
         </>
       ) : (
         <div className="rounded-2xl bg-zinc-900 p-6 text-center text-sm text-zinc-400">
-          <Link to="/login" className="text-cyan-400 underline">
-            Inicia sesión
-          </Link>{' '}
-          para buscar amigos y enviar solicitudes.
+          <p>
+            <Link to="/login" className="text-cyan-400 underline">
+              Inicia sesión
+            </Link>{' '}
+            o{' '}
+            <Link to="/registro" className="text-cyan-400 underline">
+              crea una cuenta
+            </Link>{' '}
+            para buscar amigos y enviar solicitudes.
+          </p>
         </div>
       )}
     </div>

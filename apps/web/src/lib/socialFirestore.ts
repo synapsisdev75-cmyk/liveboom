@@ -49,10 +49,23 @@ export type ChatMessage = {
   linkUrl?: string | null;
 };
 
+export type PrivateCall = {
+  id: string;
+  status: 'ringing' | 'active' | 'ended';
+  fromUid: string;
+  fromName: string;
+  fromHandle: string;
+  fromAvatar: string | null;
+  toUid: string;
+  video: boolean;
+  createdAt: string;
+};
+
 export type Conversation = FriendChip & {
   chatId: string;
   lastMessage: string | null;
   lastAt: string | null;
+  call: PrivateCall | null;
 };
 
 export type FsPost = {
@@ -90,6 +103,78 @@ function asIso(value: unknown) {
   }
   if (typeof value === 'string') return value;
   return new Date().toISOString();
+}
+
+function parseCall(value: unknown): PrivateCall | null {
+  if (!value || typeof value !== 'object') return null;
+  const data = value as Record<string, unknown>;
+  if (data.status !== 'ringing' && data.status !== 'active' && data.status !== 'ended') return null;
+  if (!data.fromUid || !data.toUid) return null;
+  return {
+    id: String(data.id || ''),
+    status: data.status,
+    fromUid: String(data.fromUid),
+    fromName: String(data.fromName || data.fromHandle || ''),
+    fromHandle: String(data.fromHandle || ''),
+    fromAvatar: (data.fromAvatar as string | null) ?? null,
+    toUid: String(data.toUid),
+    video: Boolean(data.video),
+    createdAt: asIso(data.createdAt),
+  };
+}
+
+export function callRoomName(chatId: string) {
+  return `dm_${chatId}`.slice(0, 64);
+}
+
+export async function startPrivateCall(
+  chatId: string,
+  me: MeProfile,
+  friend: FriendChip,
+  video: boolean,
+) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await updateDoc(doc(db, 'chats', chatId), {
+    call: {
+      id,
+      status: 'ringing',
+      fromUid: me.firebaseUid,
+      fromName: me.displayName || me.handle,
+      fromHandle: me.handle,
+      fromAvatar: me.avatarUrl,
+      toUid: friend.uid,
+      video,
+      createdAt: serverTimestamp(),
+    },
+  });
+  return id;
+}
+
+export async function answerPrivateCall(chatId: string) {
+  await updateDoc(doc(db, 'chats', chatId), { 'call.status': 'active' });
+}
+
+export async function endPrivateCall(chatId: string) {
+  await updateDoc(doc(db, 'chats', chatId), { call: null }).catch(() => undefined);
+}
+
+export async function beatPresence(uid: string) {
+  await setDoc(doc(db, 'users', uid, 'presence', 'now'), {
+    at: serverTimestamp(),
+    online: true,
+  });
+}
+
+export function listenPresence(uid: string, onChange: (online: boolean) => void): Unsubscribe {
+  return onSnapshot(doc(db, 'users', uid, 'presence', 'now'), (snap) => {
+    const at = snap.data()?.at;
+    if (!at) {
+      onChange(false);
+      return;
+    }
+    const age = Date.now() - new Date(asIso(at)).getTime();
+    onChange(age < 90_000);
+  });
 }
 
 function chipFromData(uid: string, data: Record<string, unknown>): FriendChip {
@@ -333,6 +418,7 @@ export function listenConversations(
         profiles?: Record<string, { username?: string; displayName?: string; avatarUrl?: string | null }>;
         lastMessage?: string | null;
         lastAt?: unknown;
+        call?: unknown;
       };
       const otherUid = (data.participants || []).find((value) => value !== uid) || '';
       const profile = data.profiles?.[otherUid] || {};
@@ -344,6 +430,7 @@ export function listenConversations(
         avatarUrl: profile.avatarUrl ?? null,
         lastMessage: data.lastMessage ?? null,
         lastAt: data.lastAt ? asIso(data.lastAt) : null,
+        call: parseCall(data.call),
       };
     });
     list.sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));

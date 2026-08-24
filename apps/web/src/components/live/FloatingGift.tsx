@@ -84,7 +84,7 @@ export function FloatingGift({ giftId, senderName, left = 48, onComplete }: Floa
             <p className="text-lg font-black text-white drop-shadow sm:text-3xl">{name}</p>
             {senderName ? (
               <p className="rounded-full bg-black/55 px-4 py-1 text-sm font-semibold text-cyan-200 backdrop-blur">
-                @{senderName}
+                {senderName}
               </p>
             ) : null}
             {level >= 5 ? (
@@ -154,8 +154,8 @@ export function FloatingGift({ giftId, senderName, left = 48, onComplete }: Floa
               {name}
             </span>
           ) : null}
-          {level >= 3 && senderName ? (
-            <span className="mt-0.5 text-[11px] font-semibold text-cyan-200 drop-shadow">@{senderName}</span>
+          {senderName ? (
+            <span className="mt-0.5 text-[11px] font-semibold text-cyan-200 drop-shadow">{senderName}</span>
           ) : null}
         </motion.div>
       )}

@@ -59,9 +59,14 @@ export function MainLayout() {
               {profile.coinsBalance.toLocaleString('es-CO')} coins
             </button>
           ) : (
-            <Link to="/login" className="text-xs font-medium text-cyan-400">
-              Entrar
-            </Link>
+            <>
+              <Link to="/login" className="text-xs font-medium text-cyan-400">
+                Entrar
+              </Link>
+              <Link to="/registro" className="text-xs font-medium text-zinc-400 hover:text-white">
+                Registro
+              </Link>
+            </>
           )}
           <button
             type="button"
@@ -130,9 +135,17 @@ export function MainLayout() {
               </button>
             </>
           ) : (
-            <Link to="/login" className="text-sm font-medium text-cyan-400 hover:text-white">
-              Iniciar sesión
-            </Link>
+            <div className="flex flex-col gap-2">
+              <Link to="/login" className="text-sm font-medium text-cyan-400 hover:text-white">
+                Iniciar sesión
+              </Link>
+              <Link
+                to="/registro"
+                className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-3 py-2 text-center text-sm font-bold text-zinc-950"
+              >
+                Crear cuenta
+              </Link>
+            </div>
           )}
         </div>
         <LegalFooter compact />
@@ -232,13 +245,22 @@ export function MainLayout() {
                 </button>
               </div>
             ) : (
-              <Link
-                to="/login"
-                onClick={() => setMenuOpen(false)}
-                className="mb-5 text-sm font-medium text-cyan-400"
-              >
-                Iniciar sesión
-              </Link>
+              <div className="mb-5 flex flex-col gap-2">
+                <Link
+                  to="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="text-sm font-medium text-cyan-400"
+                >
+                  Iniciar sesión
+                </Link>
+                <Link
+                  to="/registro"
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-3 py-2 text-center text-sm font-bold text-zinc-950"
+                >
+                  Crear cuenta
+                </Link>
+              </div>
             )}
             <nav className="flex flex-col gap-1">
               {sideNavItems.map((item) => {

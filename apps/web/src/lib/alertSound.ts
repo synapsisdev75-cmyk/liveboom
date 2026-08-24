@@ -39,6 +39,20 @@ export function playFriendRequestAlert() {
   }
 }
 
+/** Timbre de llamada privada */
+export function playCallRing() {
+  try {
+    const ac = ctx();
+    const t = ac.currentTime;
+    tone(t, 440, 0.18, 0.12, 'sine');
+    tone(t + 0.18, 554.37, 0.22, 0.11, 'sine');
+    tone(t + 0.42, 440, 0.18, 0.1, 'sine');
+    tone(t + 0.6, 554.37, 0.28, 0.1, 'sine');
+  } catch {
+    // Audio bloqueado hasta interacción del usuario
+  }
+}
+
 /** Nuevo mensaje privado */
 export function playMessageAlert() {
   try {

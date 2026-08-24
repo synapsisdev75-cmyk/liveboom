@@ -308,7 +308,7 @@ export function UserProfileView() {
                   className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-400/30"
                 >
                   <MessageCircle size={16} />
-                  Mensaje
+                  Enviar mensaje
                 </Link>
               ) : !publicProfile.isOwnProfile ? (
                 <FriendRequestButton

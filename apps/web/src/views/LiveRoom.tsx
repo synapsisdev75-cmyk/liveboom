@@ -1034,9 +1034,10 @@ function ChatPanel({
       setCoins(result.senderBalance);
       setOpenGifts(false);
       const gift = result.gift;
+      const senderName = profile?.displayName || profile?.handle || gift.senderName;
       pushMessage({
         id: `gift-${gift.id}`,
-        author: gift.senderName,
+        author: senderName,
         text: `envió ${gift.giftName}`,
         gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
       });
@@ -1044,16 +1045,25 @@ function ChatPanel({
         type: 'gift',
         id: gift.id,
         giftId: gift.giftId,
-        senderName: gift.senderName,
+        senderName,
         giftName: gift.giftName,
         emoji: gift.emoji,
       });
+      void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          id: `gift-${gift.id}`,
+          author: senderName,
+          text: `envió ${gift.giftName}`,
+          gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
+        }),
+      }).catch(() => undefined);
       window.dispatchEvent(
         new CustomEvent('liveboom:gift', {
           detail: {
             id: gift.id,
             giftId: gift.giftId,
-            senderName: gift.senderName,
+            senderName,
           },
         }),
       );
@@ -1124,8 +1134,9 @@ function ChatPanel({
               >
                 <GiftIcon giftId={message.gift.giftId} size={16} />
                 <p className="text-sm text-white drop-shadow">
-                  <span className="font-semibold text-cyan-300">{message.author} </span>
-                  {message.text}
+                  <span className="font-semibold text-cyan-300">{message.author}</span>
+                  {' envió '}
+                  {message.gift.name}
                 </p>
               </div>
             ) : (

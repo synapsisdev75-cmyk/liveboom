@@ -11,22 +11,25 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { LiveKitRoom, RoomAudioRenderer, VideoTrack, useTracks, type TrackReference } from '@livekit/components-react';
-import { Track } from 'livekit-client';
 import { playMessageAlert } from '../../lib/alertSound';
 import { api } from '../../lib/api';
 import { uploadUserMedia } from '../../lib/storage';
 import {
+  callRoomName,
   ensureChat,
   listenConversations,
   listenFriends,
   listenMessages,
+  listenPresence,
   sendChatMessage,
+  startPrivateCall,
+  endPrivateCall,
   type ChatMessage,
   type Conversation,
   type FriendChip,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { useCallStore } from '../../store/callStore';
 
 type Props = {
   compact?: boolean;
@@ -36,31 +39,6 @@ type Props = {
 function detectLink(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s]+/i);
   return match ? match[0] : null;
-}
-
-function PrivateCallStage({ video }: { video: boolean }) {
-  const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }]);
-  const cameras = tracks.filter((track): track is TrackReference => Boolean(track.publication));
-  return (
-    <>
-      <RoomAudioRenderer />
-      {video ? (
-        <div className="grid h-full grid-cols-2 gap-1">
-          {cameras.length === 0 ? (
-            <p className="col-span-2 grid place-items-center text-[11px] text-zinc-400">Cámara…</p>
-          ) : (
-            cameras.map((track) => (
-              <VideoTrack
-                key={track.participant.identity}
-                trackRef={track}
-                className="h-full w-full object-cover"
-              />
-            ))
-          )}
-        </div>
-      ) : null}
-    </>
-  );
 }
 
 export function InternalChatPanel({ compact = false, fullscreen = false }: Props) {
@@ -74,10 +52,12 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [callSession, setCallSession] = useState<{ token: string; serverUrl: string } | null>(null);
-  const [inCall, setInCall] = useState(false);
-  const [videoCall, setVideoCall] = useState(false);
+  const [online, setOnline] = useState(false);
   const [pendingImage, setPendingImage] = useState<{ file: File; url: string } | null>(null);
+  const callStatus = useCallStore((state) => state.status);
+  const callChatId = useCallStore((state) => state.chatId);
+  const beginOutgoing = useCallStore((state) => state.beginOutgoing);
+  const hangup = useCallStore((state) => state.hangup);
   const [recording, setRecording] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastMsgCount = useRef(0);
@@ -128,6 +108,15 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
   }, [people, compact, activeUid]);
 
   const activeFriend = people.find((item) => item.uid === activeUid) || null;
+  const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
+
+  useEffect(() => {
+    if (!activeFriend?.uid) {
+      setOnline(false);
+      return;
+    }
+    return listenPresence(activeFriend.uid, setOnline);
+  }, [activeFriend?.uid]);
 
   useEffect(() => {
     if (!profile || !activeFriend) {
@@ -275,29 +264,34 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
     }
   }
 
-  async function startCall(withVideo = false, announce = true) {
-    if (!chatId || !activeFriend) return;
+  async function startCall(withVideo = false) {
+    if (!chatId || !activeFriend || !profile) return;
     setBusy(true);
     setError(null);
     try {
-      const roomName = `dm_${chatId}`.slice(0, 64);
-      const session = await api<{ token: string; serverUrl: string }>(
-        `/api/stream/token/${encodeURIComponent(roomName)}`,
+      await startPrivateCall(
+        chatId,
+        {
+          firebaseUid: profile.firebaseUid,
+          handle: profile.handle,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+        },
+        activeFriend,
+        withVideo,
       );
-      setCallSession(session);
-      setVideoCall(withVideo);
-      setInCall(true);
-      if (announce) {
-        await send(
-          withVideo
-            ? `📹 Videollamada con @${activeFriend.username}`
-            : `📞 Llamada con @${activeFriend.username}`,
-          {
-            linkUrl: `${window.location.origin}/mensajes?con=${encodeURIComponent(activeFriend.username)}&call=${withVideo ? 'video' : '1'}`,
-          },
-        );
-      }
+      const session = await api<{ token: string; serverUrl: string }>(
+        `/api/stream/token/${encodeURIComponent(callRoomName(chatId))}`,
+      );
+      beginOutgoing({
+        chatId,
+        peer: activeFriend,
+        video: withVideo,
+        token: session.token,
+        serverUrl: session.serverUrl,
+      });
     } catch (err) {
+      await endPrivateCall(chatId).catch(() => undefined);
       setError(err instanceof Error ? err.message : 'No se pudo iniciar la llamada');
     } finally {
       setBusy(false);
@@ -305,22 +299,8 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
   }
 
   function stopCall() {
-    setInCall(false);
-    setCallSession(null);
-    setVideoCall(false);
+    void hangup();
   }
-
-  const wantCall = searchParams.get('call');
-  useEffect(() => {
-    if (!wantCall || !chatId || inCall) return;
-    void startCall(wantCall === 'video', false);
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('call');
-      return next;
-    }, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wantCall, chatId]);
 
   if (!profile) {
     return (
@@ -405,10 +385,12 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
                 <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
                   <p className="text-xs font-semibold text-white">
                     @{activeFriend.username}
-                    {chatId ? <span className="ml-2 text-[10px] font-normal text-emerald-400">en vivo</span> : null}
+                    <span className={`ml-2 text-[10px] font-normal ${online ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                      {online ? 'en linea' : 'desconectado'}
+                    </span>
                   </p>
                   <div className="flex items-center gap-1">
-                    {inCall ? (
+                    {inThisCall ? (
                       <button
                         type="button"
                         onClick={stopCall}
@@ -420,7 +402,7 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
                       <>
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={busy || callStatus !== 'idle'}
                           onClick={() => void startCall(false)}
                           className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2 py-1 text-[10px] font-bold text-emerald-300"
                         >
@@ -428,7 +410,7 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
                         </button>
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={busy || callStatus !== 'idle'}
                           onClick={() => void startCall(true)}
                           className="inline-flex items-center gap-1 rounded-lg bg-cyan-500/15 px-2 py-1 text-[10px] font-bold text-cyan-300"
                         >
@@ -438,21 +420,6 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
                     )}
                   </div>
                 </div>
-                {inCall && callSession ? (
-                  <div className="border-b border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-center text-xs text-emerald-200">
-                    Llamada privada {videoCall ? 'con video' : 'de voz'} activa
-                    <LiveKitRoom
-                      token={callSession.token}
-                      serverUrl={callSession.serverUrl}
-                      connect
-                      audio
-                      video={videoCall}
-                      className={videoCall ? 'mt-2 h-48 overflow-hidden rounded-xl bg-black' : 'hidden'}
-                    >
-                      <PrivateCallStage video={videoCall} />
-                    </LiveKitRoom>
-                  </div>
-                ) : null}
                 <div className={`flex-1 space-y-2 overflow-y-auto p-3 ${compact ? 'max-h-40' : 'min-h-[12rem]'}`}>
                   {messages.length === 0 ? (
                     <p className="text-center text-xs text-zinc-500">Sin mensajes aún. ¡Saluda!</p>

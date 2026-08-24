@@ -23,7 +23,11 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
 
   const senderUid = req.user.uid;
   const senderName =
-    req.dbUser?.username || req.user.name || req.user.email?.split('@')[0] || 'Liveboomer';
+    req.dbUser?.displayName ||
+    req.dbUser?.username ||
+    req.user.name ||
+    req.user.email?.split('@')[0] ||
+    'Liveboomer';
 
   const payload = {
     id: randomUUID(),

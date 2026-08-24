@@ -1,11 +1,11 @@
-import { UserCheck, UserPlus, UserX } from 'lucide-react';
+import { MessageCircle, UserCheck, UserPlus, UserX } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   acceptFriendRequest,
   cancelFriendRequest,
   getFriendshipStatus,
   rejectFriendRequest,
-  removeFriendship,
   sendFriendRequest,
   type FriendshipStatus,
 } from '../../lib/socialFirestore';
@@ -70,15 +70,13 @@ export function FriendRequestButton({
   const body = (() => {
     if (status === 'friends') {
       return (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void run(() => removeFriendship(profile.firebaseUid, username), 'none')}
-          className={`${className} border border-emerald-500/40 bg-emerald-500/10 text-emerald-300`}
+        <Link
+          to={`/mensajes?con=${encodeURIComponent(username)}`}
+          className={`${className} inline-flex items-center gap-1.5 border border-cyan-500/40 bg-cyan-500/15 text-cyan-200`}
         >
-          <UserCheck size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}
-          {compact ? 'Amigos' : 'Amigos · Quitar'}
-        </button>
+          <MessageCircle size={compact ? 14 : 16} className={compact ? '' : 'inline'} />
+          Enviar mensaje
+        </Link>
       );
     }
 

@@ -12,6 +12,7 @@ import { UserProfileView } from './views/UserProfileView';
 import { SearchView } from './views/SearchView';
 import { LegalView } from './views/LegalView';
 import { CookieBanner } from './components/legal/CookieBanner';
+import { CallOverlay } from './components/social/CallOverlay';
 import { WalletView } from './views/WalletView';
 import { ExploreView } from './views/ExploreView';
 import { MessagesView } from './views/MessagesView';
@@ -29,6 +30,7 @@ export default function App() {
       <AuthHydrator />
       <Routes>
         <Route path="/login" element={<LoginView />} />
+        <Route path="/registro" element={<LoginView />} />
         <Route path="/legal/:slug" element={<LegalView />} />
         <Route path="/stream/:username" element={<LiveRoom />} />
         <Route element={<MainLayout />}>
@@ -44,6 +46,7 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <CallOverlay />
       <CookieBanner />
     </BrowserRouter>
   );

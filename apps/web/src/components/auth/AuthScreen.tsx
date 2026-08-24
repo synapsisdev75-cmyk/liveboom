@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { BrandBackground } from './BrandBackground';
 import { BrandVideo } from './BrandVideo';
 import { LegalFooter } from '../legal/LegalFooter';
@@ -11,7 +11,8 @@ const minBirthYear = currentYear - 100;
 const maxBirthYear = currentYear - 18;
 
 export function AuthScreen() {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const location = useLocation();
+  const mode: 'login' | 'register' = location.pathname.startsWith('/registro') ? 'register' : 'login';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,6 +59,24 @@ export function AuthScreen() {
         </div>
 
         <div className="rounded-3xl border border-white/10 bg-boom-panel/88 p-6 shadow-glow backdrop-blur-xl sm:p-8">
+          <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-black/35 p-1">
+            <Link
+              to="/login"
+              className={`rounded-xl py-2 text-center text-sm font-bold ${
+                mode === 'login' ? 'bg-cyan-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Iniciar sesión
+            </Link>
+            <Link
+              to="/registro"
+              className={`rounded-xl py-2 text-center text-sm font-bold ${
+                mode === 'register' ? 'bg-cyan-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Registrarse
+            </Link>
+          </div>
           <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
             {mode === 'login' ? 'Entra a Liveboom' : 'Crea tu cuenta'}
           </h1>
@@ -158,13 +177,15 @@ export function AuthScreen() {
             Continuar con Google
           </button>
 
-          <button
-            type="button"
-            className="mt-6 w-full text-center text-sm text-zinc-400 hover:text-white"
-            onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-          >
-            {mode === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
-          </button>
+          {mode === 'login' ? (
+            <Link to="/registro" className="mt-6 block w-full text-center text-sm text-zinc-400 hover:text-white">
+              ¿No tienes cuenta? Regístrate
+            </Link>
+          ) : (
+            <Link to="/login" className="mt-6 block w-full text-center text-sm text-zinc-400 hover:text-white">
+              ¿Ya tienes cuenta? Inicia sesión
+            </Link>
+          )}
 
           <LegalFooter compact />
         </div>
