@@ -24,6 +24,7 @@ export type FriendshipStatus =
   | 'friends'
   | 'pending_sent'
   | 'pending_received'
+  | 'blocked'
   | 'self';
 
 export type FriendChip = {
@@ -203,6 +204,9 @@ export async function getFriendshipStatusByUid(
   if (!viewerUid || !targetUid) return 'none';
   if (viewerUid === targetUid) return 'self';
 
+  const blockedSnap = await getDoc(doc(db, 'users', viewerUid, 'blocked', targetUid));
+  if (blockedSnap.exists()) return 'blocked';
+
   const friendSnap = await getDoc(doc(db, 'users', viewerUid, 'friends', targetUid));
   if (friendSnap.exists()) return 'friends';
 
@@ -230,6 +234,11 @@ export async function sendFriendRequest(from: MeProfile | PublicFsUser, toUserna
   const target = await fetchPublicUserByUsername(toUsername);
   if (!target) throw new Error('Usuario no encontrado en Firebase. Pídele que guarde su perfil.');
   if (target.firebaseUid === fromUid) throw new Error('No puedes enviarte solicitud a ti mismo');
+
+  const blocked = await getDoc(doc(db, 'users', fromUid, 'blocked', target.firebaseUid));
+  if (blocked.exists()) throw new Error('Desbloquea a esta persona para enviarle solicitud.');
+  const blockedBy = await getDoc(doc(db, 'users', target.firebaseUid, 'blocked', fromUid));
+  if (blockedBy.exists()) throw new Error('No puedes enviar solicitud a este usuario.');
 
   const status = await getFriendshipStatus(fromUid, toUsername);
   if (status === 'friends') return;
@@ -321,6 +330,41 @@ export async function removeFriendship(uid: string, otherUsername: string) {
   if (!other) return;
   await deleteDoc(doc(db, 'users', uid, 'friends', other.firebaseUid)).catch(() => undefined);
   await deleteDoc(doc(db, 'users', other.firebaseUid, 'friends', uid)).catch(() => undefined);
+}
+
+export async function isBlocked(meUid: string, targetUid: string) {
+  if (!meUid || !targetUid) return false;
+  const snap = await getDoc(doc(db, 'users', meUid, 'blocked', targetUid));
+  return snap.exists();
+}
+
+export async function blockUser(
+  me: MeProfile,
+  target: { uid: string; username: string; displayName: string; avatarUrl: string | null },
+) {
+  if (!target.uid || target.uid === me.firebaseUid) {
+    throw new Error('No puedes bloquearte a ti mismo');
+  }
+  await setDoc(doc(db, 'users', me.firebaseUid, 'blocked', target.uid), {
+    uid: target.uid,
+    username: target.username,
+    displayName: target.displayName,
+    avatarUrl: target.avatarUrl,
+    createdAt: serverTimestamp(),
+  });
+  await deleteDoc(doc(db, 'users', me.firebaseUid, 'friends', target.uid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', target.uid, 'friends', me.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', me.firebaseUid, 'outgoingRequests', target.uid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', me.firebaseUid, 'incomingRequests', target.uid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', target.uid, 'outgoingRequests', me.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', target.uid, 'incomingRequests', me.firebaseUid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', me.firebaseUid, 'following', target.uid)).catch(() => undefined);
+  await deleteDoc(doc(db, 'users', target.uid, 'followers', me.firebaseUid)).catch(() => undefined);
+}
+
+export async function unblockUser(meUid: string, targetUid: string) {
+  if (!meUid || !targetUid) return;
+  await deleteDoc(doc(db, 'users', meUid, 'blocked', targetUid)).catch(() => undefined);
 }
 
 export function listenIncomingRequests(
@@ -478,6 +522,10 @@ export function listenMessages(
 }
 
 async function assertAreFriends(meUid: string, friendUid: string) {
+  const blocked = await getDoc(doc(db, 'users', meUid, 'blocked', friendUid));
+  if (blocked.exists()) throw new Error('Desbloquea a este usuario para chatear.');
+  const blockedBy = await getDoc(doc(db, 'users', friendUid, 'blocked', meUid));
+  if (blockedBy.exists()) throw new Error('No puedes enviar mensajes a este usuario.');
   const mine = await getDoc(doc(db, 'users', meUid, 'friends', friendUid));
   if (mine.exists()) return;
   const theirs = await getDoc(doc(db, 'users', friendUid, 'friends', meUid));

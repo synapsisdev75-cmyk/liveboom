@@ -14,7 +14,7 @@ export type SearchUser = {
   avatarUrl: string | null;
   bio: string | null;
   category?: string | null;
-  friendshipStatus: 'none' | 'friends' | 'pending_sent' | 'pending_received' | 'self';
+  friendshipStatus: 'none' | 'friends' | 'pending_sent' | 'pending_received' | 'blocked' | 'self';
   isFollowing: boolean;
 };
 
@@ -129,6 +129,7 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
               </Link>
               <FriendRequestButton
                 username={user.username}
+                uid={user.uid}
                 initialStatus={user.friendshipStatus}
                 compact
               />

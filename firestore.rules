@@ -50,6 +50,11 @@ service cloud.firestore {
         allow write: if isSelf(userId) || isSelf(followingId);
       }
 
+      match /blocked/{blockedId} {
+        allow read: if isSelf(userId);
+        allow write: if isSelf(userId);
+      }
+
       match /presence/{docId} {
         allow read: if signedIn();
         allow write: if isSelf(userId);

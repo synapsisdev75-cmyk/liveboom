@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { MessageCircle } from 'lucide-react';
+import { Ban, MessageCircle } from 'lucide-react';
 import { ActivityHistory } from '../components/live/ActivityHistory';
 import { CreatePostModal } from '../components/social/CreatePostModal';
 import { FriendRequestButton, type FriendshipStatus } from '../components/social/FriendRequestButton';
@@ -14,6 +14,7 @@ import {
 import { UserSearchBar } from '../components/social/UserSearchBar';
 import { ageFromIsoDate } from '../lib/birthDate';
 import {
+  blockUser,
   deletePost as deleteFsPost,
   getFriendshipStatusByUid,
   isFollowingUid,
@@ -24,6 +25,7 @@ import {
   listFollowers,
   listFollowing,
   listFriends,
+  unblockUser,
   updatePostVisibility,
 } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
@@ -347,53 +349,6 @@ export function UserProfileView() {
               </button>
             </div>
             <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
-              <FollowButton
-                username={publicProfile.username}
-                initialFollowing={publicProfile.isFollowing}
-                isOwnProfile={publicProfile.isOwnProfile}
-                onChange={(followingNow) =>
-                  setPublicProfile((current) =>
-                    current
-                      ? {
-                          ...current,
-                          isFollowing: followingNow,
-                          followersCount: current.followersCount + (followingNow ? 1 : -1),
-                        }
-                      : current,
-                  )
-                }
-              />
-              {!publicProfile.isOwnProfile && publicProfile.friendshipStatus === 'friends' ? (
-                <Link
-                  to={`/mensajes?con=${encodeURIComponent(publicProfile.username)}`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-400/30"
-                >
-                  <MessageCircle size={16} />
-                  Enviar mensaje
-                </Link>
-              ) : !publicProfile.isOwnProfile ? (
-                <FriendRequestButton
-                  username={publicProfile.username}
-                  initialStatus={publicProfile.friendshipStatus}
-                  isOwnProfile={publicProfile.isOwnProfile}
-                  onChange={(status) =>
-                    setPublicProfile((current) =>
-                      current
-                        ? {
-                            ...current,
-                            friendshipStatus: status,
-                            friendsCount:
-                              status === 'friends'
-                                ? current.friendsCount + 1
-                                : status === 'none'
-                                  ? Math.max(0, current.friendsCount - 1)
-                                  : current.friendsCount,
-                          }
-                        : current,
-                    )
-                  }
-                />
-              ) : null}
               {publicProfile.isOwnProfile ? (
                 <Link
                   to="/perfil/editar"
@@ -401,7 +356,108 @@ export function UserProfileView() {
                 >
                   Editar perfil
                 </Link>
-              ) : null}
+              ) : publicProfile.friendshipStatus === 'blocked' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!profile) return;
+                    void unblockUser(profile.firebaseUid, publicProfile.uid).then(() => {
+                      setPublicProfile((current) =>
+                        current ? { ...current, friendshipStatus: 'none' } : current,
+                      );
+                    });
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200"
+                >
+                  <Ban size={16} />
+                  Desbloquear
+                </button>
+              ) : (
+                <>
+                  <FollowButton
+                    username={publicProfile.username}
+                    initialFollowing={publicProfile.isFollowing}
+                    isOwnProfile={publicProfile.isOwnProfile}
+                    onChange={(followingNow) =>
+                      setPublicProfile((current) =>
+                        current
+                          ? {
+                              ...current,
+                              isFollowing: followingNow,
+                              followersCount: current.followersCount + (followingNow ? 1 : -1),
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                  {publicProfile.friendshipStatus === 'friends' ? (
+                    <Link
+                      to={`/mensajes?con=${encodeURIComponent(publicProfile.username)}`}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-400/30"
+                    >
+                      <MessageCircle size={16} />
+                      Mensaje
+                    </Link>
+                  ) : (
+                    <FriendRequestButton
+                      username={publicProfile.username}
+                      uid={publicProfile.uid}
+                      initialStatus={publicProfile.friendshipStatus}
+                      isOwnProfile={publicProfile.isOwnProfile}
+                      onChange={(status) =>
+                        setPublicProfile((current) =>
+                          current
+                            ? {
+                                ...current,
+                                friendshipStatus: status,
+                                friendsCount:
+                                  status === 'friends'
+                                    ? current.friendsCount + 1
+                                    : status === 'none'
+                                      ? Math.max(0, current.friendsCount - 1)
+                                      : current.friendsCount,
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!profile) return;
+                      const ok = window.confirm(
+                        `¿Bloquear a @${publicProfile.username}? Dejarán de ser amigos y no podrán enviarte mensajes.`,
+                      );
+                      if (!ok) return;
+                      void blockUser(
+                        {
+                          firebaseUid: profile.firebaseUid,
+                          handle: profile.handle,
+                          displayName: profile.displayName,
+                          avatarUrl: profile.avatarUrl,
+                        },
+                        {
+                          uid: publicProfile.uid,
+                          username: publicProfile.username,
+                          displayName: publicProfile.displayName,
+                          avatarUrl: publicProfile.avatarUrl,
+                        },
+                      ).then(() => {
+                        setPublicProfile((current) =>
+                          current
+                            ? { ...current, friendshipStatus: 'blocked', isFollowing: false }
+                            : current,
+                        );
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10"
+                  >
+                    <Ban size={16} />
+                    Bloquear usuario
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

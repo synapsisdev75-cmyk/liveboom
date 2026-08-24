@@ -1,6 +1,7 @@
-import { MessageCircle, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { MessageCircle, UserCheck, UserPlus, UserRound, UserX } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { profileHref } from '../../lib/profileFirestore';
 import {
   acceptFriendRequest,
   cancelFriendRequest,
@@ -15,6 +16,7 @@ export type { FriendshipStatus };
 
 type Props = {
   username: string;
+  uid?: string;
   initialStatus: FriendshipStatus;
   isOwnProfile?: boolean;
   compact?: boolean;
@@ -23,6 +25,7 @@ type Props = {
 
 export function FriendRequestButton({
   username,
+  uid,
   initialStatus,
   isOwnProfile,
   compact,
@@ -50,7 +53,7 @@ export function FriendRequestButton({
   if (isOwnProfile || status === 'self' || !profile) return null;
 
   const className = compact
-    ? 'shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-60'
+    ? 'inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-60'
     : 'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold disabled:opacity-60';
 
   async function run(action: () => Promise<void>, next: FriendshipStatus) {
@@ -68,15 +71,30 @@ export function FriendRequestButton({
   }
 
   const body = (() => {
+    if (status === 'blocked') {
+      return (
+        <span className={`${className} border border-zinc-700 text-zinc-500`}>Bloqueado</span>
+      );
+    }
+
     if (status === 'friends') {
       return (
-        <Link
-          to={`/mensajes?con=${encodeURIComponent(username)}`}
-          className={`${className} inline-flex items-center gap-1.5 border border-cyan-500/40 bg-cyan-500/15 text-cyan-200`}
-        >
-          <MessageCircle size={compact ? 14 : 16} className={compact ? '' : 'inline'} />
-          Enviar mensaje
-        </Link>
+        <div className={`flex ${compact ? 'flex-col sm:flex-row' : 'flex-wrap'} gap-1.5`}>
+          <Link
+            to={profileHref(username, uid)}
+            className={`${className} border border-white/15 bg-zinc-800 text-zinc-100`}
+          >
+            <UserRound size={compact ? 14 : 16} />
+            Ver perfil
+          </Link>
+          <Link
+            to={`/mensajes?con=${encodeURIComponent(username)}`}
+            className={`${className} border border-cyan-500/40 bg-cyan-500/15 text-cyan-200`}
+          >
+            <MessageCircle size={compact ? 14 : 16} />
+            Mensaje
+          </Link>
+        </div>
       );
     }
 
