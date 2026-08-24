@@ -10,6 +10,7 @@ const {
   rememberOrder,
   takeOrder,
   getBalance,
+  setBalance,
   listWithdrawals,
   addWithdrawal,
 } = require('../lib/walletMemory');
@@ -27,6 +28,43 @@ function dbUserFromToken(decoded) {
 
 function userForOrder(req) {
   return req.dbUser || (req.user ? dbUserFromToken(req.user) : null);
+}
+
+/** Recarga = saldo actual (memoria, Prisma o el que ya ve el usuario) + coins del paquete. */
+async function creditTopup(uid, coins, floorFromClient = 0) {
+  const amount = Math.max(0, Math.floor(Number(coins) || 0));
+  let dbCoins = 0;
+  if (hasDatabase && prisma) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { firebaseUid: uid },
+        select: { coinsBalance: true },
+      });
+      dbCoins = Number(user?.coinsBalance ?? 0);
+    } catch {
+      dbCoins = 0;
+    }
+  }
+  const floor = Math.max(
+    getBalance(uid),
+    dbCoins,
+    Math.max(0, Math.floor(Number(floorFromClient) || 0)),
+  );
+  if (floor > getBalance(uid)) {
+    setBalance(uid, floor);
+  }
+  const coinsBalance = credit(uid, amount);
+  if (hasDatabase && prisma) {
+    try {
+      await prisma.user.update({
+        where: { firebaseUid: uid },
+        data: { coinsBalance },
+      });
+    } catch (error) {
+      console.warn('[payments] no se persistió el saldo:', error.message);
+    }
+  }
+  return coinsBalance;
 }
 
 function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey }) {
@@ -69,18 +107,11 @@ async function completeWidget(req, res) {
       return;
     }
 
-    const coinsBalance = credit(uid, order.coins);
-
-    if (hasDatabase && prisma) {
-      try {
-        await prisma.user.update({
-          where: { firebaseUid: uid },
-          data: { coinsBalance: { increment: order.coins } },
-        });
-      } catch (error) {
-        console.warn('[payments/complete-widget] no se persistió el saldo:', error.message);
-      }
-    }
+    const coinsBalance = await creditTopup(
+      uid,
+      order.coins,
+      Math.max(Number(req.body?.currentBalance) || 0, Number(order.floor) || 0),
+    );
 
     res.json({
       reference,
@@ -142,18 +173,8 @@ async function simulateTopup(req, res) {
       res.status(401).json({ error: 'No hay usuario para acreditar coins' });
       return;
     }
-    const uid = dbUser.firebaseUid || dbUser.id;
-    const coinsBalance = credit(uid, resolved.pack.coins);
-    if (hasDatabase && prisma) {
-      try {
-        await prisma.user.update({
-          where: { firebaseUid: uid },
-          data: { coinsBalance: { increment: resolved.pack.coins } },
-        });
-      } catch (error) {
-        console.warn('[payments/simulate] no se persistió el saldo:', error.message);
-      }
-    }
+    const uid = dbUser.firebaseUid || req.user?.uid || dbUser.id;
+    const coinsBalance = await creditTopup(uid, resolved.pack.coins, req.body?.currentBalance);
     res.json({
       coins: resolved.pack.coins,
       coinsBalance,
@@ -206,6 +227,7 @@ async function createOrder(req, res) {
       uid: dbUser.firebaseUid || dbUser.id,
       coins: resolved.pack.coins,
       packageId,
+      floor: Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0)),
     });
 
     if (hasDatabase && prisma) {

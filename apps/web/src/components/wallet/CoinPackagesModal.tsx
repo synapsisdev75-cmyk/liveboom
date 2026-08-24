@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, apiPublic } from '../../lib/api';
 import { COIN_PACKAGES, type CoinPackageId } from '../../lib/coinPackages';
+import { setFirestoreCoins } from '../../lib/profileFirestore';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
 import { useAuthStore } from '../../store/authStore';
 
@@ -10,10 +11,35 @@ type Props = {
 
 export function CoinPackagesModal({ onClose }: Props) {
   const syncProfile = useAuthStore((state) => state.syncProfile);
+  const currentCoins = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
   const [selected, setSelected] = useState<CoinPackageId>('500_coins');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [simulateAvailable, setSimulateAvailable] = useState(false);
+
+  function applyTopup(paid: { coinsBalance?: number; coins?: number }) {
+    const store = useAuthStore.getState();
+    const current = store.profile?.coinsBalance ?? 0;
+    const fromApi = Number(paid.coinsBalance);
+    const added = Math.max(0, Number(paid.coins) || 0);
+    const next = Math.max(Number.isFinite(fromApi) ? fromApi : 0, current + added);
+    store.setCoins(next);
+    const uid = store.profile?.firebaseUid;
+    if (uid) {
+      void setFirestoreCoins(uid, next).catch(() => undefined);
+    }
+    return next;
+  }
+
+  async function keepTopup(next: number) {
+    await syncProfile();
+    const now = useAuthStore.getState().profile?.coinsBalance ?? 0;
+    if (now < next) {
+      useAuthStore.getState().setCoins(next);
+      const uid = useAuthStore.getState().profile?.firebaseUid;
+      if (uid) void setFirestoreCoins(uid, next).catch(() => undefined);
+    }
+  }
 
   useEffect(() => {
     void apiPublic<{ simulateAvailable?: boolean; pairOk?: boolean }>('/api/payments/status')
@@ -25,13 +51,14 @@ export function CoinPackagesModal({ onClose }: Props) {
     setBusy(true);
     setNote(null);
     try {
-      const paid = await api<{ coinsBalance: number }>('/api/payments/simulate-topup', {
+      const currentBalance = useAuthStore.getState().profile?.coinsBalance ?? 0;
+      const paid = await api<{ coinsBalance: number; coins?: number }>('/api/payments/simulate-topup', {
         method: 'POST',
-        body: JSON.stringify({ packageId: selected }),
+        body: JSON.stringify({ packageId: selected, currentBalance }),
       });
-      useAuthStore.getState().setCoins(paid.coinsBalance);
-      await syncProfile();
-      setNote('Recarga de prueba acreditada (sin Wompi).');
+      const next = applyTopup(paid);
+      await keepTopup(next);
+      setNote(`Recarga acreditada. Nuevo saldo: ${next.toLocaleString('es-CO')} coins.`);
     } catch (error) {
       setNote(error instanceof Error ? error.message : 'No se pudo simular la recarga');
     } finally {
@@ -45,18 +72,24 @@ export function CoinPackagesModal({ onClose }: Props) {
     try {
       const order = await api<WompiOrder>('/api/payments/create-order', {
         method: 'POST',
-        body: JSON.stringify({ packageId: selected }),
+        body: JSON.stringify({
+          packageId: selected,
+          currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
+        }),
       });
       openWompiWidget(order, (result) => {
         const status = result.transaction?.status;
         if (status === 'APPROVED') {
-          void api<{ coinsBalance: number }>('/api/payments/complete-widget', {
+          void api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-widget', {
             method: 'POST',
-            body: JSON.stringify({ reference: order.reference }),
+            body: JSON.stringify({
+              reference: order.reference,
+              currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
+            }),
           })
             .then((paid) => {
-              useAuthStore.getState().setCoins(paid.coinsBalance);
-              void syncProfile();
+              const next = applyTopup(paid);
+              void keepTopup(next);
             })
             .catch(() => {
               void syncProfile();
@@ -93,7 +126,15 @@ export function CoinPackagesModal({ onClose }: Props) {
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-white sm:text-xl">Recargar coins</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Elige un paquete. El pago se abre sobre esta pantalla con Wompi.
+              El paquete se suma a tu saldo actual. Paga con Wompi sobre esta pantalla.
+            </p>
+            <p className="mt-2 text-sm text-cyan-300">
+              Tienes {currentCoins.toLocaleString('es-CO')} coins
+              {' → '}
+              {(
+                currentCoins + (COIN_PACKAGES.find((pack) => pack.id === selected)?.coins ?? 0)
+              ).toLocaleString('es-CO')}{' '}
+              coins al recargar
             </p>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-sm text-zinc-500 hover:text-white">
@@ -138,7 +179,7 @@ export function CoinPackagesModal({ onClose }: Props) {
         {note ? (
           <p
             className={`mt-4 text-sm ${
-              note.startsWith('Pago') || note.includes('aprobado') ? 'text-emerald-400' : 'text-fuchsia-400'
+              note.includes('aprobado') || note.includes('acreditada') ? 'text-emerald-400' : 'text-fuchsia-400'
             }`}
           >
             {note}

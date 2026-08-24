@@ -55,6 +55,7 @@ function rememberOrder(order) {
     uid: String(order.uid),
     coins: Number(order.coins) || 0,
     packageId: order.packageId,
+    floor: Math.max(0, Number(order.floor) || 0),
   });
   flush();
 }

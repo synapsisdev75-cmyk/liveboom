@@ -50,7 +50,11 @@ function yearsOld(isoDate) {
 }
 
 function mergeProfileRecord(uid, dbUser, memory) {
-  const coinsBalance = getBalance(uid);
+  const { setBalance } = require('../lib/walletMemory');
+  const coinsBalance = Math.max(getBalance(uid), Number(dbUser?.coinsBalance ?? 0));
+  if (coinsBalance > getBalance(uid)) {
+    setBalance(uid, coinsBalance);
+  }
   if (!memory) {
     return serializeUser({ ...dbUser, coinsBalance });
   }

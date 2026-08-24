@@ -7,6 +7,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  updateDoc,
   where,
   type Firestore,
 } from 'firebase/firestore';
@@ -80,6 +81,16 @@ export async function fetchFirestoreProfile(uid: string): Promise<SessionUser | 
   const snap = await getDoc(doc(db, 'users', uid));
   if (!snap.exists()) return null;
   return mapFirestoreUser(mapDoc(snap.id, snap.data() as Record<string, unknown>));
+}
+
+export async function setFirestoreCoins(uid: string, coins: number) {
+  const id = String(uid || '').trim();
+  if (!id) return;
+  const next = Math.max(0, Math.floor(Number(coins) || 0));
+  await updateDoc(doc(db, 'users', id), {
+    coinsBalance: next,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function fetchPublicUserByUid(uid: string): Promise<PublicFsUser | null> {
