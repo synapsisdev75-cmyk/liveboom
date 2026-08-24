@@ -6,10 +6,60 @@ const { findGift } = require('../lib/gifts');
 const { emitGiftReceived } = require('../lib/socket');
 const { getBalance, debit, credit } = require('../lib/walletMemory');
 const { findByUsername } = require('../lib/profileMemory');
+const liveChat = require('../lib/liveChat');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error('TIMEOUT');
+      error.code = 'TIMEOUT';
+      reject(error);
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function announceGift(roomName, payload) {
+  emitGiftReceived(roomName, payload);
+  try {
+    liveChat.appendMessage(roomName, {
+      id: `gift-${payload.id}`,
+      author: payload.senderName,
+      text: `envió ${payload.giftName}`,
+      gift: { giftId: payload.giftId, emoji: payload.emoji, name: payload.giftName },
+    });
+  } catch {
+    // chat opcional
+  }
+  try {
+    require('../lib/liveSession').addGift(roomName, {
+      uid: payload.senderUid,
+      name: payload.senderName,
+      coins: payload.coins,
+    });
+  } catch {
+    // session opcional
+  }
+}
+
+function memorySend(senderUid, roomName, gift, payload) {
+  const next = debit(senderUid, gift.coins);
+  if (next == null) return { error: 'Saldo insuficiente' };
+  const host = findByUsername(roomName);
+  if (host?.firebaseUid && host.firebaseUid !== senderUid) {
+    credit(host.firebaseUid, gift.coins);
+  }
+  announceGift(roomName, payload);
+  return {
+    senderBalance: next,
+    creatorBalance: host ? getBalance(host.firebaseUid) : 0,
+  };
+}
 
 router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const giftId = req.body?.giftId;
@@ -30,64 +80,44 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     'Liveboomer';
 
   const payload = {
-    id: randomUUID(),
+    id: typeof req.body?.clientId === 'string' && req.body.clientId ? req.body.clientId : randomUUID(),
     roomName,
     giftId: gift.id,
     giftName: gift.name,
     emoji: gift.emoji,
     coins: gift.coins,
     senderName,
+    senderUid,
   };
 
   try {
     if (!hasDatabase || !prisma) {
-      const next = debit(senderUid, gift.coins);
-      if (next == null) {
-        res.status(402).json({ error: 'Saldo insuficiente' });
+      const sent = memorySend(senderUid, roomName, gift, payload);
+      if (sent.error) {
+        res.status(402).json({ error: sent.error });
         return;
       }
-      const host = findByUsername(roomName);
-      if (host?.firebaseUid && host.firebaseUid !== senderUid) {
-        credit(host.firebaseUid, gift.coins);
-      }
-      emitGiftReceived(roomName, payload);
-      try {
-        require('../lib/liveSession').addGift(roomName, {
-          uid: senderUid,
-          name: senderName,
-          coins: gift.coins,
-        });
-      } catch {
-        // session opcional
-      }
-      res.json({
-        ok: true,
-        gift: payload,
-        senderBalance: next,
-        creatorBalance: host ? getBalance(host.firebaseUid) : 0,
-      });
+      res.json({ ok: true, gift: payload, ...sent });
       return;
     }
 
-    const creator = await prisma.user.findFirst({ where: { username: roomName } });
+    let creator = null;
+    try {
+      creator = await withTimeout(
+        prisma.user.findFirst({ where: { username: roomName } }),
+        4000,
+      );
+    } catch (error) {
+      console.warn('[gifts/send] prisma lookup timeout', error.message);
+    }
+
     if (!creator) {
-      // Sin creador en DB: igual descuenta y deja que LiveKit propague el regalo
-      const next = debit(senderUid, gift.coins);
-      if (next == null) {
-        res.status(402).json({ error: 'Saldo insuficiente' });
+      const sent = memorySend(senderUid, roomName, gift, payload);
+      if (sent.error) {
+        res.status(402).json({ error: sent.error });
         return;
       }
-      emitGiftReceived(roomName, payload);
-      try {
-        require('../lib/liveSession').addGift(roomName, {
-          uid: senderUid,
-          name: senderName,
-          coins: gift.coins,
-        });
-      } catch {
-        // session opcional
-      }
-      res.json({ ok: true, gift: payload, senderBalance: next, creatorBalance: 0 });
+      res.json({ ok: true, gift: payload, ...sent });
       return;
     }
     if (creator.firebaseUid === senderUid || creator.id === req.dbUser.id) {
@@ -95,63 +125,56 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       return;
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      const deducted = await tx.user.updateMany({
-        where: { id: req.dbUser.id, coinsBalance: { gte: gift.coins } },
-        data: { coinsBalance: { decrement: gift.coins } },
-      });
-      if (deducted.count !== 1) {
-        const error = new Error('INSUFFICIENT_COINS');
-        error.code = 'INSUFFICIENT_COINS';
-        throw error;
-      }
+    const result = await withTimeout(
+      prisma.$transaction(async (tx) => {
+        const deducted = await tx.user.updateMany({
+          where: { id: req.dbUser.id, coinsBalance: { gte: gift.coins } },
+          data: { coinsBalance: { decrement: gift.coins } },
+        });
+        if (deducted.count !== 1) {
+          const error = new Error('INSUFFICIENT_COINS');
+          error.code = 'INSUFFICIENT_COINS';
+          throw error;
+        }
 
-      const creatorUpdated = await tx.user.update({
-        where: { id: creator.id },
-        data: { coinsBalance: { increment: gift.coins } },
-      });
+        const creatorUpdated = await tx.user.update({
+          where: { id: creator.id },
+          data: { coinsBalance: { increment: gift.coins } },
+        });
 
-      await tx.transaction.create({
-        data: {
-          userId: req.dbUser.id,
-          amount: -gift.coins,
-          amountInCop: 0,
-          type: 'gift_send',
-          status: 'completed',
-          packageId: gift.id,
-          reference: `gift_${randomUUID()}`,
-          currency: 'COINS',
-        },
-      });
+        await tx.transaction.create({
+          data: {
+            userId: req.dbUser.id,
+            amount: -gift.coins,
+            amountInCop: 0,
+            type: 'gift_send',
+            status: 'completed',
+            packageId: gift.id,
+            reference: `gift_${randomUUID()}`,
+            currency: 'COINS',
+          },
+        });
 
-      await tx.transaction.create({
-        data: {
-          userId: creator.id,
-          amount: gift.coins,
-          amountInCop: 0,
-          type: 'gift_receive',
-          status: 'completed',
-          packageId: gift.id,
-          reference: `giftin_${randomUUID()}`,
-          currency: 'COINS',
-        },
-      });
+        await tx.transaction.create({
+          data: {
+            userId: creator.id,
+            amount: gift.coins,
+            amountInCop: 0,
+            type: 'gift_receive',
+            status: 'completed',
+            packageId: gift.id,
+            reference: `giftin_${randomUUID()}`,
+            currency: 'COINS',
+          },
+        });
 
-      const sender = await tx.user.findUnique({ where: { id: req.dbUser.id } });
-      return { sender, creator: creatorUpdated };
-    });
+        const sender = await tx.user.findUnique({ where: { id: req.dbUser.id } });
+        return { sender, creator: creatorUpdated };
+      }),
+      6000,
+    );
 
-    emitGiftReceived(roomName, payload);
-    try {
-      require('../lib/liveSession').addGift(roomName, {
-        uid: senderUid,
-        name: senderName,
-        coins: gift.coins,
-      });
-    } catch {
-      // session opcional
-    }
-
+    announceGift(roomName, payload);
     res.json({
       ok: true,
       gift: payload,
@@ -161,6 +184,15 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   } catch (error) {
     if (error.code === 'INSUFFICIENT_COINS' || error.message === 'INSUFFICIENT_COINS') {
       res.status(402).json({ error: 'Saldo insuficiente' });
+      return;
+    }
+    if (error.code === 'TIMEOUT') {
+      const sent = memorySend(senderUid, roomName, gift, payload);
+      if (sent.error) {
+        res.status(402).json({ error: sent.error });
+        return;
+      }
+      res.json({ ok: true, gift: payload, ...sent });
       return;
     }
     console.error('[gifts/send]', error);

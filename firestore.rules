@@ -51,7 +51,8 @@ service cloud.firestore {
       }
 
       match /blocked/{blockedId} {
-        allow read: if isSelf(userId);
+        allow get: if isSelf(userId) || isSelf(blockedId);
+        allow list: if isSelf(userId);
         allow write: if isSelf(userId);
       }
 
@@ -186,6 +187,20 @@ service cloud.firestore {
           resource.data.authorUid == request.auth.uid
           || loadedPost().authorUid == request.auth.uid
         );
+      }
+    }
+
+    match /liveRooms/{roomName} {
+      allow read: if signedIn();
+
+      match /gifts/{giftId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.giftId is string
+          && request.resource.data.giftName is string
+          && request.resource.data.senderName is string;
+        allow delete: if signedIn() && resource.data.senderUid == request.auth.uid;
       }
     }
 

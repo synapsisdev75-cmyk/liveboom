@@ -36,7 +36,6 @@ export function FollowButton({ username, initialFollowing, isOwnProfile, onChang
     if (!profile || isOwnProfile) return;
     void isFollowing(profile.firebaseUid, username).then((value) => {
       setFollowing(value);
-      onChange?.(value);
     });
   }, [profile?.firebaseUid, username, isOwnProfile]);
 

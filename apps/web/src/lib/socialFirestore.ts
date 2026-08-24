@@ -237,8 +237,10 @@ export async function sendFriendRequest(from: MeProfile | PublicFsUser, toUserna
 
   const blocked = await getDoc(doc(db, 'users', fromUid, 'blocked', target.firebaseUid));
   if (blocked.exists()) throw new Error('Desbloquea a esta persona para enviarle solicitud.');
-  const blockedBy = await getDoc(doc(db, 'users', target.firebaseUid, 'blocked', fromUid));
-  if (blockedBy.exists()) throw new Error('No puedes enviar solicitud a este usuario.');
+  const blockedBy = await getDoc(doc(db, 'users', target.firebaseUid, 'blocked', fromUid)).catch(
+    () => null,
+  );
+  if (blockedBy?.exists()) throw new Error('No puedes enviar solicitud a este usuario.');
 
   const status = await getFriendshipStatus(fromUid, toUsername);
   if (status === 'friends') return;
@@ -647,7 +649,7 @@ function sortPosts(list: FsPost[]) {
 export function listenPostsByUsername(
   username: string,
   onChange: (posts: FsPost[]) => void,
-  viewer?: { uid: string; isFriend?: boolean; isOwner?: boolean } | null,
+  viewer?: { uid: string; isFriend?: boolean; isOwner?: boolean; profileUid?: string } | null,
 ): Unsubscribe {
   const handle = username.toLowerCase();
 
@@ -674,13 +676,22 @@ export function listenPostsByUsername(
 
   const visibilities: Array<FsPost['visibility']> = viewer.isFriend ? ['public', 'friends'] : ['public'];
   const buckets: Array<FsPost[]> = visibilities.map(() => []);
+  const authorUid = viewer.profileUid || '';
   const unsubs = visibilities.map((visibility, index) => {
-    const q = query(
-      collection(db, 'posts'),
-      where('username', '==', handle),
-      where('visibility', '==', visibility),
-      limit(60),
-    );
+    const q =
+      visibility === 'friends' && authorUid
+        ? query(
+            collection(db, 'posts'),
+            where('authorUid', '==', authorUid),
+            where('visibility', '==', 'friends'),
+            limit(60),
+          )
+        : query(
+            collection(db, 'posts'),
+            where('username', '==', handle),
+            where('visibility', '==', visibility),
+            limit(60),
+          );
     return onSnapshot(
       q,
       (snap) => {

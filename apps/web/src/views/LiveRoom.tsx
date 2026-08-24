@@ -30,6 +30,7 @@ import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, ApiError } from '../lib/api';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
+import { listenLiveGifts, publishLiveGift } from '../lib/liveGiftsFirestore';
 import { LIVEBOOM_GIFTS, GIFT_LEVEL_FX, findLiveGift } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
@@ -1091,6 +1092,22 @@ function ChatPanel({
   }, [roomName]);
 
   useEffect(() => {
+    return listenLiveGifts(roomName, (gift) => {
+      pushMessage({
+        id: `gift-${gift.id}`,
+        author: gift.senderName,
+        text: `envió ${gift.giftName}`,
+        gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
+      });
+      window.dispatchEvent(
+        new CustomEvent('liveboom:gift', {
+          detail: { id: gift.id, giftId: gift.giftId, senderName: gift.senderName },
+        }),
+      );
+    });
+  }, [roomName]);
+
+  useEffect(() => {
     const onData = (payload: Uint8Array) => {
       const data = parseRoomData(payload);
       if (!data) return;
@@ -1155,8 +1172,56 @@ function ChatPanel({
 
   async function sendGift(giftId: string) {
     if (sendingGift) return;
+    const catalog = findLiveGift(giftId);
+    if (!catalog) return;
+    if (!profile) {
+      setGiftError('Inicia sesión para enviar regalos');
+      return;
+    }
+    if (coins < catalog.coins) {
+      setGiftError('Saldo insuficiente. Recarga coins para continuar.');
+      return;
+    }
+
     setGiftError(null);
     setSendingGift(giftId);
+    setOpenGifts(false);
+    const previousCoins = coins;
+    setCoins(coins - catalog.coins);
+
+    const clientId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const senderName = profile.displayName || profile.handle || 'Liveboomer';
+    const chatGift = {
+      id: `gift-${clientId}`,
+      author: senderName,
+      text: `envió ${catalog.name}`,
+      gift: { giftId: catalog.id, emoji: catalog.emoji, name: catalog.name },
+    };
+
+    pushMessage(chatGift);
+    window.dispatchEvent(
+      new CustomEvent('liveboom:gift', {
+        detail: { id: clientId, giftId: catalog.id, senderName },
+      }),
+    );
+    void publishRoomData(room, {
+      type: 'gift',
+      id: clientId,
+      giftId: catalog.id,
+      senderName,
+      giftName: catalog.name,
+      emoji: catalog.emoji,
+    }).catch((error) => console.error('[gift] publishData', error));
+    void publishLiveGift(roomName, {
+      clientId,
+      giftId: catalog.id,
+      giftName: catalog.name,
+      emoji: catalog.emoji,
+      senderName,
+      senderUid: profile.firebaseUid,
+      coins: catalog.coins,
+    }).catch((error) => console.error('[gift] firestore', error));
+
     try {
       const result = await api<{
         senderBalance: number;
@@ -1169,46 +1234,17 @@ function ChatPanel({
         };
       }>('/api/gifts/send', {
         method: 'POST',
-        body: JSON.stringify({ giftId, roomName }),
+        body: JSON.stringify({ giftId: catalog.id, roomName, clientId }),
       });
       setCoins(result.senderBalance);
-      setOpenGifts(false);
-      const gift = result.gift;
-      const senderName = profile?.displayName || profile?.handle || gift.senderName;
-      pushMessage({
-        id: `gift-${gift.id}`,
-        author: senderName,
-        text: `envió ${gift.giftName}`,
-        gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
-      });
-      window.dispatchEvent(
-        new CustomEvent('liveboom:gift', {
-          detail: {
-            id: gift.id,
-            giftId: gift.giftId,
-            senderName,
-          },
-        }),
-      );
-      void publishRoomData(room, {
-        type: 'gift',
-        id: gift.id,
-        giftId: gift.giftId,
-        senderName,
-        giftName: gift.giftName,
-        emoji: gift.emoji,
-      }).catch((error) => console.error('[gift] publishData', error));
       void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
         method: 'POST',
-        body: JSON.stringify({
-          id: `gift-${gift.id}`,
-          author: senderName,
-          text: `envió ${gift.giftName}`,
-          gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
-        }),
+        body: JSON.stringify(chatGift),
       }).catch(() => undefined);
     } catch (err) {
+      setCoins(previousCoins);
       setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
+      setOpenGifts(true);
     } finally {
       setSendingGift(null);
     }
@@ -1352,6 +1388,9 @@ function ChatPanel({
             })}
             {giftError ? <p className="mt-2 text-xs text-fuchsia-400">{giftError}</p> : null}
           </div>
+        ) : null}
+        {sendingGift ? (
+          <p className="text-[11px] font-semibold text-cyan-300">Enviando regalo… ya va en el chat.</p>
         ) : null}
         <div className="flex gap-2">
           <button

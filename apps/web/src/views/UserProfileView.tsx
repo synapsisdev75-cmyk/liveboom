@@ -195,7 +195,7 @@ export function UserProfileView() {
         );
       },
       viewerUid
-        ? { uid: viewerUid, isFriend, isOwner }
+        ? { uid: viewerUid, isFriend, isOwner, profileUid: publicProfile.uid }
         : null,
     );
   }, [publicProfile?.username, publicProfile?.uid, publicProfile?.friendshipStatus, profile?.firebaseUid]);
@@ -387,15 +387,17 @@ export function UserProfileView() {
                     initialFollowing={publicProfile.isFollowing}
                     isOwnProfile={publicProfile.isOwnProfile}
                     onChange={(followingNow) =>
-                      setPublicProfile((current) =>
-                        current
-                          ? {
-                              ...current,
-                              isFollowing: followingNow,
-                              followersCount: current.followersCount + (followingNow ? 1 : -1),
-                            }
-                          : current,
-                      )
+                      setPublicProfile((current) => {
+                        if (!current || current.isFollowing === followingNow) return current;
+                        return {
+                          ...current,
+                          isFollowing: followingNow,
+                          followersCount: Math.max(
+                            0,
+                            current.followersCount + (followingNow ? 1 : -1),
+                          ),
+                        };
+                      })
                     }
                   />
                   {publicProfile.friendshipStatus === 'friends' ? (
