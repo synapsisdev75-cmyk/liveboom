@@ -2,6 +2,7 @@ import { Globe, Lock, ThumbsDown, ThumbsUp, UserMinus, UserPlus, Users } from 'l
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { followUser, isFollowing, unfollowUser } from '../../lib/socialFirestore';
+import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = {
@@ -80,6 +81,7 @@ export function FollowButton({ username, initialFollowing, isOwnProfile, onChang
 }
 
 type UserChip = {
+  uid?: string;
   username: string;
   displayName: string;
   avatarUrl: string | null;
@@ -113,9 +115,9 @@ export function FollowListModal({
         ) : (
           <ul className="space-y-2">
             {users.map((user) => (
-              <li key={user.username}>
+              <li key={user.uid || user.username}>
                 <Link
-                  to={`/u/${encodeURIComponent(user.username)}`}
+                  to={profileHref(user.username, user.uid)}
                   onClick={onClose}
                   className="flex items-center gap-3 rounded-xl border border-white/5 px-3 py-2 hover:border-cyan-400/30"
                 >

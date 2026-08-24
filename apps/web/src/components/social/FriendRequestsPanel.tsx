@@ -9,6 +9,7 @@ import {
   type FriendRequest,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { profileHref } from '../../lib/profileFirestore';
 
 export function FriendRequestsPanel() {
   const profile = useAuthStore((state) => state.profile);
@@ -85,7 +86,7 @@ export function FriendRequestsPanel() {
                 key={user.id}
                 className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2"
               >
-                <Link to={`/u/${encodeURIComponent(user.username)}`} className="flex min-w-0 flex-1 items-center gap-2">
+                <Link to={profileHref(user.username, user.uid)} className="flex min-w-0 flex-1 items-center gap-2">
                   {user.avatarUrl ? (
                     <img src={user.avatarUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
                   ) : (

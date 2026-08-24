@@ -30,6 +30,7 @@ import {
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
+import { profileHref } from '../../lib/profileFirestore';
 
 type Props = {
   compact?: boolean;
@@ -383,12 +384,15 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
             {activeFriend ? (
               <>
                 <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-                  <p className="text-xs font-semibold text-white">
+                  <Link
+                    to={profileHref(activeFriend.username, activeFriend.uid)}
+                    className="text-xs font-semibold text-white hover:text-cyan-300"
+                  >
                     @{activeFriend.username}
                     <span className={`ml-2 text-[10px] font-normal ${online ? 'text-emerald-400' : 'text-zinc-500'}`}>
                       {online ? 'en linea' : 'desconectado'}
                     </span>
-                  </p>
+                  </Link>
                   <div className="flex items-center gap-1">
                     {inThisCall ? (
                       <button

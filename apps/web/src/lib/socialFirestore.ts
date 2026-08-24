@@ -196,24 +196,32 @@ function meToChip(me: MeProfile): FriendChip {
   };
 }
 
+export async function getFriendshipStatusByUid(
+  viewerUid: string,
+  targetUid: string,
+): Promise<FriendshipStatus> {
+  if (!viewerUid || !targetUid) return 'none';
+  if (viewerUid === targetUid) return 'self';
+
+  const friendSnap = await getDoc(doc(db, 'users', viewerUid, 'friends', targetUid));
+  if (friendSnap.exists()) return 'friends';
+
+  const sentSnap = await getDoc(doc(db, 'users', viewerUid, 'outgoingRequests', targetUid));
+  if (sentSnap.exists()) return 'pending_sent';
+
+  const recvSnap = await getDoc(doc(db, 'users', viewerUid, 'incomingRequests', targetUid));
+  if (recvSnap.exists()) return 'pending_received';
+
+  return 'none';
+}
+
 export async function getFriendshipStatus(
   viewerUid: string,
   targetUsername: string,
 ): Promise<FriendshipStatus> {
   const target = await fetchPublicUserByUsername(targetUsername);
   if (!target) return 'none';
-  if (target.firebaseUid === viewerUid) return 'self';
-
-  const friendSnap = await getDoc(doc(db, 'users', viewerUid, 'friends', target.firebaseUid));
-  if (friendSnap.exists()) return 'friends';
-
-  const sentSnap = await getDoc(doc(db, 'users', viewerUid, 'outgoingRequests', target.firebaseUid));
-  if (sentSnap.exists()) return 'pending_sent';
-
-  const recvSnap = await getDoc(doc(db, 'users', viewerUid, 'incomingRequests', target.firebaseUid));
-  if (recvSnap.exists()) return 'pending_received';
-
-  return 'none';
+  return getFriendshipStatusByUid(viewerUid, target.firebaseUid);
 }
 
 export async function sendFriendRequest(from: MeProfile | PublicFsUser, toUsername: string) {
@@ -378,11 +386,16 @@ export async function unfollowUser(meUid: string, targetUsername: string) {
   await deleteDoc(doc(db, 'users', target.firebaseUid, 'followers', meUid)).catch(() => undefined);
 }
 
+export async function isFollowingUid(viewerUid: string, targetUid: string) {
+  if (!viewerUid || !targetUid) return false;
+  const snap = await getDoc(doc(db, 'users', viewerUid, 'following', targetUid));
+  return snap.exists();
+}
+
 export async function isFollowing(viewerUid: string, targetUsername: string) {
   const target = await fetchPublicUserByUsername(targetUsername);
   if (!target) return false;
-  const snap = await getDoc(doc(db, 'users', viewerUid, 'following', target.firebaseUid));
-  return snap.exists();
+  return isFollowingUid(viewerUid, target.firebaseUid);
 }
 
 export function listenFollowers(uid: string, onChange: (users: FriendChip[]) => void): Unsubscribe {

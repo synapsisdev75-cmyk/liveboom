@@ -5,8 +5,10 @@ import { CategoryChips } from '../search/CategoryChips';
 import { categoryLabel } from '../../lib/categories';
 import { api } from '../../lib/api';
 import { FriendRequestButton } from './FriendRequestButton';
+import { profileHref } from '../../lib/profileFirestore';
 
 export type SearchUser = {
+  uid?: string;
   username: string;
   displayName: string;
   avatarUrl: string | null;
@@ -38,6 +40,7 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
             let mapped: SearchUser[] = fsUsers
               .filter((user) => !category || user.category === category)
               .map((user) => ({
+                uid: user.firebaseUid,
                 username: user.username,
                 displayName: user.displayName,
                 avatarUrl: user.avatarUrl,
@@ -100,10 +103,10 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
         <ul className="mt-3 max-h-80 space-y-2 overflow-y-auto">
           {results.map((user) => (
             <li
-              key={user.username}
+              key={user.uid || user.username}
               className="flex items-center gap-3 rounded-xl border border-white/5 bg-zinc-950/80 px-3 py-2"
             >
-              <Link to={`/u/${encodeURIComponent(user.username)}`} className="flex min-w-0 flex-1 items-center gap-3">
+              <Link to={profileHref(user.username, user.uid)} className="flex min-w-0 flex-1 items-center gap-3">
                 {user.avatarUrl ? (
                   <img src={user.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
                 ) : (

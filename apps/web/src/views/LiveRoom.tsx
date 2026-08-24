@@ -10,23 +10,28 @@ import {
 import { createLocalVideoTrack, RoomEvent, Track, type LocalVideoTrack } from 'livekit-client';
 import {
   Circle,
+  Coins,
   Eye,
   Gift,
   Lock,
   Radio,
   Send,
   SwitchCamera,
+  Unlock,
   UserPlus,
   Video,
+  X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
+import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, ApiError } from '../lib/api';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
 import { LIVEBOOM_GIFTS, GIFT_LEVEL_FX, findLiveGift } from '../lib/liveboomGifts';
+import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 
 type LockInfo = {
@@ -45,6 +50,17 @@ type LiveLaunchState = {
   title?: string;
   isPrivate?: boolean;
   category?: string;
+  goalCoins?: number;
+  goalLabel?: string;
+};
+
+type LiveSessionStats = {
+  username: string;
+  startedAt: string;
+  goalCoins: number;
+  goalLabel: string;
+  coinsEarned: number;
+  topGifters: { uid: string; name: string; coins: number }[];
 };
 
 type ChatMessage = {
@@ -141,6 +157,8 @@ export function LiveRoom() {
           title: launch.title || `Live de ${profile.displayName || profile.handle}`,
           isPrivate: Boolean(launch.isPrivate ?? isPrivate),
           category: launch.category || profile.category || 'otro',
+          goalCoins: Number(launch.goalCoins) || 0,
+          goalLabel: launch.goalLabel || '',
         }),
       }).catch(() => undefined);
       setLiveStarted(true);
@@ -196,6 +214,33 @@ export function LiveRoom() {
       cancelled = true;
     };
   }, [profile, username, needsLaunchConfirm]);
+
+  useEffect(() => {
+    if (!gateLock || !username || !profile) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void api<{
+        locked: boolean;
+        unlocked: boolean;
+        isHost: boolean;
+        lock: LockInfo | null;
+      }>(
+        `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(profile.handle)}`,
+      )
+        .then((lockState) => {
+          if (cancelled) return;
+          if (!lockState.locked || lockState.unlocked || lockState.isHost) {
+            setGateLock(null);
+            void fetchToken();
+          }
+        })
+        .catch(() => undefined);
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [gateLock, username, profile?.handle]);
 
   async function unlockAndEnter() {
     if (!username) return;
@@ -335,6 +380,8 @@ export function LiveRoom() {
           canPublish={session.canPublish}
           isHost={Boolean(session.isHost ?? (session.canPublish && isOwnRoom))}
           isPrivate={isPrivate}
+          goalCoins={Number(launch.goalCoins) || 0}
+          goalLabel={launch.goalLabel || ''}
         />
         <ChatPanel
           roomName={username}
@@ -352,11 +399,15 @@ function CreatorStage({
   canPublish,
   isHost,
   isPrivate,
+  goalCoins,
+  goalLabel,
 }: {
   username: string;
   canPublish: boolean;
   isHost: boolean;
   isPrivate: boolean;
+  goalCoins: number;
+  goalLabel: string;
 }) {
   const room = useRoomContext();
   const profile = useAuthStore((state) => state.profile);
@@ -374,6 +425,19 @@ function CreatorStage({
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
   const [viewersList, setViewersList] = useState<{ identity: string; name: string }[]>([]);
+  const [liveStats, setLiveStats] = useState<LiveSessionStats | null>(
+    goalCoins || goalLabel
+      ? {
+          username,
+          startedAt: new Date().toISOString(),
+          goalCoins,
+          goalLabel,
+          coinsEarned: 0,
+          topGifters: [],
+        }
+      : null,
+  );
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const cameraTrackRef = useRef<LocalVideoTrack | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
 
@@ -397,43 +461,40 @@ function CreatorStage({
   }, [isHost, username]);
 
   useEffect(() => {
-    const onLocalGift = (event: Event) => {
-      const detail = (event as CustomEvent<{ id: string; giftId: string; senderName: string }>).detail;
-      if (!detail?.giftId) return;
-      setFloats((current) => [
-        ...current,
-        {
-          id: detail.id,
-          giftId: detail.giftId,
-          left: 18 + Math.random() * 64,
-          senderName: detail.senderName,
-        },
-      ]);
-      if (isFaceAnchoredGift(detail.giftId)) {
-        const gift = findLiveGift(detail.giftId);
-        const seconds = gift ? GIFT_LEVEL_FX[gift.level].duration : 3.5;
-        setFaceGift({
-          id: detail.id,
-          giftId: detail.giftId,
-          endsAt: Date.now() + seconds * 1000,
-        });
+    let cancelled = false;
+    async function loadSession() {
+      try {
+        const data = await api<{ session: LiveSessionStats | null }>(
+          `/api/stream/session/${encodeURIComponent(username)}`,
+        );
+        if (!cancelled && data.session) setLiveStats(data.session);
+      } catch {
+        // sesión opcional
       }
+    }
+    void loadSession();
+    const timer = window.setInterval(() => void loadSession(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
     };
-    window.addEventListener('liveboom:gift', onLocalGift);
-    return () => window.removeEventListener('liveboom:gift', onLocalGift);
-  }, []);
+  }, [username]);
 
   useEffect(() => {
     const applyGift = (giftId: string, id: string, senderName?: string) => {
-      setFloats((current) => [
-        ...current,
-        {
-          id,
-          giftId,
-          left: 18 + Math.random() * 64,
-          senderName,
-        },
-      ]);
+      if (!giftId || !id) return;
+      setFloats((current) => {
+        if (current.some((item) => item.id === id)) return current;
+        return [
+          ...current.slice(-6),
+          {
+            id,
+            giftId,
+            left: 32 + Math.random() * 36,
+            senderName,
+          },
+        ];
+      });
       if (isFaceAnchoredGift(giftId)) {
         const gift = findLiveGift(giftId);
         const seconds = gift ? GIFT_LEVEL_FX[gift.level].duration : 3.5;
@@ -460,13 +521,31 @@ function CreatorStage({
       if (!detail?.giftId) return;
       applyGift(detail.giftId, detail.id, detail.senderName);
     };
+    const onSocketGift = (payload: { id?: string; giftId?: string; senderName?: string }) => {
+      if (!payload?.giftId || !payload.id) return;
+      applyGift(payload.giftId, payload.id, payload.senderName);
+    };
+
     room.on(RoomEvent.DataReceived, onData);
     window.addEventListener('liveboom:gift', onLocalGift);
+    let cancelled = false;
+    void getSocket()
+      .then((socket) => {
+        if (cancelled) return;
+        socket.emit('join_room', username);
+        socket.on('gift_received', onSocketGift);
+      })
+      .catch(() => undefined);
+
     return () => {
+      cancelled = true;
       room.off(RoomEvent.DataReceived, onData);
       window.removeEventListener('liveboom:gift', onLocalGift);
+      void getSocket()
+        .then((socket) => socket.off('gift_received', onSocketGift))
+        .catch(() => undefined);
     };
-  }, [room]);
+  }, [room, username]);
 
   useEffect(() => {
     const refresh = () => {
@@ -624,7 +703,16 @@ function CreatorStage({
             className="relative aspect-[9/16] h-full max-h-full w-auto max-w-full overflow-hidden bg-black lg:rounded-2xl"
           >
             <CreatorVideo canPublish={canPublish} facing={facing} cameraTrackRef={cameraTrackRef} />
-            <FaceMeshGiftOverlay containerRef={stageVideoRef} active={faceGift} />
+            <FaceMeshGiftOverlay active={faceGift} />
+            {floats.map((item) => (
+              <FloatingGift
+                key={item.id}
+                giftId={item.giftId}
+                senderName={item.senderName}
+                left={item.left}
+                onComplete={() => setFloats((current) => current.filter((gift) => gift.id !== item.id))}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -635,19 +723,40 @@ function CreatorStage({
               <Radio className="mr-1 inline" size={11} /> EN VIVO
             </span>
             {isHost ? (
-              <button
-                type="button"
-                disabled={lockBusy}
-                onClick={() => setLockPicker((v) => !v)}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold backdrop-blur ${
-                  lock
-                    ? 'bg-amber-500/30 text-amber-200 ring-1 ring-amber-400/50'
-                    : 'bg-black/50 text-zinc-200 hover:text-white'
-                }`}
-              >
-                <Lock size={11} />
-                {lock ? `${lock.emoji} Candado` : 'Candado'}
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={lockBusy}
+                  onClick={() => setLockPicker((v) => !v)}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold backdrop-blur ${
+                    lock
+                      ? 'bg-amber-500/30 text-amber-200 ring-1 ring-amber-400/50'
+                      : 'bg-black/50 text-zinc-200 hover:text-white'
+                  }`}
+                >
+                  <Lock size={11} />
+                  {lock ? `${lock.emoji} Candado` : 'Candado'}
+                </button>
+                {lock ? (
+                  <button
+                    type="button"
+                    disabled={lockBusy}
+                    onClick={() => void setLiveLock(null)}
+                    className="inline-flex items-center gap-1 rounded-full bg-emerald-500/25 px-2 py-1 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-400/40 backdrop-blur"
+                  >
+                    <Unlock size={11} />
+                    Reabrir live
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setWithdrawOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-[11px] font-semibold text-cyan-200 backdrop-blur hover:text-white"
+                >
+                  <Coins size={11} />
+                  Retirar {(liveStats?.coinsEarned || 0).toLocaleString('es-CO')}
+                </button>
+              </>
             ) : lock ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/25 px-2 py-1 text-[11px] text-amber-200 backdrop-blur">
                 <Lock size={11} /> {lock.emoji} {lock.giftName}
@@ -686,11 +795,42 @@ function CreatorStage({
             </Link>
           </div>
         </div>
+        {liveStats && (liveStats.goalCoins > 0 || liveStats.coinsEarned > 0) ? (
+          <div className="pointer-events-none mt-3 max-w-sm">
+            <p className="text-[10px] font-semibold text-white drop-shadow">
+              {liveStats.goalLabel || 'Recaudado en esta sala'}
+            </p>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500"
+                style={{
+                  width: `${
+                    liveStats.goalCoins > 0
+                      ? Math.min(100, Math.round((liveStats.coinsEarned / liveStats.goalCoins) * 100))
+                      : 100
+                  }%`,
+                }}
+              />
+            </div>
+            <p className="mt-1 text-[10px] text-cyan-200">
+              {liveStats.coinsEarned.toLocaleString('es-CO')}
+              {liveStats.goalCoins > 0
+                ? ` / ${liveStats.goalCoins.toLocaleString('es-CO')} coins`
+                : ' coins'}
+              {liveStats.topGifters[0]
+                ? ` · Top: ${liveStats.topGifters[0].name}`
+                : ''}
+            </p>
+          </div>
+        ) : null}
       </div>
       {lockPicker && isHost ? (
         <div className="pointer-events-auto absolute left-3 top-[4.2rem] z-20 max-h-[50dvh] w-[min(100%,18rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4">
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-amber-300">
             Regalo para entrar
+          </p>
+          <p className="mb-2 text-[10px] text-zinc-400">
+            Elige el regalo. Luego puedes reabrir el live cuando quieras.
           </p>
           <div className="space-y-1">
             {LIVEBOOM_GIFTS.filter((g) => g.coins <= 1000).map((gift) => (
@@ -715,7 +855,7 @@ function CreatorStage({
               onClick={() => void setLiveLock(null)}
               className="mt-2 w-full rounded-lg border border-white/10 py-1.5 text-[11px] text-zinc-400"
             >
-              Quitar candado
+              Quitar candado y reabrir live
             </button>
           ) : null}
         </div>
@@ -764,15 +904,12 @@ function CreatorStage({
           {inviteNote || reelNote}
         </p>
       ) : null}
-      {floats.map((item) => (
-        <FloatingGift
-          key={item.id}
-          giftId={item.giftId}
-          senderName={item.senderName}
-          left={item.left}
-          onComplete={() => setFloats((current) => current.filter((gift) => gift.id !== item.id))}
+      {withdrawOpen ? (
+        <WithdrawModal
+          initialCoins={liveStats?.coinsEarned || 0}
+          onClose={() => setWithdrawOpen(false)}
         />
-      ))}
+      ) : null}
     </section>
   );
 }
@@ -932,6 +1069,7 @@ function ChatPanel({
   const [text, setText] = useState('');
   const [openGifts, setOpenGifts] = useState(false);
   const [giftError, setGiftError] = useState<string | null>(null);
+  const [sendingGift, setSendingGift] = useState<string | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [inviteBanner, setInviteBanner] = useState<string | null>(null);
   const [pinnedBottom, setPinnedBottom] = useState(true);
@@ -1016,7 +1154,9 @@ function ChatPanel({
   }
 
   async function sendGift(giftId: string) {
+    if (sendingGift) return;
     setGiftError(null);
+    setSendingGift(giftId);
     try {
       const result = await api<{
         senderBalance: number;
@@ -1041,23 +1181,6 @@ function ChatPanel({
         text: `envió ${gift.giftName}`,
         gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
       });
-      await publishRoomData(room, {
-        type: 'gift',
-        id: gift.id,
-        giftId: gift.giftId,
-        senderName,
-        giftName: gift.giftName,
-        emoji: gift.emoji,
-      });
-      void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
-        method: 'POST',
-        body: JSON.stringify({
-          id: `gift-${gift.id}`,
-          author: senderName,
-          text: `envió ${gift.giftName}`,
-          gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
-        }),
-      }).catch(() => undefined);
       window.dispatchEvent(
         new CustomEvent('liveboom:gift', {
           detail: {
@@ -1067,20 +1190,39 @@ function ChatPanel({
           },
         }),
       );
+      void publishRoomData(room, {
+        type: 'gift',
+        id: gift.id,
+        giftId: gift.giftId,
+        senderName,
+        giftName: gift.giftName,
+        emoji: gift.emoji,
+      }).catch((error) => console.error('[gift] publishData', error));
+      void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          id: `gift-${gift.id}`,
+          author: senderName,
+          text: `envió ${gift.giftName}`,
+          gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
+        }),
+      }).catch(() => undefined);
     } catch (err) {
       setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
+    } finally {
+      setSendingGift(null);
     }
   }
 
   return (
     <aside
-      className={`z-20 flex min-w-0 flex-col overflow-hidden border-white/10 lg:static lg:max-h-none lg:w-[30%] lg:min-w-[260px] lg:rounded-2xl lg:border ${
+      className={`z-20 flex min-h-0 min-w-0 flex-col overflow-hidden border-white/10 lg:static lg:h-auto lg:max-h-none lg:w-[30%] lg:min-w-[260px] lg:rounded-2xl lg:border ${
         canPublish
-          ? 'absolute inset-x-0 bottom-0 max-h-[58dvh] border-0 bg-transparent lg:relative lg:inset-auto lg:max-h-none lg:border lg:bg-black/10 lg:backdrop-blur-[2px]'
-          : 'relative max-h-[42dvh] border-t bg-zinc-900/95 lg:max-h-none lg:border-t-0 lg:bg-zinc-800/45 lg:backdrop-blur-xl'
+          ? 'pointer-events-none absolute inset-x-0 bottom-0 h-[44dvh] border-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent lg:pointer-events-auto lg:relative lg:inset-auto lg:bg-black/10 lg:backdrop-blur-[2px]'
+          : 'relative h-[40dvh] border-t bg-zinc-900/95 lg:border-t-0 lg:bg-zinc-800/45 lg:backdrop-blur-xl'
       }`}
     >
-      <div className={`px-4 py-2.5 ${canPublish ? 'bg-transparent' : 'border-b border-white/10'}`}>
+      <div className={`pointer-events-auto shrink-0 px-4 py-2 ${canPublish ? 'bg-transparent' : 'border-b border-white/10'}`}>
         <div className="flex items-center justify-between gap-2">
           <h2 className={`text-sm font-bold ${canPublish ? 'text-white drop-shadow' : 'text-white'}`}>
             Chat en vivo
@@ -1107,11 +1249,11 @@ function ChatPanel({
           </div>
         ) : null}
       </div>
-      <div className="relative min-h-0 flex-1">
+      <div className="pointer-events-auto relative min-h-0 flex-1">
         <div
           ref={listRef}
           onScroll={onChatScroll}
-          className={`chat-scroll h-full space-y-2 overflow-y-auto px-3 py-3 ${canPublish ? 'mask-fade' : ''}`}
+          className="chat-scroll h-full space-y-2 overflow-y-scroll overscroll-contain px-3 py-3"
         >
           {messages.length === 0 ? (
             <p className={`text-xs ${canPublish ? 'text-zinc-300 drop-shadow' : 'text-zinc-500'}`}>
@@ -1160,30 +1302,48 @@ function ChatPanel({
           </button>
         ) : null}
       </div>
-      <div className={`relative space-y-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${canPublish ? 'bg-gradient-to-t from-black/55 to-transparent' : 'border-t border-white/10'}`}>
+      <div className={`pointer-events-auto relative shrink-0 space-y-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${canPublish ? 'bg-gradient-to-t from-black/70 to-transparent' : 'border-t border-white/10'}`}>
         {openGifts ? (
-          <div className="absolute bottom-[7.5rem] left-2 right-2 z-10 max-h-[42dvh] overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-3 shadow-[0_0_28px_rgba(255,0,85,0.2)] sm:left-3 sm:right-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Caja de regalos Liveboom
-            </p>
+          <div className="absolute bottom-[4.75rem] left-2 right-2 z-50 max-h-[min(52dvh,22rem)] overflow-y-auto rounded-2xl border border-white/15 bg-zinc-950 p-3 shadow-[0_0_28px_rgba(255,0,85,0.25)] sm:left-3 sm:right-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                Caja de regalos
+              </p>
+              <button
+                type="button"
+                onClick={() => setOpenGifts(false)}
+                className="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-white"
+                aria-label="Cerrar regalos"
+              >
+                <X size={16} />
+              </button>
+            </div>
             {([1, 2, 3, 4, 5] as const).map((level) => {
               const group = LIVEBOOM_GIFTS.filter((g) => g.level === level);
               if (!group.length) return null;
               return (
                 <div key={level} className="mb-3">
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
                     Nivel {level} · {GIFT_LEVEL_FX[level].label}
                   </p>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <div className="grid grid-cols-4 gap-1.5">
                     {group.map((gift) => (
                       <button
                         key={gift.id}
                         type="button"
+                        disabled={Boolean(sendingGift)}
                         onClick={() => void sendGift(gift.id)}
-                        className="rounded-xl border border-zinc-800 px-2 py-2 text-left text-xs text-white hover:border-cyan-400"
+                        className={`flex min-h-[4.5rem] flex-col items-center justify-center rounded-xl border px-1 py-2 text-center transition disabled:opacity-50 ${
+                          sendingGift === gift.id
+                            ? 'border-cyan-400 bg-cyan-500/20'
+                            : 'border-zinc-800 bg-zinc-900 hover:border-cyan-400 hover:bg-zinc-800'
+                        }`}
                       >
-                        <span className="text-lg">{gift.emoji}</span> {gift.name}
-                        <span className="mt-1 block text-cyan-400">{gift.coins.toLocaleString('es-CO')} coins</span>
+                        <span className="text-2xl leading-none">{gift.emoji}</span>
+                        <span className="mt-1 w-full truncate text-[10px] font-semibold text-white">
+                          {gift.name}
+                        </span>
+                        <span className="text-[10px] text-cyan-400">{gift.coins.toLocaleString('es-CO')}</span>
                       </button>
                     ))}
                   </div>

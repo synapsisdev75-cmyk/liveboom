@@ -34,6 +34,16 @@ function normalizeUsername(value: string) {
   return value.trim().replace(/^@/, '').toLowerCase();
 }
 
+export function profileHref(username: string, uid?: string | null) {
+  const handle = encodeURIComponent(
+    String(username || '')
+      .trim()
+      .replace(/^@/, '') || 'user',
+  );
+  const id = String(uid || '').trim();
+  return id ? `/u/${handle}?uid=${encodeURIComponent(id)}` : `/u/${handle}`;
+}
+
 function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
   const username = String(data.username || '');
   return {
@@ -72,6 +82,14 @@ export async function fetchFirestoreProfile(uid: string): Promise<SessionUser | 
   return mapFirestoreUser(mapDoc(snap.id, snap.data() as Record<string, unknown>));
 }
 
+export async function fetchPublicUserByUid(uid: string): Promise<PublicFsUser | null> {
+  const id = String(uid || '').trim();
+  if (!id) return null;
+  const userSnap = await getDoc(doc(db, 'users', id));
+  if (!userSnap.exists()) return null;
+  return mapDoc(userSnap.id, userSnap.data() as Record<string, unknown>);
+}
+
 export async function fetchPublicUserByUsername(username: string): Promise<PublicFsUser | null> {
   const needle = normalizeUsername(username);
   if (!needle) return null;
@@ -79,19 +97,30 @@ export async function fetchPublicUserByUsername(username: string): Promise<Publi
   const byHandle = await getDoc(doc(db, 'usernames', needle));
   if (byHandle.exists()) {
     const uid = String((byHandle.data() as { uid?: string }).uid || '');
-    if (uid) {
-      const userSnap = await getDoc(doc(db, 'users', uid));
-      if (userSnap.exists()) {
-        return mapDoc(userSnap.id, userSnap.data() as Record<string, unknown>);
-      }
-    }
+    const user = uid ? await fetchPublicUserByUid(uid) : null;
+    if (user) return user;
   }
+
+  const asUid = await fetchPublicUserByUid(needle);
+  if (asUid) return asUid;
 
   const q = query(collection(db, 'users'), where('username', '==', needle), limit(1));
   const result = await getDocs(q);
   const first = result.docs[0];
-  if (!first) return null;
-  return mapDoc(first.id, first.data() as Record<string, unknown>);
+  if (first) return mapDoc(first.id, first.data() as Record<string, unknown>);
+
+  const prefixEnd = `${needle}\uf8ff`;
+  const loose = query(
+    collection(db, 'users'),
+    where('username', '>=', needle),
+    where('username', '<=', prefixEnd),
+    limit(8),
+  );
+  const looseSnap = await getDocs(loose);
+  const match = looseSnap.docs
+    .map((item) => mapDoc(item.id, item.data() as Record<string, unknown>))
+    .find((user) => user.username.toLowerCase() === needle);
+  return match ?? null;
 }
 
 export async function searchFirestoreUsers(needleRaw: string): Promise<PublicFsUser[]> {

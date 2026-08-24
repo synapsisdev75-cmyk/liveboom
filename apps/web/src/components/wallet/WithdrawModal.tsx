@@ -11,15 +11,22 @@ import { useAuthStore } from '../../store/authStore';
 type Props = {
   onClose: () => void;
   onDone?: () => void;
+  initialCoins?: number;
 };
 
-export function WithdrawModal({ onClose, onDone }: Props) {
+export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
   const syncProfile = useAuthStore((state) => state.syncProfile);
   const balance = profile?.coinsBalance ?? 0;
+  const suggested = Math.min(
+    balance,
+    initialCoins && initialCoins > 0
+      ? initialCoins
+      : Math.max(MIN_WITHDRAW_COINS, Math.min(balance, 100)),
+  );
 
-  const [coins, setCoinsInput] = useState(String(Math.min(balance, Math.max(MIN_WITHDRAW_COINS, 100))));
+  const [coins, setCoinsInput] = useState(String(Math.max(0, suggested)));
   const [fullName, setFullName] = useState(profile?.displayName || '');
   const [documentId, setDocumentId] = useState('');
   const [payoutMethod, setPayoutMethod] = useState('Nequi');
@@ -82,6 +89,9 @@ export function WithdrawModal({ onClose, onDone }: Props) {
 
         <p className="mt-3 text-xs text-zinc-500">
           Saldo disponible: {balance.toLocaleString('es-CO')} coins · Mínimo {MIN_WITHDRAW_COINS} coins
+          {initialCoins && initialCoins > 0
+            ? ` · Generado en este live: ${initialCoins.toLocaleString('es-CO')}`
+            : ''}
         </p>
 
         <label className="mt-4 block text-xs font-semibold text-zinc-400">

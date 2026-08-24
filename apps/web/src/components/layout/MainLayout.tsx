@@ -1,4 +1,4 @@
-import { Home, Menu, MessageCircle, Compass, Radio, Search, Settings, UserRound, Wallet, X } from 'lucide-react';
+import { Clock, Home, Menu, MessageCircle, Compass, Radio, Search, Settings, UserRound, Wallet, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
@@ -13,6 +13,7 @@ const sideNavItems = [
   { label: 'Explorar', icon: Compass, to: '/explorar' as const },
   { label: 'Mi Billetera', icon: Wallet, to: '/billetera' as const },
   { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
+  { label: 'Actividad', icon: Clock, to: '/actividad' as const },
   { label: 'Buscar amigos', icon: Search, to: '/buscar' as const },
   { label: 'Mensajes', icon: MessageCircle, to: '/mensajes' as const },
   { label: 'Configuración', icon: Settings, to: '/perfil/editar' as const },

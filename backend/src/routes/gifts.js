@@ -51,6 +51,15 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
         credit(host.firebaseUid, gift.coins);
       }
       emitGiftReceived(roomName, payload);
+      try {
+        require('../lib/liveSession').addGift(roomName, {
+          uid: senderUid,
+          name: senderName,
+          coins: gift.coins,
+        });
+      } catch {
+        // session opcional
+      }
       res.json({
         ok: true,
         gift: payload,
@@ -69,6 +78,15 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
         return;
       }
       emitGiftReceived(roomName, payload);
+      try {
+        require('../lib/liveSession').addGift(roomName, {
+          uid: senderUid,
+          name: senderName,
+          coins: gift.coins,
+        });
+      } catch {
+        // session opcional
+      }
       res.json({ ok: true, gift: payload, senderBalance: next, creatorBalance: 0 });
       return;
     }
@@ -124,6 +142,15 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     });
 
     emitGiftReceived(roomName, payload);
+    try {
+      require('../lib/liveSession').addGift(roomName, {
+        uid: senderUid,
+        name: senderName,
+        coins: gift.coins,
+      });
+    } catch {
+      // session opcional
+    }
 
     res.json({
       ok: true,

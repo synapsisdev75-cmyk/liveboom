@@ -1,4 +1,4 @@
-import { Globe, Lock, Radio } from 'lucide-react';
+import { Globe, Lock, Radio, Target } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { LIVE_CATEGORIES } from '../lib/categories';
@@ -10,6 +10,8 @@ export function TransmitView() {
   const [title, setTitle] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [category, setCategory] = useState('musica');
+  const [goalLabel, setGoalLabel] = useState('');
+  const [goalCoins, setGoalCoins] = useState('');
   const [confirmed, setConfirmed] = useState(false);
 
   if (!profile) {
@@ -36,6 +38,8 @@ export function TransmitView() {
         title: displayTitle,
         isPrivate,
         category,
+        goalCoins: Math.max(0, Math.floor(Number(goalCoins) || 0)),
+        goalLabel: goalLabel.trim().slice(0, 80),
       },
     });
   }
@@ -76,6 +80,37 @@ export function TransmitView() {
           ))}
         </select>
       </label>
+
+      <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4">
+        <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-cyan-300">
+          <Target size={14} />
+          Objetivo de la sala
+        </p>
+        <p className="mt-1 text-xs text-zinc-400">
+          Opcional. Se muestra durante el live y se guarda en tu historial.
+        </p>
+        <label className="mt-3 block space-y-1">
+          <span className="text-[11px] text-zinc-500">¿Qué quieres alcanzar?</span>
+          <input
+            value={goalLabel}
+            onChange={(event) => setGoalLabel(event.target.value)}
+            placeholder="Ej. Nuevo micrófono, viaje, meta del mes"
+            maxLength={80}
+            className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-2.5 text-sm text-white outline-none ring-cyan-400/40 focus:ring-2"
+          />
+        </label>
+        <label className="mt-3 block space-y-1">
+          <span className="text-[11px] text-zinc-500">Meta en coins</span>
+          <input
+            type="number"
+            min={0}
+            value={goalCoins}
+            onChange={(event) => setGoalCoins(event.target.value)}
+            placeholder="500"
+            className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-2.5 text-sm text-white outline-none ring-cyan-400/40 focus:ring-2"
+          />
+        </label>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <button

@@ -16,6 +16,7 @@ import { CallOverlay } from './components/social/CallOverlay';
 import { WalletView } from './views/WalletView';
 import { ExploreView } from './views/ExploreView';
 import { MessagesView } from './views/MessagesView';
+import { ActivityView } from './views/ActivityView';
 
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="perfil/editar" element={<ProfileView />} />
           <Route path="buscar" element={<SearchView />} />
           <Route path="mensajes" element={<MessagesView />} />
+          <Route path="actividad" element={<ActivityView />} />
           <Route path="transmitir" element={<TransmitView />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

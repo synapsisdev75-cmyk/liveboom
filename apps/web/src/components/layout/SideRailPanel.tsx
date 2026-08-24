@@ -2,8 +2,9 @@ import { Bell, Compass, Lock, Radio, Shield, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useMatch } from 'react-router-dom';
 import { ReelsRow } from '../feed/ReelsRow';
+import { ActivityHistory } from '../live/ActivityHistory';
 import { playFriendRequestAlert, playPostAlert } from '../../lib/alertSound';
-import { api, apiPublic } from '../../lib/api';
+import { api } from '../../lib/api';
 import { listenIncomingRequests, listenRecentPosts } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 
@@ -24,12 +25,6 @@ type ActiveStream = {
   title: string;
   viewers: number;
 };
-
-function formatWhen(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-}
 
 function LiveRail({ host }: { host: string }) {
   return (
@@ -65,7 +60,6 @@ export function SideRailPanel() {
 
 function DiscoveryRail() {
   const profile = useAuthStore((state) => state.profile);
-  const [myLives, setMyLives] = useState<LiveRecord[]>([]);
   const [friendsLives, setFriendsLives] = useState<LiveRecord[]>([]);
   const [friendsOnline, setFriendsOnline] = useState<ActiveStream[]>([]);
   const [notifications, setNotifications] = useState<string[]>([]);
@@ -73,27 +67,20 @@ function DiscoveryRail() {
   const knownPostIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
-    const handle = profile?.handle;
-    if (!handle) return;
-    const username = handle;
+    if (!profile?.handle) return;
     let cancelled = false;
 
     async function load() {
       try {
-        const [historyRes, friendsHistRes, onlineRes] = await Promise.all([
-          apiPublic<{ lives: LiveRecord[] }>(
-            `/api/stream/history?username=${encodeURIComponent(username)}`,
-          ),
+        const [friendsHistRes, onlineRes] = await Promise.all([
           api<{ lives: LiveRecord[] }>('/api/stream/friends-history').catch(() => ({ lives: [] })),
           api<{ streams: ActiveStream[] }>('/api/stream/friends-live').catch(() => ({ streams: [] })),
         ]);
         if (cancelled) return;
-        setMyLives(historyRes.lives || []);
         setFriendsLives(friendsHistRes.lives || []);
         setFriendsOnline(onlineRes.streams || []);
       } catch {
         if (!cancelled) {
-          setMyLives([]);
           setFriendsLives([]);
           setFriendsOnline([]);
         }
@@ -207,17 +194,15 @@ function DiscoveryRail() {
           <Radio size={14} />
           Tus últimos lives
         </h2>
-        {myLives.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-400">Aún no has transmitido.</p>
+        {profile ? (
+          <>
+            <ActivityHistory username={profile.handle} compact limit={5} />
+            <Link to="/actividad" className="mt-2 inline-block text-[11px] text-cyan-400 hover:underline">
+              Ver historial completo
+            </Link>
+          </>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {myLives.slice(0, 5).map((live) => (
-              <li key={`${live.username}-${live.startedAt}`} className="text-xs text-zinc-400">
-                <p className="font-semibold text-zinc-200">{live.title}</p>
-                <p>{formatWhen(live.endedAt || live.startedAt)} · {live.viewers} viewers</p>
-              </li>
-            ))}
-          </ul>
+          <p className="mt-3 text-sm text-zinc-400">Aún no has transmitido.</p>
         )}
       </section>
 

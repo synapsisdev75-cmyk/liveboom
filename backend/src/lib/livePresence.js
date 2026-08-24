@@ -1,7 +1,7 @@
 const lives = new Map();
 const liveHistory = require('./liveHistory');
 
-function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, viewers, category }) {
+function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, viewers, category, goalCoins, goalLabel }) {
   const key = String(username || '')
     .trim()
     .toLowerCase()
@@ -18,6 +18,8 @@ function upsertLive({ username, uid, displayName, avatarUrl, title, isPrivate, v
     viewers: Number(viewers ?? prev?.viewers ?? 0),
     isPrivate: Boolean(isPrivate ?? prev?.isPrivate ?? false),
     category: category || prev?.category || 'otro',
+    goalCoins: Number(goalCoins) > 0 ? Number(goalCoins) : Number(prev?.goalCoins ?? 0),
+    goalLabel: goalLabel || prev?.goalLabel || '',
   };
   lives.set(key, entry);
   return entry;
@@ -29,7 +31,21 @@ function removeLive(username) {
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '_');
   const entry = lives.get(key);
-  if (entry) liveHistory.archiveLive(entry);
+  if (entry) {
+    let stats = null;
+    try {
+      stats = require('./liveSession').endSession(key);
+    } catch {
+      stats = null;
+    }
+    liveHistory.archiveLive({
+      ...entry,
+      coinsEarned: stats?.coinsEarned || 0,
+      goalCoins: stats?.goalCoins || entry.goalCoins || 0,
+      goalLabel: stats?.goalLabel || entry.goalLabel || '',
+      topGifters: stats?.topGifters || [],
+    });
+  }
   lives.delete(key);
 }
 

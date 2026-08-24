@@ -5,6 +5,7 @@ const invites = require('../lib/liveInvites');
 const liveLocks = require('../lib/liveLocks');
 const reelStore = require('../lib/reelStore');
 const liveHistory = require('../lib/liveHistory');
+const liveSession = require('../lib/liveSession');
 const social = require('../lib/socialMemory');
 const { getProfile, findByUsername, saveProfile } = require('../lib/profileMemory');
 const { findGift } = require('../lib/gifts');
@@ -119,6 +120,8 @@ router.post('/live/start', requireAuth, (req, res) => {
     typeof req.body?.username === 'string' && req.body.username.trim()
       ? normalize(req.body.username)
       : normalize(req.user.email ? req.user.email.split('@')[0] : req.user.uid);
+  const goalCoins = Number(req.body?.goalCoins) || 0;
+  const goalLabel = typeof req.body?.goalLabel === 'string' ? req.body.goalLabel.trim().slice(0, 80) : '';
   const entry = upsertLive({
     username,
     uid: req.user.uid,
@@ -127,6 +130,12 @@ router.post('/live/start', requireAuth, (req, res) => {
     title: typeof req.body?.title === 'string' ? req.body.title.slice(0, 80) : undefined,
     isPrivate: Boolean(req.body?.isPrivate),
     category: typeof req.body?.category === 'string' ? normalize(req.body.category) : 'otro',
+    goalCoins,
+    goalLabel,
+  });
+  liveSession.startSession(username, {
+    ...(goalCoins > 0 ? { goalCoins } : {}),
+    ...(goalLabel ? { goalLabel } : {}),
   });
   res.status(201).json(entry);
 });
@@ -425,6 +434,11 @@ router.get('/history', optionalAuth, (req, res) => {
   const username =
     typeof req.query.username === 'string' ? normalize(req.query.username) : null;
   res.json({ lives: liveHistory.listHistory({ username, limit: 16 }) });
+});
+
+router.get('/session/:roomName', requireAuth, (req, res) => {
+  const roomName = normalize(req.params.roomName);
+  res.json({ session: liveSession.getSession(roomName) });
 });
 
 router.get('/friends-live', requireAuth, async (req, res) => {

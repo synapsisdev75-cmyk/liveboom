@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
+import { ActivityHistory } from '../components/live/ActivityHistory';
 import { CreatePostModal } from '../components/social/CreatePostModal';
 import { FriendRequestButton, type FriendshipStatus } from '../components/social/FriendRequestButton';
 import { FriendRequestsPanel } from '../components/social/FriendRequestsPanel';
@@ -12,8 +13,21 @@ import {
 } from '../components/social/SocialPostCard';
 import { UserSearchBar } from '../components/social/UserSearchBar';
 import { ageFromIsoDate } from '../lib/birthDate';
-import { deletePost as deleteFsPost, getFriendshipStatus, isFollowing, listenFollowers, listenFollowing, listenFriends, listenPostsByUsername, listFollowers, listFollowing, listFriends, updatePostVisibility } from '../lib/socialFirestore';
+import {
+  deletePost as deleteFsPost,
+  getFriendshipStatusByUid,
+  isFollowingUid,
+  listenFollowers,
+  listenFollowing,
+  listenFriends,
+  listenPostsByUsername,
+  listFollowers,
+  listFollowing,
+  listFriends,
+  updatePostVisibility,
+} from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
+import type { PublicFsUser } from '../lib/profileFirestore';
 
 type PublicProfile = {
   username: string;
@@ -30,6 +44,7 @@ type PublicProfile = {
 };
 
 type UserChip = {
+  uid?: string;
   username: string;
   displayName: string;
   avatarUrl: string | null;
@@ -37,7 +52,11 @@ type UserChip = {
 
 export function UserProfileView() {
   const { username: usernameParam } = useParams();
-  const username = usernameParam ? decodeURIComponent(usernameParam) : '';
+  const [searchParams] = useSearchParams();
+  const username = usernameParam
+    ? decodeURIComponent(usernameParam).trim().replace(/^@/, '')
+    : '';
+  const uidHint = searchParams.get('uid')?.trim() || '';
   const profile = useAuthStore((state) => state.profile);
   const ready = useAuthStore((state) => state.ready);
   const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
@@ -49,23 +68,52 @@ export function UserProfileView() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!username) return;
+    if (!username && !uidHint) return;
     let cancelled = false;
 
     async function load() {
       try {
-        const { fetchPublicUserByUsername } = await import('../lib/profileFirestore');
-        const fsUser = await fetchPublicUserByUsername(username);
+        const { fetchPublicUserByUid, fetchPublicUserByUsername } = await import(
+          '../lib/profileFirestore'
+        );
+        let fsUser = uidHint ? await fetchPublicUserByUid(uidHint) : null;
+        if (!fsUser && username) {
+          fsUser = await fetchPublicUserByUsername(username);
+        }
+        if (!fsUser && profile) {
+          const friends = await listFriends(profile.firebaseUid);
+          const needle = username.toLowerCase();
+          const match = friends.find(
+            (friend) =>
+              (uidHint && friend.uid === uidHint) ||
+              friend.username.toLowerCase() === needle ||
+              friend.displayName.toLowerCase() === needle,
+          );
+          if (match) {
+            fsUser = (await fetchPublicUserByUid(match.uid)) ?? {
+                id: match.uid,
+                firebaseUid: match.uid,
+                username: match.username || username,
+                email: '',
+                displayName: match.displayName || match.username || username,
+                avatarUrl: match.avatarUrl,
+                bio: null,
+                birthDate: null,
+                category: null,
+                coinsBalance: 0,
+              } satisfies PublicFsUser;
+          }
+        }
         if (fsUser) {
           let friendshipStatus: FriendshipStatus = 'none';
           let followingNow = false;
           if (profile) {
-            friendshipStatus =
-              profile.firebaseUid === fsUser.firebaseUid
-                ? 'self'
-                : await getFriendshipStatus(profile.firebaseUid, fsUser.username);
+            friendshipStatus = await getFriendshipStatusByUid(
+              profile.firebaseUid,
+              fsUser.firebaseUid,
+            );
             if (friendshipStatus !== 'self') {
-              followingNow = await isFollowing(profile.firebaseUid, fsUser.username);
+              followingNow = await isFollowingUid(profile.firebaseUid, fsUser.firebaseUid);
             }
           }
           if (!cancelled) {
@@ -115,15 +163,16 @@ export function UserProfileView() {
     return () => {
       cancelled = true;
     };
-  }, [username, profile?.firebaseUid]);
+  }, [username, uidHint, profile?.firebaseUid]);
 
   useEffect(() => {
-    if (!username || !publicProfile) return;
+    if (!publicProfile) return;
+    const handle = publicProfile.username;
     const viewerUid = profile?.firebaseUid;
     const isOwner = Boolean(viewerUid && viewerUid === publicProfile.uid);
     const isFriend = publicProfile.friendshipStatus === 'friends';
     return listenPostsByUsername(
-      username,
+      handle,
       (list) => {
         setPosts(
           list.map((item) => ({
@@ -144,7 +193,7 @@ export function UserProfileView() {
         ? { uid: viewerUid, isFriend, isOwner }
         : null,
     );
-  }, [username, publicProfile?.uid, publicProfile?.friendshipStatus, profile?.firebaseUid]);
+  }, [publicProfile?.username, publicProfile?.uid, publicProfile?.friendshipStatus, profile?.firebaseUid]);
   useEffect(() => {
     if (!publicProfile?.uid) return;
     const unsubFriends = listenFriends(publicProfile.uid, (list) => {
@@ -202,15 +251,27 @@ export function UserProfileView() {
     return <Navigate to="/" replace />;
   }
   if (error) {
+    const lookingAtSelf =
+      Boolean(profile) && profile!.handle.toLowerCase() === username.toLowerCase();
     return (
       <div className="rounded-2xl bg-zinc-900 p-6 text-center">
         <p className="text-fuchsia-400">{error}</p>
         <p className="mt-2 text-xs text-zinc-500">
-          Guarda tu perfil en{' '}
-          <Link to="/perfil/editar" className="text-cyan-400">
-            Editar perfil
-          </Link>{' '}
-          primero.
+          {lookingAtSelf ? (
+            <>
+              Guarda tu perfil en{' '}
+              <Link to="/perfil/editar" className="text-cyan-400">
+                Editar perfil
+              </Link>{' '}
+              primero.
+            </>
+          ) : (
+            <>
+              Ábrelo desde Chat o la lista de amigos. Si sigue fallando, pídele que pulse Guardar
+              en{' '}
+              <span className="text-cyan-400">Editar perfil</span>.
+            </>
+          )}
         </p>
         <Link to="/" className="mt-3 inline-block text-sm text-cyan-400">
           Volver al inicio
@@ -345,6 +406,10 @@ export function UserProfileView() {
           </div>
         </div>
       </section>
+
+      {publicProfile.isOwnProfile ? (
+        <ActivityHistory username={publicProfile.username} />
+      ) : null}
 
       <section className="rounded-2xl bg-zinc-900 p-4 sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
