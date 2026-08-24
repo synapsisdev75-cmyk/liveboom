@@ -201,7 +201,12 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
       );
       setDraft('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo enviar');
+      const raw = err instanceof Error ? err.message : 'No se pudo enviar';
+      setError(
+        /insufficient permissions|permission-denied/i.test(raw)
+          ? 'No se pudo enviar. Confirma que son amigos y recarga la página.'
+          : raw,
+      );
     } finally {
       setBusy(false);
     }

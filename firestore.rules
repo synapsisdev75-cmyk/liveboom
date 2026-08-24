@@ -8,14 +8,19 @@ service cloud.firestore {
     function isSelf(uid) {
       return signedIn() && request.auth.uid == uid;
     }
+    function validUsername(value) {
+      return value is string && value.size() >= 3 && value.size() <= 24;
+    }
 
     match /users/{userId} {
       allow read: if true;
-      allow create, update: if isSelf(userId)
+      allow create: if isSelf(userId)
         && request.resource.data.firebaseUid == request.auth.uid
-        && request.resource.data.username is string
-        && request.resource.data.username.size() >= 3
-        && request.resource.data.username.size() <= 24;
+        && validUsername(request.resource.data.username);
+      allow update: if isSelf(userId)
+        && request.resource.data.firebaseUid == request.auth.uid
+        && validUsername(request.resource.data.username)
+        && request.resource.data.firebaseUid == resource.data.firebaseUid;
       allow delete: if isSelf(userId);
 
       match /friends/{friendId} {
@@ -48,45 +53,51 @@ service cloud.firestore {
 
     match /usernames/{username} {
       allow read: if true;
-      allow create, update: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow create, update: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username is string;
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /chats/{chatId} {
-      function createOtherUid() {
+      function chatData() {
+        return get(/databases/$(database)/documents/chats/$(chatId)).data;
+      }
+      function isChatParticipant() {
+        return signedIn() && request.auth.uid in resource.data.participants;
+      }
+      function isCreatingParticipant() {
+        return signedIn()
+          && request.resource.data.participants is list
+          && request.resource.data.participants.size() == 2
+          && request.auth.uid in request.resource.data.participants;
+      }
+      function otherOnCreate() {
         return request.auth.uid == request.resource.data.participants[0]
           ? request.resource.data.participants[1]
           : request.resource.data.participants[0];
       }
-      function chatParts() {
-        return get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      function friendshipExists(a, b) {
+        return exists(/databases/$(database)/documents/users/$(a)/friends/$(b));
       }
-      function messageOtherUid() {
-        return request.auth.uid == chatParts()[0] ? chatParts()[1] : chatParts()[0];
-      }
-      function isFriendOf(otherUid) {
-        return exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(otherUid));
+      function friendsEitherWay(a, b) {
+        return friendshipExists(a, b) || friendshipExists(b, a);
       }
 
-      allow read, update: if signedIn() && request.auth.uid in resource.data.participants;
-      allow create: if signedIn()
-        && request.auth.uid in request.resource.data.participants
-        && request.resource.data.participants.size() == 2
-        && isFriendOf(createOtherUid());
+      allow read: if isChatParticipant();
+      allow update: if isChatParticipant();
+      allow create: if isCreatingParticipant()
+        && friendsEitherWay(request.auth.uid, otherOnCreate());
 
       match /messages/{messageId} {
-        allow read: if signedIn() && request.auth.uid in chatParts();
+        allow read: if signedIn() && request.auth.uid in chatData().participants;
+        // Si ya eres participante del chat, puedes enviar (la amistad se exige al crear el chat).
         allow create: if signedIn()
-          && request.auth.uid in chatParts()
+          && request.auth.uid in chatData().participants
           && request.resource.data.fromUid == request.auth.uid
           && request.resource.data.text is string
-          && request.resource.data.text.size() <= 2000
-          && (
-            request.resource.data.text.size() > 0
-            || request.resource.data.mediaUrl is string
-            || request.resource.data.linkUrl is string
-          )
-          && isFriendOf(messageOtherUid());
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
       }
     }
 
@@ -101,7 +112,10 @@ service cloud.firestore {
           || (
             signedIn()
             && resource.data.visibility == 'friends'
-            && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(resource.data.authorUid))
+            && (
+              exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(resource.data.authorUid))
+              || exists(/databases/$(database)/documents/users/$(resource.data.authorUid)/friends/$(request.auth.uid))
+            )
           );
       }
 

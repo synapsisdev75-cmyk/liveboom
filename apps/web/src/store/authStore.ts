@@ -43,6 +43,9 @@ function mapAuthError(error: unknown): string {
   if (code.includes('unauthorized-domain')) {
     return 'Este dominio no está autorizado en Firebase Auth.';
   }
+  if (code.includes('permission-denied') || /insufficient permissions/i.test(String((error as Error)?.message || ''))) {
+    return 'Firebase bloqueó el acceso. Cierra sesión, vuelve a entrar o espera unos segundos e intenta de nuevo.';
+  }
   return error instanceof Error ? error.message : 'No se pudo autenticar.';
 }
 

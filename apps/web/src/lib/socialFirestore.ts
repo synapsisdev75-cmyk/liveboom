@@ -377,10 +377,11 @@ export function listenMessages(
 }
 
 async function assertAreFriends(meUid: string, friendUid: string) {
-  const snap = await getDoc(doc(db, 'users', meUid, 'friends', friendUid));
-  if (!snap.exists()) {
-    throw new Error('Solo puedes enviar mensajes privados a tus amigos');
-  }
+  const mine = await getDoc(doc(db, 'users', meUid, 'friends', friendUid));
+  if (mine.exists()) return;
+  const theirs = await getDoc(doc(db, 'users', friendUid, 'friends', meUid));
+  if (theirs.exists()) return;
+  throw new Error('Solo puedes enviar mensajes privados a tus amigos');
 }
 
 export async function ensureChat(me: MeProfile, friend: FriendChip) {
@@ -389,27 +390,37 @@ export async function ensureChat(me: MeProfile, friend: FriendChip) {
 
   const id = chatIdFor(me.firebaseUid, friend.uid);
   const ref = doc(db, 'chats', id);
-  const existing = await getDoc(ref);
-  if (!existing.exists()) {
-    const participants = [me.firebaseUid, friend.uid].sort();
+  const participants = [me.firebaseUid, friend.uid].sort();
+  const profiles = {
+    [me.firebaseUid]: {
+      username: me.handle.toLowerCase(),
+      displayName: me.displayName,
+      avatarUrl: me.avatarUrl,
+    },
+    [friend.uid]: {
+      username: friend.username.toLowerCase(),
+      displayName: friend.displayName,
+      avatarUrl: friend.avatarUrl,
+    },
+  };
+
+  let exists = false;
+  try {
+    exists = (await getDoc(ref)).exists();
+  } catch {
+    exists = false;
+  }
+
+  if (!exists) {
     await setDoc(ref, {
       participants,
-      profiles: {
-        [me.firebaseUid]: {
-          username: me.handle.toLowerCase(),
-          displayName: me.displayName,
-          avatarUrl: me.avatarUrl,
-        },
-        [friend.uid]: {
-          username: friend.username.toLowerCase(),
-          displayName: friend.displayName,
-          avatarUrl: friend.avatarUrl,
-        },
-      },
+      profiles,
       lastMessage: null,
       lastAt: serverTimestamp(),
       createdAt: serverTimestamp(),
     });
+  } else {
+    await setDoc(ref, { participants, profiles }, { merge: true });
   }
   return id;
 }
@@ -430,14 +441,18 @@ export async function sendChatMessage(
   if (!body && !mediaUrl && !linkUrl) throw new Error('Escribe un mensaje o adjunta algo');
   await assertAreFriends(me.firebaseUid, friend.uid);
   const id = await ensureChat(me, friend);
-  await addDoc(collection(db, 'chats', id, 'messages'), {
-    text: body || (mediaUrl ? '📎 Adjunto' : linkUrl || ''),
+  const payload: Record<string, unknown> = {
+    text: body || (mediaUrl ? '📎 Adjunto' : linkUrl || '🔗'),
     fromUid: me.firebaseUid,
-    mediaUrl,
-    mediaType: extras?.mediaType || null,
-    linkUrl,
     createdAt: serverTimestamp(),
-  });
+  };
+  if (mediaUrl) {
+    payload.mediaUrl = mediaUrl;
+    payload.mediaType = extras?.mediaType || 'file';
+  }
+  if (linkUrl) payload.linkUrl = linkUrl;
+
+  await addDoc(collection(db, 'chats', id, 'messages'), payload);
   await updateDoc(doc(db, 'chats', id), {
     lastMessage: body || (mediaUrl ? 'Adjunto' : linkUrl) || '',
     lastAt: serverTimestamp(),
@@ -465,63 +480,46 @@ export function listenPostsByUsername(
   onChange: (posts: FsPost[]) => void,
   viewer?: { uid: string; isFriend?: boolean; isOwner?: boolean } | null,
 ): Unsubscribe {
-  const uname = username.toLowerCase();
-  const postsCol = collection(db, 'posts');
-  const buckets = new Map<string, FsPost[]>();
-  const unsubs: Unsubscribe[] = [];
-
-  function emit() {
-    const list = Array.from(buckets.values()).flat();
-    list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    onChange(list);
-  }
-
-  function attach(q: ReturnType<typeof query>, key: string) {
-    unsubs.push(
-      onSnapshot(
-        q,
-        (snap) => {
-          buckets.set(key, snap.docs.map((docSnap) => postFromDoc(docSnap.id, docSnap.data() as Record<string, unknown>)));
-          emit();
-        },
-        () => {
-          buckets.set(key, []);
-          emit();
-        },
-      ),
-    );
-  }
-
-  if (viewer?.isOwner) {
-    attach(query(postsCol, where('username', '==', uname), limit(60)), 'all');
-  } else {
-    attach(
-      query(postsCol, where('username', '==', uname), where('visibility', '==', 'public'), limit(40)),
-      'public',
-    );
-    if (viewer?.isFriend) {
-      attach(
-        query(postsCol, where('username', '==', uname), where('visibility', '==', 'friends'), limit(40)),
-        'friends',
-      );
-    }
-  }
-
-  return () => {
-    unsubs.forEach((stop) => stop());
-  };
+  // Consulta simple (sin índice compuesto). La visibilidad se filtra en el cliente.
+  const q = query(
+    collection(db, 'posts'),
+    where('username', '==', username.toLowerCase()),
+    limit(60),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs
+        .map((docSnap) => postFromDoc(docSnap.id, docSnap.data() as Record<string, unknown>))
+        .filter((post) => {
+          if (post.visibility === 'public' || !post.visibility) return true;
+          if (!viewer?.uid) return false;
+          if (viewer.isOwner || post.authorUid === viewer.uid) return true;
+          if (post.visibility === 'friends') return Boolean(viewer.isFriend);
+          return false;
+        });
+      list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+      onChange(list);
+    },
+    () => onChange([]),
+  );
 }
 
 export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscribe {
-  const q = query(
-    collection(db, 'posts'),
-    where('visibility', '==', 'public'),
-    orderBy('createdAt', 'desc'),
-    limit(30),
+  // Sin where+orderBy compuesto: evita errores mientras los índices se construyen.
+  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(40));
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        snap.docs
+          .map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))
+          .filter((post) => !post.visibility || post.visibility === 'public')
+          .slice(0, 30),
+      );
+    },
+    () => onChange([]),
   );
-  return onSnapshot(q, (snap) => {
-    onChange(snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>)));
-  });
 }
 
 export async function createPost(input: {
