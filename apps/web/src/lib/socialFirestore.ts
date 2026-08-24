@@ -507,7 +507,7 @@ export function listenPostsByUsername(
 
 export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscribe {
   // Sin where+orderBy compuesto: evita errores mientras los índices se construyen.
-  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(40));
+  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(80));
   return onSnapshot(
     q,
     (snap) => {
@@ -515,7 +515,7 @@ export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscr
         snap.docs
           .map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))
           .filter((post) => !post.visibility || post.visibility === 'public')
-          .slice(0, 30),
+          .slice(0, 60),
       );
     },
     () => onChange([]),

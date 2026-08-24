@@ -13,6 +13,7 @@ import { SearchView } from './views/SearchView';
 import { LegalView } from './views/LegalView';
 import { CookieBanner } from './components/legal/CookieBanner';
 import { WalletView } from './views/WalletView';
+import { ExploreView } from './views/ExploreView';
 import { MessagesView } from './views/MessagesView';
 
 function AuthHydrator() {
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/stream/:username" element={<LiveRoom />} />
         <Route element={<MainLayout />}>
           <Route index element={<HomeView />} />
+          <Route path="explorar" element={<ExploreView />} />
           <Route path="u/:username" element={<UserProfileView />} />
           <Route path="billetera" element={<WalletView />} />
           <Route path="perfil" element={<ProfileRedirectView />} />

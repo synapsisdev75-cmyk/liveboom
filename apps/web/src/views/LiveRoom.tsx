@@ -354,7 +354,7 @@ function CreatorStage({
 }) {
   const room = useRoomContext();
   const profile = useAuthStore((state) => state.profile);
-  const { connected, viewers } = useViewerCount();
+  const { viewers } = useViewerCount();
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
   const [faceGift, setFaceGift] = useState<ActiveFaceGift | null>(null);
   const stageVideoRef = useRef<HTMLDivElement>(null);
@@ -653,7 +653,7 @@ function CreatorStage({
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-cyan-300 backdrop-blur">
               <Eye size={12} />
-              {viewers} viendo · {connected} conectados
+              {viewers} viendo
             </span>
           </div>
           <div className="pointer-events-auto flex items-center gap-2">
