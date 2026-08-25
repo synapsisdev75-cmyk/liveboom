@@ -34,9 +34,18 @@ import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
-import { api, ApiError } from '../lib/api';
+import { api, apiPublic, ApiError } from '../lib/api';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
-import { listenLiveGifts, publishLiveGift, listenLiveChat, publishLiveChatMessage, resetLiveRoomChat } from '../lib/liveGiftsFirestore';
+import {
+  listenLiveGifts,
+  publishLiveGift,
+  listenLiveChat,
+  publishLiveChatMessage,
+  resetLiveRoomChat,
+  markLiveRoomActive,
+  markLiveRoomEnded,
+  listenLiveRoomStatus,
+} from '../lib/liveGiftsFirestore';
 import { LIVEBOOM_GIFTS, GIFT_LEVEL_FX, findLiveGift } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
@@ -89,6 +98,14 @@ function clearLiveChatCache(roomName: string) {
   liveChatCache.delete(roomName);
 }
 
+type SuggestedLive = {
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  title: string;
+  viewers: number;
+};
+
 type RoomPayload =
   | { type: 'chat'; id: string; author: string; text: string }
   | {
@@ -100,7 +117,8 @@ type RoomPayload =
       emoji: string;
     }
   | { type: 'invite'; guestHandle: string; hostName: string }
-  | { type: 'lock'; lock: LockInfo | null };
+  | { type: 'lock'; lock: LockInfo | null }
+  | { type: 'live_ended'; hostName?: string };
 
 function publishRoomData(room: ReturnType<typeof useRoomContext>, payload: RoomPayload) {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -174,6 +192,9 @@ export function LiveRoom() {
       clearLiveChatCache(username);
       await resetLiveRoomChat(username).catch((error) =>
         console.error('[live] reset chat', error),
+      );
+      await markLiveRoomActive(username, profile.firebaseUid).catch((error) =>
+        console.error('[live] mark active', error),
       );
       await api('/api/stream/live/start', {
         method: 'POST',
@@ -297,6 +318,7 @@ export function LiveRoom() {
   useEffect(() => {
     return () => {
       if (liveStarted && username && isOwnRoom) {
+        void markLiveRoomEnded(username).catch(() => undefined);
         void api('/api/stream/live/stop', {
           method: 'POST',
           body: JSON.stringify({ username }),
@@ -415,6 +437,7 @@ export function LiveRoom() {
             if (isOwnRoom) {
               clearLiveChatCache(username);
               await Promise.all([
+                markLiveRoomEnded(username).catch(() => undefined),
                 api('/api/stream/live/stop', {
                   method: 'POST',
                   body: JSON.stringify({ username }),
@@ -485,6 +508,9 @@ function CreatorStage({
       : null,
   );
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [liveEnded, setLiveEnded] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedLive[]>([]);
+  const hadHostCamera = useRef(false);
   const cameraTrackRef = useRef<LocalVideoTrack | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
 
@@ -562,6 +588,9 @@ function CreatorStage({
       if (data.type === 'lock') {
         setLock(data.lock);
       }
+      if (data.type === 'live_ended' && !isHost && !canPublish) {
+        setLiveEnded(true);
+      }
     };
     const onLocalGift = (event: Event) => {
       const detail = (event as CustomEvent<{ id: string; giftId: string; senderName?: string }>).detail;
@@ -592,7 +621,70 @@ function CreatorStage({
         .then((socket) => socket.off('gift_received', onSocketGift))
         .catch(() => undefined);
     };
-  }, [room, username]);
+  }, [room, username, isHost, canPublish]);
+
+  useEffect(() => {
+    if (isHost || canPublish) return;
+    return listenLiveRoomStatus(username, (status) => {
+      if (status === 'ended') setLiveEnded(true);
+    });
+  }, [username, isHost, canPublish]);
+
+  useEffect(() => {
+    if (isHost || canPublish || liveEnded) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const data = await apiPublic<{ streams?: SuggestedLive[] }>('/api/stream/live');
+        if (cancelled) return;
+        const active = (data.streams || []).some(
+          (stream) => stream.username.toLowerCase() === username.toLowerCase(),
+        );
+        const remoteCams = Array.from(room.remoteParticipants.values()).some((participant) =>
+          Array.from(participant.videoTrackPublications.values()).some(
+            (pub) => pub.source === Track.Source.Camera && !pub.isMuted && Boolean(pub.track),
+          ),
+        );
+        if (remoteCams) hadHostCamera.current = true;
+        if (hadHostCamera.current && !active && !remoteCams) {
+          setLiveEnded(true);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [username, isHost, canPublish, liveEnded, room]);
+
+  useEffect(() => {
+    if (!liveEnded || isHost) return;
+    let cancelled = false;
+    void apiPublic<{ streams?: SuggestedLive[] }>('/api/stream/live')
+      .then((data) => {
+        if (cancelled) return;
+        setSuggestions(
+          (data.streams || [])
+            .filter((stream) => stream.username.toLowerCase() !== username.toLowerCase())
+            .slice(0, 6)
+            .map((stream) => ({
+              username: stream.username,
+              displayName: stream.displayName || stream.username,
+              avatarUrl: stream.avatarUrl || null,
+              title: stream.title || `Live de ${stream.displayName || stream.username}`,
+              viewers: Number(stream.viewers || 0),
+            })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [liveEnded, isHost, username]);
 
   useEffect(() => {
     const refresh = () => {
@@ -675,6 +767,13 @@ function CreatorStage({
     if (leaving) return;
     setLeaving(true);
     try {
+      if (isHost) {
+        await publishRoomData(room, {
+          type: 'live_ended',
+          hostName: displayName || handle || username,
+        }).catch(() => undefined);
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
       await onLeaveLive?.();
     } finally {
       setLeaving(false);
@@ -778,6 +877,51 @@ function CreatorStage({
                 onComplete={() => setFloats((current) => current.filter((gift) => gift.id !== item.id))}
               />
             ))}
+            {liveEnded && !isHost ? (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-zinc-950/95 px-4 text-center backdrop-blur-sm">
+                <p className="text-lg font-bold text-white sm:text-xl">Dejó de transmitir</p>
+                <p className="text-sm text-zinc-400">Esta sala se cerró. Mira otro live:</p>
+                {suggestions.length > 0 ? (
+                  <div className="mt-1 grid w-full max-w-sm grid-cols-1 gap-2 sm:grid-cols-2">
+                    {suggestions.map((stream) => (
+                      <Link
+                        key={stream.username}
+                        to={`/stream/${encodeURIComponent(stream.username)}`}
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-left transition hover:border-cyan-400/50"
+                      >
+                        {stream.avatarUrl ? (
+                          <img
+                            src={stream.avatarUrl}
+                            alt=""
+                            className="h-10 w-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-600/30 text-sm font-bold text-fuchsia-200">
+                            {(stream.displayName || stream.username).slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-white">
+                            {stream.displayName || `@${stream.username}`}
+                          </span>
+                          <span className="block truncate text-[11px] text-zinc-400">
+                            {stream.viewers} viendo · {stream.title}
+                          </span>
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-500">No hay otros lives activos ahora.</p>
+                )}
+                <Link
+                  to="/"
+                  className="mt-1 rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-5 py-2 text-sm font-bold text-zinc-950"
+                >
+                  Ir al inicio
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

@@ -1,12 +1,14 @@
 import {
   addDoc,
   collection,
+  doc,
   getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -26,6 +28,52 @@ export type LiveGiftEvent = {
 
 function roomKey(roomName: string) {
   return roomName.trim().toLowerCase() || 'room';
+}
+
+/** Marca la sala como en vivo (nueva transmisión). */
+export async function markLiveRoomActive(roomName: string, hostUid: string) {
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    {
+      status: 'live',
+      hostUid,
+      startedAtMs: Date.now(),
+      endedAtMs: null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+/** Marca la sala como cerrada cuando el anfitrión deja de transmitir. */
+export async function markLiveRoomEnded(roomName: string) {
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    {
+      status: 'ended',
+      endedAtMs: Date.now(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export function listenLiveRoomStatus(
+  roomName: string,
+  onChange: (status: 'live' | 'ended' | 'unknown') => void,
+): Unsubscribe {
+  return onSnapshot(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    (snap) => {
+      if (!snap.exists()) {
+        onChange('unknown');
+        return;
+      }
+      const status = String(snap.data()?.status || 'unknown');
+      onChange(status === 'ended' ? 'ended' : status === 'live' ? 'live' : 'unknown');
+    },
+    () => onChange('unknown'),
+  );
 }
 
 /** Borra mensajes y regalos de la sala para que una transmisión nueva arranque con chat vacío. */

@@ -9,7 +9,9 @@
           "http://localhost",
           "https://liveboom-app.firebaseapp.com",
           "https://liveboom-app.web.app",
-          "https://liveboom.vercel.app"
+          "https://liveboom.vercel.app",
+          "https://liveboomapp.com",
+          "https://www.liveboomapp.com"
         ]
       }
     }
