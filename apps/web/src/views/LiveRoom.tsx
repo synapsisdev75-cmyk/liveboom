@@ -182,6 +182,7 @@ export function LiveRoom() {
   const [isPrivate, setIsPrivate] = useState(Boolean(launch.isPrivate));
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  const [viewerPaused, setViewerPaused] = useState(false);
 
   const isOwnRoom =
     Boolean(handle && username) && handle!.toLowerCase() === username!.toLowerCase();
@@ -304,14 +305,43 @@ export function LiveRoom() {
 
   async function unlockAndEnter() {
     if (!username) return;
+    const lockInfo = gateLock;
     setUnlocking(true);
     setError(null);
     try {
-      const result = await api<{ senderBalance?: number }>('/api/stream/unlock', {
+      const result = await api<{
+        senderBalance?: number;
+        gift?: { id: string; name: string; emoji: string; coins: number };
+      }>('/api/stream/unlock', {
         method: 'POST',
-        body: JSON.stringify({ roomName: username }),
+        body: JSON.stringify({
+          roomName: username,
+          currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
+        }),
       });
       if (typeof result.senderBalance === 'number') setCoins(result.senderBalance);
+      const profile = useAuthStore.getState().profile;
+      const giftMeta = result.gift || (lockInfo
+        ? {
+            id: lockInfo.giftId,
+            name: lockInfo.giftName,
+            emoji: lockInfo.emoji,
+            coins: lockInfo.coins,
+          }
+        : null);
+      if (profile && giftMeta) {
+        void publishLiveGift(username, {
+          clientId: `unlock-${Date.now()}`,
+          giftId: giftMeta.id,
+          giftName: giftMeta.name,
+          emoji: giftMeta.emoji,
+          senderName: profile.displayName || profile.handle || 'Liveboomer',
+          senderUid: profile.firebaseUid,
+          coins: giftMeta.coins,
+        }).catch(() => undefined);
+      }
+      setGateLock(null);
+      setViewerPaused(false);
       await fetchToken();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo desbloquear');
@@ -378,8 +408,9 @@ export function LiveRoom() {
           <p className="text-4xl">{gateLock.emoji || '🔒'}</p>
           <p className="text-lg font-bold text-white">Live con candado</p>
           <p className="text-sm text-zinc-400">
-            El emisor pidió <strong className="text-amber-300">{gateLock.giftName}</strong> (
-            {gateLock.coins.toLocaleString('es-CO')} coins) para entrar a este live privado.
+            El live pasó a <strong className="text-amber-300">privado</strong>. Envía{' '}
+            <strong className="text-amber-300">{gateLock.giftName}</strong> (
+            {gateLock.coins.toLocaleString('es-CO')} coins) para ver. El público queda en pausa.
           </p>
           {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
           <button
@@ -429,12 +460,18 @@ export function LiveRoom() {
         audio={false}
         className="relative flex h-full w-full min-h-0 flex-col lg:flex-row lg:gap-3"
       >
-        <RoomAudioRenderer />
+        {viewerPaused ? null : <RoomAudioRenderer />}
         <CreatorStage
           username={username}
           canPublish={session.canPublish}
           isHost={Boolean(session.isHost ?? (session.canPublish && isOwnRoom))}
           isPrivate={isPrivate}
+          onPrivacyChange={setIsPrivate}
+          onViewerPaused={(paused, lock) => {
+            setViewerPaused(paused);
+            if (paused && lock) setGateLock(lock);
+            if (!paused) setGateLock(null);
+          }}
           goalCoins={Number(launch.goalCoins) || 0}
           goalLabel={launch.goalLabel || ''}
           onLeaveLive={async () => {
@@ -467,6 +504,8 @@ function CreatorStage({
   canPublish,
   isHost,
   isPrivate,
+  onPrivacyChange,
+  onViewerPaused,
   goalCoins,
   goalLabel,
   onLeaveLive,
@@ -475,6 +514,8 @@ function CreatorStage({
   canPublish: boolean;
   isHost: boolean;
   isPrivate: boolean;
+  onPrivacyChange?: (next: boolean) => void;
+  onViewerPaused?: (paused: boolean, lock: LockInfo | null) => void;
   goalCoins: number;
   goalLabel: string;
   onLeaveLive?: () => Promise<void>;
@@ -634,6 +675,13 @@ function CreatorStage({
       }
       if (data.type === 'lock') {
         setLock(data.lock);
+        if (!isHost && !canPublish) {
+          if (data.lock) {
+            onViewerPaused?.(true, data.lock);
+          } else {
+            onViewerPaused?.(false, null);
+          }
+        }
       }
       if (data.type === 'live_ended' && !isHost && !canPublish) {
         setLiveEnded(true);
@@ -668,7 +716,7 @@ function CreatorStage({
         .then((socket) => socket.off('gift_received', onSocketGift))
         .catch(() => undefined);
     };
-  }, [room, username, isHost, canPublish]);
+  }, [room, username, isHost, canPublish, onViewerPaused]);
 
   useEffect(() => {
     if (isHost || canPublish) return;
@@ -755,18 +803,28 @@ function CreatorStage({
     if (!isHost) return;
     setLockBusy(true);
     try {
-      const result = await api<{ lock: LockInfo | null; locked: boolean }>('/api/stream/lock', {
-        method: 'POST',
-        body: JSON.stringify(
-          giftId
-            ? { roomName: username, giftId, handle }
-            : { roomName: username, clear: true, handle },
-        ),
-      });
+      const result = await api<{ lock: LockInfo | null; locked: boolean; isPrivate?: boolean }>(
+        '/api/stream/lock',
+        {
+          method: 'POST',
+          body: JSON.stringify(
+            giftId
+              ? { roomName: username, giftId, handle }
+              : { roomName: username, clear: true, handle },
+          ),
+        },
+      );
       const next = result.locked ? result.lock : null;
       setLock(next);
       setLockPicker(false);
+      const nowPrivate = Boolean(result.isPrivate ?? result.locked);
+      onPrivacyChange?.(nowPrivate);
       await publishRoomData(room, { type: 'lock', lock: next });
+      setInviteNote(
+        next
+          ? `Privado activo: solo entra quien envíe ${next.emoji} ${next.giftName}. El feed público quedó en pausa.`
+          : 'Live reabierto al público.',
+      );
     } catch (err) {
       setInviteNote(err instanceof Error ? err.message : 'No se pudo actualizar el candado');
     } finally {
@@ -1060,7 +1118,7 @@ function CreatorStage({
                   }`}
                 >
                   <Lock size={11} />
-                  {lock ? `${lock.emoji} Candado` : 'Candado'}
+                  {lock ? `${lock.emoji} Privado` : 'Privado'}
                 </button>
                 {lock ? (
                   <button
@@ -1070,7 +1128,7 @@ function CreatorStage({
                     className="inline-flex items-center gap-1 rounded-full bg-emerald-500/25 px-2 py-1 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-400/40 backdrop-blur"
                   >
                     <Unlock size={11} />
-                    Reabrir live
+                    Reabrir al público
                   </button>
                 ) : null}
                 <button
@@ -1082,14 +1140,11 @@ function CreatorStage({
                   Retirar {(liveStats?.coinsEarned || 0).toLocaleString('es-CO')}
                 </button>
               </>
-            ) : lock ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/25 px-2 py-1 text-[11px] text-amber-200 backdrop-blur">
-                <Lock size={11} /> {lock.emoji} {lock.giftName}
-              </span>
             ) : null}
-            {isPrivate ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-[11px] text-amber-300 backdrop-blur">
-                <Lock size={11} /> Privado
+            {isPrivate || lock ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/25 px-2 py-1 text-[11px] text-amber-200 backdrop-blur">
+                <Lock size={11} />{' '}
+                {lock ? `Privado · ${lock.emoji} ${lock.giftName}` : 'Privado'}
               </span>
             ) : null}
             <span className="truncate rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur">
@@ -1165,10 +1220,11 @@ function CreatorStage({
       {lockPicker && isHost ? (
         <div className="pointer-events-auto absolute left-3 top-[4.2rem] z-20 max-h-[50dvh] w-[min(100%,18rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4">
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-amber-300">
-            Regalo para entrar
+            Modo privado (regalo)
           </p>
           <p className="mb-2 text-[10px] text-zinc-400">
-            Elige el regalo. Luego puedes reabrir el live cuando quieras.
+            Al activarlo se oculta del feed público y se pausa para quien no envíe el regalo. Solo
+            entran quienes paguen. Puedes reabrir al público cuando quieras.
           </p>
           <div className="space-y-1">
             {LIVEBOOM_GIFTS.filter((g) => g.coins <= 1000).map((gift) => (
@@ -1193,7 +1249,7 @@ function CreatorStage({
               onClick={() => void setLiveLock(null)}
               className="mt-2 w-full rounded-lg border border-white/10 py-1.5 text-[11px] text-zinc-400"
             >
-              Quitar candado y reabrir live
+              Quitar privado y reabrir al público
             </button>
           ) : null}
         </div>

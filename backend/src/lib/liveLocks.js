@@ -13,6 +13,8 @@ function roomKey(room) {
 function setLock(room, lock) {
   const key = roomKey(room);
   if (!key) return null;
+  // Nuevo candado = reinicia accesos: el público debe enviar el regalo de nuevo.
+  unlocks.delete(key);
   if (!lock || !lock.giftId) {
     locks.delete(key);
     return null;

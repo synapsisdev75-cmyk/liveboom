@@ -9,7 +9,7 @@ const liveSession = require('../lib/liveSession');
 const social = require('../lib/socialMemory');
 const { getProfile, findByUsername, saveProfile } = require('../lib/profileMemory');
 const { findGift } = require('../lib/gifts');
-const { debit, credit, getBalance } = require('../lib/walletMemory');
+const { debit, credit, getBalance, setBalance } = require('../lib/walletMemory');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -102,13 +102,21 @@ router.get('/live', async (req, res) => {
       viewers: Math.max(Number(prev?.viewers || 0), Number(item.viewers || 0)),
       title: item.title || prev?.title || `Live de ${item.username}`,
       displayName: item.displayName || prev?.displayName || item.username,
-      isPrivate: Boolean(item.isPrivate ?? prev?.isPrivate ?? false),
+      isPrivate: Boolean(
+        item.isPrivate ?? prev?.isPrivate ?? item.lockGiftId ?? prev?.lockGiftId ?? false,
+      ),
+      lockGiftId: item.lockGiftId ?? prev?.lockGiftId ?? null,
     });
   }
   const includePrivate = req.query.includePrivate === '1';
   const category =
     typeof req.query.category === 'string' ? normalize(req.query.category) : '';
-  let streams = Array.from(byName.values()).filter((item) => includePrivate || !item.isPrivate);
+  let streams = Array.from(byName.values()).filter((item) => {
+    if (includePrivate) return true;
+    // Candado activo = privado para el feed público.
+    if (item.isPrivate || item.lockGiftId) return false;
+    return true;
+  });
   if (category) {
     streams = streams.filter((item) => normalize(item.category || 'otro') === category);
   }
@@ -205,9 +213,10 @@ router.post('/lock', requireAuth, (req, res) => {
   if (clear || !giftId) {
     liveLocks.clearLock(roomName);
     if (typeof upsertLive === 'function') {
-      upsertLive({ username: roomName, lockGiftId: null });
+      // Reabre transmisión pública en el feed.
+      upsertLive({ username: roomName, isPrivate: false, lockGiftId: null });
     }
-    res.json({ ok: true, locked: false });
+    res.json({ ok: true, locked: false, isPrivate: false });
     return;
   }
   const gift = findGift(giftId);
@@ -222,15 +231,17 @@ router.post('/lock', requireAuth, (req, res) => {
     emoji: gift.emoji,
   });
   if (typeof upsertLive === 'function') {
+    // Cierra la transmisión pública: desaparece del feed; solo entran con regalo.
     upsertLive({
       username: roomName,
+      isPrivate: true,
       lockGiftId: gift.id,
       lockGiftName: gift.name,
       lockCoins: gift.coins,
       lockEmoji: gift.emoji,
     });
   }
-  res.json({ ok: true, locked: true, lock });
+  res.json({ ok: true, locked: true, isPrivate: true, lock });
 });
 
 router.get('/lock/:roomName', requireAuth, (req, res) => {
@@ -272,6 +283,10 @@ router.post('/unlock', requireAuth, async (req, res) => {
     res.status(400).json({ error: 'Regalo de candado no disponible' });
     return;
   }
+  const floorFromClient = Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0));
+  if (floorFromClient > getBalance(req.user.uid)) {
+    setBalance(req.user.uid, floorFromClient);
+  }
   const next = debit(req.user.uid, gift.coins);
   if (next == null) {
     res.status(402).json({
@@ -287,6 +302,16 @@ router.post('/unlock', requireAuth, async (req, res) => {
     credit(host.firebaseUid, gift.coins);
   }
   liveLocks.markUnlocked(roomName, req.user.uid);
+  // Suma el regalo de entrada a la recaudación de la sala.
+  try {
+    liveSession.addGift(roomName, {
+      uid: req.user.uid,
+      name: req.user.name || req.user.email || 'Liveboomer',
+      coins: gift.coins,
+    });
+  } catch {
+    // optional
+  }
   res.json({
     ok: true,
     unlocked: true,
