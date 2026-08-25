@@ -31,7 +31,6 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete }: Floa
   const level = (gift?.level || 1) as GiftLevel;
   const fx = GIFT_LEVEL_FX[level];
   const emoji = gift?.emoji || '🎁';
-  const name = gift?.name || 'Regalo';
   const motionSpec = giftMotionFor(giftId, level);
   const isBig = level >= 3;
   const particles = Array.from({ length: Math.min(motionSpec.particleCount, 12) }, (_, i) => i);
@@ -99,11 +98,8 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete }: Floa
         >
           {emoji}
         </span>
-        <span className="mt-1 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur">
-          {name}
-        </span>
         {senderName ? (
-          <span className="mt-0.5 text-[11px] font-semibold text-cyan-200 drop-shadow">{senderName}</span>
+          <span className="mt-1 text-[11px] font-semibold text-cyan-200 drop-shadow">{senderName}</span>
         ) : null}
       </motion.div>
     </AnimatePresence>
