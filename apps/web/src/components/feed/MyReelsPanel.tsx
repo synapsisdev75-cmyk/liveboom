@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listenPostsByUsername, type FsPost } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { AutoplayMuteVideo } from './AutoplayMuteVideo';
 import type { ReelItem } from './ReelsRow';
 
 type Props = {
@@ -37,7 +38,7 @@ export function MyReelsPanel({ username }: Props) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {reels.map((reel) => (
           <article key={reel.id} className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950">
-            <video src={reel.dataUrl} className="aspect-[9/16] w-full object-cover" muted playsInline controls />
+            <AutoplayMuteVideo src={reel.dataUrl} className="aspect-[9/16] w-full object-cover" />
             <div className="p-2">
               <p className="line-clamp-2 text-xs font-semibold text-white">{reel.title}</p>
             </div>

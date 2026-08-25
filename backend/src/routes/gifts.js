@@ -4,13 +4,25 @@ const { asFn } = require('../lib/asFn');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { findGift } = require('../lib/gifts');
 const { emitGiftReceived } = require('../lib/socket');
-const { getBalance, debit, credit } = require('../lib/walletMemory');
+const { getBalance, setBalance, debit, credit } = require('../lib/walletMemory');
 const { findByUsername } = require('../lib/profileMemory');
 const liveChat = require('../lib/liveChat');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
+
+/** Alinea el wallet en memoria con el saldo que ya ve el usuario (tras recargas). */
+function syncSenderFloor(senderUid, floorFromClient = 0) {
+  const floor = Math.max(
+    getBalance(senderUid),
+    Math.max(0, Math.floor(Number(floorFromClient) || 0)),
+  );
+  if (floor > getBalance(senderUid)) {
+    setBalance(senderUid, floor);
+  }
+  return getBalance(senderUid);
+}
 
 function withTimeout(promise, ms) {
   let timer;
@@ -47,7 +59,8 @@ function announceGift(roomName, payload) {
   }
 }
 
-function memorySend(senderUid, roomName, gift, payload) {
+function memorySend(senderUid, roomName, gift, payload, floorFromClient = 0) {
+  syncSenderFloor(senderUid, floorFromClient);
   const next = debit(senderUid, gift.coins);
   if (next == null) return { error: 'Saldo insuficiente' };
   const host = findByUsername(roomName);
@@ -72,6 +85,7 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   }
 
   const senderUid = req.user.uid;
+  const floorFromClient = Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0));
   const senderName =
     req.dbUser?.displayName ||
     req.dbUser?.username ||
@@ -92,7 +106,7 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
 
   try {
     if (!hasDatabase || !prisma) {
-      const sent = memorySend(senderUid, roomName, gift, payload);
+      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient);
       if (sent.error) {
         res.status(402).json({ error: sent.error });
         return;
@@ -112,7 +126,7 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     }
 
     if (!creator) {
-      const sent = memorySend(senderUid, roomName, gift, payload);
+      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient);
       if (sent.error) {
         res.status(402).json({ error: sent.error });
         return;
@@ -123,6 +137,20 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     if (creator.firebaseUid === senderUid || creator.id === req.dbUser.id) {
       res.status(400).json({ error: 'No puedes enviarte un regalo a ti mismo' });
       return;
+    }
+
+    // Sincroniza Prisma con el saldo visible tras recargas (evita 402 falsos).
+    syncSenderFloor(senderUid, floorFromClient);
+    if (floorFromClient > Number(req.dbUser.coinsBalance || 0)) {
+      try {
+        await prisma.user.update({
+          where: { id: req.dbUser.id },
+          data: { coinsBalance: floorFromClient },
+        });
+        req.dbUser.coinsBalance = floorFromClient;
+      } catch (error) {
+        console.warn('[gifts/send] sync prisma floor', error.message);
+      }
     }
 
     const result = await withTimeout(
@@ -174,6 +202,14 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       6000,
     );
 
+    // Mantén wallet en memoria alineada con Prisma.
+    if (result.sender?.coinsBalance != null) {
+      setBalance(senderUid, result.sender.coinsBalance);
+    }
+    if (creator.firebaseUid && result.creator?.coinsBalance != null) {
+      setBalance(creator.firebaseUid, result.creator.coinsBalance);
+    }
+
     announceGift(roomName, payload);
     res.json({
       ok: true,
@@ -187,7 +223,7 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       return;
     }
     if (error.code === 'TIMEOUT') {
-      const sent = memorySend(senderUid, roomName, gift, payload);
+      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient);
       if (sent.error) {
         res.status(402).json({ error: sent.error });
         return;

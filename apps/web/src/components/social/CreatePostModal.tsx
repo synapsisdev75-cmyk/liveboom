@@ -119,7 +119,15 @@ export function CreatePostModal({ username, onCreated }: Props) {
                 {kind === 'photo' ? (
                   <img src={previewUrl} alt="" className="mx-auto max-h-[50dvh] rounded-2xl object-contain" />
                 ) : (
-                  <video src={previewUrl} className="mx-auto max-h-[50dvh] rounded-2xl" controls playsInline />
+                  <video
+                    src={previewUrl}
+                    className="mx-auto max-h-[50dvh] rounded-2xl"
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    controls
+                  />
                 )}
                 <p className="text-center text-xs text-zinc-500">{mediaFile?.name}</p>
                 <button
@@ -182,7 +190,14 @@ export function CreatePostModal({ username, onCreated }: Props) {
                           <img src={previewUrl} alt="" className="mx-auto max-h-40 rounded-lg object-contain" />
                         ) : null}
                         {previewUrl && kind === 'video' ? (
-                          <video src={previewUrl} className="mx-auto max-h-40 rounded-lg" muted playsInline controls />
+                          <video
+                            src={previewUrl}
+                            className="mx-auto max-h-40 rounded-lg"
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                          />
                         ) : null}
                         <button
                           type="button"

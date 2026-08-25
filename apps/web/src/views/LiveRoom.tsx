@@ -38,6 +38,7 @@ import { api, apiPublic, ApiError } from '../lib/api';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
 import {
   listenLiveGifts,
+  listenLiveRoomEarnings,
   publishLiveGift,
   listenLiveChat,
   publishLiveChatMessage,
@@ -547,18 +548,57 @@ function CreatorStage({
         const data = await api<{ session: LiveSessionStats | null }>(
           `/api/stream/session/${encodeURIComponent(username)}`,
         );
-        if (!cancelled && data.session) setLiveStats(data.session);
+        if (cancelled || !data.session) return;
+        // Nunca bajar la recaudación: el API en memoria puede ir atrasado vs Firestore.
+        setLiveStats((current) => {
+          const incoming = data.session!;
+          if (!current) return incoming;
+          return {
+            ...current,
+            goalCoins: Math.max(current.goalCoins || 0, incoming.goalCoins || 0) || current.goalCoins,
+            goalLabel: current.goalLabel || incoming.goalLabel || '',
+            startedAt: current.startedAt || incoming.startedAt,
+            coinsEarned: Math.max(current.coinsEarned || 0, incoming.coinsEarned || 0),
+            topGifters:
+              (current.coinsEarned || 0) >= (incoming.coinsEarned || 0)
+                ? current.topGifters
+                : incoming.topGifters || current.topGifters,
+          };
+        });
       } catch {
         // sesión opcional
       }
     }
     void loadSession();
-    const timer = window.setInterval(() => void loadSession(), 4000);
+    const timer = window.setInterval(() => void loadSession(), 8000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [username]);
+
+  // Fuente de verdad durable: recaudación en Firestore (no se pierde ni se pisa).
+  useEffect(() => {
+    return listenLiveRoomEarnings(username, ({ coinsEarned, topGifters }) => {
+      setLiveStats((current) => {
+        const base =
+          current ||
+          ({
+            username,
+            startedAt: new Date(liveStartedAt.current).toISOString(),
+            goalCoins,
+            goalLabel,
+            coinsEarned: 0,
+            topGifters: [],
+          } satisfies LiveSessionStats);
+        return {
+          ...base,
+          coinsEarned: Math.max(base.coinsEarned || 0, coinsEarned),
+          topGifters: topGifters.length ? topGifters : base.topGifters,
+        };
+      });
+    });
+  }, [username, goalCoins, goalLabel]);
 
   useEffect(() => {
     const applyGift = (giftId: string, id: string, senderName?: string) => {
@@ -1087,27 +1127,38 @@ function CreatorStage({
             <p className="text-[10px] font-semibold text-white drop-shadow">
               {liveStats.goalLabel || 'Recaudado en esta sala'}
             </p>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/20">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500"
-                style={{
-                  width: `${
-                    liveStats.goalCoins > 0
-                      ? Math.min(100, Math.round((liveStats.coinsEarned / liveStats.goalCoins) * 100))
-                      : 100
-                  }%`,
-                }}
-              />
-            </div>
-            <p className="mt-1 text-[10px] text-cyan-200">
-              {liveStats.coinsEarned.toLocaleString('es-CO')}
-              {liveStats.goalCoins > 0
-                ? ` / ${liveStats.goalCoins.toLocaleString('es-CO')} coins`
-                : ' coins'}
-              {liveStats.topGifters[0]
-                ? ` · Top: ${liveStats.topGifters[0].name}`
-                : ''}
-            </p>
+            {(() => {
+              const earned = liveStats.coinsEarned || 0;
+              const goal = liveStats.goalCoins || 0;
+              // Sin meta: escala suave que crece con lo recaudado (evita barra siempre al 100%).
+              const softCap =
+                goal > 0
+                  ? goal
+                  : Math.max(100, Math.ceil(Math.max(earned, 1) / 100) * 100);
+              const pct =
+                goal > 0
+                  ? Math.min(100, Math.round((earned / goal) * 100))
+                  : Math.min(100, Math.round((earned / softCap) * 100));
+              return (
+                <>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/20">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 transition-[width] duration-500"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-cyan-200">
+                    {earned.toLocaleString('es-CO')}
+                    {goal > 0
+                      ? ` / ${goal.toLocaleString('es-CO')} coins${earned >= goal ? ' · Meta alcanzada' : ''}`
+                      : ' coins'}
+                    {liveStats.topGifters[0]
+                      ? ` · Top: ${liveStats.topGifters[0].name}`
+                      : ''}
+                  </p>
+                </>
+              );
+            })()}
           </div>
         ) : null}
       </div>
@@ -1586,51 +1637,11 @@ function ChatPanel({
     setSendingGift(giftId);
     setOpenGifts(false);
     const previousCoins = coins;
-    setCoins(coins - catalog.coins);
-
     const clientId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const senderName = profile.displayName || profile.handle || 'Liveboomer';
-    const chatGift = {
-      id: `gift-${clientId}`,
-      author: senderName,
-      authorUid: profile.firebaseUid,
-      text: `envió ${catalog.name}`,
-      gift: { giftId: catalog.id, emoji: catalog.emoji, name: catalog.name },
-    };
-
-    pushMessage(chatGift);
-    persistChatCopy(chatGift);
-    window.dispatchEvent(
-      new CustomEvent('liveboom:gift', {
-        detail: { id: clientId, giftId: catalog.id, senderName },
-      }),
-    );
-    void publishRoomData(room, {
-      type: 'gift',
-      id: clientId,
-      giftId: catalog.id,
-      senderName,
-      giftName: catalog.name,
-      emoji: catalog.emoji,
-    }).catch((error) => console.error('[gift] publishData', error));
-    void publishLiveGift(roomName, {
-      clientId,
-      giftId: catalog.id,
-      giftName: catalog.name,
-      emoji: catalog.emoji,
-      senderName,
-      senderUid: profile.firebaseUid,
-      coins: catalog.coins,
-    }).catch((error) => console.error('[gift] firestore', error));
-    void publishLiveChatMessage(roomName, {
-      clientId: chatGift.id,
-      authorUid: profile.firebaseUid,
-      author: senderName,
-      text: chatGift.text,
-      gift: chatGift.gift,
-    }).catch((error) => console.error('[gift] chat-history', error));
 
     try {
+      // Primero cobra en el API (sincroniza saldo de recarga); luego publica el regalo.
       const result = await api<{
         senderBalance: number;
         gift: {
@@ -1642,10 +1653,55 @@ function ChatPanel({
         };
       }>('/api/gifts/send', {
         method: 'POST',
-        body: JSON.stringify({ giftId: catalog.id, roomName, clientId }),
+        body: JSON.stringify({
+          giftId: catalog.id,
+          roomName,
+          clientId,
+          currentBalance: previousCoins,
+        }),
       });
       setCoins(result.senderBalance);
       void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+
+      const chatGift = {
+        id: `gift-${clientId}`,
+        author: senderName,
+        authorUid: profile.firebaseUid,
+        text: `envió ${catalog.name}`,
+        gift: { giftId: catalog.id, emoji: catalog.emoji, name: catalog.name },
+      };
+
+      pushMessage(chatGift);
+      persistChatCopy(chatGift);
+      window.dispatchEvent(
+        new CustomEvent('liveboom:gift', {
+          detail: { id: clientId, giftId: catalog.id, senderName },
+        }),
+      );
+      void publishRoomData(room, {
+        type: 'gift',
+        id: clientId,
+        giftId: catalog.id,
+        senderName,
+        giftName: catalog.name,
+        emoji: catalog.emoji,
+      }).catch((error) => console.error('[gift] publishData', error));
+      void publishLiveGift(roomName, {
+        clientId,
+        giftId: catalog.id,
+        giftName: catalog.name,
+        emoji: catalog.emoji,
+        senderName,
+        senderUid: profile.firebaseUid,
+        coins: catalog.coins,
+      }).catch((error) => console.error('[gift] firestore', error));
+      void publishLiveChatMessage(roomName, {
+        clientId: chatGift.id,
+        authorUid: profile.firebaseUid,
+        author: senderName,
+        text: chatGift.text,
+        gift: chatGift.gift,
+      }).catch((error) => console.error('[gift] chat-history', error));
     } catch (err) {
       setCoins(previousCoins);
       const message = err instanceof Error ? err.message : 'No se pudo enviar el regalo';

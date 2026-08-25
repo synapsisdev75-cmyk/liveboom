@@ -153,6 +153,43 @@ export function listenLiveActivity(
   );
 }
 
+/** Escucha recaudación durable de la sala (coins + top gifters). */
+export function listenLiveRoomEarnings(
+  roomName: string,
+  onChange: (stats: {
+    coinsEarned: number;
+    topGifters: { uid: string; name: string; coins: number }[];
+  }) => void,
+): Unsubscribe {
+  return onSnapshot(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    (snap) => {
+      if (!snap.exists()) {
+        onChange({ coinsEarned: 0, topGifters: [] });
+        return;
+      }
+      const data = snap.data() as Record<string, unknown>;
+      const topGifters = Array.isArray(data.topGifters)
+        ? (data.topGifters as { uid?: string; name?: string; coins?: number }[])
+            .map((item) => ({
+              uid: String(item.uid || ''),
+              name: String(item.name || 'Liveboomer'),
+              coins: Number(item.coins || 0),
+            }))
+            .sort((a, b) => b.coins - a.coins)
+            .slice(0, 5)
+        : [];
+      onChange({
+        coinsEarned: Number(data.coinsEarned || 0),
+        topGifters,
+      });
+    },
+    (err) => {
+      console.error('No se pudo escuchar la recaudación de la sala', err);
+    },
+  );
+}
+
 /** Acumula coins ganados y top gifters en la sala (durable). */
 export async function recordLiveGiftEarnings(
   roomName: string,

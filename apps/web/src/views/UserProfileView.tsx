@@ -69,6 +69,7 @@ export function UserProfileView() {
   const [modal, setModal] = useState<'followers' | 'following' | 'friends' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  const [expandVideoId, setExpandVideoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!username && !uidHint) return;
@@ -486,6 +487,7 @@ export function UserProfileView() {
               onCreated={(post) => {
                 setLibraryError(null);
                 setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+                if (post.type === 'video') setExpandVideoId(post.id);
               }}
             />
           ) : null}
@@ -505,6 +507,8 @@ export function UserProfileView() {
                 post={post}
                 canDelete={publicProfile.isOwnProfile}
                 canChangeVisibility={publicProfile.isOwnProfile}
+                startVideoExpanded={expandVideoId === post.id}
+                onCloseVideoExpand={() => setExpandVideoId(null)}
                 onDelete={() => void deletePost(post.id)}
                 onChangeVisibility={(visibility) => {
                   if (!profile) return;

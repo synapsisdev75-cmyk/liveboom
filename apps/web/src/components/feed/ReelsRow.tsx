@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listenRecentPosts, type FsPost } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { AutoplayMuteVideo } from './AutoplayMuteVideo';
 
 export type ReelItem = {
   id: string;
@@ -53,7 +54,7 @@ export function ReelsRow({ title = 'Reels' }: { title?: string }) {
             key={reel.id}
             className="w-36 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950"
           >
-            <video src={reel.dataUrl} className="aspect-[9/16] w-full object-cover" muted playsInline controls />
+            <AutoplayMuteVideo src={reel.dataUrl} className="aspect-[9/16] w-full object-cover" />
             <div className="space-y-0.5 p-2">
               <p className="line-clamp-2 text-[11px] font-semibold text-white">{reel.title}</p>
               <Link to={`/u/${encodeURIComponent(reel.username)}`} className="truncate text-[10px] text-cyan-400">
