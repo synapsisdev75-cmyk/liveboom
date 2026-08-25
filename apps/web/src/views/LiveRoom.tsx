@@ -8,7 +8,6 @@ import {
   type TrackReference,
 } from '@livekit/components-react';
 import {
-  createLocalVideoTrack,
   Room,
   RoomEvent,
   Track,
@@ -30,14 +29,14 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, ApiError } from '../lib/api';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
-import { listenLiveGifts, publishLiveGift, listenLiveChat, publishLiveChatMessage } from '../lib/liveGiftsFirestore';
+import { listenLiveGifts, publishLiveGift, listenLiveChat, publishLiveChatMessage, resetLiveRoomChat } from '../lib/liveGiftsFirestore';
 import { LIVEBOOM_GIFTS, GIFT_LEVEL_FX, findLiveGift } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
@@ -82,6 +81,13 @@ type ChatMessage = {
   text: string;
   gift?: { giftId: string; emoji: string; name: string };
 };
+
+const liveChatCache = new Map<string, ChatMessage[]>();
+
+function clearLiveChatCache(roomName: string) {
+  liveChatCache.delete(roomName.trim().toLowerCase());
+  liveChatCache.delete(roomName);
+}
 
 type RoomPayload =
   | { type: 'chat'; id: string; author: string; text: string }
@@ -164,6 +170,11 @@ export function LiveRoom() {
     if (!username || !profile) return;
     // Marca el live antes del token para que el host se reconozca por uid/username.
     if (isOwnRoom) {
+      // Cada transmisión nueva empieza con chat vacío.
+      clearLiveChatCache(username);
+      await resetLiveRoomChat(username).catch((error) =>
+        console.error('[live] reset chat', error),
+      );
       await api('/api/stream/live/start', {
         method: 'POST',
         body: JSON.stringify({
@@ -400,6 +411,19 @@ export function LiveRoom() {
           isPrivate={isPrivate}
           goalCoins={Number(launch.goalCoins) || 0}
           goalLabel={launch.goalLabel || ''}
+          onLeaveLive={async () => {
+            if (isOwnRoom) {
+              clearLiveChatCache(username);
+              await Promise.all([
+                api('/api/stream/live/stop', {
+                  method: 'POST',
+                  body: JSON.stringify({ username }),
+                }).catch(() => undefined),
+                resetLiveRoomChat(username).catch(() => undefined),
+              ]);
+              setLiveStarted(false);
+            }
+          }}
         />
         <ChatPanel
           roomName={username}
@@ -418,6 +442,7 @@ function CreatorStage({
   isPrivate,
   goalCoins,
   goalLabel,
+  onLeaveLive,
 }: {
   username: string;
   canPublish: boolean;
@@ -425,7 +450,9 @@ function CreatorStage({
   isPrivate: boolean;
   goalCoins: number;
   goalLabel: string;
+  onLeaveLive?: () => Promise<void>;
 }) {
+  const navigate = useNavigate();
   const room = useRoomContext();
   const handle = useAuthStore((state) => state.profile?.handle);
   const displayName = useAuthStore((state) => state.profile?.displayName);
@@ -435,6 +462,8 @@ function CreatorStage({
   const stageVideoRef = useRef<HTMLDivElement>(null);
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
   const [flipping, setFlipping] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [inviteHandle, setInviteHandle] = useState('');
   const [inviteNote, setInviteNote] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
@@ -610,31 +639,49 @@ function CreatorStage({
     setFlipping(true);
     const nextFacing = facing === 'user' ? 'environment' : 'user';
     try {
-      const nextTrack = await createLocalVideoTrack({
-        facingMode: nextFacing,
-      });
-      const publications = Array.from(room.localParticipant.videoTrackPublications.values());
-      for (const publication of publications) {
-        if (publication.source === Track.Source.Camera && publication.track) {
-          await room.localParticipant.unpublishTrack(publication.track);
-          publication.track.stop();
+      const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
+        (item) => item.source === Track.Source.Camera,
+      );
+      const track = (pub?.track || cameraTrackRef.current) as LocalVideoTrack | null;
+      if (track && typeof track.restartTrack === 'function') {
+        await track.restartTrack({
+          facingMode: nextFacing,
+          resolution: { width: 720, height: 1280, frameRate: 24 },
+        });
+        cameraTrackRef.current = track;
+      } else {
+        await room.localParticipant.setCameraEnabled(false);
+        await room.localParticipant.setCameraEnabled(true, {
+          facingMode: nextFacing,
+          resolution: { width: 720, height: 1280, frameRate: 24 },
+        });
+        const nextPub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
+          (item) => item.source === Track.Source.Camera,
+        );
+        if (nextPub?.track && 'mediaStreamTrack' in nextPub.track) {
+          cameraTrackRef.current = nextPub.track as LocalVideoTrack;
         }
       }
-      if (cameraTrackRef.current) {
-        cameraTrackRef.current.stop();
-      }
-      await room.localParticipant.publishTrack(nextTrack, {
-        source: Track.Source.Camera,
-        name: 'camera',
-      });
-      cameraTrackRef.current = nextTrack;
       setFacing(nextFacing);
     } catch (error) {
       console.error('[live] flip camera', error);
+      setInviteNote('No se pudo cambiar la cámara. Prueba de nuevo.');
     } finally {
       setFlipping(false);
     }
   }, [canPublish, flipping, facing, room]);
+
+  async function confirmLeave() {
+    if (leaving) return;
+    setLeaving(true);
+    try {
+      await onLeaveLive?.();
+    } finally {
+      setLeaving(false);
+      setLeaveOpen(false);
+      navigate('/', { replace: true });
+    }
+  }
 
   async function inviteGuest() {
     const guestHandle = inviteHandle.trim().replace(/^@/, '');
@@ -793,24 +840,26 @@ function CreatorStage({
               {viewers} viendo
             </span>
           </div>
-          <div className="pointer-events-auto flex items-center gap-2">
+          <div className="pointer-events-auto flex shrink-0 items-center gap-2">
             {canPublish ? (
               <button
                 type="button"
                 onClick={() => void flipCamera()}
                 disabled={flipping}
-                className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 disabled:opacity-60"
-                aria-label="Cambiar cámara"
+                className="grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 disabled:opacity-60 sm:h-9 sm:w-9"
+                aria-label={facing === 'user' ? 'Cambiar a cámara trasera' : 'Cambiar a cámara frontal'}
+                title={facing === 'user' ? 'Cámara trasera' : 'Cámara frontal'}
               >
-                <SwitchCamera size={16} />
+                <SwitchCamera size={18} className={flipping ? 'animate-spin' : ''} />
               </button>
             ) : null}
-            <Link
-              to="/"
+            <button
+              type="button"
+              onClick={() => setLeaveOpen(true)}
               className="rounded-full bg-black/55 px-3 py-2 text-xs text-zinc-200 backdrop-blur hover:text-white"
             >
               Salir
-            </Link>
+            </button>
           </div>
         </div>
         {liveStats && (liveStats.goalCoins > 0 || liveStats.coinsEarned > 0) ? (
@@ -928,6 +977,49 @@ function CreatorStage({
           onClose={() => setWithdrawOpen(false)}
         />
       ) : null}
+      {canPublish ? (
+        <button
+          type="button"
+          onClick={() => void flipCamera()}
+          disabled={flipping}
+          className="pointer-events-auto absolute bottom-[48dvh] right-3 z-30 grid h-12 w-12 place-items-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur ring-1 ring-white/20 lg:bottom-8 lg:right-6"
+          aria-label={facing === 'user' ? 'Cambiar a cámara trasera' : 'Cambiar a cámara frontal'}
+        >
+          <SwitchCamera size={20} className={flipping ? 'animate-spin' : ''} />
+        </button>
+      ) : null}
+      {leaveOpen ? (
+        <div className="pointer-events-auto absolute inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-zinc-950 p-5 shadow-xl">
+            <p className="text-base font-bold text-white">
+              {isHost ? '¿Salir y terminar el live?' : '¿Salir del live?'}
+            </p>
+            <p className="mt-2 text-sm text-zinc-400">
+              {isHost
+                ? 'Al confirmar se cierra la transmisión y el chat queda listo para una nueva.'
+                : 'Puedes volver a entrar cuando quieras.'}
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                disabled={leaving}
+                onClick={() => setLeaveOpen(false)}
+                className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={leaving}
+                onClick={() => void confirmLeave()}
+                className="flex-1 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 py-2.5 text-sm font-bold text-zinc-950 disabled:opacity-60"
+              >
+                {leaving ? 'Saliendo…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -994,6 +1086,7 @@ function CreatorVideo({
         const alreadyOn = room.localParticipant.isCameraEnabled;
         // Si la cámara ya está al aire, no la vuelvas a pedir: al enviar un regalo
         // el saldo cambia y un republish dejaba la transmisión en negro.
+        // Tampoco re-publicar al voltear (facing): eso lo hace flipCamera con restartTrack.
         if (alreadyOn && retry === 0) {
           if (!room.localParticipant.isMicrophoneEnabled) {
             await room.localParticipant.setMicrophoneEnabled(true);
@@ -1083,8 +1176,6 @@ function CreatorVideo({
     </>
   );
 }
-
-const liveChatCache = new Map<string, ChatMessage[]>();
 
 function ChatPanel({
   roomName,

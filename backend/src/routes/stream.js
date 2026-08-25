@@ -122,6 +122,11 @@ router.post('/live/start', requireAuth, (req, res) => {
       : normalize(req.user.email ? req.user.email.split('@')[0] : req.user.uid);
   const goalCoins = Number(req.body?.goalCoins) || 0;
   const goalLabel = typeof req.body?.goalLabel === 'string' ? req.body.goalLabel.trim().slice(0, 80) : '';
+  try {
+    require('../lib/liveChat').clearRoom(username);
+  } catch {
+    // optional
+  }
   const entry = upsertLive({
     username,
     uid: req.user.uid,

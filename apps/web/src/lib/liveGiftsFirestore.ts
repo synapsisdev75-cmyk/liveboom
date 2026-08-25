@@ -1,11 +1,13 @@
 import {
   addDoc,
   collection,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
@@ -24,6 +26,25 @@ export type LiveGiftEvent = {
 
 function roomKey(roomName: string) {
   return roomName.trim().toLowerCase() || 'room';
+}
+
+/** Borra mensajes y regalos de la sala para que una transmisión nueva arranque con chat vacío. */
+export async function resetLiveRoomChat(roomName: string) {
+  const key = roomKey(roomName);
+
+  async function wipe(subcollection: 'messages' | 'gifts') {
+    const col = collection(db, 'liveRooms', key, subcollection);
+    for (;;) {
+      const snap = await getDocs(query(col, limit(400)));
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      snap.docs.forEach((item) => batch.delete(item.ref));
+      await batch.commit();
+    }
+  }
+
+  await wipe('messages');
+  await wipe('gifts');
 }
 
 export function listenLiveGifts(

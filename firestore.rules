@@ -192,6 +192,7 @@ service cloud.firestore {
 
     match /liveRooms/{roomName} {
       allow read: if signedIn();
+      allow create, update: if signedIn();
 
       match /gifts/{giftId} {
         allow read: if signedIn();
@@ -200,7 +201,7 @@ service cloud.firestore {
           && request.resource.data.giftId is string
           && request.resource.data.giftName is string
           && request.resource.data.senderName is string;
-        allow delete: if signedIn() && resource.data.senderUid == request.auth.uid;
+        allow delete: if signedIn();
       }
 
       match /messages/{messageId} {
@@ -212,6 +213,7 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 500;
+        allow delete: if signedIn();
       }
     }
 
