@@ -1,11 +1,28 @@
 import { auth } from './firebase';
 
 const ONLINE_API = 'https://liveboom.vercel.app';
-const fromEnv = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-const API_BASE =
-  import.meta.env.PROD && (!fromEnv || /localhost|127\.0\.0\.1/.test(fromEnv))
-    ? ONLINE_API
-    : fromEnv || ONLINE_API;
+const LOCAL_API = 'http://localhost:4000';
+
+/**
+ * Resuelve la URL del API.
+ * En dominios desplegados NUNCA usa localhost (evita "Failed to fetch" en www).
+ */
+export function getApiBase(): string {
+  const fromEnv = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  const host =
+    typeof window !== 'undefined' ? window.location.hostname : '';
+  const browsingLocal = host === 'localhost' || host === '127.0.0.1';
+
+  if (browsingLocal) {
+    return fromEnv || LOCAL_API;
+  }
+
+  // Sitio en producción / preview: ignorar .env.local con localhost
+  if (fromEnv && !/localhost|127\.0\.0\.1/.test(fromEnv)) {
+    return fromEnv;
+  }
+  return ONLINE_API;
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -31,11 +48,19 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const jwt = await token();
   headers.set('Authorization', `Bearer ${jwt}`);
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    signal: init.signal ?? AbortSignal.timeout(12_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBase()}${path}`, {
+      ...init,
+      headers,
+      signal: init.signal ?? AbortSignal.timeout(12_000),
+    });
+  } catch {
+    throw new ApiError(
+      0,
+      'No se pudo conectar con el servidor. Revisa tu red o intenta de nuevo.',
+    );
+  }
   const raw = await response.text();
   let data: { error?: string; message?: string } & T;
   try {
@@ -59,7 +84,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export async function apiPublic<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`);
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBase()}${path}`);
+  } catch {
+    throw new ApiError(
+      0,
+      'No se pudo conectar con el servidor. Revisa tu red o intenta de nuevo.',
+    );
+  }
   const data = (await response.json().catch(() => ({}))) as { error?: string } & T;
   if (!response.ok) {
     throw new ApiError(response.status, data.error ?? 'Error de red');
@@ -113,7 +146,7 @@ export function mapPostgresUser(user: PostgresUser): SessionUser {
 }
 
 export async function postAuthSync(idToken: string) {
-  const response = await fetch(`${API_BASE}/api/auth/sync`, {
+  const response = await fetch(`${getApiBase()}/api/auth/sync`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${idToken}`,

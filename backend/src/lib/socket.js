@@ -9,6 +9,8 @@ function allowedOrigin(origin) {
     origin === 'http://127.0.0.1:5173' ||
     origin === 'https://liveboom-app.web.app' ||
     origin === 'https://liveboom-app.firebaseapp.com' ||
+    origin === 'https://liveboomapp.com' ||
+    origin === 'https://www.liveboomapp.com' ||
     origin === 'https://liveboom.vercel.app' ||
     origin.endsWith('.vercel.app')
   );

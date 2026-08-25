@@ -1,9 +1,24 @@
-import { LiveKitRoom, RoomAudioRenderer, VideoTrack, useTracks, type TrackReference } from '@livekit/components-react';
-import { Track } from 'livekit-client';
-import { Phone, PhoneOff, Video } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  VideoTrack,
+  useRoomContext,
+  useTracks,
+  type TrackReference,
+} from '@livekit/components-react';
+import type { DeepAR } from 'deepar';
+import { LocalVideoTrack, RoomEvent, Track } from 'livekit-client';
+import { Camera, Phone, PhoneOff, SwitchCamera, Video, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { playCallRing } from '../../lib/alertSound';
 import { api } from '../../lib/api';
+import {
+  applyCallFilter,
+  CALL_FILTERS,
+  createCallDeepAR,
+  downloadDataUrl,
+  type CallFilterId,
+} from '../../lib/deepar';
 import {
   answerPrivateCall,
   beatPresence,
@@ -14,17 +29,167 @@ import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
 
 function CallStage({ video }: { video: boolean }) {
+  const room = useRoomContext();
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }]);
-  const cameras = tracks.filter((track): track is TrackReference => Boolean(track.publication));
+  const remoteCameras = tracks.filter(
+    (track): track is TrackReference =>
+      Boolean(track.publication) && !track.participant.isLocal,
+  );
+
+  const previewRef = useRef<HTMLDivElement>(null);
+  const deepArRef = useRef<DeepAR | null>(null);
+  const publishedRef = useRef<LocalVideoTrack | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [filterId, setFilterId] = useState<CallFilterId>('aviators');
+  const [facing, setFacing] = useState<'user' | 'environment'>('user');
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [snapPreview, setSnapPreview] = useState<string | null>(null);
+  const [busySnap, setBusySnap] = useState(false);
+
+  useEffect(() => {
+    if (!video) return;
+    let cancelled = false;
+
+    async function boot() {
+      const host = previewRef.current;
+      if (!host) return;
+      setError(null);
+      setReady(false);
+      try {
+        await new Promise<void>((resolve) => {
+          if (room.state === 'connected') {
+            resolve();
+            return;
+          }
+          const onConnected = () => {
+            room.off(RoomEvent.Connected, onConnected);
+            resolve();
+          };
+          room.on(RoomEvent.Connected, onConnected);
+        });
+        if (cancelled) return;
+
+        const deepAR = await createCallDeepAR(host, facing);
+        if (cancelled) {
+          deepAR.shutdown();
+          return;
+        }
+        deepArRef.current = deepAR;
+        await deepAR.startCamera({
+          mirror: facing === 'user',
+          mediaStreamConstraints: {
+            video: {
+              facingMode: facing,
+              width: { ideal: 720 },
+              height: { ideal: 1280 },
+            },
+            audio: false,
+          },
+        });
+        if (cancelled) return;
+
+        await applyCallFilter(deepAR, filterId);
+        if (cancelled) return;
+
+        const canvas = deepAR.getCanvas();
+        const stream = canvas.captureStream(24);
+        streamRef.current = stream;
+        const mediaTrack = stream.getVideoTracks()[0];
+        if (!mediaTrack) throw new Error('Sin track de video DeepAR');
+
+        const localTrack = new LocalVideoTrack(mediaTrack, undefined, true);
+        publishedRef.current = localTrack;
+        await room.localParticipant.publishTrack(localTrack, {
+          source: Track.Source.Camera,
+          name: 'camera-ar',
+        });
+        if (!cancelled) setReady(true);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setError('No se pudo iniciar cámara / filtros. Revisa permisos y dominio DeepAR.');
+        }
+      }
+    }
+
+    void boot();
+
+    return () => {
+      cancelled = true;
+      const pub = publishedRef.current;
+      publishedRef.current = null;
+      if (pub) {
+        void room.localParticipant.unpublishTrack(pub).catch(() => undefined);
+        pub.stop();
+      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      const instance = deepArRef.current;
+      deepArRef.current = null;
+      if (instance) {
+        try {
+          instance.stopCamera();
+          instance.shutdown();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (previewRef.current) previewRef.current.innerHTML = '';
+      setReady(false);
+    };
+    // Reinicio solo al cambiar cámara frontal/trasera; el filtro se aplica en otro effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video, room, facing]);
+
+  useEffect(() => {
+    const instance = deepArRef.current;
+    if (!instance || !ready) return;
+    void applyCallFilter(instance, filterId).catch((err) => console.error(err));
+  }, [filterId, ready]);
+
+  async function takeInstantPhoto() {
+    const instance = deepArRef.current;
+    if (!instance || busySnap) return;
+    setBusySnap(true);
+    try {
+      const dataUrl = await instance.takeScreenshot();
+      setSnapPreview(dataUrl);
+      downloadDataUrl(dataUrl, `liveboom-${Date.now()}.png`);
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          const blob = await (await fetch(dataUrl)).blob();
+          const file = new File([blob], `liveboom-${Date.now()}.png`, { type: 'image/png' });
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Liveboom' });
+          }
+        } catch {
+          /* usuario canceló share */
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo tomar la foto.');
+    } finally {
+      setBusySnap(false);
+    }
+  }
+
+  if (!video) {
+    return <RoomAudioRenderer />;
+  }
+
   return (
     <>
       <RoomAudioRenderer />
-      {video ? (
-        <div className="grid h-full min-h-[12rem] grid-cols-2 gap-1">
-          {cameras.length === 0 ? (
-            <p className="col-span-2 grid place-items-center text-xs text-zinc-400">Cámara…</p>
+      <div className="relative grid h-full min-h-[14rem] grid-cols-2 gap-1">
+        <div className="relative overflow-hidden rounded-xl bg-black">
+          {remoteCameras.length === 0 ? (
+            <p className="grid h-full place-items-center px-2 text-center text-[11px] text-zinc-400">
+              Esperando video…
+            </p>
           ) : (
-            cameras.map((track) => (
+            remoteCameras.map((track) => (
               <VideoTrack
                 key={track.participant.identity}
                 trackRef={track}
@@ -32,6 +197,81 @@ function CallStage({ video }: { video: boolean }) {
               />
             ))
           )}
+        </div>
+
+        <div className="relative overflow-hidden rounded-xl bg-black">
+          <div ref={previewRef} className="h-full w-full [&_canvas]:h-full [&_canvas]:w-full [&_canvas]:object-cover" />
+          {!ready && !error ? (
+            <p className="pointer-events-none absolute inset-0 grid place-items-center text-[11px] text-zinc-400">
+              Filtros…
+            </p>
+          ) : null}
+          {error ? (
+            <p className="pointer-events-none absolute inset-0 grid place-items-center px-2 text-center text-[11px] text-rose-300">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-2 space-y-2">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {CALL_FILTERS.map((filter) => {
+            const active = filter.id === filterId;
+            return (
+              <button
+                key={filter.id}
+                type="button"
+                disabled={!ready}
+                onClick={() => setFilterId(filter.id)}
+                className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                  active
+                    ? 'bg-emerald-400 text-zinc-950'
+                    : 'bg-white/10 text-zinc-200 hover:bg-white/15 disabled:opacity-40'
+                }`}
+              >
+                {filter.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => setFacing((prev) => (prev === 'user' ? 'environment' : 'user'))}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+            aria-label="Cambiar cámara"
+          >
+            <SwitchCamera size={14} /> Cámara
+          </button>
+          <button
+            type="button"
+            disabled={!ready || busySnap}
+            onClick={() => void takeInstantPhoto()}
+            className="inline-flex items-center gap-1.5 rounded-full bg-sky-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+          >
+            <Camera size={14} /> Foto
+          </button>
+        </div>
+      </div>
+
+      {snapPreview ? (
+        <div className="fixed inset-0 z-[90] grid place-items-center bg-black/80 p-4">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/15 bg-zinc-950">
+            <img src={snapPreview} alt="Foto" className="max-h-[70vh] w-full object-contain" />
+            <div className="flex justify-between gap-2 p-3">
+              <p className="text-xs text-zinc-400">Guardada en descargas</p>
+              <button
+                type="button"
+                onClick={() => setSnapPreview(null)}
+                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white"
+              >
+                <X size={14} /> Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </>
@@ -160,12 +400,12 @@ export function CallOverlay() {
 
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 shadow-2xl">
+      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 shadow-2xl">
         <div className="px-5 pt-6 text-center">
           {avatar ? (
-            <img src={avatar} alt="" className="mx-auto h-20 w-20 rounded-full object-cover ring-2 ring-emerald-400/40" />
+            <img src={avatar} alt="" className="mx-auto h-16 w-16 rounded-full object-cover ring-2 ring-emerald-400/40" />
           ) : (
-            <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-zinc-800 text-2xl font-black text-emerald-300">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-zinc-800 text-2xl font-black text-emerald-300">
               {(name || handle || '?').slice(0, 1).toUpperCase()}
             </div>
           )}
@@ -186,8 +426,8 @@ export function CallOverlay() {
             serverUrl={serverUrl}
             connect
             audio
-            video={video}
-            className={video ? 'mx-4 mt-4 h-48 overflow-hidden rounded-2xl bg-black' : 'h-0 overflow-hidden'}
+            video={false}
+            className={video ? 'mx-4 mt-4 overflow-hidden' : 'h-0 overflow-hidden'}
           >
             <CallStage video={video} />
           </LiveKitRoom>

@@ -10,7 +10,7 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
-import { api, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
+import { api, getApiBase, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
 import { ensureFirestoreProfile, fetchFirestoreProfile } from '../lib/profileFirestore';
 import { storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
@@ -50,10 +50,7 @@ function mapAuthError(error: unknown): string {
 }
 
 async function syncWithBackend(user: FirebaseUser) {
-  const apiBase = String(import.meta.env.VITE_API_URL || 'https://liveboom.vercel.app').replace(
-    /\/$/,
-    '',
-  );
+  const apiBase = getApiBase();
   const email = user.email ?? `${user.uid}@users.liveboom.local`;
 
   try {
