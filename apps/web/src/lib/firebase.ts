@@ -6,17 +6,13 @@ import { getDataConnect } from 'firebase/data-connect';
 import { connectorConfig } from '@liveboom/dataconnect';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyD6yhYWmqccpziTBaAWnZ0lCvppUnIYS8M',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'liveboom-app.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'liveboom-app',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'liveboom-app.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '1092886082330',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:1092886082330:web:45b234f0daf42b30a8b2a3',
 };
-
-if (!firebaseConfig.apiKey) {
-  throw new Error('Faltan variables VITE_FIREBASE_* en apps/web/.env.local');
-}
 
 export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);

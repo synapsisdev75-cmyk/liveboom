@@ -1,7 +1,11 @@
 import { auth } from './firebase';
 
 const ONLINE_API = 'https://liveboom.vercel.app';
-const API_BASE = String(import.meta.env.VITE_API_URL || ONLINE_API).replace(/\/$/, '');
+const fromEnv = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const API_BASE =
+  import.meta.env.PROD && (!fromEnv || /localhost|127\.0\.0\.1/.test(fromEnv))
+    ? ONLINE_API
+    : fromEnv || ONLINE_API;
 
 export class ApiError extends Error {
   readonly status: number;

@@ -39,6 +39,20 @@ body {
   border-radius: 999px;
 }
 
+.gift-row {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2d36 transparent;
+}
+
+.gift-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.gift-row::-webkit-scrollbar-thumb {
+  background: #2a2d36;
+  border-radius: 999px;
+}
+
 .mask-fade {
   mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);

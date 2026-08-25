@@ -118,13 +118,13 @@ export function InteractionPanel() {
           {giftOpen ? (
             <div className="absolute bottom-16 left-3 right-3 rounded-2xl border border-white/10 bg-[#16181E] p-3 shadow-gift">
               <p className="mb-2 text-xs font-semibold text-zinc-300">Caja de Regalos</p>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="gift-row flex snap-x snap-mandatory gap-1 overflow-x-auto overflow-y-hidden pb-1">
                 {gifts.map((gift) => (
                   <button
                     key={gift.id}
                     type="button"
                     onClick={() => void sendGift(gift)}
-                    className={`rounded-xl border px-1 py-2 text-center transition hover:brightness-125 ${accentClass[gift.accent] ?? accentClass.cyan}`}
+                    className={`w-[4.35rem] shrink-0 snap-start rounded-xl border px-1 py-2 text-center transition hover:brightness-125 ${accentClass[gift.accent] ?? accentClass.cyan}`}
                   >
                     <span className="block text-xl">{gift.emoji}</span>
                     <span className="mt-1 block text-[10px] font-semibold text-zinc-200">{gift.price}</span>

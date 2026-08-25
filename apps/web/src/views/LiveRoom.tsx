@@ -7,7 +7,14 @@ import {
   useTracks,
   type TrackReference,
 } from '@livekit/components-react';
-import { createLocalVideoTrack, RoomEvent, Track, type LocalVideoTrack } from 'livekit-client';
+import {
+  createLocalVideoTrack,
+  Room,
+  RoomEvent,
+  Track,
+  type LocalVideoTrack,
+  type RoomOptions,
+} from 'livekit-client';
 import {
   Circle,
   Coins,
@@ -22,7 +29,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
@@ -45,6 +52,11 @@ type LockInfo = {
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string };
 
 const REEL_SECONDS = 15;
+
+const LIVEKIT_ROOM_OPTIONS: RoomOptions = {
+  adaptiveStream: true,
+  dynacast: true,
+};
 
 type LiveLaunchState = {
   goLive?: boolean;
@@ -127,8 +139,10 @@ export function LiveRoom() {
   const location = useLocation();
   const launch = (location.state as LiveLaunchState | null) || {};
   const ready = useAuthStore((state) => state.ready);
-  const profile = useAuthStore((state) => state.profile);
+  const firebaseUid = useAuthStore((state) => state.profile?.firebaseUid);
+  const handle = useAuthStore((state) => state.profile?.handle);
   const setCoins = useAuthStore((state) => state.setCoins);
+  const livekitRoom = useMemo(() => new Room(LIVEKIT_ROOM_OPTIONS), []);
   const [session, setSession] = useState<{
     token: string;
     serverUrl: string;
@@ -142,12 +156,11 @@ export function LiveRoom() {
   const [unlocking, setUnlocking] = useState(false);
 
   const isOwnRoom =
-    profile?.handle && username
-      ? profile.handle.toLowerCase() === username.toLowerCase()
-      : false;
+    Boolean(handle && username) && handle!.toLowerCase() === username!.toLowerCase();
   const needsLaunchConfirm = isOwnRoom && !launch.goLive && !liveStarted;
 
   async function fetchToken() {
+    const profile = useAuthStore.getState().profile;
     if (!username || !profile) return;
     // Marca el live antes del token para que el host se reconozca por uid/username.
     if (isOwnRoom) {
@@ -165,14 +178,24 @@ export function LiveRoom() {
       setLiveStarted(true);
       if (typeof launch.isPrivate === 'boolean') setIsPrivate(launch.isPrivate);
     }
-    const handle = encodeURIComponent(profile.handle);
+    const tokenHandle = encodeURIComponent(profile.handle);
     const data = await api<{
       token: string;
       serverUrl: string;
       canPublish: boolean;
       isHost?: boolean;
-    }>(`/api/stream/token/${encodeURIComponent(username)}?handle=${handle}`);
-    setSession(data);
+    }>(`/api/stream/token/${encodeURIComponent(username)}?handle=${tokenHandle}`);
+    setSession((current) => {
+      if (
+        current &&
+        current.token === data.token &&
+        current.canPublish === data.canPublish &&
+        current.serverUrl === data.serverUrl
+      ) {
+        return current;
+      }
+      return data;
+    });
     setGateLock(null);
     setError(null);
     if (!data.canPublish && isOwnRoom) {
@@ -181,7 +204,7 @@ export function LiveRoom() {
   }
 
   useEffect(() => {
-    if (!username || !profile || needsLaunchConfirm) return;
+    if (!username || !handle || needsLaunchConfirm) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -191,7 +214,7 @@ export function LiveRoom() {
           isHost: boolean;
           lock: LockInfo | null;
         }>(
-          `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(profile.handle)}`,
+          `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle)}`,
         );
         if (cancelled) return;
         if (lockState.locked && !lockState.unlocked && !lockState.isHost && lockState.lock) {
@@ -214,10 +237,10 @@ export function LiveRoom() {
     return () => {
       cancelled = true;
     };
-  }, [profile, username, needsLaunchConfirm]);
+  }, [firebaseUid, username, needsLaunchConfirm, handle]);
 
   useEffect(() => {
-    if (!gateLock || !username || !profile) return;
+    if (!gateLock || !username || !handle) return;
     let cancelled = false;
     const timer = window.setInterval(() => {
       void api<{
@@ -226,7 +249,7 @@ export function LiveRoom() {
         isHost: boolean;
         lock: LockInfo | null;
       }>(
-        `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(profile.handle)}`,
+        `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle)}`,
       )
         .then((lockState) => {
           if (cancelled) return;
@@ -241,7 +264,7 @@ export function LiveRoom() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [gateLock, username, profile?.handle]);
+  }, [gateLock, username, handle]);
 
   async function unlockAndEnter() {
     if (!username) return;
@@ -273,9 +296,9 @@ export function LiveRoom() {
 
   // live/start ya se hace en fetchToken para el anfitrión
   useEffect(() => {
-    if (!username || !profile || !session?.isHost || !launch.goLive || liveStarted) return;
+    if (!username || !firebaseUid || !session?.isHost || !launch.goLive || liveStarted) return;
     setLiveStarted(true);
-  }, [username, profile, session?.isHost, launch.goLive, liveStarted]);
+  }, [username, firebaseUid, session?.isHost, launch.goLive, liveStarted]);
 
   if (!ready) {
     return (
@@ -284,7 +307,7 @@ export function LiveRoom() {
       </div>
     );
   }
-  if (!profile) {
+  if (!firebaseUid || !handle) {
     return <Navigate to="/login" replace />;
   }
   if (!username) {
@@ -360,19 +383,13 @@ export function LiveRoom() {
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden bg-zinc-950 p-0 sm:p-3">
       <LiveKitRoom
-        key={`${session.token}-${session.canPublish ? 'pub' : 'sub'}`}
+        key={`${username}-${session.canPublish ? 'pub' : 'sub'}`}
+        room={livekitRoom}
         token={session.token}
         serverUrl={session.serverUrl}
         connect
         video={false}
         audio={false}
-        options={{
-          adaptiveStream: true,
-          dynacast: true,
-          reconnectPolicy: {
-            nextRetryDelayInMs: (context) => Math.min(1000 * 2 ** context.retryCount, 10000),
-          },
-        }}
         className="relative flex h-full w-full min-h-0 flex-col lg:flex-row lg:gap-3"
       >
         <RoomAudioRenderer />
@@ -387,7 +404,6 @@ export function LiveRoom() {
         <ChatPanel
           roomName={username}
           canPublish={session.canPublish}
-          isHost={Boolean(session.isHost ?? (session.canPublish && isOwnRoom))}
           onAcceptInvite={() => void fetchToken()}
         />
       </LiveKitRoom>
@@ -411,7 +427,8 @@ function CreatorStage({
   goalLabel: string;
 }) {
   const room = useRoomContext();
-  const profile = useAuthStore((state) => state.profile);
+  const handle = useAuthStore((state) => state.profile?.handle);
+  const displayName = useAuthStore((state) => state.profile?.displayName);
   const { viewers } = useViewerCount();
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
   const [faceGift, setFaceGift] = useState<ActiveFaceGift | null>(null);
@@ -455,7 +472,7 @@ function CreatorStage({
   useEffect(() => {
     if (!isHost) return;
     void api<{ lock: LockInfo | null }>(
-      `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(profile?.handle || username)}`,
+      `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
     )
       .then((data) => setLock(data.lock))
       .catch(() => undefined);
@@ -574,8 +591,8 @@ function CreatorStage({
         method: 'POST',
         body: JSON.stringify(
           giftId
-            ? { roomName: username, giftId, handle: profile?.handle }
-            : { roomName: username, clear: true, handle: profile?.handle },
+            ? { roomName: username, giftId, handle }
+            : { roomName: username, clear: true, handle },
         ),
       });
       const next = result.locked ? result.lock : null;
@@ -626,12 +643,12 @@ function CreatorStage({
     try {
       await api('/api/stream/invite', {
         method: 'POST',
-        body: JSON.stringify({ roomName: username, guestHandle, handle: profile?.handle }),
+        body: JSON.stringify({ roomName: username, guestHandle, handle }),
       });
       await publishRoomData(room, {
         type: 'invite',
         guestHandle,
-        hostName: profile?.displayName || profile?.handle || username,
+        hostName: displayName || handle || username,
       });
       setInviteNote(`Invitación enviada a @${guestHandle}`);
       setInviteHandle('');
@@ -952,31 +969,47 @@ function CreatorVideo({
   const remotes = cameras.filter((track) => !track.participant.isLocal);
   const main = local || remotes[0] || null;
   const guests = local ? remotes : remotes.slice(1);
+  const lastMainRef = useRef<TrackReference | null>(null);
+  if (main) lastMainRef.current = main;
+  const shown = main ?? lastMainRef.current;
 
   useEffect(() => {
     if (!canPublish) return;
     let cancelled = false;
 
+    async function attachCameraRef() {
+      const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
+        (item) => item.source === Track.Source.Camera,
+      );
+      if (pub?.track && 'mediaStreamTrack' in pub.track) {
+        cameraTrackRef.current = pub.track as LocalVideoTrack;
+      }
+    }
+
     async function publishMedia() {
-      setCamBusy(true);
-      setCamError(null);
       try {
         await waitConnected(room);
         if (cancelled) return;
 
-        // Publicación explícita (más estable que solo video={true} del LiveKitRoom).
+        const alreadyOn = room.localParticipant.isCameraEnabled;
+        // Si la cámara ya está al aire, no la vuelvas a pedir: al enviar un regalo
+        // el saldo cambia y un republish dejaba la transmisión en negro.
+        if (alreadyOn && retry === 0) {
+          if (!room.localParticipant.isMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(true);
+          }
+          await attachCameraRef();
+          return;
+        }
+
+        setCamBusy(true);
+        setCamError(null);
         await room.localParticipant.setCameraEnabled(true, {
           facingMode: facing,
           resolution: { width: 720, height: 1280, frameRate: 24 },
         });
         await room.localParticipant.setMicrophoneEnabled(true);
-
-        const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
-          (item) => item.source === Track.Source.Camera,
-        );
-        if (pub?.track && 'mediaStreamTrack' in pub.track) {
-          cameraTrackRef.current = pub.track as LocalVideoTrack;
-        }
+        await attachCameraRef();
         if (!cancelled) setCamError(null);
       } catch (err) {
         console.error('[live] publish camera', err);
@@ -997,9 +1030,9 @@ function CreatorVideo({
     return () => {
       cancelled = true;
     };
-  }, [canPublish, room, facing, retry, cameraTrackRef]);
+  }, [canPublish, facing, retry, room, cameraTrackRef]);
 
-  if (!main) {
+  if (!shown) {
     return (
       <div className="grid h-full w-full place-items-center gap-3 px-6 text-center text-sm text-zinc-400">
         <p>
@@ -1024,7 +1057,7 @@ function CreatorVideo({
 
   return (
     <>
-      <VideoTrack trackRef={main} className="absolute inset-0 h-full w-full object-cover" />
+      <VideoTrack trackRef={shown} className="absolute inset-0 h-full w-full object-cover" />
       {guests.map((guest) => (
         <div
           key={guest.participant.identity}
@@ -1051,51 +1084,91 @@ function CreatorVideo({
   );
 }
 
+const liveChatCache = new Map<string, ChatMessage[]>();
+
 function ChatPanel({
   roomName,
   canPublish,
-  isHost,
   onAcceptInvite,
 }: {
   roomName: string;
   canPublish: boolean;
-  isHost: boolean;
   onAcceptInvite?: () => void;
 }) {
   const room = useRoomContext();
   const profile = useAuthStore((state) => state.profile);
   const coins = profile?.coinsBalance ?? 0;
   const setCoins = useAuthStore((state) => state.setCoins);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => liveChatCache.get(roomName) ?? []);
   const [text, setText] = useState('');
   const [openGifts, setOpenGifts] = useState(false);
   const [giftError, setGiftError] = useState<string | null>(null);
   const [sendingGift, setSendingGift] = useState<string | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [rechargeNeeded, setRechargeNeeded] = useState<number | null>(null);
   const [inviteBanner, setInviteBanner] = useState<string | null>(null);
   const [pinnedBottom, setPinnedBottom] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
-  const seen = useRef(new Set<string>());
+  const seen = useRef(new Set<string>((liveChatCache.get(roomName) ?? []).map((msg) => msg.id)));
+
+  function rememberMessages(next: ChatMessage[]) {
+    liveChatCache.set(roomName, next);
+    return next;
+  }
 
   function pushMessage(message: ChatMessage) {
     if (seen.current.has(message.id)) return;
     seen.current.add(message.id);
-    setMessages((current) => [...current.slice(-400), message]);
+    setMessages((current) => rememberMessages([...current.slice(-400), message]));
+  }
+
+  function persistChatCopy(message: ChatMessage) {
+    void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
+      method: 'POST',
+      body: JSON.stringify(message),
+    }).catch(() => undefined);
   }
 
   useEffect(() => {
-    seen.current = new Set();
-    setMessages([]);
-    return listenLiveChat(roomName, (list) => {
-      for (const msg of list) {
-        pushMessage({
-          id: msg.id,
-          author: msg.author,
-          text: msg.text,
-          gift: msg.gift || undefined,
-        });
-      }
+    const unsub = listenLiveChat(roomName, (list) => {
+      const mapped = list.map((msg) => ({
+        id: msg.id,
+        author: msg.author,
+        text: msg.text,
+        gift: msg.gift || undefined,
+      }));
+      setMessages((current) => {
+        if (!mapped.length && current.length) return current;
+        seen.current = new Set(mapped.map((msg) => msg.id));
+        return rememberMessages(mapped);
+      });
     });
+    void api<{
+      messages?: Array<{
+        id: string;
+        author: string;
+        text: string;
+        gift?: ChatMessage['gift'];
+      }>;
+    }>(`/api/stream/chat/${encodeURIComponent(roomName)}`)
+      .then((data) => {
+        const incoming = data.messages || [];
+        if (!incoming.length) return;
+        setMessages((current) => {
+          if (current.length) return current;
+          incoming.forEach((msg) => seen.current.add(msg.id));
+          return rememberMessages(
+            incoming.map((msg) => ({
+              id: msg.id,
+              author: msg.author,
+              text: msg.text,
+              gift: msg.gift,
+            })),
+          );
+        });
+      })
+      .catch(() => undefined);
+    return unsub;
   }, [roomName]);
 
   useEffect(() => {
@@ -1166,6 +1239,7 @@ function ChatPanel({
     };
     pushMessage(message);
     setText('');
+    persistChatCopy(message);
     void publishLiveChatMessage(roomName, {
       clientId: message.id,
       authorUid: profile.firebaseUid,
@@ -1189,10 +1263,13 @@ function ChatPanel({
     }
     if (coins < catalog.coins) {
       setGiftError('Saldo insuficiente. Recarga coins para continuar.');
+      setRechargeNeeded(catalog.coins);
+      setOpenGifts(true);
       return;
     }
 
     setGiftError(null);
+    setRechargeNeeded(null);
     setSendingGift(giftId);
     setOpenGifts(false);
     const previousCoins = coins;
@@ -1208,6 +1285,7 @@ function ChatPanel({
     };
 
     pushMessage(chatGift);
+    persistChatCopy(chatGift);
     window.dispatchEvent(
       new CustomEvent('liveboom:gift', {
         detail: { id: clientId, giftId: catalog.id, senderName },
@@ -1253,14 +1331,12 @@ function ChatPanel({
         body: JSON.stringify({ giftId: catalog.id, roomName, clientId }),
       });
       setCoins(result.senderBalance);
-      void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
-        method: 'POST',
-        body: JSON.stringify(chatGift),
-      }).catch(() => undefined);
     } catch (err) {
       setCoins(previousCoins);
-      setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
+      const message = err instanceof Error ? err.message : 'No se pudo enviar el regalo';
+      setGiftError(message);
       setOpenGifts(true);
+      if (/insuficiente|saldo|402/i.test(message)) setRechargeNeeded(catalog.coins);
     } finally {
       setSendingGift(null);
     }
@@ -1279,11 +1355,6 @@ function ChatPanel({
           <h2 className={`text-sm font-bold ${canPublish ? 'text-white drop-shadow' : 'text-white'}`}>
             Chat en vivo
           </h2>
-          {canPublish && isHost ? (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300 drop-shadow">
-              Transparente
-            </span>
-          ) : null}
         </div>
         <p className={`text-[11px] ${canPublish ? 'text-zinc-200 drop-shadow' : 'text-zinc-400'}`}>
           Saldo: {coins.toLocaleString('es-CO')} coins
@@ -1356,14 +1427,18 @@ function ChatPanel({
       </div>
       <div className={`pointer-events-auto relative shrink-0 space-y-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] ${canPublish ? 'bg-gradient-to-t from-black/70 to-transparent' : 'border-t border-white/10'}`}>
         {openGifts ? (
-          <div className="absolute bottom-[4.75rem] left-2 right-2 z-50 max-h-[min(52dvh,22rem)] overflow-y-auto rounded-2xl border border-white/15 bg-zinc-950 p-3 shadow-[0_0_28px_rgba(255,0,85,0.25)] sm:left-3 sm:right-3">
+          <div className="absolute bottom-[4.75rem] left-2 right-2 z-50 max-h-[min(42dvh,18rem)] overflow-y-auto rounded-2xl border border-white/15 bg-zinc-950 p-3 shadow-[0_0_28px_rgba(255,0,85,0.25)] sm:left-3 sm:right-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
                 Caja de regalos
               </p>
               <button
                 type="button"
-                onClick={() => setOpenGifts(false)}
+                onClick={() => {
+                  setOpenGifts(false);
+                  setGiftError(null);
+                  setRechargeNeeded(null);
+                }}
                 className="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-white"
                 aria-label="Cerrar regalos"
               >
@@ -1374,28 +1449,28 @@ function ChatPanel({
               const group = LIVEBOOM_GIFTS.filter((g) => g.level === level);
               if (!group.length) return null;
               return (
-                <div key={level} className="mb-3">
-                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                <div key={level} className="mb-2">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
                     Nivel {level} · {GIFT_LEVEL_FX[level].label}
                   </p>
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="gift-row flex snap-x snap-mandatory gap-1 overflow-x-auto overflow-y-hidden pb-1">
                     {group.map((gift) => (
                       <button
                         key={gift.id}
                         type="button"
                         disabled={Boolean(sendingGift)}
                         onClick={() => void sendGift(gift.id)}
-                        className={`flex min-h-[4.5rem] flex-col items-center justify-center rounded-xl border px-1 py-2 text-center transition disabled:opacity-50 ${
+                        className={`flex w-[4.35rem] shrink-0 snap-start flex-col items-center justify-center rounded-lg border px-0.5 py-1.5 text-center transition disabled:opacity-50 ${
                           sendingGift === gift.id
                             ? 'border-cyan-400 bg-cyan-500/20'
                             : 'border-zinc-800 bg-zinc-900 hover:border-cyan-400 hover:bg-zinc-800'
                         }`}
                       >
-                        <span className="text-2xl leading-none">{gift.emoji}</span>
-                        <span className="mt-1 w-full truncate text-[10px] font-semibold text-white">
+                        <span className="text-xl leading-none">{gift.emoji}</span>
+                        <span className="mt-0.5 w-full truncate text-[8px] font-semibold text-white">
                           {gift.name}
                         </span>
-                        <span className="text-[10px] text-cyan-400">{gift.coins.toLocaleString('es-CO')}</span>
+                        <span className="text-[9px] text-cyan-400">{gift.coins.toLocaleString('es-CO')}</span>
                       </button>
                     ))}
                   </div>
@@ -1403,6 +1478,9 @@ function ChatPanel({
               );
             })}
             {giftError ? <p className="mt-2 text-xs text-fuchsia-400">{giftError}</p> : null}
+            {rechargeNeeded != null && coins < rechargeNeeded ? (
+              <RechargeButton onClick={() => setRechargeOpen(true)} className="mt-2 w-full text-sm" />
+            ) : null}
           </div>
         ) : null}
         {sendingGift ? (
@@ -1424,7 +1502,7 @@ function ChatPanel({
               if (event.key === 'Enter') void sendMessage();
             }}
             placeholder="Escribe un mensaje"
-            className="h-11 flex-1 rounded-xl bg-black/40 px-3 text-sm text-white outline-none ring-1 ring-white/10 backdrop-blur"
+            className="h-11 flex-1 rounded-xl bg-zinc-900 px-3 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-300"
           />
           <button
             type="button"
@@ -1435,9 +1513,6 @@ function ChatPanel({
             <Send size={16} />
           </button>
         </div>
-        {!canPublish ? (
-          <RechargeButton onClick={() => setRechargeOpen(true)} className="w-full" />
-        ) : null}
       </div>
       {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
     </aside>

@@ -6,6 +6,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  type DocumentData,
+  type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -88,39 +90,48 @@ export function listenLiveChat(
   roomName: string,
   onChange: (messages: LiveChatMessage[]) => void,
 ): Unsubscribe {
-  const q = query(
-    collection(db, 'liveRooms', roomKey(roomName), 'messages'),
-    orderBy('createdAtMs', 'asc'),
-    limit(400),
-  );
-  return onSnapshot(
+  const col = collection(db, 'liveRooms', roomKey(roomName), 'messages');
+
+  function emit(docs: QueryDocumentSnapshot<DocumentData>[]) {
+    const list = docs
+      .map((item) => {
+        const data = item.data() as Record<string, unknown>;
+        const giftRaw = data.gift && typeof data.gift === 'object' ? (data.gift as Record<string, unknown>) : null;
+        return {
+          id: String(data.clientId || item.id),
+          author: String(data.author || 'Liveboomer'),
+          authorUid: String(data.authorUid || ''),
+          text: String(data.text || ''),
+          gift: giftRaw
+            ? {
+                giftId: String(giftRaw.giftId || ''),
+                emoji: String(giftRaw.emoji || '🎁'),
+                name: String(giftRaw.name || 'Regalo'),
+              }
+            : null,
+          createdAtMs: Number(data.createdAtMs || 0),
+        };
+      })
+      .sort((a, b) => a.createdAtMs - b.createdAtMs)
+      .slice(-400);
+    onChange(list);
+  }
+
+  const q = query(col, orderBy('createdAtMs', 'desc'), limit(400));
+  let fallback: Unsubscribe | null = null;
+  const primary = onSnapshot(
     q,
-    (snap) => {
-      onChange(
-        snap.docs.map((item) => {
-          const data = item.data() as Record<string, unknown>;
-          const giftRaw = data.gift && typeof data.gift === 'object' ? (data.gift as Record<string, unknown>) : null;
-          return {
-            id: String(data.clientId || item.id),
-            author: String(data.author || 'Liveboomer'),
-            authorUid: String(data.authorUid || ''),
-            text: String(data.text || ''),
-            gift: giftRaw
-              ? {
-                  giftId: String(giftRaw.giftId || ''),
-                  emoji: String(giftRaw.emoji || '🎁'),
-                  name: String(giftRaw.name || 'Regalo'),
-                }
-              : null,
-            createdAtMs: Number(data.createdAtMs || 0),
-          };
-        }),
-      );
-    },
-    (err) => {
-      console.error('No se pudo cargar el historial del chat', err);
+    (snap) => emit(snap.docs),
+    () => {
+      fallback = onSnapshot(col, (snap) => emit(snap.docs), (err) => {
+        console.error('No se pudo cargar el historial del chat', err);
+      });
     },
   );
+  return () => {
+    primary();
+    fallback?.();
+  };
 }
 
 export async function publishLiveChatMessage(
