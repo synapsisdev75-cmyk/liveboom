@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   writeBatch,
@@ -39,6 +40,9 @@ export async function markLiveRoomActive(roomName: string, hostUid: string) {
       hostUid,
       startedAtMs: Date.now(),
       endedAtMs: null,
+      coinsEarned: 0,
+      topGifters: [],
+      gifters: {},
       updatedAt: serverTimestamp(),
     },
     { merge: true },
@@ -74,6 +78,122 @@ export function listenLiveRoomStatus(
     },
     () => onChange('unknown'),
   );
+}
+
+export type LiveActivityEntry = {
+  id: string;
+  username: string;
+  displayName: string;
+  title: string;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  viewers: number;
+  coinsEarned: number;
+  goalCoins: number;
+  goalLabel: string;
+  topGifters: { uid?: string; name: string; coins: number }[];
+};
+
+/** Guarda el resumen del live en el historial del anfitrión (Firestore). */
+export async function archiveLiveActivity(
+  hostUid: string,
+  entry: Omit<LiveActivityEntry, 'id'>,
+) {
+  const uid = String(hostUid || '').trim();
+  if (!uid) return;
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await setDoc(doc(db, 'users', uid, 'liveHistory', id), {
+    ...entry,
+    endedAtMs: Date.now(),
+    createdAt: serverTimestamp(),
+  });
+}
+
+export function listenLiveActivity(
+  hostUid: string,
+  onChange: (lives: LiveActivityEntry[]) => void,
+): Unsubscribe {
+  const uid = String(hostUid || '').trim();
+  if (!uid) {
+    onChange([]);
+    return () => undefined;
+  }
+  const col = collection(db, 'users', uid, 'liveHistory');
+  const q = query(col, orderBy('endedAtMs', 'desc'), limit(40));
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        snap.docs.map((item) => {
+          const data = item.data() as Record<string, unknown>;
+          return {
+            id: item.id,
+            username: String(data.username || ''),
+            displayName: String(data.displayName || data.username || ''),
+            title: String(data.title || 'Live'),
+            startedAt: String(data.startedAt || ''),
+            endedAt: String(data.endedAt || ''),
+            durationMs: Number(data.durationMs || 0),
+            viewers: Number(data.viewers || 0),
+            coinsEarned: Number(data.coinsEarned || 0),
+            goalCoins: Number(data.goalCoins || 0),
+            goalLabel: String(data.goalLabel || ''),
+            topGifters: Array.isArray(data.topGifters)
+              ? (data.topGifters as LiveActivityEntry['topGifters'])
+              : [],
+          };
+        }),
+      );
+    },
+    (err) => {
+      console.error('No se pudo cargar el historial de lives', err);
+      onChange([]);
+    },
+  );
+}
+
+/** Acumula coins ganados y top gifters en la sala (durable). */
+export async function recordLiveGiftEarnings(
+  roomName: string,
+  gift: { coins: number; senderUid: string; senderName: string },
+) {
+  const roomRef = doc(db, 'liveRooms', roomKey(roomName));
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(roomRef);
+    const data = (snap.exists() ? snap.data() : {}) as Record<string, unknown>;
+    const giftersRaw =
+      data.gifters && typeof data.gifters === 'object'
+        ? (data.gifters as Record<string, { uid?: string; name?: string; coins?: number }>)
+        : {};
+    const prev = Number(giftersRaw[gift.senderUid]?.coins || 0);
+    const gifters = {
+      ...giftersRaw,
+      [gift.senderUid]: {
+        uid: gift.senderUid,
+        name: gift.senderName,
+        coins: prev + gift.coins,
+      },
+    };
+    const topGifters = Object.values(gifters)
+      .map((item) => ({
+        uid: String(item.uid || ''),
+        name: String(item.name || 'Liveboomer'),
+        coins: Number(item.coins || 0),
+      }))
+      .sort((a, b) => b.coins - a.coins)
+      .slice(0, 5);
+    tx.set(
+      roomRef,
+      {
+        coinsEarned: Number(data.coinsEarned || 0) + gift.coins,
+        gifters,
+        topGifters,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
 }
 
 /** Borra mensajes y regalos de la sala para que una transmisión nueva arranque con chat vacío. */
@@ -144,6 +264,11 @@ export async function publishLiveGift(
     coins: gift.coins,
     createdAt: serverTimestamp(),
   });
+  void recordLiveGiftEarnings(roomName, {
+    coins: gift.coins,
+    senderUid: gift.senderUid,
+    senderName: gift.senderName,
+  }).catch((error) => console.error('[gift] room-stats', error));
 }
 
 export type LiveChatMessage = {

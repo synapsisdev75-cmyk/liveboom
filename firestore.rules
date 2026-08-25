@@ -60,6 +60,14 @@ service cloud.firestore {
         allow read: if signedIn();
         allow write: if isSelf(userId);
       }
+
+      match /liveHistory/{entryId} {
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId)
+          && request.resource.data.username is string
+          && request.resource.data.coinsEarned is number;
+        allow delete: if isSelf(userId);
+      }
     }
 
     match /usernames/{username} {

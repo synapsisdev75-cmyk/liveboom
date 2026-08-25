@@ -45,7 +45,9 @@ import {
   markLiveRoomActive,
   markLiveRoomEnded,
   listenLiveRoomStatus,
+  archiveLiveActivity,
 } from '../lib/liveGiftsFirestore';
+import { addFirestoreCoins, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
 import { LIVEBOOM_GIFTS, GIFT_LEVEL_FX, findLiveGift } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
@@ -87,6 +89,7 @@ type LiveSessionStats = {
 type ChatMessage = {
   id: string;
   author: string;
+  authorUid?: string;
   text: string;
   gift?: { giftId: string; emoji: string; name: string };
 };
@@ -479,7 +482,11 @@ function CreatorStage({
   const room = useRoomContext();
   const handle = useAuthStore((state) => state.profile?.handle);
   const displayName = useAuthStore((state) => state.profile?.displayName);
+  const firebaseUid = useAuthStore((state) => state.profile?.firebaseUid);
+  const setCoins = useAuthStore((state) => state.setCoins);
   const { viewers } = useViewerCount();
+  const liveStartedAt = useRef(Date.now());
+  const creditedGifts = useRef(new Set<string>());
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
   const [faceGift, setFaceGift] = useState<ActiveFaceGift | null>(null);
   const stageVideoRef = useRef<HTMLDivElement>(null);
@@ -763,6 +770,56 @@ function CreatorStage({
     }
   }, [canPublish, flipping, facing, room]);
 
+  useEffect(() => {
+    liveStartedAt.current = Date.now();
+  }, [username]);
+
+  useEffect(() => {
+    if (!isHost || !firebaseUid) return;
+    return listenLiveGifts(username, (gift) => {
+      if (!gift.coins || creditedGifts.current.has(gift.id)) return;
+      if (gift.senderUid && gift.senderUid === firebaseUid) return;
+      creditedGifts.current.add(gift.id);
+      setLiveStats((current) => {
+        const base =
+          current ||
+          ({
+            username,
+            startedAt: new Date(liveStartedAt.current).toISOString(),
+            goalCoins,
+            goalLabel,
+            coinsEarned: 0,
+            topGifters: [],
+          } satisfies LiveSessionStats);
+        const gifters = new Map(
+          (base.topGifters || []).map((item) => [item.uid || item.name, { ...item }]),
+        );
+        const key = gift.senderUid || gift.senderName;
+        const prev = gifters.get(key);
+        gifters.set(key, {
+          uid: gift.senderUid || prev?.uid || '',
+          name: gift.senderName || prev?.name || 'Liveboomer',
+          coins: (prev?.coins || 0) + gift.coins,
+        });
+        return {
+          ...base,
+          coinsEarned: (base.coinsEarned || 0) + gift.coins,
+          topGifters: Array.from(gifters.values())
+            .sort((a, b) => b.coins - a.coins)
+            .slice(0, 5),
+        };
+      });
+      void addFirestoreCoins(firebaseUid, gift.coins)
+        .then((next) => {
+          if (typeof next === 'number') setCoins(next);
+        })
+        .catch(() => {
+          const current = useAuthStore.getState().profile?.coinsBalance ?? 0;
+          setCoins(current + gift.coins);
+        });
+    });
+  }, [isHost, firebaseUid, username, goalCoins, goalLabel, setCoins]);
+
   async function confirmLeave() {
     if (leaving) return;
     setLeaving(true);
@@ -772,6 +829,25 @@ function CreatorStage({
           type: 'live_ended',
           hostName: displayName || handle || username,
         }).catch(() => undefined);
+        if (firebaseUid) {
+          const endedAt = new Date().toISOString();
+          const startedAt = liveStats?.startedAt || new Date(liveStartedAt.current).toISOString();
+          await archiveLiveActivity(firebaseUid, {
+            username,
+            displayName: displayName || handle || username,
+            title: liveStats?.goalLabel
+              ? `Live · ${liveStats.goalLabel}`
+              : `Live de ${displayName || handle || username}`,
+            startedAt,
+            endedAt,
+            durationMs: Math.max(0, Date.now() - new Date(startedAt).getTime()),
+            viewers,
+            coinsEarned: liveStats?.coinsEarned || 0,
+            goalCoins: liveStats?.goalCoins || goalCoins || 0,
+            goalLabel: liveStats?.goalLabel || goalLabel || '',
+            topGifters: liveStats?.topGifters || [],
+          }).catch((error) => console.error('[live] archive', error));
+        }
         await new Promise((resolve) => window.setTimeout(resolve, 250));
       }
       await onLeaveLive?.();
@@ -1369,6 +1445,7 @@ function ChatPanel({
       const mapped = list.map((msg) => ({
         id: msg.id,
         author: msg.author,
+        authorUid: msg.authorUid || undefined,
         text: msg.text,
         gift: msg.gift || undefined,
       }));
@@ -1470,6 +1547,7 @@ function ChatPanel({
     const message: ChatMessage = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       author,
+      authorUid: profile.firebaseUid,
       text: value,
     };
     pushMessage(message);
@@ -1515,6 +1593,7 @@ function ChatPanel({
     const chatGift = {
       id: `gift-${clientId}`,
       author: senderName,
+      authorUid: profile.firebaseUid,
       text: `envió ${catalog.name}`,
       gift: { giftId: catalog.id, emoji: catalog.emoji, name: catalog.name },
     };
@@ -1566,6 +1645,7 @@ function ChatPanel({
         body: JSON.stringify({ giftId: catalog.id, roomName, clientId }),
       });
       setCoins(result.senderBalance);
+      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
     } catch (err) {
       setCoins(previousCoins);
       const message = err instanceof Error ? err.message : 'No se pudo enviar el regalo';
@@ -1634,14 +1714,32 @@ function ChatPanel({
               >
                 <GiftIcon giftId={message.gift.giftId} size={16} />
                 <p className="text-sm text-white drop-shadow">
-                  <span className="font-semibold text-cyan-300">{message.author}</span>
+                  {message.authorUid ? (
+                    <Link
+                      to={profileHref(message.author, message.authorUid)}
+                      className="font-semibold text-cyan-300 hover:underline"
+                    >
+                      {message.author}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-cyan-300">{message.author}</span>
+                  )}
                   {' envió '}
                   {message.gift.name}
                 </p>
               </div>
             ) : (
               <p key={message.id} className="text-sm text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
-                <span className="font-medium text-cyan-300">{message.author}: </span>
+                {message.authorUid ? (
+                  <Link
+                    to={profileHref(message.author, message.authorUid)}
+                    className="font-medium text-cyan-300 hover:underline"
+                  >
+                    {message.author}:{' '}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-cyan-300">{message.author}: </span>
+                )}
                 {message.text}
               </p>
             ),

@@ -93,6 +93,28 @@ export async function setFirestoreCoins(uid: string, coins: number) {
   });
 }
 
+/** Suma coins al saldo Firestore (ganancias del host, etc.). */
+export async function addFirestoreCoins(uid: string, delta: number) {
+  const id = String(uid || '').trim();
+  const amount = Math.floor(Number(delta) || 0);
+  if (!id || amount === 0) return null;
+  return runTransaction(db, async (tx) => {
+    const ref = doc(db, 'users', id);
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? Number(snap.data()?.coinsBalance ?? 0) : 0;
+    const next = Math.max(0, current + amount);
+    tx.set(
+      ref,
+      {
+        coinsBalance: next,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return next;
+  });
+}
+
 export async function fetchPublicUserByUid(uid: string): Promise<PublicFsUser | null> {
   const id = String(uid || '').trim();
   if (!id) return null;

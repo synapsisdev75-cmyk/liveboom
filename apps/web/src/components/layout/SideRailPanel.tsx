@@ -213,16 +213,28 @@ function DiscoveryRail() {
         {friendsOnline.length > 0 ? (
           <ul className="mt-3 space-y-2">
             {friendsOnline.map((stream) => (
-              <li key={stream.username}>
+              <li key={stream.username} className="flex items-center gap-2">
                 <Link
-                  to={`/stream/${encodeURIComponent(stream.username)}`}
-                  className="flex items-center gap-2 rounded-lg bg-fuchsia-500/10 px-2 py-1.5 text-xs text-fuchsia-200 hover:bg-fuchsia-500/20"
+                  to={`/u/${encodeURIComponent(stream.username)}`}
+                  className="shrink-0"
+                  title={`Perfil de @${stream.username}`}
                 >
                   {stream.avatarUrl ? (
-                    <img src={stream.avatarUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
+                    <img
+                      src={stream.avatarUrl}
+                      alt=""
+                      className="h-7 w-7 rounded-full object-cover ring-1 ring-white/10 hover:ring-cyan-400"
+                    />
                   ) : (
-                    <span className="grid h-6 w-6 place-items-center rounded-full bg-zinc-800 text-[10px]">@</span>
+                    <span className="grid h-7 w-7 place-items-center rounded-full bg-zinc-800 text-[10px] hover:ring-1 hover:ring-cyan-400">
+                      @
+                    </span>
                   )}
+                </Link>
+                <Link
+                  to={`/stream/${encodeURIComponent(stream.username)}`}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-fuchsia-500/10 px-2 py-1.5 text-xs text-fuchsia-200 hover:bg-fuchsia-500/20"
+                >
                   <span className="min-w-0 truncate font-semibold">
                     {stream.displayName || stream.username} · EN VIVO
                   </span>

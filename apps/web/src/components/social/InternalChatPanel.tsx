@@ -357,24 +357,31 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
             }`}
           >
             {people.map((friend) => (
-              <li key={friend.uid}>
+              <li key={friend.uid} className="flex items-center gap-1">
+                <Link
+                  to={profileHref(friend.username, friend.uid)}
+                  className="shrink-0"
+                  title={`Ver perfil de @${friend.username}`}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {friend.avatarUrl ? (
+                    <img src={friend.avatarUrl} alt="" className="h-7 w-7 rounded-full object-cover ring-1 ring-white/10 hover:ring-cyan-400" />
+                  ) : (
+                    <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-800 text-[10px] font-bold text-cyan-300 hover:ring-1 hover:ring-cyan-400">
+                      {friend.username.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                </Link>
                 <button
                   type="button"
                   onClick={() => setActiveUid(friend.uid)}
-                  className={`flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs transition ${
+                  className={`min-w-0 flex-1 rounded-xl px-2 py-2 text-left text-xs transition ${
                     activeUid === friend.uid
                       ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30'
                       : 'text-zinc-300 hover:bg-zinc-800'
                   }`}
                 >
-                  {friend.avatarUrl ? (
-                    <img src={friend.avatarUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
-                  ) : (
-                    <div className="grid h-7 w-7 place-items-center rounded-full bg-zinc-800 text-[10px] font-bold text-cyan-300">
-                      {friend.username.slice(0, 1).toUpperCase()}
-                    </div>
-                  )}
-                  <span className="min-w-0 truncate font-semibold">@{friend.username}</span>
+                  <span className="block truncate font-semibold">@{friend.username}</span>
                 </button>
               </li>
             ))}

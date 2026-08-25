@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, Gift, Radio } from 'lucide-react';
 import { apiPublic } from '../../lib/api';
+import { listenLiveActivity, type LiveActivityEntry } from '../../lib/liveGiftsFirestore';
+import { profileHref } from '../../lib/profileFirestore';
+import { useAuthStore } from '../../store/authStore';
 
 export type LiveActivity = {
+  id?: string;
   username: string;
   displayName: string;
   title: string;
@@ -38,6 +42,23 @@ function formatDuration(ms?: number) {
   return `${s}s`;
 }
 
+function mapEntry(entry: LiveActivityEntry): LiveActivity {
+  return {
+    id: entry.id,
+    username: entry.username,
+    displayName: entry.displayName,
+    title: entry.title,
+    startedAt: entry.startedAt,
+    endedAt: entry.endedAt,
+    durationMs: entry.durationMs,
+    viewers: entry.viewers,
+    coinsEarned: entry.coinsEarned,
+    goalCoins: entry.goalCoins,
+    goalLabel: entry.goalLabel,
+    topGifters: entry.topGifters,
+  };
+}
+
 export function ActivityHistory({
   username,
   compact = false,
@@ -49,11 +70,20 @@ export function ActivityHistory({
   limit?: number;
   showAllLink?: boolean;
 }) {
+  const profile = useAuthStore((state) => state.profile);
   const [lives, setLives] = useState<LiveActivity[]>([]);
 
   useEffect(() => {
     if (!username) return;
     let cancelled = false;
+
+    // Historial durable en Firestore (cuenta propia).
+    if (profile?.firebaseUid && profile.handle.toLowerCase() === username.toLowerCase()) {
+      return listenLiveActivity(profile.firebaseUid, (list) => {
+        if (!cancelled) setLives(list.map(mapEntry));
+      });
+    }
+
     void apiPublic<{ lives: LiveActivity[] }>(
       `/api/stream/history?username=${encodeURIComponent(username)}`,
     )
@@ -66,7 +96,7 @@ export function ActivityHistory({
     return () => {
       cancelled = true;
     };
-  }, [username]);
+  }, [username, profile?.firebaseUid, profile?.handle]);
 
   if (compact) {
     if (lives.length === 0) {
@@ -75,14 +105,25 @@ export function ActivityHistory({
     return (
       <ul className="mt-3 space-y-2">
         {lives.slice(0, limit).map((live) => (
-          <li key={`${live.username}-${live.startedAt}`} className="text-xs text-zinc-400">
+          <li key={live.id || `${live.username}-${live.startedAt}`} className="text-xs text-zinc-400">
             <p className="font-semibold text-zinc-200">{live.title}</p>
             <p>
               {formatDuration(live.durationMs)} · {(live.coinsEarned || 0).toLocaleString('es-CO')} coins
             </p>
             {live.topGifters && live.topGifters.length > 0 ? (
               <p className="truncate text-[10px] text-cyan-400">
-                Top: {live.topGifters[0]?.name} ({live.topGifters[0]?.coins})
+                Top:{' '}
+                {live.topGifters[0]?.uid ? (
+                  <Link
+                    to={profileHref(live.topGifters[0].name, live.topGifters[0].uid)}
+                    className="hover:underline"
+                  >
+                    {live.topGifters[0]?.name}
+                  </Link>
+                ) : (
+                  live.topGifters[0]?.name
+                )}{' '}
+                ({live.topGifters[0]?.coins})
               </p>
             ) : null}
           </li>
@@ -110,7 +151,7 @@ export function ActivityHistory({
         <ul className="space-y-3">
           {lives.slice(0, limit).map((live) => (
             <li
-              key={`${live.username}-${live.startedAt}`}
+              key={live.id || `${live.username}-${live.startedAt}`}
               className="rounded-xl border border-white/10 bg-zinc-950/70 p-3"
             >
               <p className="font-semibold text-white">{live.title}</p>
@@ -133,10 +174,19 @@ export function ActivityHistory({
                   <Gift size={12} className="mt-0.5 shrink-0" />
                   <span>
                     Mejor enviaron:{' '}
-                    {live.topGifters
-                      .slice(0, 3)
-                      .map((item) => `${item.name} (${item.coins})`)
-                      .join(' · ')}
+                    {live.topGifters.slice(0, 3).map((item, index) => (
+                      <span key={`${item.uid || item.name}-${index}`}>
+                        {index > 0 ? ' · ' : null}
+                        {item.uid ? (
+                          <Link to={profileHref(item.name, item.uid)} className="hover:underline">
+                            {item.name}
+                          </Link>
+                        ) : (
+                          item.name
+                        )}{' '}
+                        ({item.coins})
+                      </span>
+                    ))}
                   </span>
                 </p>
               ) : (
