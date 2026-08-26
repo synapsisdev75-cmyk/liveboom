@@ -13,6 +13,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
@@ -48,6 +49,10 @@ export type ChatMessage = {
   mediaUrl?: string | null;
   mediaType?: 'image' | 'audio' | 'file' | null;
   linkUrl?: string | null;
+  /** sent = enviado, delivered = entregado, read = leído */
+  status?: 'sent' | 'delivered' | 'read';
+  editedAt?: string | null;
+  deleted?: boolean;
 };
 
 export type PrivateCall = {
@@ -523,19 +528,83 @@ export function listenMessages(
     onChange(
       snap.docs.map((item) => {
         const data = item.data();
+        const deleted = Boolean(data.deleted);
         return {
           id: item.id,
-          text: String(data.text || ''),
+          text: deleted ? '' : String(data.text || ''),
           fromUid: String(data.fromUid || ''),
           mine: data.fromUid === viewerUid,
           createdAt: asIso(data.createdAt),
-          mediaUrl: (data.mediaUrl as string | null) ?? null,
-          mediaType: (data.mediaType as ChatMessage['mediaType']) ?? null,
-          linkUrl: (data.linkUrl as string | null) ?? null,
+          mediaUrl: deleted ? null : ((data.mediaUrl as string | null) ?? null),
+          mediaType: deleted ? null : ((data.mediaType as ChatMessage['mediaType']) ?? null),
+          linkUrl: deleted ? null : ((data.linkUrl as string | null) ?? null),
+          status: (data.status as ChatMessage['status']) || 'sent',
+          editedAt: data.editedAt ? asIso(data.editedAt) : null,
+          deleted,
         };
       }),
     );
   });
+}
+
+export async function editChatMessage(chatId: string, messageId: string, text: string) {
+  const body = text.trim().slice(0, 2000);
+  if (!body) throw new Error('El mensaje no puede quedar vacío');
+  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
+    text: body,
+    editedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteChatMessage(chatId: string, messageId: string) {
+  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
+    deleted: true,
+    text: 'Mensaje eliminado',
+    mediaUrl: null,
+    mediaType: null,
+    linkUrl: null,
+    editedAt: serverTimestamp(),
+  });
+}
+
+export async function markMessagesDelivered(chatId: string, _viewerUid: string, messages: ChatMessage[]) {
+  const pending = messages.filter(
+    (item) => !item.mine && !item.deleted && item.status === 'sent',
+  );
+  if (pending.length === 0) return;
+  const batch = writeBatch(db);
+  for (const item of pending.slice(-40)) {
+    batch.update(doc(db, 'chats', chatId, 'messages', item.id), { status: 'delivered' });
+  }
+  await batch.commit().catch(() => undefined);
+}
+
+export async function markMessagesRead(chatId: string, _viewerUid: string, messages: ChatMessage[]) {
+  const pending = messages.filter(
+    (item) => !item.mine && !item.deleted && item.status !== 'read',
+  );
+  if (pending.length === 0) return;
+  const batch = writeBatch(db);
+  for (const item of pending.slice(-40)) {
+    batch.update(doc(db, 'chats', chatId, 'messages', item.id), { status: 'read' });
+  }
+  await batch.commit().catch(() => undefined);
+}
+
+export async function deleteConversation(chatId: string, uid: string) {
+  const ref = doc(db, 'chats', chatId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const participants = (snap.data().participants as string[]) || [];
+  if (!participants.includes(uid)) throw new Error('No puedes borrar esta conversación');
+  for (;;) {
+    const msgs = await getDocs(query(collection(db, 'chats', chatId, 'messages'), limit(400)));
+    if (msgs.empty) break;
+    const batch = writeBatch(db);
+    msgs.docs.forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+  }
+  await deleteDoc(ref);
 }
 
 async function assertAreFriends(meUid: string, friendUid: string) {
@@ -611,6 +680,8 @@ export async function sendChatMessage(
     text: body || (mediaUrl ? '📎 Adjunto' : linkUrl || '🔗'),
     fromUid: me.firebaseUid,
     createdAt: serverTimestamp(),
+    status: 'sent',
+    deleted: false,
   };
   if (mediaUrl) {
     payload.mediaUrl = mediaUrl;

@@ -283,7 +283,9 @@ export function PostCard({
           {canDelete ? (
             <button
               type="button"
-              onClick={onDelete}
+              onClick={() => {
+                if (window.confirm('¿Estás seguro de borrar esta publicación?')) onDelete?.();
+              }}
               className="text-[11px] text-zinc-500 hover:text-fuchsia-400"
             >
               Eliminar
@@ -319,7 +321,9 @@ export function PostCard({
         {canDelete && !canChangeVisibility ? (
           <button
             type="button"
-            onClick={onDelete}
+            onClick={() => {
+              if (window.confirm('¿Estás seguro de borrar esta publicación?')) onDelete?.();
+            }}
             className="text-[11px] text-zinc-500 hover:text-fuchsia-400"
           >
             Eliminar

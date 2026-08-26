@@ -5,8 +5,9 @@ import { ReelsRow } from '../feed/ReelsRow';
 import { ActivityHistory } from '../live/ActivityHistory';
 import { playFriendRequestAlert, playPostAlert } from '../../lib/alertSound';
 import { api } from '../../lib/api';
-import { listenIncomingRequests, listenRecentPosts } from '../../lib/socialFirestore';
+import { listenFriends, listenIncomingRequests, listenRecentPosts } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { FriendRequestsPanel } from '../social/FriendRequestsPanel';
 
 type LiveRecord = {
   username: string;
@@ -63,8 +64,16 @@ function DiscoveryRail() {
   const [friendsLives, setFriendsLives] = useState<LiveRecord[]>([]);
   const [friendsOnline, setFriendsOnline] = useState<ActiveStream[]>([]);
   const [notifications, setNotifications] = useState<string[]>([]);
+  const [friendUids, setFriendUids] = useState<Set<string>>(new Set());
   const knownRequestIds = useRef<Set<string> | null>(null);
   const knownPostIds = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    return listenFriends(profile.firebaseUid, (list) => {
+      setFriendUids(new Set(list.map((f) => f.uid)));
+    });
+  }, [profile?.firebaseUid]);
 
   useEffect(() => {
     if (!profile?.handle) return;
@@ -111,7 +120,7 @@ function DiscoveryRail() {
           (stream) => `${stream.displayName || stream.username} está en vivo`,
         );
         const requestNotes = list.map((item) => `@${item.username} te envió solicitud de amistad`);
-        const postNotes = current.filter((note) => note.includes('publicó'));
+        const postNotes = current.filter((note) => note.includes('publicó') || note.includes('mensaje'));
         return [...requestNotes, ...liveNotes, ...postNotes].slice(0, 12);
       });
     });
@@ -122,7 +131,10 @@ function DiscoveryRail() {
         return;
       }
       const fresh = list.filter(
-        (item) => !knownPostIds.current!.has(item.id) && item.authorUid !== profile.firebaseUid,
+        (item) =>
+          !knownPostIds.current!.has(item.id) &&
+          item.authorUid !== profile.firebaseUid &&
+          friendUids.has(item.authorUid),
       );
       if (fresh.length > 0) {
         playPostAlert();
@@ -138,7 +150,7 @@ function DiscoveryRail() {
       unsubRequests();
       unsubPosts();
     };
-  }, [profile?.firebaseUid, friendsOnline]);
+  }, [profile?.firebaseUid, friendsOnline, friendUids]);
 
   const onlineCount = friendsOnline.length;
   const alertCount = notifications.length;
@@ -161,6 +173,11 @@ function DiscoveryRail() {
             </span>
           ) : null}
         </div>
+        {profile ? (
+          <div className="mt-3">
+            <FriendRequestsPanel />
+          </div>
+        ) : null}
         {notifications.length === 0 ? (
           <p className="mt-3 text-sm text-zinc-400">Sin alertas nuevas.</p>
         ) : (
@@ -279,46 +296,5 @@ function DiscoveryRail() {
   );
 }
 
-export function NotificationBell() {
-  const profile = useAuthStore((state) => state.profile);
-  const [count, setCount] = useState(0);
-  const knownIds = useRef<Set<string> | null>(null);
-
-  useEffect(() => {
-    if (!profile) {
-      setCount(0);
-      return;
-    }
-    return listenIncomingRequests(profile.firebaseUid, (list) => {
-      if (knownIds.current == null) {
-        knownIds.current = new Set(list.map((item) => item.id));
-      } else {
-        const fresh = list.filter((item) => !knownIds.current!.has(item.id));
-        if (fresh.length > 0) playFriendRequestAlert();
-        knownIds.current = new Set(list.map((item) => item.id));
-      }
-      setCount(list.length);
-    });
-  }, [profile?.firebaseUid]);
-
-  if (!profile || count === 0) {
-    return (
-      <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-zinc-900 text-zinc-500">
-        <Bell size={16} />
-      </span>
-    );
-  }
-
-  return (
-    <Link
-      to="/buscar"
-      className="relative grid h-9 w-9 place-items-center rounded-xl bg-zinc-900 text-cyan-400 ring-1 ring-cyan-500/30"
-      aria-label={`${count} solicitudes`}
-    >
-      <Bell size={16} />
-      <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-fuchsia-500 px-1 text-[9px] font-bold text-white">
-        {count > 9 ? '9+' : count}
-      </span>
-    </Link>
-  );
-}
+/** @deprecated Usa NotificationBell desde components/social/NotificationBell */
+export { NotificationBell } from '../social/NotificationBell';

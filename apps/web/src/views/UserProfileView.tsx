@@ -247,6 +247,9 @@ export function UserProfileView() {
 
   async function deletePost(postId: string) {
     if (!profile) return;
+    if (!window.confirm('¿Estás seguro de borrar esta publicación? Esta acción no se puede deshacer.')) {
+      return;
+    }
     try {
       await deleteFsPost(postId, profile.firebaseUid);
       setPosts((current) => current.filter((item) => item.id !== postId));

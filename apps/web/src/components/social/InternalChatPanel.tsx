@@ -1,11 +1,15 @@
 import {
+  Check,
+  CheckCheck,
   Image as ImageIcon,
   Link2,
   MessageCircle,
   Mic,
+  Pencil,
   Phone,
   PhoneOff,
   Send,
+  Trash2,
   Video,
   X,
 } from 'lucide-react';
@@ -16,11 +20,16 @@ import { api } from '../../lib/api';
 import { uploadChatMedia } from '../../lib/storage';
 import {
   callRoomName,
+  deleteChatMessage,
+  deleteConversation,
+  editChatMessage,
   ensureChat,
   listenConversations,
   listenFriends,
   listenMessages,
   listenPresence,
+  markMessagesDelivered,
+  markMessagesRead,
   sendChatMessage,
   startPrivateCall,
   endPrivateCall,
@@ -60,6 +69,8 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
   const beginOutgoing = useCallStore((state) => state.beginOutgoing);
   const hangup = useCallStore((state) => state.hangup);
   const [recording, setRecording] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastMsgCount = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -148,6 +159,8 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
           }
           lastMsgCount.current = list.length;
           setMessages(list);
+          void markMessagesDelivered(id, profile.firebaseUid, list);
+          void markMessagesRead(id, profile.firebaseUid, list);
         });
       })
       .catch((err) => {
@@ -235,6 +248,57 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
     } finally {
       setBusy(false);
     }
+  }
+
+  async function removeConversation() {
+    if (!profile || !chatId || !activeFriend) return;
+    if (!window.confirm(`¿Eliminar la conversación con @${activeFriend.username}?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteConversation(chatId, profile.firebaseUid);
+      setMessages([]);
+      setChatId(null);
+      setActiveUid(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMessage(messageId: string) {
+    if (!chatId) return;
+    if (!window.confirm('¿Eliminar este mensaje?')) return;
+    try {
+      await deleteChatMessage(chatId, messageId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el mensaje');
+    }
+  }
+
+  async function saveEdit() {
+    if (!chatId || !editingId) return;
+    setBusy(true);
+    try {
+      await editChatMessage(chatId, editingId, editDraft);
+      setEditingId(null);
+      setEditDraft('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo editar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function MessageTicks({ status }: { status?: ChatMessage['status'] }) {
+    if (status === 'read') {
+      return <CheckCheck size={12} className="text-sky-400" aria-label="Leído" />;
+    }
+    if (status === 'delivered') {
+      return <CheckCheck size={12} className="text-zinc-400" aria-label="Entregado" />;
+    }
+    return <Check size={12} className="text-zinc-500" aria-label="Enviado" />;
   }
 
   async function toggleVoice() {
@@ -401,6 +465,15 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
                     </span>
                   </Link>
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={busy || !chatId}
+                      onClick={() => void removeConversation()}
+                      className="inline-flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1 text-[10px] font-bold text-zinc-400 hover:text-rose-300"
+                      title="Eliminar conversación"
+                    >
+                      <Trash2 size={12} />
+                    </button>
                     {inThisCall ? (
                       <button
                         type="button"
@@ -438,27 +511,94 @@ export function InternalChatPanel({ compact = false, fullscreen = false }: Props
                     messages.map((message) => (
                       <div
                         key={message.id}
-                        className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs ${
+                        className={`group relative max-w-[85%] rounded-2xl px-3 py-2 text-xs ${
                           message.mine ? 'ml-auto bg-cyan-500/20 text-cyan-100' : 'bg-zinc-800 text-zinc-200'
                         }`}
                       >
-                        {message.mediaType === 'image' && message.mediaUrl ? (
-                          <img src={message.mediaUrl} alt="" className="mb-1 max-h-48 rounded-lg object-cover" />
-                        ) : null}
-                        {message.mediaType === 'audio' && message.mediaUrl ? (
-                          <audio src={message.mediaUrl} controls className="mb-1 w-full max-w-xs" />
-                        ) : null}
-                        {message.linkUrl ? (
-                          <a
-                            href={message.linkUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mb-1 block break-all text-cyan-300 underline"
-                          >
-                            {message.linkUrl}
-                          </a>
-                        ) : null}
-                        {message.text}
+                        {message.deleted ? (
+                          <p className="italic text-zinc-500">Mensaje eliminado</p>
+                        ) : (
+                          <>
+                            {message.mediaType === 'image' && message.mediaUrl ? (
+                              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
+                                <img
+                                  src={message.mediaUrl}
+                                  alt=""
+                                  className="mb-1 max-h-48 rounded-lg object-cover"
+                                />
+                              </a>
+                            ) : null}
+                            {message.mediaType === 'audio' && message.mediaUrl ? (
+                              <audio src={message.mediaUrl} controls className="mb-1 w-full max-w-xs" />
+                            ) : null}
+                            {message.linkUrl ? (
+                              <a
+                                href={message.linkUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mb-1 block break-all text-cyan-300 underline"
+                              >
+                                {message.linkUrl}
+                              </a>
+                            ) : null}
+                            {editingId === message.id ? (
+                              <div className="mt-1 flex gap-1">
+                                <input
+                                  value={editDraft}
+                                  onChange={(event) => setEditDraft(event.target.value)}
+                                  className="min-w-0 flex-1 rounded border border-white/20 bg-black/40 px-2 py-1 text-xs text-white"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void saveEdit()}
+                                  className="rounded bg-cyan-500 px-2 text-[10px] font-bold text-zinc-950"
+                                >
+                                  OK
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(null)}
+                                  className="rounded px-2 text-[10px] text-zinc-400"
+                                >
+                                  X
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="whitespace-pre-wrap">
+                                {message.text}
+                                {message.editedAt ? (
+                                  <span className="ml-1 text-[9px] text-zinc-500">(editado)</span>
+                                ) : null}
+                              </p>
+                            )}
+                          </>
+                        )}
+                        <div className="mt-1 flex items-center justify-end gap-2">
+                          {message.mine && !message.deleted ? (
+                            <span className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingId(message.id);
+                                  setEditDraft(message.text);
+                                }}
+                                className="text-zinc-400 hover:text-cyan-300"
+                                aria-label="Editar"
+                              >
+                                <Pencil size={11} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void removeMessage(message.id)}
+                                className="text-zinc-400 hover:text-rose-300"
+                                aria-label="Eliminar"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </span>
+                          ) : null}
+                          {message.mine ? <MessageTicks status={message.status} /> : null}
+                        </div>
                       </div>
                     ))
                   )}

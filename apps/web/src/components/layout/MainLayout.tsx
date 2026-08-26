@@ -4,7 +4,8 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { CoinModal, RechargeButton } from '../wallet/CoinModal';
-import { NotificationBell, SideRailPanel } from './SideRailPanel';
+import { NotificationBell } from '../social/NotificationBell';
+import { SideRailPanel } from './SideRailPanel';
 import { LegalFooter } from '../legal/LegalFooter';
 import { Logo } from '../brand/Logo';
 

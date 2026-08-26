@@ -843,14 +843,12 @@ function CreatorStage({
       if (track && typeof track.restartTrack === 'function') {
         await track.restartTrack({
           facingMode: nextFacing,
-          resolution: { width: 720, height: 1280, frameRate: 24 },
         });
         cameraTrackRef.current = track;
       } else {
         await room.localParticipant.setCameraEnabled(false);
         await room.localParticipant.setCameraEnabled(true, {
           facingMode: nextFacing,
-          resolution: { width: 720, height: 1280, frameRate: 24 },
         });
         const nextPub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
           (item) => item.source === Track.Source.Camera,
@@ -1426,7 +1424,7 @@ function CreatorVideo({
         setCamError(null);
         await room.localParticipant.setCameraEnabled(true, {
           facingMode: facing,
-          resolution: { width: 720, height: 1280, frameRate: 24 },
+          // Sin resolución fija: evita zoom digital en móviles al iniciar.
         });
         await room.localParticipant.setMicrophoneEnabled(true);
         await attachCameraRef();
@@ -1477,7 +1475,12 @@ function CreatorVideo({
 
   return (
     <>
-      <VideoTrack trackRef={shown} className="absolute inset-0 h-full w-full object-cover" />
+      <VideoTrack
+        trackRef={shown}
+        className={`absolute inset-0 h-full w-full ${
+          shown.participant.isLocal ? 'object-contain bg-black' : 'object-cover'
+        }`}
+      />
       {guests.map((guest) => (
         <div
           key={guest.participant.identity}

@@ -107,6 +107,7 @@ service cloud.firestore {
       allow update: if isChatParticipant();
       allow create: if isCreatingParticipant()
         && friendsEitherWay(request.auth.uid, otherOnCreate());
+      allow delete: if isChatParticipant();
 
       match /messages/{messageId} {
         allow read: if signedIn() && request.auth.uid in chatData().participants;
@@ -117,6 +118,23 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 2000;
+        // Editar propio, soft-delete propio, o marcar entregado/leído como destinatario.
+        allow update: if signedIn()
+          && request.auth.uid in chatData().participants
+          && (
+            (
+              resource.data.fromUid == request.auth.uid
+              && request.resource.data.fromUid == resource.data.fromUid
+            )
+            || (
+              resource.data.fromUid != request.auth.uid
+              && request.resource.data.fromUid == resource.data.fromUid
+              && request.resource.data.text == resource.data.text
+            )
+          );
+        allow delete: if signedIn()
+          && request.auth.uid in chatData().participants
+          && resource.data.fromUid == request.auth.uid;
       }
     }
 
