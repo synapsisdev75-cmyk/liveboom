@@ -17,10 +17,21 @@ import { WalletView } from './views/WalletView';
 import { ExploreView } from './views/ExploreView';
 import { MessagesView } from './views/MessagesView';
 import { ActivityView } from './views/ActivityView';
+import { CreateView } from './views/CreateView';
+import { TrendsView } from './views/TrendsView';
+import { GroupsView } from './views/GroupsView';
+import { SuperAdminView } from './views/SuperAdminView';
+import { SuperAdminRoute } from './components/auth/SuperAdminRoute';
+import { useLevelsConfigStore } from './store/levelsConfigStore';
 
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
-  useEffect(() => hydrate(), [hydrate]);
+  const hydrateLevels = useLevelsConfigStore((state) => state.hydrate);
+  useEffect(() => {
+    const unsubLevels = hydrateLevels();
+    hydrate();
+    return () => unsubLevels();
+  }, [hydrate, hydrateLevels]);
   return null;
 }
 
@@ -37,6 +48,9 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route index element={<HomeView />} />
           <Route path="explorar" element={<ExploreView />} />
+          <Route path="tendencias" element={<TrendsView />} />
+          <Route path="grupos" element={<GroupsView />} />
+          <Route path="crear" element={<CreateView />} />
           <Route path="u/:username" element={<UserProfileView />} />
           <Route path="billetera" element={<WalletView />} />
           <Route path="perfil" element={<ProfileRedirectView />} />
@@ -45,6 +59,14 @@ export default function App() {
           <Route path="mensajes" element={<MessagesView />} />
           <Route path="actividad" element={<ActivityView />} />
           <Route path="transmitir" element={<TransmitView />} />
+          <Route
+            path="super-admin"
+            element={
+              <SuperAdminRoute>
+                <SuperAdminView />
+              </SuperAdminRoute>
+            }
+          />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

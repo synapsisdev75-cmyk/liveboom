@@ -71,6 +71,7 @@ function normalizeUsername(value) {
 function userSummary(profile) {
   if (!profile) return null;
   return {
+    uid: profile.firebaseUid || profile.id || null,
     username: profile.username,
     displayName: profile.displayName || profile.username,
     avatarUrl: profile.avatarUrl || null,

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import {
-  COIN_TO_COP,
   MIN_WITHDRAW_COINS,
   coinsToCop,
   formatCop,
@@ -74,12 +73,12 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-950 p-4 sm:rounded-3xl sm:p-6">
+      <div className="lb-safe-sheet max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-950 p-4 sm:rounded-3xl sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-white">Retirar coins</h2>
+            <h2 className="text-lg font-bold text-white">Retirar blast</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Equivalente justo: <span className="font-semibold text-cyan-300">1 coin = ${COIN_TO_COP} COP</span>
+              Retira tu blast a pesos colombianos (COP).
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-sm text-zinc-500 hover:text-white">
@@ -88,14 +87,14 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
         </div>
 
         <p className="mt-3 text-xs text-zinc-500">
-          Saldo disponible: {balance.toLocaleString('es-CO')} coins · Mínimo {MIN_WITHDRAW_COINS} coins
+          Saldo disponible: {balance.toLocaleString('es-CO')} blast · Mínimo {MIN_WITHDRAW_COINS} blast
           {initialCoins && initialCoins > 0
             ? ` · Generado en este live: ${initialCoins.toLocaleString('es-CO')}`
             : ''}
         </p>
 
         <label className="mt-4 block text-xs font-semibold text-zinc-400">
-          Coins a retirar
+          Blast a retirar
           <input
             type="number"
             min={MIN_WITHDRAW_COINS}

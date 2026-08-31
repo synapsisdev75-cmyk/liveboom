@@ -14,7 +14,13 @@
     "dev:mobile": "npm run start --workspace=@liveboom/mobile",
     "dev:backend": "npm run dev --workspace=@liveboom/backend",
     "build": "turbo run build",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "build:web": "npm run build -w apps/web",
+    "deploy:hosting": "npm run build:web && firebase deploy --only hosting --project liveboom-app",
+    "deploy:vercel": "npx vercel --prod",
+    "deploy:prod": "npm run build:web && firebase deploy --only hosting --project liveboom-app && npx vercel --prod",
+    "android:sync": "npm run sync -w @liveboom/android",
+    "android:open": "npm run open -w @liveboom/android"
   },
   "devDependencies": {
     "firebase-tools": "^15.28.1",

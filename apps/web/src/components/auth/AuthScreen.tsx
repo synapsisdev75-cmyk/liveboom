@@ -170,12 +170,40 @@ export function AuthScreen() {
           <button
             type="button"
             disabled={busy}
-            onClick={() => void signInGoogle().catch(() => undefined)}
+            onClick={() => {
+              void (async () => {
+                setLocalError(null);
+                if (mode === 'register') {
+                  if (!acceptedTerms) {
+                    setLocalError('Debes aceptar los Términos y el Aviso de Privacidad.');
+                    return;
+                  }
+                  const year = Number(birthYear);
+                  if (!Number.isFinite(year) || year < minBirthYear || year > maxBirthYear) {
+                    setLocalError('Ingresa un año de nacimiento válido (mayor de 18 años).');
+                    return;
+                  }
+                  if (ageFromBirthYear(year) < 18) {
+                    setLocalError('Debes ser mayor de 18 años para registrarte.');
+                    return;
+                  }
+                  await signInGoogle(year).catch(() => undefined);
+                  return;
+                }
+                await signInGoogle().catch(() => undefined);
+              })();
+            }}
             className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900"
           >
             <GoogleIcon />
             Continuar con Google
           </button>
+
+          {mode === 'register' ? (
+            <p className="mt-2 text-center text-[11px] text-zinc-500">
+              Con Google también usa el año de nacimiento de arriba.
+            </p>
+          ) : null}
 
           {mode === 'login' ? (
             <Link to="/registro" className="mt-6 block w-full text-center text-sm text-zinc-400 hover:text-white">

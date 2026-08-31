@@ -1,21 +1,16 @@
 import { Gift, Send, Smile, WalletCards } from 'lucide-react';
-import { api, type GiftDto } from '../../lib/api';
+import { useMemo } from 'react';
+import { GiftBoxStrip } from '../live/GiftBoxStrip';
+import { api } from '../../lib/api';
+import { LIVEBOOM_GIFTS } from '../../lib/liveboomGifts';
 import { getSocket } from '../../lib/socket';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
-
-const accentClass: Record<string, string> = {
-  cyan: 'border-boom-cyan/40 bg-boom-cyan/10',
-  fuchsia: 'border-boom-fuchsia/40 bg-boom-fuchsia/10',
-  gold: 'border-boom-gold/40 bg-boom-gold/10',
-  blue: 'border-sky-400/40 bg-sky-400/10',
-};
 
 export function InteractionPanel() {
   const messages = useUiStore((s) => s.messages);
   const draft = useUiStore((s) => s.draft);
   const giftOpen = useUiStore((s) => s.giftOpen);
-  const gifts = useUiStore((s) => s.gifts);
   const donors = useUiStore((s) => s.donors);
   const stream = useUiStore((s) => s.activeStream);
   const setDraft = useUiStore((s) => s.setDraft);
@@ -25,6 +20,10 @@ export function InteractionPanel() {
   const coins = useAuthStore((s) => s.profile?.coins ?? 0);
   const setCoins = useAuthStore((s) => s.setCoins);
   const syncProfile = useAuthStore((s) => s.syncProfile);
+  const giftCatalog = useMemo(
+    () => [...LIVEBOOM_GIFTS].sort((a, b) => a.coins - b.coins),
+    [],
+  );
 
   const first = donors.find((d) => d.rank === 1);
   const second = donors.find((d) => d.rank === 2);
@@ -38,14 +37,16 @@ export function InteractionPanel() {
     socket.emit('chat:send', { streamId: stream.id, text });
   }
 
-  async function sendGift(gift: GiftDto) {
+  async function sendGift(giftId: string) {
     if (!stream) return;
-    if (coins < gift.price) {
+    const gift = LIVEBOOM_GIFTS.find((item) => item.id === giftId);
+    if (!gift) return;
+    if (coins < gift.coins) {
       setToast('Saldo insuficiente. Recarga coins para continuar.');
       window.setTimeout(() => setToast(null), 2600);
       return;
     }
-    setCoins(coins - gift.price);
+    setCoins(coins - gift.coins);
     useUiStore.getState().toggleGifts();
     try {
       const result = await api<{ coins: number }>(`/api/streams/${stream.id}/gifts`, {
@@ -77,7 +78,7 @@ export function InteractionPanel() {
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col rounded-2xl border border-white/5 bg-boom-panel/80">
-        <div className="border-b border-white/5 px-3 py-2 text-xs font-semibold text-zinc-400">Chat en vivo</div>
+        <div className="border-b border-white/5 px-3 py-2 text-xs font-semibold text-zinc-400">Mensajes</div>
         <ul className="chat-scroll flex-1 space-y-3 overflow-y-auto px-3 py-3">
           {messages.map((msg) => (
             <li key={msg.id} className="flex gap-2">
@@ -109,32 +110,23 @@ export function InteractionPanel() {
         </ul>
 
         <form
-          className="relative border-t border-white/5 p-3"
+          className="relative border-t border-white/5"
           onSubmit={(event) => {
             event.preventDefault();
             void sendMessage();
           }}
         >
           {giftOpen ? (
-            <div className="absolute bottom-16 left-3 right-3 rounded-2xl border border-white/10 bg-[#16181E] p-3 shadow-gift">
-              <p className="mb-2 text-xs font-semibold text-zinc-300">Caja de Regalos</p>
-              <div className="gift-row flex snap-x snap-mandatory gap-1 overflow-x-auto overflow-y-hidden pb-1">
-                {gifts.map((gift) => (
-                  <button
-                    key={gift.id}
-                    type="button"
-                    onClick={() => void sendGift(gift)}
-                    className={`w-[4.35rem] shrink-0 snap-start rounded-xl border px-1 py-2 text-center transition hover:brightness-125 ${accentClass[gift.accent] ?? accentClass.cyan}`}
-                  >
-                    <span className="block text-xl">{gift.emoji}</span>
-                    <span className="mt-1 block text-[10px] font-semibold text-zinc-200">{gift.price}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <GiftBoxStrip
+              gifts={giftCatalog}
+              coins={coins}
+              compact
+              onSelect={(id) => void sendGift(id)}
+              onClose={toggleGifts}
+            />
           ) : null}
 
-          <div className="flex items-center gap-2 rounded-xl bg-black/40 px-2 py-1.5 ring-1 ring-white/10">
+          <div className="flex items-center gap-2 px-3 py-3">
             <Smile size={16} className="text-zinc-500" />
             <input
               value={draft}

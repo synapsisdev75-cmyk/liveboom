@@ -6,6 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "split-emojis": "node scripts/split-emojis.mjs",
+    "split-boom-emojis": "node scripts/split-boom-emojis.mjs",
+    "split-blast-packs": "node scripts/split-blast-packs.mjs",
+    "rebuild-emojis": "node scripts/split-emojis.mjs && node scripts/split-boom-emojis.mjs",
+    "rebuild-level-badges": "node scripts/matte-level-badges.mjs",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
@@ -31,7 +36,9 @@
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
     "tailwindcss": "^4.1.13",
-    "typescript": "~5.8.3",
+    "sharp": "^0.35.3",
+    "@napi-rs/canvas": "^0.1.68",
+    "pdfjs-dist": "^5.4.54",
     "vite": "^8.2.0"
   }
 }

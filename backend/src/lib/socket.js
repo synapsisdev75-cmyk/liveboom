@@ -2,6 +2,14 @@ const { Server } = require('socket.io');
 
 let io = null;
 
+function normalizeRoom(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .slice(0, 64);
+}
+
 function allowedOrigin(origin) {
   if (!origin) return true;
   return (
@@ -46,12 +54,19 @@ function initSocket(httpServer) {
 
   io.on('connection', (socket) => {
     socket.on('join_room', (roomName) => {
-      if (typeof roomName !== 'string' || !roomName.trim()) return;
-      socket.join(`room:${roomName.trim()}`);
+      const room = normalizeRoom(roomName);
+      if (!room) return;
+      socket.join(`room:${room}`);
+    });
+
+    socket.on('leave_room', (roomName) => {
+      const room = normalizeRoom(roomName);
+      if (!room) return;
+      socket.leave(`room:${room}`);
     });
 
     socket.on('send_message', (payload) => {
-      const roomName = typeof payload?.roomName === 'string' ? payload.roomName.trim() : '';
+      const roomName = normalizeRoom(payload?.roomName);
       const text = typeof payload?.text === 'string' ? payload.text.trim().slice(0, 280) : '';
       if (!roomName || !text) return;
       const user = socket.data.user;
@@ -72,7 +87,9 @@ function getIO() {
 }
 
 function emitGiftReceived(roomName, payload) {
-  io?.to(`room:${roomName}`).emit('gift_received', payload);
+  const room = normalizeRoom(roomName);
+  if (!room) return;
+  io?.to(`room:${room}`).emit('gift_received', payload);
 }
 
 module.exports = { initSocket, getIO, emitGiftReceived };

@@ -1,4 +1,4 @@
-import { Globe, Lock, ThumbsDown, ThumbsUp, UserMinus, UserPlus, Users } from 'lucide-react';
+import { Globe, Lock, UserMinus, UserPlus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -6,24 +6,48 @@ import {
   isFollowing,
   listenPostReactions,
   setPostReaction,
+  type FriendChip,
+  type PostReactionUser,
   unfollowUser,
 } from '../../lib/socialFirestore';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
+import { ShareContentButton } from './ShareContentButton';
+import { buildPostShareUrl } from '../../lib/shareContent';
+import { PostPhotoViewer } from './PostPhotoViewer';
+import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import { EmojiText } from './EmojiText';
+import { PostReactionButtons } from './PostReactionButtons';
 
 type Props = {
   username: string;
+  targetUid?: string | null;
+  targetHint?: Partial<Pick<FriendChip, 'uid' | 'username' | 'displayName' | 'avatarUrl'>> | null;
   initialFollowing: boolean;
   isOwnProfile: boolean;
   onChange?: (following: boolean) => void;
+  /** outline = borde cyan (rail mensajes); default = gradiente */
+  variant?: 'default' | 'outline';
+  size?: 'md' | 'sm';
 };
 
-export function FollowButton({ username, initialFollowing, isOwnProfile, onChange }: Props) {
+export function FollowButton({
+  username,
+  targetUid,
+  targetHint,
+  initialFollowing,
+  isOwnProfile,
+  onChange,
+  variant = 'default',
+  size = 'md',
+}: Props) {
   const profile = useAuthStore((state) => state.profile);
   const [following, setFollowing] = useState(initialFollowing);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resolvedUid = targetUid || targetHint?.uid || null;
+  const hint = targetHint || (resolvedUid ? { uid: resolvedUid, username } : null);
 
   useEffect(() => {
     setFollowing(initialFollowing);
@@ -31,10 +55,10 @@ export function FollowButton({ username, initialFollowing, isOwnProfile, onChang
 
   useEffect(() => {
     if (!profile || isOwnProfile) return;
-    void isFollowing(profile.firebaseUid, username).then((value) => {
+    void isFollowing(profile.firebaseUid, username, resolvedUid).then((value) => {
       setFollowing(value);
     });
-  }, [profile?.firebaseUid, username, isOwnProfile]);
+  }, [profile?.firebaseUid, username, resolvedUid, isOwnProfile]);
 
   if (isOwnProfile || !profile) return null;
 
@@ -43,7 +67,7 @@ export function FollowButton({ username, initialFollowing, isOwnProfile, onChang
     setError(null);
     try {
       if (following) {
-        await unfollowUser(profile!.firebaseUid, username);
+        await unfollowUser(profile!.firebaseUid, username, resolvedUid, hint);
         setFollowing(false);
         onChange?.(false);
       } else {
@@ -55,6 +79,8 @@ export function FollowButton({ username, initialFollowing, isOwnProfile, onChang
             avatarUrl: profile!.avatarUrl,
           },
           username,
+          resolvedUid,
+          hint,
         );
         setFollowing(true);
         onChange?.(true);
@@ -66,19 +92,28 @@ export function FollowButton({ username, initialFollowing, isOwnProfile, onChang
     }
   }
 
+  const sm = size === 'sm';
+  const outline = variant === 'outline';
+
   return (
     <div className="flex flex-col items-start gap-1">
       <button
         type="button"
         disabled={busy}
         onClick={() => void toggle()}
-        className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition disabled:opacity-60 ${
-          following
-            ? 'border border-zinc-600 bg-zinc-800 text-zinc-200 hover:border-fuchsia-400'
-            : 'bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-zinc-950'
+        className={`inline-flex shrink-0 items-center justify-center font-bold transition disabled:opacity-60 ${
+          sm ? 'gap-1 rounded-full px-2.5 py-1 text-[10px]' : 'gap-2 rounded-full px-4 py-2 text-sm'
+        } ${
+          outline
+            ? following
+              ? 'border border-zinc-600 text-zinc-400 hover:border-zinc-500'
+              : 'border border-cyan-400/70 text-cyan-300 hover:bg-cyan-400/10'
+            : following
+              ? 'border border-zinc-600 bg-zinc-800 text-zinc-200 hover:border-fuchsia-400'
+              : 'bg-gradient-to-r from-cyan-500 to-fuchsia-500 text-zinc-950'
         }`}
       >
-        {following ? <UserMinus size={16} /> : <UserPlus size={16} />}
+        {outline ? null : following ? <UserMinus size={16} /> : <UserPlus size={16} />}
         {following ? 'Siguiendo' : 'Seguir'}
       </button>
       {error ? <p className="text-[10px] text-fuchsia-300">{error}</p> : null}
@@ -109,7 +144,7 @@ export function FollowListModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="max-h-[80dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-950 p-4 sm:rounded-3xl">
+      <div className="lb-safe-sheet max-h-[80dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-950 p-4 sm:rounded-3xl">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-bold text-white">{title}</h3>
           <button type="button" onClick={onClose} className="text-sm text-zinc-500 hover:text-white">
@@ -155,7 +190,7 @@ export type SocialPost = {
   type: 'photo' | 'video' | 'text';
   caption: string | null;
   mediaUrl: string | null;
-  visibility?: 'public' | 'friends' | 'private';
+  visibility?: 'public' | 'friends' | 'private' | 'circle';
   createdAt: string;
   likes: number;
   dislikes: number;
@@ -170,16 +205,23 @@ export function PostCard({
   onChangeVisibility,
   startVideoExpanded,
   onCloseVideoExpand,
+  startPhotoExpanded,
+  onClosePhotoExpand,
+  onVideoExpand,
 }: {
   post: SocialPost;
   canDelete?: boolean;
   canChangeVisibility?: boolean;
   onDelete?: () => void;
   onReact?: (post: SocialPost) => void;
-  onChangeVisibility?: (visibility: 'public' | 'friends' | 'private') => void;
+  onChangeVisibility?: (visibility: 'public' | 'friends' | 'private' | 'circle') => void;
   /** Abrir el video en pantalla completa (p. ej. tras publicar). */
   startVideoExpanded?: boolean;
   onCloseVideoExpand?: () => void;
+  startPhotoExpanded?: boolean;
+  onClosePhotoExpand?: () => void;
+  /** Abre visor fullscreen del padre (ReelFeedViewer) en lugar de overlay inline. */
+  onVideoExpand?: () => void;
 }) {
   const profile = useAuthStore((state) => state.profile);
   const [busy, setBusy] = useState(false);
@@ -187,14 +229,35 @@ export function PostCard({
   const [likes, setLikes] = useState(post.likes);
   const [dislikes, setDislikes] = useState(post.dislikes);
   const [viewerReaction, setViewerReaction] = useState(post.viewerReaction);
+  const [likers, setLikers] = useState<PostReactionUser[]>([]);
+  const [dislikers, setDislikers] = useState<PostReactionUser[]>([]);
+  const [mediaExpanded, setMediaExpanded] = useState(
+    Boolean(startVideoExpanded || startPhotoExpanded),
+  );
+  const shareUrl = buildPostShareUrl(post.authorUsername, post.id, post.authorUid);
+  const shareText =
+    post.caption?.trim() ||
+    `Mira esta publicación de @${post.authorUsername} en LiveBoom`;
 
   useEffect(() => {
     return listenPostReactions(post.id, profile?.firebaseUid, (stats) => {
       setLikes(stats.likes);
       setDislikes(stats.dislikes);
       setViewerReaction(stats.viewerReaction);
+      setLikers(stats.likers);
+      setDislikers(stats.dislikers);
     });
   }, [post.id, profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (startVideoExpanded && onVideoExpand) {
+      onVideoExpand();
+      return;
+    }
+    if (startVideoExpanded || startPhotoExpanded) {
+      setMediaExpanded(true);
+    }
+  }, [startVideoExpanded, startPhotoExpanded, onVideoExpand]);
 
   async function react(reaction: 'like' | 'dislike') {
     if (!profile) {
@@ -205,7 +268,11 @@ export function PostCard({
     setReactError(null);
     const next = viewerReaction === reaction ? null : reaction;
     try {
-      await setPostReaction(post.id, profile.firebaseUid, next);
+      await setPostReaction(post.id, profile.firebaseUid, next, {
+        username: profile.handle,
+        displayName: profile.displayName,
+        avatarUrl: profile.avatarUrl,
+      });
     } catch (err) {
       setReactError(err instanceof Error ? err.message : 'No se pudo guardar la reacción');
     } finally {
@@ -225,17 +292,29 @@ export function PostCard({
         </p>
       ) : null}
       {post.type === 'photo' && post.mediaUrl ? (
-        <img src={post.mediaUrl} alt="" className="aspect-square w-full object-cover" />
+        <PostPhotoViewer
+          src={post.mediaUrl}
+          caption={post.caption}
+          postId={post.id}
+          authorUsername={post.authorUsername}
+          authorUid={post.authorUid}
+          startExpanded={startPhotoExpanded}
+          onCloseExpand={onClosePhotoExpand}
+          onExpandChange={setMediaExpanded}
+        />
       ) : null}
       {post.type === 'video' && post.mediaUrl ? (
         <PostVideoPlayer
           src={post.mediaUrl}
           postId={post.id}
           authorUid={post.authorUid}
+          authorUsername={post.authorUsername}
           caption={post.caption}
           likes={likes}
           dislikes={dislikes}
           viewerReaction={viewerReaction}
+          likers={likers}
+          dislikers={dislikers}
           busy={busy}
           onReact={(reaction) => void react(reaction)}
           visibility={post.visibility}
@@ -243,16 +322,20 @@ export function PostCard({
           onChangeVisibility={onChangeVisibility}
           canDelete={canDelete}
           onDelete={onDelete}
-          startExpanded={startVideoExpanded}
+          startExpanded={onVideoExpand ? false : startVideoExpanded}
+          onRequestExpand={onVideoExpand}
           onCloseExpand={onCloseVideoExpand}
+          onExpandChange={setMediaExpanded}
         />
       ) : null}
       {post.type === 'text' ? (
         <div className="min-h-[120px] bg-gradient-to-br from-zinc-900 to-zinc-950 p-4">
-          <p className="whitespace-pre-wrap text-sm text-white">{post.caption}</p>
+          <EmojiText text={post.caption || ''} className="text-sm text-white" size={POST_EMOJI_SIZE} />
         </div>
-      ) : post.caption ? (
-        <p className="border-t border-white/5 px-3 py-2 text-sm text-zinc-300">{post.caption}</p>
+      ) : post.caption && post.type !== 'photo' && post.type !== 'video' ? (
+        <p className="border-t border-white/5 px-3 py-2 text-sm text-zinc-300">
+          <EmojiText text={post.caption} size={POST_EMOJI_SIZE} />
+        </p>
       ) : null}
       {canChangeVisibility ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
@@ -294,30 +377,22 @@ export function PostCard({
         </div>
       ) : null}
       <div className="flex items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void react('like')}
-            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold ${
-              viewerReaction === 'like' ? 'bg-cyan-500/20 text-cyan-300' : 'text-zinc-400 hover:text-cyan-300'
-            }`}
-          >
-            <ThumbsUp size={14} /> {likes}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void react('dislike')}
-            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold ${
-              viewerReaction === 'dislike'
-                ? 'bg-fuchsia-500/20 text-fuchsia-300'
-                : 'text-zinc-400 hover:text-fuchsia-300'
-            }`}
-          >
-            <ThumbsDown size={14} /> {dislikes}
-          </button>
-        </div>
+        <PostReactionButtons
+          likes={likes}
+          dislikes={dislikes}
+          viewerReaction={viewerReaction}
+          likers={likers}
+          dislikers={dislikers}
+          busy={busy}
+          onReact={(reaction) => void react(reaction)}
+        />
+        <ShareContentButton
+          url={shareUrl}
+          title={`@${post.authorUsername} en LiveBoom`}
+          text={shareText}
+          mediaUrl={post.mediaUrl}
+          mediaType={post.type === 'video' ? 'video' : post.type === 'photo' ? 'photo' : 'text'}
+        />
         {canDelete && !canChangeVisibility ? (
           <button
             type="button"
@@ -331,7 +406,9 @@ export function PostCard({
         ) : null}
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
-      <PostComments postId={post.id} authorUid={post.authorUid} />
+      {!(post.type === 'video' && mediaExpanded) ? (
+        <PostComments postId={post.id} authorUid={post.authorUid} />
+      ) : null}
     </article>
   );
 }

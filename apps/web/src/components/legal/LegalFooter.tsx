@@ -5,8 +5,11 @@ export function LegalFooter({ compact = false }: { compact?: boolean }) {
     <footer
       className={`text-center text-xs text-zinc-500 ${compact ? 'mt-4 space-y-1' : 'border-t border-white/10 px-4 py-6'}`}
     >
-      <p className={compact ? '' : 'mb-2'}>
+      <p className={compact ? '' : 'mb-1'}>
         © {new Date().getFullYear()} Liveboom. Todos los derechos reservados.
+      </p>
+      <p className={compact ? 'text-[10px] text-zinc-600' : 'mb-2 text-[11px] text-zinc-600'}>
+        Desarrollado y distribuido por Macro Real S.A.S
       </p>
       <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
         <Link to="/legal/terminos" className="hover:text-boom-cyan">

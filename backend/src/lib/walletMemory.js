@@ -56,6 +56,11 @@ function rememberOrder(order) {
     coins: Number(order.coins) || 0,
     packageId: order.packageId,
     floor: Math.max(0, Number(order.floor) || 0),
+    kind: order.kind || 'coins',
+    days: Number(order.days) || 0,
+    hours: Number(order.hours) || 0,
+    amountInCop: Number(order.amountInCop) || 0,
+    regionId: order.regionId || '',
   });
   flush();
 }

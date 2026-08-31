@@ -1,7 +1,7 @@
 import * as deepar from 'deepar';
 import type { DeepAR } from 'deepar';
 
-/** Clave de licencia DeepAR (dominio www.liveboomapp.com en el portal). */
+/** Clave DeepAR: en el portal deben estar liveboomapp.com Y www.liveboomapp.com (y localhost). */
 export const DEEPAR_LICENSE_KEY =
   import.meta.env.VITE_DEEPAR_LICENSE_KEY ||
   'd5d6cd0be12cdbe42077cea0ce920c964eb26f24125fa5c29f29a81f5b7fc63500d5955d851b94e5';

@@ -12,15 +12,33 @@ service cloud.firestore {
       return value is string && value.size() >= 3 && value.size() <= 24;
     }
 
+    function isSuperAdmin() {
+      return signedIn()
+        && request.auth.token.email == 'synapsisdev75@gmail.com';
+    }
+
+    match /config/levels {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
     match /users/{userId} {
       allow read: if true;
       allow create: if isSelf(userId)
         && request.resource.data.firebaseUid == request.auth.uid
         && validUsername(request.resource.data.username);
-      allow update: if isSelf(userId)
-        && request.resource.data.firebaseUid == request.auth.uid
-        && validUsername(request.resource.data.username)
-        && request.resource.data.firebaseUid == resource.data.firebaseUid;
+      allow update: if (
+          isSelf(userId)
+          && request.resource.data.firebaseUid == request.auth.uid
+          && validUsername(request.resource.data.username)
+          && request.resource.data.firebaseUid == resource.data.firebaseUid
+        )
+        || (
+          isSuperAdmin()
+          && request.resource.data.firebaseUid == resource.data.firebaseUid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['levelXp', 'updatedAt'])
+        );
       allow delete: if isSelf(userId);
 
       match /friends/{friendId} {
@@ -68,6 +86,27 @@ service cloud.firestore {
           && request.resource.data.coinsEarned is number;
         allow delete: if isSelf(userId);
       }
+
+      match /liveAlerts/{alertId} {
+        allow read: if isSelf(userId);
+        allow create: if signedIn();
+        allow update, delete: if isSelf(userId);
+      }
+
+      match /postAlerts/{alertId} {
+        allow read: if isSelf(userId);
+        allow create: if signedIn();
+        allow update, delete: if isSelf(userId);
+      }
+
+      // Ubicación solo del dueño (targeting interno de ads; no se revela a otros).
+      match /private/{docId} {
+        allow read, write: if isSelf(userId);
+      }
+
+      match /groups/{groupId} {
+        allow read, write: if isSelf(userId);
+      }
     }
 
     match /usernames/{username} {
@@ -103,14 +142,15 @@ service cloud.firestore {
         return friendshipExists(a, b) || friendshipExists(b, a);
       }
 
-      allow read: if isChatParticipant();
+      allow read: if isChatParticipant() || isSuperAdmin();
       allow update: if isChatParticipant();
       allow create: if isCreatingParticipant()
         && friendsEitherWay(request.auth.uid, otherOnCreate());
       allow delete: if isChatParticipant();
 
       match /messages/{messageId} {
-        allow read: if signedIn() && request.auth.uid in chatData().participants;
+        allow read: if isSuperAdmin()
+          || (signedIn() && request.auth.uid in chatData().participants);
         // Si ya eres participante del chat, puedes enviar (la amistad se exige al crear el chat).
         allow create: if signedIn()
           && request.auth.uid in chatData().participants
@@ -143,7 +183,12 @@ service cloud.firestore {
         return request.resource.data.visibility;
       }
       function validVisibility(value) {
-        return value == 'public' || value == 'friends' || value == 'private';
+        return value == 'public' || value == 'friends' || value == 'private' || value == 'circle';
+      }
+      function isCircleViewer(authorUid) {
+        return exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(authorUid))
+          || exists(/databases/$(database)/documents/users/$(authorUid)/friends/$(request.auth.uid))
+          || exists(/databases/$(database)/documents/users/$(authorUid)/followers/$(request.auth.uid));
       }
       function canReadPost() {
         return signedIn() && (
@@ -156,6 +201,10 @@ service cloud.firestore {
               exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(resource.data.authorUid))
               || exists(/databases/$(database)/documents/users/$(resource.data.authorUid)/friends/$(request.auth.uid))
             )
+          )
+          || (
+            resource.data.visibility == 'circle'
+            && isCircleViewer(resource.data.authorUid)
           )
         );
       }
@@ -174,6 +223,10 @@ service cloud.firestore {
               exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(loadedPost().authorUid))
               || exists(/databases/$(database)/documents/users/$(loadedPost().authorUid)/friends/$(request.auth.uid))
             )
+          )
+          || (
+            loadedPost().visibility == 'circle'
+            && isCircleViewer(loadedPost().authorUid)
           )
         );
       }
@@ -216,8 +269,132 @@ service cloud.firestore {
       }
     }
 
-    match /liveRooms/{roomName} {
+    match /promotions/{promoId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.regionId is string
+        && request.resource.data.coinsPaid is number
+        && request.resource.data.expiresAtMs is number;
+      allow update, delete: if signedIn()
+        && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /hashtags/{tag} {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && request.resource.data.tag is string
+        && request.resource.data.count is number;
+      allow delete: if false;
+    }
+
+    match /groups/{groupId} {
+      function groupDoc() {
+        return get(/databases/$(database)/documents/groups/$(groupId)).data;
+      }
+      function memberDoc(uid) {
+        return get(/databases/$(database)/documents/groups/$(groupId)/members/$(uid)).data;
+      }
+      function isGroupOwner() {
+        return signedIn() && groupDoc().ownerUid == request.auth.uid;
+      }
+      function isGroupAdmin() {
+        return signedIn()
+          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid))
+          && memberDoc(request.auth.uid).role == 'admin';
+      }
+      function isGroupStaff() {
+        return isGroupOwner() || isGroupAdmin();
+      }
+      function isGroupMember() {
+        return signedIn()
+          && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+      }
+
       allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 3
+        && request.resource.data.name.size() <= 48;
+      // Dueño: cualquier campo. Admin: foto/nombre/desc. Cualquiera: solo memberCount.
+      allow update: if signedIn() && (
+        isGroupOwner()
+        || (
+          isGroupAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['photoUrl', 'name', 'description'])
+          && request.resource.data.ownerUid == resource.data.ownerUid
+        )
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
+      );
+      allow delete: if isGroupOwner();
+
+      match /members/{memberId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.auth.uid == memberId;
+        // Self leave/update, o staff cambia rol (nunca owner).
+        allow update: if signedIn() && (
+          request.auth.uid == memberId
+          || (
+            isGroupStaff()
+            && resource.data.role != 'owner'
+            && request.resource.data.role in ['admin', 'member']
+            && request.resource.data.uid == resource.data.uid
+          )
+        );
+        allow delete: if signedIn()
+          && (request.auth.uid == memberId || isGroupStaff())
+          && resource.data.role != 'owner';
+      }
+
+      match /messages/{messageId} {
+        allow read: if isGroupMember() || isSuperAdmin();
+        allow create: if isGroupMember()
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 2000
+          && (
+            request.resource.data.text.size() > 0
+            || request.resource.data.keys().hasAny(['mediaUrl', 'linkUrl'])
+          )
+          && (
+            !('mediaUrl' in request.resource.data)
+            || (
+              request.resource.data.mediaUrl is string
+              && request.resource.data.mediaUrl.size() > 0
+              && request.resource.data.mediaUrl.size() <= 2000
+            )
+          )
+          && (
+            !('linkUrl' in request.resource.data)
+            || (
+              request.resource.data.linkUrl is string
+              && request.resource.data.linkUrl.size() > 0
+              && request.resource.data.linkUrl.size() <= 2000
+            )
+          );
+        allow delete: if signedIn() && resource.data.fromUid == request.auth.uid;
+      }
+
+      match /joinRequests/{requestId} {
+        allow read: if signedIn()
+          && (request.auth.uid == requestId || isGroupStaff());
+        allow create: if signedIn()
+          && request.auth.uid == requestId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == 'pending';
+        allow update, delete: if signedIn()
+          && (isGroupStaff() || request.auth.uid == requestId);
+      }
+    }
+
+    // Lectura pública del doc de sala: feed "Lives en línea" en tiempo real.
+    match /liveRooms/{roomName} {
+      allow read: if true;
       allow create, update: if signedIn();
 
       match /gifts/{giftId} {

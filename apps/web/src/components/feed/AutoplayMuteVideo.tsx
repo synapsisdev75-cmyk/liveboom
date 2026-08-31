@@ -1,4 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
+import {
+  claimExclusivePlayback,
+  isExclusiveHeldByOther,
+  registerFeedVideo,
+  releaseExclusivePlayback,
+} from '../../lib/videoPlayback';
 
 /** Video que se reproduce solo (muted) al entrar en pantalla. */
 export function AutoplayMuteVideo({
@@ -10,8 +16,20 @@ export function AutoplayMuteVideo({
   className?: string;
   onActivate?: () => void;
 }) {
+  const reactId = useId();
+  const id = `autoplay-${reactId}`;
   const ref = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return registerFeedVideo({
+      id,
+      pause: () => ref.current?.pause(),
+      mute: () => {
+        if (ref.current) ref.current.muted = true;
+      },
+    });
+  }, [id]);
 
   useEffect(() => {
     const host = wrapRef.current;
@@ -21,6 +39,10 @@ export function AutoplayMuteVideo({
     const io = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;
+        if (isExclusiveHeldByOther(id)) {
+          video.pause();
+          return;
+        }
         if (entry.isIntersecting && entry.intersectionRatio >= 0.4) {
           video.muted = true;
           void video.play().catch(() => undefined);
@@ -31,11 +53,15 @@ export function AutoplayMuteVideo({
       { threshold: [0, 0.4, 0.7] },
     );
     io.observe(host);
-    return () => io.disconnect();
-  }, [src]);
+    return () => {
+      io.disconnect();
+      video.pause();
+      releaseExclusivePlayback(id);
+    };
+  }, [src, id]);
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative h-full w-full">
       <video
         ref={ref}
         src={src}
@@ -44,7 +70,10 @@ export function AutoplayMuteVideo({
         loop
         playsInline
         preload="metadata"
-        onClick={onActivate}
+        onClick={() => {
+          claimExclusivePlayback(id);
+          onActivate?.();
+        }}
       />
     </div>
   );

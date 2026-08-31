@@ -44,6 +44,8 @@ async function listActiveLiveRooms() {
     const rooms = await svc.listRooms();
     return (rooms || [])
       .filter((room) => Number(room.numParticipants || 0) > 0)
+      // Llamadas privadas P2P (dm_*) nunca van al feed de Lives.
+      .filter((room) => !/^dm[_-]/i.test(String(room.name || '')))
       .map((room) => ({
         username: String(room.name || ''),
         uid: String(room.name || ''),

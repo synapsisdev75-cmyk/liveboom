@@ -7,6 +7,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   type Firestore,
@@ -29,6 +30,7 @@ export type PublicFsUser = {
   birthDate: string | null;
   category: string | null;
   coinsBalance: number;
+  levelXp: number;
 };
 
 function normalizeUsername(value: string) {
@@ -45,19 +47,42 @@ export function profileHref(username: string, uid?: string | null) {
   return id ? `/u/${handle}?uid=${encodeURIComponent(id)}` : `/u/${handle}`;
 }
 
+function asIsoDate(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+    const parsed = Date.parse(trimmed);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString().slice(0, 10);
+    return null;
+  }
+  if (typeof value === 'object' && value && 'toDate' in value && typeof (value as { toDate: () => Date }).toDate === 'function') {
+    try {
+      return (value as { toDate: () => Date }).toDate().toISOString().slice(0, 10);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
   const username = String(data.username || '');
+  const avatarRaw = data.avatarUrl;
+  const avatarUrl =
+    typeof avatarRaw === 'string' && avatarRaw.trim() ? avatarRaw.trim() : null;
   return {
     id,
     firebaseUid: String(data.firebaseUid || id),
     username,
     email: String(data.email || ''),
     displayName: String(data.displayName || username),
-    avatarUrl: (data.avatarUrl as string | null) ?? null,
+    avatarUrl,
     bio: (data.bio as string | null) ?? null,
-    birthDate: (data.birthDate as string | null) ?? null,
+    birthDate: asIsoDate(data.birthDate),
     category: (data.category as string | null) ?? null,
     coinsBalance: Number(data.coinsBalance ?? 0),
+    levelXp: Number(data.levelXp ?? 0),
   };
 }
 
@@ -74,6 +99,7 @@ export function mapFirestoreUser(user: PublicFsUser): SessionUser {
     category: user.category,
     coins: user.coinsBalance,
     coinsBalance: user.coinsBalance,
+    levelXp: user.levelXp,
   };
 }
 
@@ -91,6 +117,67 @@ export async function setFirestoreCoins(uid: string, coins: number) {
     coinsBalance: next,
     updatedAt: serverTimestamp(),
   });
+}
+
+/** Suma XP de nivel (regalos enviados/recibidos). */
+export async function addLevelXp(uid: string, amount: number) {
+  const id = String(uid || '').trim();
+  const delta = Math.max(0, Math.floor(Number(amount) || 0));
+  if (!id || !delta) return 0;
+  const ref = doc(db, 'users', id);
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? Number(snap.data()?.levelXp ?? 0) : 0;
+    const next = current + delta;
+    tx.set(
+      ref,
+      {
+        levelXp: next,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return next;
+  });
+}
+
+export async function setLevelXp(uid: string, xp: number) {
+  const id = String(uid || '').trim();
+  if (!id) return 0;
+  const next = Math.max(0, Math.floor(Number(xp) || 0));
+  await updateDoc(doc(db, 'users', id), {
+    levelXp: next,
+    updatedAt: serverTimestamp(),
+  });
+  return next;
+}
+
+/** Suma o resta XP (delta puede ser negativo). */
+export async function adjustLevelXp(uid: string, delta: number) {
+  const id = String(uid || '').trim();
+  const amount = Math.floor(Number(delta) || 0);
+  if (!id || amount === 0) return null;
+  return runTransaction(db, async (tx) => {
+    const ref = doc(db, 'users', id);
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? Number(snap.data()?.levelXp ?? 0) : 0;
+    const next = Math.max(0, current + amount);
+    tx.set(
+      ref,
+      {
+        levelXp: next,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return next;
+  });
+}
+
+export async function fetchLevelXp(uid: string) {
+  const snap = await getDoc(doc(db, 'users', String(uid || '').trim()));
+  if (!snap.exists()) return 0;
+  return Number(snap.data()?.levelXp ?? 0);
 }
 
 /** Suma coins al saldo Firestore (ganancias del host, etc.). */
@@ -147,13 +234,28 @@ export async function fetchPublicUserByUsername(username: string): Promise<Publi
     collection(db, 'users'),
     where('username', '>=', needle),
     where('username', '<=', prefixEnd),
-    limit(8),
+    limit(12),
   );
   const looseSnap = await getDocs(loose);
-  const match = looseSnap.docs
+  const byUsername = looseSnap.docs
     .map((item) => mapDoc(item.id, item.data() as Record<string, unknown>))
-    .find((user) => user.username.toLowerCase() === needle);
-  return match ?? null;
+    .find((user) => {
+      const handle = user.username.toLowerCase();
+      return handle === needle || handle.startsWith(`${needle}_`);
+    });
+  if (byUsername) return byUsername;
+
+  const displayLoose = query(
+    collection(db, 'users'),
+    where('displayName', '>=', needle),
+    where('displayName', '<=', prefixEnd),
+    limit(12),
+  );
+  const displaySnap = await getDocs(displayLoose);
+  const byDisplay = displaySnap.docs
+    .map((item) => mapDoc(item.id, item.data() as Record<string, unknown>))
+    .find((user) => normalizeUsername(user.displayName) === needle);
+  return byDisplay ?? null;
 }
 
 export async function searchFirestoreUsers(needleRaw: string): Promise<PublicFsUser[]> {
@@ -188,7 +290,20 @@ export async function ensureFirestoreProfile(input: {
   photoURL: string | null;
 }): Promise<SessionUser | null> {
   const existing = await fetchFirestoreProfile(input.uid);
-  if (existing) return existing;
+  if (existing) {
+    const photo = String(input.photoURL || '').trim();
+    const name = String(input.displayName || '').trim();
+    const patch: Partial<Pick<PublicFsUser, 'avatarUrl' | 'displayName'>> = {};
+    if (photo && !existing.avatarUrl) patch.avatarUrl = photo;
+    if (name && (!existing.displayName || existing.displayName === existing.handle)) {
+      patch.displayName = name.slice(0, 48);
+    }
+    if (Object.keys(patch).length > 0) {
+      await updateFirestoreProfileFields(input.uid, patch);
+      return fetchFirestoreProfile(input.uid);
+    }
+    return existing;
+  }
 
   const base =
     String(input.displayName || input.email.split('@')[0] || 'user')
@@ -280,4 +395,40 @@ export async function saveFirestoreProfile(input: {
   if (!saved) throw new Error('No se pudo leer el perfil guardado en Firebase.');
   void ensureUserStorageFolder(input.uid).catch(() => undefined);
   return saved;
+}
+
+/** Guarda solo la foto de perfil en Storage + Firestore. */
+export async function saveFirestoreAvatar(uid: string, avatarUrl: string): Promise<string> {
+  const id = String(uid || '').trim();
+  const url = String(avatarUrl || '').trim();
+  if (!id || !url) throw new Error('Foto de perfil inválida.');
+  await setDoc(
+    doc(db, 'users', id),
+    {
+      avatarUrl: url,
+      firebaseUid: id,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  void ensureUserStorageFolder(id).catch(() => undefined);
+  return url;
+}
+
+/** Actualiza campos del perfil sin requerir guardado completo. */
+export async function updateFirestoreProfileFields(
+  uid: string,
+  fields: Partial<Pick<PublicFsUser, 'avatarUrl' | 'birthDate' | 'displayName' | 'bio' | 'category'>>,
+): Promise<void> {
+  const id = String(uid || '').trim();
+  if (!id) throw new Error('Usuario no válido.');
+  await setDoc(
+    doc(db, 'users', id),
+    {
+      firebaseUid: id,
+      ...fields,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 }

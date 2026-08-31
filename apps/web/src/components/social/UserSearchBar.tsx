@@ -96,7 +96,8 @@ export function UserSearchBar({ category = '', onCategoryChange }: Props) {
       {busy ? <p className="mt-2 text-xs text-zinc-500">Buscando…</p> : null}
       {showEmpty ? (
         <p className="mt-2 text-xs text-zinc-500">
-          Sin resultados. Prueba con @usuario o revisa que el creador haya guardado su perfil.
+          Sin resultados. Prueba con @usuario. Si no aparece, pídele que complete su perfil en LiveBoom
+          (Perfil → Guardar cambios).
         </p>
       ) : null}
       {results.length > 0 ? (

@@ -11,8 +11,8 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { api, getApiBase, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
-import { ensureFirestoreProfile, fetchFirestoreProfile } from '../lib/profileFirestore';
-import { storePendingBirthYear } from '../lib/birthDate';
+import { ensureFirestoreProfile, fetchFirestoreProfile, updateFirestoreProfileFields } from '../lib/profileFirestore';
+import { readPendingBirthDate, storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
 
 type AuthState = {
@@ -27,7 +27,7 @@ type AuthState = {
   setProfile: (profile: SessionUser) => void;
   signInEmail: (email: string, password: string) => Promise<void>;
   signUpEmail: (name: string, email: string, password: string, birthYear: number) => Promise<void>;
-  signInGoogle: () => Promise<void>;
+  signInGoogle: (birthYear?: number) => Promise<void>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>;
 };
@@ -52,18 +52,42 @@ function mapAuthError(error: unknown): string {
 async function syncWithBackend(user: FirebaseUser) {
   const apiBase = getApiBase();
   const email = user.email ?? `${user.uid}@users.liveboom.local`;
+  const googlePhoto = String(user.photoURL || '').trim() || null;
+  const pendingBirth = readPendingBirthDate(user.uid);
 
   try {
-    const fsProfile =
+    let fsProfile =
       (await fetchFirestoreProfile(user.uid)) ??
       (await ensureFirestoreProfile({
         uid: user.uid,
         email,
         displayName: user.displayName,
-        photoURL: user.photoURL,
+        photoURL: googlePhoto,
       }));
 
     if (fsProfile) {
+      // Si el doc ya existía sin foto, ensureFirestoreProfile la rellena; relee por si acaso.
+      if (!fsProfile.avatarUrl && googlePhoto) {
+        fsProfile =
+          (await ensureFirestoreProfile({
+            uid: user.uid,
+            email,
+            displayName: user.displayName,
+            photoURL: googlePhoto,
+          })) ?? fsProfile;
+      }
+
+      // Fecha pendiente del registro → guardar en Firestore si aún no hay birthDate
+      if (!fsProfile.birthDate && pendingBirth) {
+        await updateFirestoreProfileFields(user.uid, { birthDate: pendingBirth }).catch(() => undefined);
+        fsProfile = { ...fsProfile, birthDate: pendingBirth };
+      }
+
+      // Preferir foto de Google en sesión si Firestore no tiene avatar
+      if (!fsProfile.avatarUrl && googlePhoto) {
+        fsProfile = { ...fsProfile, avatarUrl: googlePhoto };
+      }
+
       try {
         const token = await user.getIdToken();
         await postAuthSync(token);
@@ -81,6 +105,8 @@ async function syncWithBackend(user: FirebaseUser) {
             ...fsProfile,
             coins: data.coinsBalance,
             coinsBalance: data.coinsBalance,
+            avatarUrl: fsProfile.avatarUrl || data.avatarUrl || googlePhoto,
+            birthDate: fsProfile.birthDate || data.birthDate || pendingBirth,
           };
         }
       } catch {
@@ -106,18 +132,27 @@ async function syncWithBackend(user: FirebaseUser) {
         typeof mapPostgresUser
       >[0];
       if (response.ok && data.id && data.firebaseUid && data.username) {
-        return mapPostgresUser(data);
+        const mapped = mapPostgresUser(data);
+        return {
+          ...mapped,
+          avatarUrl: mapped.avatarUrl || googlePhoto,
+          birthDate: mapped.birthDate || pendingBirth,
+        };
       }
     } catch {
       // perfil completo opcional tras sync
     }
-    return synced;
+    return {
+      ...synced,
+      avatarUrl: synced.avatarUrl || googlePhoto,
+      birthDate: synced.birthDate || pendingBirth,
+    };
   } catch {
-    return profileFromFirebase(user);
+    return profileFromFirebase(user, pendingBirth);
   }
 }
 
-function profileFromFirebase(user: FirebaseUser): SessionUser {
+function profileFromFirebase(user: FirebaseUser, pendingBirth?: string | null): SessionUser {
   const handle = user.email?.split('@')[0] ?? user.uid.slice(0, 8);
   return {
     id: user.uid,
@@ -127,7 +162,7 @@ function profileFromFirebase(user: FirebaseUser): SessionUser {
     handle,
     avatarUrl: user.photoURL,
     bio: null,
-    birthDate: null,
+    birthDate: pendingBirth ?? null,
     category: null,
     coins: 0,
     coinsBalance: 0,
@@ -202,10 +237,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signInGoogle: async () => {
+  signInGoogle: async (birthYear) => {
     set({ busy: true, error: null });
     try {
       const cred = await signInWithPopup(auth, googleProvider);
+      if (birthYear && Number.isFinite(birthYear)) {
+        storePendingBirthYear(cred.user.uid, birthYear);
+      }
       const profile = await syncWithBackend(cred.user);
       set({ firebaseUser: cred.user, profile });
     } catch (error) {

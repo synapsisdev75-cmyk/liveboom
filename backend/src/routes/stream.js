@@ -78,9 +78,7 @@ function isRoomHost(decoded, roomName, claimedHandle) {
   const profile = getProfile(uid);
   if (profile?.username && normalize(profile.username) === room) return true;
 
-  return identitiesFromToken(decoded).some(
-    (identity) => identity === room || identity.startsWith(room) || room.startsWith(identity),
-  );
+  return identitiesFromToken(decoded).includes(room);
 }
 
 function canGuestPublish(decoded, roomName) {
@@ -112,6 +110,8 @@ router.get('/live', async (req, res) => {
   const category =
     typeof req.query.category === 'string' ? normalize(req.query.category) : '';
   let streams = Array.from(byName.values()).filter((item) => {
+    // Llamadas privadas 1:1 nunca aparecen como LIVE.
+    if (/^dm[_-]/i.test(String(item.username || ''))) return false;
     if (includePrivate) return true;
     // Candado activo = privado para el feed público.
     if (item.isPrivate || item.lockGiftId) return false;
@@ -416,7 +416,7 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
       canPublish,
     });
 
-    if (host) {
+    if (host && !isDirectCall) {
       upsertLive({
         username: roomName,
         uid: req.user.uid,
@@ -425,10 +425,14 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
       });
     }
 
+    const owner = findByUsername(roomName);
+    const hostUid = owner?.firebaseUid || (host ? uid : null);
+
     res.json({
       token,
       serverUrl: process.env.LIVEKIT_URL,
       roomName,
+      hostUid,
       canPublish,
       isHost: host,
       isGuest: guest && !host,

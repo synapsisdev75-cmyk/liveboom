@@ -39,11 +39,12 @@ function withTimeout(promise, ms) {
 function announceGift(roomName, payload) {
   emitGiftReceived(roomName, payload);
   try {
+    const mult = Math.max(1, Math.floor(Number(payload.multiplier) || 1));
     liveChat.appendMessage(roomName, {
       id: `gift-${payload.id}`,
       author: payload.senderName,
-      text: `envió ${payload.giftName}`,
-      gift: { giftId: payload.giftId, emoji: payload.emoji, name: payload.giftName },
+      text: mult > 1 ? `envió ${payload.giftName} x${mult}` : `envió ${payload.giftName}`,
+      gift: { giftId: payload.giftId, emoji: payload.emoji, name: payload.giftName, multiplier: mult },
     });
   } catch {
     // chat opcional
@@ -59,15 +60,19 @@ function announceGift(roomName, payload) {
   }
 }
 
-function memorySend(senderUid, roomName, gift, payload, floorFromClient = 0) {
-  syncSenderFloor(senderUid, floorFromClient);
-  const next = debit(senderUid, gift.coins);
-  if (next == null) return { error: 'Saldo insuficiente' };
+function memorySend(senderUid, roomName, gift, payload, floorFromClient = 0, totalCoins) {
   const host = findByUsername(roomName);
-  if (host?.firebaseUid && host.firebaseUid !== senderUid) {
-    credit(host.firebaseUid, gift.coins);
+  if (host?.firebaseUid && host.firebaseUid === senderUid) {
+    return { error: 'No puedes enviarte un regalo a ti mismo' };
   }
-  announceGift(roomName, payload);
+  const cost = Math.max(gift.coins, Math.floor(Number(totalCoins) || gift.coins));
+  syncSenderFloor(senderUid, floorFromClient);
+  const next = debit(senderUid, cost);
+  if (next == null) return { error: 'Saldo insuficiente' };
+  if (host?.firebaseUid && host.firebaseUid !== senderUid) {
+    credit(host.firebaseUid, cost);
+  }
+  announceGift(roomName, { ...payload, coins: cost });
   return {
     senderBalance: next,
     creatorBalance: host ? getBalance(host.firebaseUid) : 0,
@@ -78,6 +83,9 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const giftId = req.body?.giftId;
   const roomName = typeof req.body?.roomName === 'string' ? req.body.roomName.trim() : '';
   const gift = findGift(giftId);
+  const rawMult = Math.floor(Number(req.body?.multiplier) || 1);
+  const multiplier = [1, 2, 4, 8].includes(rawMult) ? rawMult : 1;
+  const totalCoins = gift ? gift.coins * multiplier : 0;
 
   if (!gift || !roomName) {
     res.status(400).json({ error: 'giftId y roomName son obligatorios' });
@@ -99,14 +107,15 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     giftId: gift.id,
     giftName: gift.name,
     emoji: gift.emoji,
-    coins: gift.coins,
+    coins: totalCoins,
+    multiplier,
     senderName,
     senderUid,
   };
 
   try {
     if (!hasDatabase || !prisma) {
-      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient);
+      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient, totalCoins);
       if (sent.error) {
         res.status(402).json({ error: sent.error });
         return;
@@ -126,7 +135,7 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     }
 
     if (!creator) {
-      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient);
+      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient, totalCoins);
       if (sent.error) {
         res.status(402).json({ error: sent.error });
         return;
@@ -156,8 +165,8 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     const result = await withTimeout(
       prisma.$transaction(async (tx) => {
         const deducted = await tx.user.updateMany({
-          where: { id: req.dbUser.id, coinsBalance: { gte: gift.coins } },
-          data: { coinsBalance: { decrement: gift.coins } },
+          where: { id: req.dbUser.id, coinsBalance: { gte: totalCoins } },
+          data: { coinsBalance: { decrement: totalCoins } },
         });
         if (deducted.count !== 1) {
           const error = new Error('INSUFFICIENT_COINS');
@@ -167,13 +176,13 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
 
         const creatorUpdated = await tx.user.update({
           where: { id: creator.id },
-          data: { coinsBalance: { increment: gift.coins } },
+          data: { coinsBalance: { increment: totalCoins } },
         });
 
         await tx.transaction.create({
           data: {
             userId: req.dbUser.id,
-            amount: -gift.coins,
+            amount: -totalCoins,
             amountInCop: 0,
             type: 'gift_send',
             status: 'completed',
@@ -186,7 +195,7 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
         await tx.transaction.create({
           data: {
             userId: creator.id,
-            amount: gift.coins,
+            amount: totalCoins,
             amountInCop: 0,
             type: 'gift_receive',
             status: 'completed',
@@ -223,7 +232,7 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       return;
     }
     if (error.code === 'TIMEOUT') {
-      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient);
+      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient, totalCoins);
       if (sent.error) {
         res.status(402).json({ error: sent.error });
         return;

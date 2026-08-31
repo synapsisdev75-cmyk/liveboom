@@ -1,5 +1,32 @@
-/** Alerta sonora original Liveboom (Web Audio, sin archivos externos). */
+/** Alertas sonoras Liveboom: MP3 para notificaciones, Web Audio para regalos. */
 let audioCtx: AudioContext | null = null;
+
+const NOTIFICATION_SRC = '/sounds/notification.mp3';
+let notificationAudio: HTMLAudioElement | null = null;
+
+function playNotificationSound() {
+  try {
+    if (!notificationAudio) {
+      notificationAudio = new Audio(NOTIFICATION_SRC);
+      notificationAudio.volume = 0.82;
+    }
+    notificationAudio.currentTime = 0;
+    void notificationAudio.play().catch(() => playNotificationFallback());
+  } catch {
+    playNotificationFallback();
+  }
+}
+
+function playNotificationFallback() {
+  try {
+    const ac = ctx();
+    const t = ac.currentTime;
+    tone(t, 880, 0.1, 0.1, 'sine');
+    tone(t + 0.09, 1174.7, 0.12, 0.09, 'triangle');
+  } catch {
+    // Audio bloqueado hasta interacción del usuario
+  }
+}
 
 function ctx() {
   if (!audioCtx) {
@@ -28,19 +55,37 @@ function tone(at: number, freq: number, duration: number, gain = 0.12, type: Osc
 
 /** Solicitud de amistad entrante */
 export function playFriendRequestAlert() {
+  playNotificationSound();
+}
+
+/** Timbre de llamada privada (MP3 original Liveboom). */
+const CALL_RING_SRC = '/sounds/call-ring.mp3';
+let callRingAudio: HTMLAudioElement | null = null;
+
+export function startCallRing() {
   try {
-    const ac = ctx();
-    const t = ac.currentTime;
-    tone(t, 880, 0.12, 0.14, 'triangle');
-    tone(t + 0.1, 1174.7, 0.14, 0.12, 'triangle');
-    tone(t + 0.22, 1396.9, 0.18, 0.1, 'sine');
+    stopCallRing();
+    const audio = new Audio(CALL_RING_SRC);
+    audio.loop = true;
+    audio.volume = 0.88;
+    callRingAudio = audio;
+    void audio.play().catch(() => {
+      // Fallback si el navegador bloquea autoplay
+      playCallRingFallback();
+    });
   } catch {
-    // Audio bloqueado hasta interacción del usuario
+    playCallRingFallback();
   }
 }
 
-/** Timbre de llamada privada */
-export function playCallRing() {
+export function stopCallRing() {
+  if (!callRingAudio) return;
+  callRingAudio.pause();
+  callRingAudio.currentTime = 0;
+  callRingAudio = null;
+}
+
+function playCallRingFallback() {
   try {
     const ac = ctx();
     const t = ac.currentTime;
@@ -53,25 +98,78 @@ export function playCallRing() {
   }
 }
 
-/** Nuevo mensaje privado */
-export function playMessageAlert() {
+/** @deprecated Usa startCallRing / stopCallRing para llamadas entrantes. */
+export function playCallRing() {
+  startCallRing();
+}
+
+/** Pop corto (enviar mensaje / recibir con la app enfocada en chats). */
+export function playMessagePop() {
   try {
     const ac = ctx();
     const t = ac.currentTime;
-    tone(t, 659.25, 0.1, 0.1, 'sine');
-    tone(t + 0.09, 830.61, 0.12, 0.09, 'sine');
+    // Pop suave y corto
+    tone(t, 620, 0.045, 0.09, 'sine');
+    tone(t + 0.03, 920, 0.05, 0.06, 'triangle');
   } catch {
-    // ignore
+    // Audio bloqueado hasta interacción del usuario
   }
+}
+
+/** Alerta completa de mensaje (fuera de la app / otra pantalla). */
+export function playMessageAlert() {
+  playNotificationSound();
+}
+
+let lastIncomingMsgSoundAt = 0;
+
+/**
+ * Sonido al recibir mensaje privado:
+ * - fuera (pestaña oculta u otra pantalla) → alerta actual
+ * - dentro de Mensajes con pestaña visible → pop corto
+ * Debounce evita doble tono (campana + chat abierto).
+ */
+export function playIncomingMessageSound(viewingMessages: boolean) {
+  const now = Date.now();
+  if (now - lastIncomingMsgSoundAt < 450) return;
+  lastIncomingMsgSoundAt = now;
+  const outside =
+    typeof document === 'undefined' ||
+    document.visibilityState !== 'visible' ||
+    !viewingMessages;
+  if (outside) playMessageAlert();
+  else playMessagePop();
 }
 
 /** Nueva publicación / actividad */
 export function playPostAlert() {
+  playNotificationSound();
+}
+
+/** Amigo inició live */
+const LIVE_ALERT_SRC = '/sounds/live-alert.mp3';
+let liveAlertAudio: HTMLAudioElement | null = null;
+
+export function playLiveAlert() {
+  try {
+    if (!liveAlertAudio) {
+      liveAlertAudio = new Audio(LIVE_ALERT_SRC);
+      liveAlertAudio.volume = 0.85;
+    }
+    liveAlertAudio.currentTime = 0;
+    void liveAlertAudio.play().catch(() => playLiveAlertFallback());
+  } catch {
+    playLiveAlertFallback();
+  }
+}
+
+function playLiveAlertFallback() {
   try {
     const ac = ctx();
     const t = ac.currentTime;
-    tone(t, 523.25, 0.08, 0.08, 'square');
-    tone(t + 0.08, 659.25, 0.1, 0.07, 'square');
+    tone(t, 523.25, 0.1, 0.1, 'square');
+    tone(t + 0.1, 659.25, 0.14, 0.09, 'triangle');
+    tone(t + 0.22, 784, 0.16, 0.08, 'sine');
   } catch {
     // ignore
   }

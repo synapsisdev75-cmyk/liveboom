@@ -128,6 +128,12 @@ async function completeWidget(req, res) {
   }
 }
 
+function simulateTopupAllowed() {
+  const flag = String(process.env.ALLOW_SIMULATE_TOPUP ?? '1').trim().toLowerCase();
+  if (flag === '0' || flag === 'false' || flag === 'off' || flag === 'no') return false;
+  return true;
+}
+
 function getPaymentStatus(_req, res) {
   const publicKey = cleanWompiSecret(process.env.WOMPI_PUBLIC_KEY);
   const integrity = cleanWompiSecret(process.env.WOMPI_INTEGRITY_SECRET);
@@ -145,7 +151,7 @@ function getPaymentStatus(_req, res) {
     configured: Boolean(publicKey && integrity),
     sandbox,
     pairOk,
-    simulateAvailable: sandbox,
+    simulateAvailable: simulateTopupAllowed(),
     coinToCop: COIN_TO_COP,
     minWithdrawCoins: MIN_WITHDRAW_COINS,
   });
@@ -153,9 +159,8 @@ function getPaymentStatus(_req, res) {
 
 async function simulateTopup(req, res) {
   try {
-    const publicKey = cleanWompiSecret(process.env.WOMPI_PUBLIC_KEY);
-    if (!publicKey.startsWith('pub_test_')) {
-      res.status(403).json({ error: 'Simulación solo disponible en modo pruebas' });
+    if (!simulateTopupAllowed()) {
+      res.status(403).json({ error: 'Simulación deshabilitada' });
       return;
     }
     const packageId = req.body?.packageId;
@@ -169,11 +174,11 @@ async function simulateTopup(req, res) {
       return;
     }
     const dbUser = userForOrder(req);
-    if (!dbUser?.id) {
-      res.status(401).json({ error: 'No hay usuario para acreditar coins' });
+    const uid = req.user?.uid || dbUser?.firebaseUid || dbUser?.id;
+    if (!uid) {
+      res.status(401).json({ error: 'Inicia sesión para recargar' });
       return;
     }
-    const uid = dbUser.firebaseUid || req.user?.uid || dbUser.id;
     const coinsBalance = await creditTopup(uid, resolved.pack.coins, req.body?.currentBalance);
     res.json({
       coins: resolved.pack.coins,

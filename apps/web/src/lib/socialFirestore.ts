@@ -1,10 +1,12 @@
 import {
   addDoc,
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -16,8 +18,17 @@ import {
   writeBatch,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { api, apiPublic } from './api';
 import { db, auth } from './firebase';
-import { fetchPublicUserByUsername, type PublicFsUser } from './profileFirestore';
+import { fetchPublicUserByUsername, fetchPublicUserByUid, type PublicFsUser } from './profileFirestore';
+import { readIgnoredSuggestionUids } from './ignoredSuggestions';
+import {
+  diversifyReelFeed,
+  isReelInPublicFeed,
+  reelLifecycleFromCreatedAt,
+  targetReelVisibility,
+} from './reelLifecycle';
+import { isStoryActive, isStoryPost, storyExpiresAtFromNow } from './storyLifecycle';
 import { updateStoredMediaVisibility, uploadUserMedia } from './storage';
 
 export type FriendshipStatus =
@@ -47,12 +58,19 @@ export type ChatMessage = {
   mine: boolean;
   createdAt: string;
   mediaUrl?: string | null;
-  mediaType?: 'image' | 'audio' | 'file' | null;
+  mediaType?: 'image' | 'audio' | 'video' | 'file' | 'call' | null;
   linkUrl?: string | null;
   /** sent = enviado, delivered = entregado, read = leído */
   status?: 'sent' | 'delivered' | 'read';
   editedAt?: string | null;
   deleted?: boolean;
+  /** Uids que ocultaron el mensaje solo para sí. */
+  hiddenFor?: string[];
+  callMeta?: {
+    video: boolean;
+    outcome: 'completed' | 'missed' | 'cancelled' | 'declined';
+    durationSec: number;
+  } | null;
 };
 
 export type PrivateCall = {
@@ -72,6 +90,8 @@ export type Conversation = FriendChip & {
   lastMessage: string | null;
   lastAt: string | null;
   call: PrivateCall | null;
+  /** Mensajes no leídos para el viewer actual. */
+  unread: number;
 };
 
 export type FsPost = {
@@ -81,11 +101,18 @@ export type FsPost = {
   type: 'photo' | 'video' | 'text';
   caption: string | null;
   mediaUrl: string | null;
-  visibility: 'public' | 'friends' | 'private';
+  visibility: 'public' | 'friends' | 'private' | 'circle';
   storagePath: string | null;
   createdAt: string;
   likes: number;
   viewerReaction: string | null;
+  /** story = historia 24h; post = video publicación normal */
+  postFormat?: 'story' | 'post';
+  storyExpiresAtMs?: number;
+  durationSec?: number;
+  reelFeedUntilMs?: number;
+  reelFriendsAtMs?: number;
+  reelPrivateAtMs?: number;
 };
 
 type MeProfile = {
@@ -202,6 +229,84 @@ function meToChip(me: MeProfile): FriendChip {
   };
 }
 
+function userFromChip(uid: string, chip: Partial<FriendChip>, fallbackUsername: string): PublicFsUser {
+  const username = String(chip.username || fallbackUsername || '')
+    .trim()
+    .toLowerCase();
+  return {
+    id: uid,
+    firebaseUid: uid,
+    username,
+    email: '',
+    displayName: String(chip.displayName || username),
+    avatarUrl: chip.avatarUrl ?? null,
+    bio: null,
+    birthDate: null,
+    category: null,
+    coinsBalance: 0,
+    levelXp: 0,
+  };
+}
+
+async function resolveFollowTargetFromApi(username: string): Promise<PublicFsUser | null> {
+  const needle = String(username || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '');
+  if (!needle) return null;
+  try {
+    const fetcher = auth.currentUser ? api : apiPublic;
+    const data = await fetcher<{
+      users: Array<{
+        uid?: string | null;
+        username: string;
+        displayName?: string;
+        avatarUrl?: string | null;
+      }>;
+    }>(`/api/social/search?q=${encodeURIComponent(needle)}`);
+    const match = (data.users || []).find((row) => row.username?.toLowerCase() === needle);
+    if (!match?.uid) return null;
+    const fromFs = await fetchPublicUserByUid(match.uid);
+    if (fromFs) return fromFs;
+    return userFromChip(
+      match.uid,
+      {
+        uid: match.uid,
+        username: match.username,
+        displayName: match.displayName || match.username,
+        avatarUrl: match.avatarUrl ?? null,
+      },
+      needle,
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function resolveFollowTarget(
+  targetUsername: string,
+  targetUid?: string | null,
+  hint?: Partial<FriendChip> | null,
+): Promise<PublicFsUser | null> {
+  const uid = String(targetUid || hint?.uid || '').trim();
+  if (uid) {
+    const fromFs = await fetchPublicUserByUid(uid);
+    if (fromFs) return fromFs;
+    return userFromChip(uid, hint || {}, targetUsername);
+  }
+
+  const needle = String(targetUsername || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '');
+  if (!needle) return null;
+
+  const byUsername = await fetchPublicUserByUsername(needle);
+  if (byUsername) return byUsername;
+
+  return resolveFollowTargetFromApi(needle);
+}
+
 export async function getFriendshipStatusByUid(
   viewerUid: string,
   targetUid: string,
@@ -233,63 +338,127 @@ export async function getFriendshipStatus(
   return getFriendshipStatusByUid(viewerUid, target.firebaseUid);
 }
 
-export async function sendFriendRequest(from: MeProfile | PublicFsUser, toUsername: string) {
+export async function sendFriendRequest(
+  from: MeProfile | PublicFsUser,
+  toUsername: string,
+  toUid?: string,
+) {
   const fromUid = from.firebaseUid;
-  const fromUsername = 'handle' in from ? from.handle : from.username;
-  const target = await fetchPublicUserByUsername(toUsername);
-  if (!target) throw new Error('Usuario no encontrado en Firebase. Pídele que guarde su perfil.');
-  if (target.firebaseUid === fromUid) throw new Error('No puedes enviarte solicitud a ti mismo');
+  const fromUsername = String(('handle' in from ? from.handle : from.username) || '')
+    .trim()
+    .replace(/^@/, '')
+    .toLowerCase();
+  const needle = String(toUsername || '')
+    .trim()
+    .replace(/^@/, '')
+    .toLowerCase();
+  const explicitUid = String(toUid || '').trim();
 
-  const blocked = await getDoc(doc(db, 'users', fromUid, 'blocked', target.firebaseUid));
+  // Preferir UID (Google / API / búsqueda). No exigir perfil “completo” ni birthDate.
+  let target = explicitUid ? await fetchPublicUserByUid(explicitUid) : null;
+  if (!target && needle) target = await fetchPublicUserByUsername(needle);
+
+  const targetUid = target?.firebaseUid || explicitUid;
+  const targetUsername = (target?.username || needle).toLowerCase();
+  if (!targetUid || !targetUsername) {
+    throw new Error('No pudimos identificar a esta persona. Actualiza e inténtalo de nuevo.');
+  }
+  if (targetUid === fromUid) throw new Error('No puedes enviarte solicitud a ti mismo');
+
+  const blocked = await getDoc(doc(db, 'users', fromUid, 'blocked', targetUid));
   if (blocked.exists()) throw new Error('Desbloquea a esta persona para enviarle solicitud.');
-  const blockedBy = await getDoc(doc(db, 'users', target.firebaseUid, 'blocked', fromUid)).catch(
-    () => null,
-  );
+  const blockedBy = await getDoc(doc(db, 'users', targetUid, 'blocked', fromUid)).catch(() => null);
   if (blockedBy?.exists()) throw new Error('No puedes enviar solicitud a este usuario.');
 
-  const status = await getFriendshipStatus(fromUid, toUsername);
+  const status = await getFriendshipStatusByUid(fromUid, targetUid);
   if (status === 'friends') return;
   if (status === 'pending_sent') return;
   if (status === 'pending_received') {
-    await acceptFriendRequest(fromUid, toUsername);
+    await acceptFriendRequest(fromUid, targetUid);
     return;
   }
 
   const fromChip = {
-    username: fromUsername,
-    displayName: from.displayName,
+    username: fromUsername || fromUid.slice(0, 8),
+    displayName: from.displayName || fromUsername || 'Usuario',
     avatarUrl: from.avatarUrl,
     createdAt: serverTimestamp(),
   };
   const toChip = {
-    username: target.username,
-    displayName: target.displayName,
-    avatarUrl: target.avatarUrl,
+    username: targetUsername,
+    displayName: target?.displayName || targetUsername,
+    avatarUrl: target?.avatarUrl ?? null,
     createdAt: serverTimestamp(),
   };
 
-  await setDoc(doc(db, 'users', target.firebaseUid, 'incomingRequests', fromUid), fromChip);
-  await setDoc(doc(db, 'users', fromUid, 'outgoingRequests', target.firebaseUid), toChip);
+  await setDoc(doc(db, 'users', targetUid, 'incomingRequests', fromUid), fromChip);
+  await setDoc(doc(db, 'users', fromUid, 'outgoingRequests', targetUid), toChip);
 }
 
-export async function cancelFriendRequest(fromUid: string, toUsername: string) {
-  const target = await fetchPublicUserByUsername(toUsername);
-  if (!target) return;
-  await deleteDoc(doc(db, 'users', fromUid, 'outgoingRequests', target.firebaseUid)).catch(() => undefined);
-  await deleteDoc(doc(db, 'users', target.firebaseUid, 'incomingRequests', fromUid)).catch(() => undefined);
+export async function cancelFriendRequest(fromUid: string, toUsernameOrUid: string) {
+  const needle = String(toUsernameOrUid || '').trim();
+  if (!needle) throw new Error('Solicitud inválida');
+
+  let target =
+    (await fetchPublicUserByUsername(needle)) || (await fetchPublicUserByUid(needle));
+
+  // Doc de enviadas: id = uid del destinatario.
+  if (!target) {
+    const outgoing = await getDoc(doc(db, 'users', fromUid, 'outgoingRequests', needle));
+    if (outgoing.exists()) {
+      target = await fetchPublicUserByUid(needle);
+      if (!target) {
+        // Limpia al menos tu copia pendiente.
+        await deleteDoc(doc(db, 'users', fromUid, 'outgoingRequests', needle));
+        return;
+      }
+    }
+  }
+
+  if (!target) {
+    throw new Error('No se encontró al usuario de la solicitud. Intenta de nuevo.');
+  }
+
+  await deleteDoc(doc(db, 'users', fromUid, 'outgoingRequests', target.firebaseUid));
+  await deleteDoc(doc(db, 'users', target.firebaseUid, 'incomingRequests', fromUid)).catch(
+    () => undefined,
+  );
 }
 
-export async function rejectFriendRequest(toUid: string, fromUsername: string) {
-  const from = await fetchPublicUserByUsername(fromUsername);
-  if (!from) return;
+export async function rejectFriendRequest(toUid: string, fromUsernameOrUid: string) {
+  const from =
+    (await fetchPublicUserByUsername(fromUsernameOrUid)) ||
+    (await fetchPublicUserByUid(fromUsernameOrUid));
+  if (!from) {
+    // Limpia por uid de doc si el perfil ya no existe.
+    const maybeUid = String(fromUsernameOrUid || '').trim();
+    if (maybeUid) {
+      await deleteDoc(doc(db, 'users', toUid, 'incomingRequests', maybeUid)).catch(() => undefined);
+    }
+    return;
+  }
   await deleteDoc(doc(db, 'users', toUid, 'incomingRequests', from.firebaseUid)).catch(() => undefined);
   await deleteDoc(doc(db, 'users', from.firebaseUid, 'outgoingRequests', toUid)).catch(() => undefined);
 }
 
-export async function acceptFriendRequest(toUid: string, fromUsername: string) {
-  const from = await fetchPublicUserByUsername(fromUsername);
+export async function acceptFriendRequest(toUid: string, fromUsernameOrUid: string) {
+  const needle = String(fromUsernameOrUid || '').trim();
+  if (!needle) throw new Error('Solicitud inválida');
+
+  let from =
+    (await fetchPublicUserByUsername(needle)) || (await fetchPublicUserByUid(needle));
+
+  // La solicitud entrante se guarda con id = uid del remitente.
+  if (!from) {
+    const incoming = await getDoc(doc(db, 'users', toUid, 'incomingRequests', needle));
+    if (incoming.exists()) {
+      from = await fetchPublicUserByUid(needle);
+    }
+  }
+  if (!from) throw new Error('No se encontró al usuario que envió la solicitud');
+
   const toSnap = await getDoc(doc(db, 'users', toUid));
-  if (!from || !toSnap.exists()) throw new Error('Usuario no encontrado');
+  if (!toSnap.exists()) throw new Error('Tu perfil no está listo. Guarda tu perfil e intenta de nuevo.');
   const toData = toSnap.data() as {
     username?: string;
     displayName?: string;
@@ -297,6 +466,8 @@ export async function acceptFriendRequest(toUid: string, fromUsername: string) {
   };
 
   const toHandle = String(toData.username || '').toLowerCase();
+  if (!toHandle) throw new Error('Tu perfil no tiene username. Edítalo y vuelve a aceptar.');
+
   const toChip = {
     username: toHandle,
     displayName: toData.displayName || toHandle,
@@ -315,21 +486,25 @@ export async function acceptFriendRequest(toUid: string, fromUsername: string) {
   await deleteDoc(doc(db, 'users', toUid, 'incomingRequests', from.firebaseUid)).catch(() => undefined);
   await deleteDoc(doc(db, 'users', from.firebaseUid, 'outgoingRequests', toUid)).catch(() => undefined);
 
-  // Empareja chat privado en cuanto quedan amigos (permisos requieren amistad).
-  await ensureChat(
-    {
-      firebaseUid: toUid,
-      handle: toHandle,
-      displayName: String(toData.displayName || toHandle),
-      avatarUrl: toData.avatarUrl ?? null,
-    },
-    {
-      uid: from.firebaseUid,
-      username: from.username,
-      displayName: from.displayName,
-      avatarUrl: from.avatarUrl,
-    },
-  );
+  // Chat opcional: no debe impedir aceptar la amistad.
+  try {
+    await ensureChat(
+      {
+        firebaseUid: toUid,
+        handle: toHandle,
+        displayName: String(toData.displayName || toHandle),
+        avatarUrl: toData.avatarUrl ?? null,
+      },
+      {
+        uid: from.firebaseUid,
+        username: from.username,
+        displayName: from.displayName,
+        avatarUrl: from.avatarUrl,
+      },
+    );
+  } catch (error) {
+    console.warn('[friends] ensureChat after accept', error);
+  }
 }
 
 export async function removeFriendship(uid: string, otherUsername: string) {
@@ -422,8 +597,13 @@ export async function listFriends(uid: string): Promise<FriendChip[]> {
   return snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>));
 }
 
-export async function followUser(me: MeProfile, targetUsername: string) {
-  const target = await fetchPublicUserByUsername(targetUsername);
+export async function followUser(
+  me: MeProfile,
+  targetUsername: string,
+  targetUid?: string | null,
+  targetHint?: Partial<FriendChip> | null,
+) {
+  const target = await resolveFollowTarget(targetUsername, targetUid, targetHint);
   if (!target) throw new Error('Usuario no encontrado');
   if (target.firebaseUid === me.firebaseUid) throw new Error('No puedes seguirte a ti mismo');
 
@@ -445,8 +625,13 @@ export async function followUser(me: MeProfile, targetUsername: string) {
   });
 }
 
-export async function unfollowUser(meUid: string, targetUsername: string) {
-  const target = await fetchPublicUserByUsername(targetUsername);
+export async function unfollowUser(
+  meUid: string,
+  targetUsername: string,
+  targetUid?: string | null,
+  targetHint?: Partial<FriendChip> | null,
+) {
+  const target = await resolveFollowTarget(targetUsername, targetUid, targetHint);
   if (!target) return;
   await deleteDoc(doc(db, 'users', meUid, 'following', target.firebaseUid)).catch(() => undefined);
   await deleteDoc(doc(db, 'users', target.firebaseUid, 'followers', meUid)).catch(() => undefined);
@@ -458,10 +643,67 @@ export async function isFollowingUid(viewerUid: string, targetUid: string) {
   return snap.exists();
 }
 
-export async function isFollowing(viewerUid: string, targetUsername: string) {
+export async function isFollowing(viewerUid: string, targetUsername: string, targetUid?: string | null) {
+  if (targetUid) return isFollowingUid(viewerUid, targetUid);
   const target = await fetchPublicUserByUsername(targetUsername);
   if (!target) return false;
   return isFollowingUid(viewerUid, target.firebaseUid);
+}
+
+export type SuggestedCreator = FriendChip & { isFollowing: boolean };
+
+/** Creadores sugeridos desde Firestore (misma fuente que Seguir). */
+export async function browseSuggestedCreators(
+  viewerUid?: string,
+  excludeUsername?: string,
+  options?: { limit?: number; excludeUids?: Iterable<string> },
+): Promise<SuggestedCreator[]> {
+  const followingIds = new Set<string>();
+  if (viewerUid) {
+    const followingSnap = await getDocs(collection(db, 'users', viewerUid, 'following'));
+    for (const docSnap of followingSnap.docs) followingIds.add(docSnap.id);
+  }
+
+  const extraExclude = new Set(
+    [...(options?.excludeUids || []), ...readIgnoredSuggestionUids(viewerUid)]
+      .map((id) => String(id).trim())
+      .filter(Boolean),
+  );
+
+  const usersSnap = await getDocs(query(collection(db, 'users'), limit(96)));
+  const exclude = String(excludeUsername || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '');
+
+  const candidates = usersSnap.docs
+    .map((item) => {
+      const data = item.data() as Record<string, unknown>;
+      const username = String(data.username || '')
+        .trim()
+        .toLowerCase();
+      const uid = item.id;
+      if (!username || uid === viewerUid || username === exclude) return null;
+      if (followingIds.has(uid) || extraExclude.has(uid)) return null;
+      return {
+        uid,
+        username,
+        displayName: String(data.displayName || data.username || username),
+        avatarUrl: (data.avatarUrl as string | null) ?? null,
+        isFollowing: false as boolean,
+      } satisfies SuggestedCreator;
+    })
+    .filter((row): row is SuggestedCreator => Boolean(row));
+
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const a = candidates[i]!;
+    candidates[i] = candidates[j]!;
+    candidates[j] = a;
+  }
+
+  const resultLimit = Math.max(1, options?.limit ?? 8);
+  return candidates.slice(0, resultLimit);
 }
 
 export function listenFollowers(uid: string, onChange: (users: FriendChip[]) => void): Unsubscribe {
@@ -499,6 +741,7 @@ export function listenConversations(
         lastMessage?: string | null;
         lastAt?: unknown;
         call?: unknown;
+        unread?: Record<string, number>;
       };
       const otherUid = (data.participants || []).find((value) => value !== uid) || '';
       const profile = data.profiles?.[otherUid] || {};
@@ -511,6 +754,7 @@ export function listenConversations(
         lastMessage: data.lastMessage ?? null,
         lastAt: data.lastAt ? asIso(data.lastAt) : null,
         call: parseCall(data.call),
+        unread: Math.max(0, Number(data.unread?.[uid] || 0)),
       };
     });
     list.sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
@@ -525,25 +769,41 @@ export function listenMessages(
 ): Unsubscribe {
   const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'), limit(200));
   return onSnapshot(q, (snap) => {
-    onChange(
-      snap.docs.map((item) => {
-        const data = item.data();
-        const deleted = Boolean(data.deleted);
-        return {
-          id: item.id,
-          text: deleted ? '' : String(data.text || ''),
-          fromUid: String(data.fromUid || ''),
-          mine: data.fromUid === viewerUid,
-          createdAt: asIso(data.createdAt),
-          mediaUrl: deleted ? null : ((data.mediaUrl as string | null) ?? null),
-          mediaType: deleted ? null : ((data.mediaType as ChatMessage['mediaType']) ?? null),
-          linkUrl: deleted ? null : ((data.linkUrl as string | null) ?? null),
-          status: (data.status as ChatMessage['status']) || 'sent',
-          editedAt: data.editedAt ? asIso(data.editedAt) : null,
-          deleted,
-        };
-      }),
-    );
+    const list: ChatMessage[] = [];
+    for (const item of snap.docs) {
+      const data = item.data();
+      const deleted = Boolean(data.deleted);
+      const hiddenFor = Array.isArray(data.hiddenFor)
+        ? (data.hiddenFor as string[]).map(String)
+        : [];
+      if (hiddenFor.includes(viewerUid)) continue;
+      const callMetaRaw = data.callMeta as ChatMessage['callMeta'] | undefined;
+      list.push({
+        id: item.id,
+        text: deleted ? '' : String(data.text || ''),
+        fromUid: String(data.fromUid || ''),
+        mine: data.fromUid === viewerUid,
+        createdAt: asIso(data.createdAt),
+        mediaUrl: deleted ? null : ((data.mediaUrl as string | null) ?? null),
+        mediaType: deleted ? null : ((data.mediaType as ChatMessage['mediaType']) ?? null),
+        linkUrl: deleted ? null : ((data.linkUrl as string | null) ?? null),
+        status: (data.status as ChatMessage['status']) || 'sent',
+        editedAt: data.editedAt ? asIso(data.editedAt) : null,
+        deleted,
+        hiddenFor,
+        callMeta:
+          callMetaRaw && typeof callMetaRaw === 'object'
+            ? {
+                video: Boolean(callMetaRaw.video),
+                outcome:
+                  (callMetaRaw.outcome as NonNullable<ChatMessage['callMeta']>['outcome']) ||
+                  'completed',
+                durationSec: Math.max(0, Number(callMetaRaw.durationSec) || 0),
+              }
+            : null,
+      });
+    }
+    onChange(list);
   });
 }
 
@@ -556,7 +816,8 @@ export async function editChatMessage(chatId: string, messageId: string, text: s
   });
 }
 
-export async function deleteChatMessage(chatId: string, messageId: string) {
+/** Elimina el mensaje para todos (soft-delete visible). Solo el autor. */
+export async function deleteChatMessageForEveryone(chatId: string, messageId: string) {
   await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
     deleted: true,
     text: 'Mensaje eliminado',
@@ -565,6 +826,79 @@ export async function deleteChatMessage(chatId: string, messageId: string) {
     linkUrl: null,
     editedAt: serverTimestamp(),
   });
+}
+
+/** @deprecated usa deleteChatMessageForEveryone */
+export async function deleteChatMessage(chatId: string, messageId: string) {
+  return deleteChatMessageForEveryone(chatId, messageId);
+}
+
+/** Oculta el mensaje solo para el viewer actual. */
+export async function deleteChatMessageForMe(chatId: string, messageId: string, viewerUid: string) {
+  const uid = String(viewerUid || '').trim();
+  if (!uid) throw new Error('Sesión inválida');
+  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
+    hiddenFor: arrayUnion(uid),
+  });
+}
+
+function formatCallDuration(sec: number) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+/** Guarda en el chat un evento de llamada (hecha / perdida / rechazada). Idempotente por callId. */
+export async function postCallHistoryMessage(
+  chatId: string,
+  fromUid: string,
+  input: {
+    callId: string;
+    video: boolean;
+    outcome: 'completed' | 'missed' | 'cancelled' | 'declined';
+    durationSec: number;
+  },
+) {
+  const id = `call_${String(input.callId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`;
+  if (!chatId || !fromUid || id === 'call_') return;
+
+  let text: string;
+  if (input.outcome === 'completed') {
+    text = `${input.video ? 'Videollamada' : 'Llamada'} · ${formatCallDuration(input.durationSec)}`;
+  } else if (input.outcome === 'declined') {
+    text = `${input.video ? 'Videollamada' : 'Llamada'} rechazada`;
+  } else if (input.outcome === 'cancelled') {
+    text = `${input.video ? 'Videollamada' : 'Llamada'} cancelada`;
+  } else {
+    text = `${input.video ? 'Videollamada' : 'Llamada'} perdida`;
+  }
+
+  await setDoc(
+    doc(db, 'chats', chatId, 'messages', id),
+    {
+      text,
+      fromUid,
+      createdAt: serverTimestamp(),
+      status: 'sent',
+      deleted: false,
+      mediaType: 'call',
+      callMeta: {
+        video: Boolean(input.video),
+        outcome: input.outcome,
+        durationSec: Math.max(0, Math.floor(input.durationSec)),
+      },
+    },
+    { merge: true },
+  );
+
+  await updateDoc(doc(db, 'chats', chatId), {
+    lastMessage: text,
+    lastAt: serverTimestamp(),
+    lastFromUid: fromUid,
+  }).catch(() => undefined);
 }
 
 export async function markMessagesDelivered(chatId: string, _viewerUid: string, messages: ChatMessage[]) {
@@ -576,19 +910,63 @@ export async function markMessagesDelivered(chatId: string, _viewerUid: string, 
   for (const item of pending.slice(-40)) {
     batch.update(doc(db, 'chats', chatId, 'messages', item.id), { status: 'delivered' });
   }
-  await batch.commit().catch(() => undefined);
+  await batch.commit().catch((err) => {
+    console.warn('[chat] mark delivered failed', err);
+  });
 }
 
-export async function markMessagesRead(chatId: string, _viewerUid: string, messages: ChatMessage[]) {
+export async function markMessagesRead(chatId: string, viewerUid: string, messages: ChatMessage[]) {
+  // Solo sent/delivered → read (no tocar ya leídos).
   const pending = messages.filter(
-    (item) => !item.mine && !item.deleted && item.status !== 'read',
+    (item) =>
+      !item.mine &&
+      !item.deleted &&
+      (item.status === 'sent' || item.status === 'delivered' || !item.status),
   );
-  if (pending.length === 0) return;
+  if (pending.length === 0) {
+    // Igual limpia badge si quedó residual.
+    await updateDoc(doc(db, 'chats', chatId), {
+      [`unread.${viewerUid}`]: 0,
+    }).catch(() => undefined);
+    return;
+  }
   const batch = writeBatch(db);
   for (const item of pending.slice(-40)) {
     batch.update(doc(db, 'chats', chatId, 'messages', item.id), { status: 'read' });
   }
-  await batch.commit().catch(() => undefined);
+  batch.update(doc(db, 'chats', chatId), { [`unread.${viewerUid}`]: 0 });
+  await batch.commit().catch((err) => {
+    console.warn('[chat] mark read failed', err);
+  });
+}
+
+/**
+ * Marca como entregados los mensajes entrantes de varios chats.
+ * Se usa con presencia (app abierta / en línea) aunque el chat no esté abierto.
+ */
+export async function markInboxDelivered(uid: string, chatIds: string[]) {
+  const ids = chatIds.filter(Boolean).slice(0, 20);
+  for (const chatId of ids) {
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'desc'), limit(40)),
+      );
+      const batch = writeBatch(db);
+      let count = 0;
+      for (const item of snap.docs) {
+        const data = item.data();
+        if (data.deleted) continue;
+        if (String(data.fromUid || '') === uid) continue;
+        const status = (data.status as string) || 'sent';
+        if (status !== 'sent') continue;
+        batch.update(item.ref, { status: 'delivered' });
+        count += 1;
+      }
+      if (count > 0) await batch.commit();
+    } catch (err) {
+      console.warn('[chat] inbox deliver failed', chatId, err);
+    }
+  }
 }
 
 export async function deleteConversation(chatId: string, uid: string) {
@@ -666,7 +1044,7 @@ export async function sendChatMessage(
   text: string,
   extras?: {
     mediaUrl?: string | null;
-    mediaType?: 'image' | 'audio' | 'file' | null;
+    mediaType?: 'image' | 'audio' | 'video' | 'file' | null;
     linkUrl?: string | null;
   },
 ) {
@@ -690,9 +1068,12 @@ export async function sendChatMessage(
   if (linkUrl) payload.linkUrl = linkUrl;
 
   await addDoc(collection(db, 'chats', id, 'messages'), payload);
+  const unreadKey = `unread.${friend.uid}`;
   await updateDoc(doc(db, 'chats', id), {
     lastMessage: body || (mediaUrl ? 'Adjunto' : linkUrl) || '',
     lastAt: serverTimestamp(),
+    lastFromUid: me.firebaseUid,
+    [unreadKey]: increment(1),
   });
   return id;
 }
@@ -710,6 +1091,12 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     createdAt: asIso(data.createdAt),
     likes: Number(data.likes ?? 0),
     viewerReaction: null,
+    postFormat: (data.postFormat as FsPost['postFormat']) || undefined,
+    storyExpiresAtMs: Number(data.storyExpiresAtMs) || undefined,
+    durationSec: Number(data.durationSec) || undefined,
+    reelFeedUntilMs: Number(data.reelFeedUntilMs) || undefined,
+    reelFriendsAtMs: Number(data.reelFriendsAtMs) || undefined,
+    reelPrivateAtMs: Number(data.reelPrivateAtMs) || undefined,
   };
 }
 
@@ -790,34 +1177,549 @@ export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscr
     collection(db, 'posts'),
     where('visibility', '==', 'public'),
     orderBy('createdAt', 'desc'),
-    limit(80),
+    limit(120),
   );
   return onSnapshot(
     q,
     (snap) => {
-      onChange(snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>)).slice(0, 60));
+      const posts = snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>));
+      onChange(
+        posts.filter((post) => {
+          if (post.type === 'video' && isStoryPost(post)) return false;
+          return post.type !== 'video' || isReelInPublicFeed(post);
+        }).slice(0, 60),
+      );
     },
     () => onChange([]),
   );
 }
 
+function isHomeFeedPost(
+  post: FsPost,
+  viewerUid: string,
+  friendUids: Set<string>,
+  followingUids: Set<string>,
+  tab: 'para_ti' | 'siguiendo',
+): boolean {
+  if (isStoryPost(post)) return false;
+  if (post.visibility === 'circle') return false;
+
+  const isFriend = friendUids.has(post.authorUid);
+  const isFollowing = followingUids.has(post.authorUid);
+  const isOwn = post.authorUid === viewerUid;
+
+  if (post.visibility === 'private') return isOwn;
+
+  if (tab === 'siguiendo' && !isOwn && !isFriend && !isFollowing) return false;
+
+  if (post.visibility === 'friends') return isOwn || isFriend;
+
+  if (post.type === 'video') {
+    if (post.visibility !== 'public') return false;
+    if (isReelInPublicFeed(post)) return true;
+    return (isFriend || isOwn) && targetReelVisibility(post) === 'friends';
+  }
+
+  return post.visibility === 'public' || post.visibility == null;
+}
+
+/** Feed de Inicio: Para ti (público + amigos) o Siguiendo (red personal). */
+export function listenHomeFeed(
+  uid: string,
+  tab: 'para_ti' | 'siguiendo',
+  onChange: (posts: FsPost[]) => void,
+): Unsubscribe {
+  if (!uid) {
+    onChange([]);
+    return () => undefined;
+  }
+
+  let publicPosts: FsPost[] = [];
+  let networkPosts: FsPost[] = [];
+  let friendUids = new Set<string>();
+  let followingUids = new Set<string>();
+
+  function emit() {
+    if (tab === 'siguiendo') {
+      onChange(
+        sortPosts(
+          networkPosts.filter((post) =>
+            isHomeFeedPost(post, uid, friendUids, followingUids, 'siguiendo'),
+          ),
+        ).slice(0, 60),
+      );
+      return;
+    }
+
+    const merged = new Map<string, FsPost>();
+    for (const post of publicPosts) {
+      if (isHomeFeedPost(post, uid, friendUids, followingUids, 'para_ti')) {
+        merged.set(post.id, post);
+      }
+    }
+    for (const post of networkPosts) {
+      if (isHomeFeedPost(post, uid, friendUids, followingUids, 'para_ti')) {
+        merged.set(post.id, post);
+      }
+    }
+    onChange(sortPosts([...merged.values()]).slice(0, 60));
+  }
+
+  const unsubPublic =
+    tab === 'para_ti'
+      ? listenRecentPosts((list) => {
+          publicPosts = list;
+          emit();
+        })
+      : () => undefined;
+
+  const networkUnsubs: Unsubscribe[] = [];
+  const networkBuckets = new Map<string, FsPost[]>();
+
+  function emitNetwork() {
+    const merged = new Map<string, FsPost>();
+    for (const list of networkBuckets.values()) {
+      for (const post of list) merged.set(post.id, post);
+    }
+    networkPosts = [...merged.values()];
+    emit();
+  }
+
+  function attachNetworkQuery(key: string, q: ReturnType<typeof query>) {
+    networkBuckets.set(key, []);
+    networkUnsubs.push(
+      onSnapshot(
+        q,
+        (snap) => {
+          networkBuckets.set(
+            key,
+            snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>)),
+          );
+          emitNetwork();
+        },
+        (err) => {
+          console.warn('[listenHomeFeed]', key, err);
+          networkBuckets.set(key, []);
+          emitNetwork();
+        },
+      ),
+    );
+  }
+
+  function refreshNetworkListeners() {
+    for (const stop of networkUnsubs) stop();
+    networkUnsubs.length = 0;
+    networkBuckets.clear();
+
+    attachNetworkQuery(
+      '__own__',
+      query(
+        collection(db, 'posts'),
+        where('authorUid', '==', uid),
+        orderBy('createdAt', 'desc'),
+        limit(40),
+      ),
+    );
+
+    const others = [...new Set([...friendUids, ...followingUids])].filter((id) => id !== uid);
+    for (let offset = 0; offset < others.length; offset += 30) {
+      const batch = others.slice(offset, offset + 30);
+      attachNetworkQuery(
+        `batch-${offset}`,
+        query(
+          collection(db, 'posts'),
+          where('authorUid', 'in', batch),
+          orderBy('createdAt', 'desc'),
+          limit(40),
+        ),
+      );
+    }
+  }
+
+  const unsubFriends = listenFriends(uid, (friends) => {
+    friendUids = new Set(friends.map((friend) => friend.uid));
+    refreshNetworkListeners();
+  });
+  const unsubFollowing = listenFollowing(uid, (following) => {
+    followingUids = new Set(following.map((person) => person.uid));
+    refreshNetworkListeners();
+  });
+
+  return () => {
+    unsubPublic();
+    unsubFriends();
+    unsubFollowing();
+    for (const stop of networkUnsubs) stop();
+  };
+}
+
+/** Historias activas (24 h): tuyas, de amigos, seguidores y quien sigues. */
+export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubscribe {
+  const user = auth.currentUser;
+  if (!user) {
+    onChange([]);
+    return () => undefined;
+  }
+
+  const uid = user.uid;
+  let friendUids: string[] = [];
+  let followingUids: string[] = [];
+  let followerUids: string[] = [];
+  const storyUnsubs: Unsubscribe[] = [];
+  const storyBuckets = new Map<string, FsPost[]>();
+  const MAX_STORY_AUTHORS = 56;
+
+  function emitStories() {
+    const merged = new Map<string, FsPost>();
+    for (const list of storyBuckets.values()) {
+      for (const post of list) merged.set(post.id, post);
+    }
+    const networkSet = new Set([...friendUids, ...followingUids, ...followerUids]);
+    const now = Date.now();
+    onChange(
+      [...merged.values()]
+        .filter(
+          (post) =>
+            isStoryActive(post, now) &&
+            (post.authorUid === uid || networkSet.has(post.authorUid)),
+        )
+        .sort(
+          (a, b) =>
+            (b.storyExpiresAtMs ?? Date.parse(b.createdAt)) -
+            (a.storyExpiresAtMs ?? Date.parse(a.createdAt)),
+        ),
+    );
+  }
+
+  function attachRecentPostsQuery(key: string, q: ReturnType<typeof query>) {
+    storyBuckets.set(key, []);
+    storyUnsubs.push(
+      onSnapshot(
+        q,
+        (snap) => {
+          storyBuckets.set(
+            key,
+            snap.docs
+              .map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))
+              .filter(
+                (post) =>
+                  (post.type === 'video' || post.type === 'photo') &&
+                  post.mediaUrl &&
+                  isStoryPost(post) &&
+                  isStoryActive(post),
+              ),
+          );
+          emitStories();
+        },
+        (err) => {
+          console.warn('[listenActiveStories]', key, err);
+          storyBuckets.set(key, []);
+          emitStories();
+        },
+      ),
+    );
+  }
+
+  function refreshStoryListeners() {
+    for (const stop of storyUnsubs) stop();
+    storyUnsubs.length = 0;
+    storyBuckets.clear();
+
+    attachRecentPostsQuery(
+      '__own__',
+      query(
+        collection(db, 'posts'),
+        where('authorUid', '==', uid),
+        where('visibility', '==', 'circle'),
+        orderBy('createdAt', 'desc'),
+        limit(40),
+      ),
+    );
+
+    const others = [...new Set([...friendUids, ...followingUids, ...followerUids])]
+      .filter((id) => id !== uid)
+      .slice(0, MAX_STORY_AUTHORS);
+
+    // Una query por autor: si un lote `in` incluye alguien con posts ilegibles, Firestore falla entero.
+    for (const authorUid of others) {
+      attachRecentPostsQuery(
+        `author-${authorUid}`,
+        query(
+          collection(db, 'posts'),
+          where('authorUid', '==', authorUid),
+          where('visibility', '==', 'circle'),
+          orderBy('createdAt', 'desc'),
+          limit(12),
+        ),
+      );
+    }
+  }
+
+  const unsubFriends = listenFriends(uid, (friends) => {
+    friendUids = friends.map((friend) => friend.uid);
+    refreshStoryListeners();
+  });
+  const unsubFollowing = listenFollowing(uid, (following) => {
+    followingUids = following.map((person) => person.uid);
+    refreshStoryListeners();
+  });
+  const unsubFollowers = listenFollowers(uid, (followers) => {
+    followerUids = followers.map((person) => person.uid);
+    refreshStoryListeners();
+  });
+
+  return () => {
+    unsubFriends();
+    unsubFollowing();
+    unsubFollowers();
+    for (const stop of storyUnsubs) stop();
+  };
+}
+
+export async function getPostById(postId: string): Promise<FsPost | null> {
+  const id = String(postId || '').trim();
+  if (!id) return null;
+  const snap = await getDoc(doc(db, 'posts', id));
+  if (!snap.exists()) return null;
+  return postFromDoc(snap.id, snap.data() as Record<string, unknown>);
+}
+
+/** Reels / videos públicos en carrusel (no historias). */
+export function listenActiveReels(onChange: (posts: FsPost[]) => void): Unsubscribe {
+  return listenRecentPosts((posts) => {
+    onChange(
+      diversifyReelFeed(
+        posts.filter(
+          (post) =>
+            (post.type === 'video' || post.type === 'photo') &&
+            post.mediaUrl &&
+            !isStoryPost(post) &&
+            isReelInPublicFeed(post),
+        ),
+        2,
+        16,
+      ),
+    );
+  });
+}
+
+/** Archiva reels viejos del autor: público → amigos → privado. */
+export async function sweepAuthorReelLifecycle(authorUid: string) {
+  if (!authorUid) return;
+  const snap = await getDocs(
+    query(collection(db, 'posts'), where('authorUid', '==', authorUid), limit(64)),
+  );
+  if (snap.empty) return;
+
+  const now = Date.now();
+  const batch = writeBatch(db);
+  let pending = 0;
+
+  for (const item of snap.docs) {
+    const post = postFromDoc(item.id, item.data() as Record<string, unknown>);
+    if (post.type !== 'video' && post.type !== 'photo') continue;
+    if (isStoryPost(post) && !isStoryActive(post, now)) {
+      batch.update(item.ref, { visibility: 'private', storyExpiresAtMs: now });
+      pending += 1;
+      continue;
+    }
+    if (isStoryPost(post)) continue;
+
+    const nextVisibility = targetReelVisibility(post, now);
+    if (nextVisibility === post.visibility) continue;
+
+    const storagePath = post.storagePath;
+    batch.update(item.ref, { visibility: nextVisibility });
+    pending += 1;
+
+    if (storagePath) {
+      void updateStoredMediaVisibility(storagePath, nextVisibility).catch(() => undefined);
+    }
+  }
+
+  if (pending > 0) await batch.commit();
+}
+
+export async function notifyFriendsAboutPost(input: {
+  authorUid: string;
+  authorUsername: string;
+  authorName: string;
+  postId: string;
+  recipientUids: string[];
+  story?: boolean;
+  postFormat?: 'story' | 'post';
+  mediaType?: 'photo' | 'video' | 'text';
+}) {
+  const recipients = Array.from(new Set(input.recipientUids.filter(Boolean))).slice(0, 40);
+  if (recipients.length === 0) return 0;
+
+  const batch = writeBatch(db);
+  const at = Date.now();
+  const author = encodeURIComponent(input.authorUsername);
+  const pid = encodeURIComponent(input.postId);
+  const uid = encodeURIComponent(input.authorUid);
+  const href = input.story
+    ? `/?flash=${pid}&u=${author}`
+    : input.postFormat === 'post' && input.mediaType === 'video'
+      ? `/?clip=${pid}&u=${author}&uid=${uid}`
+      : `/u/${author}?post=${pid}&uid=${uid}`;
+  const title = input.story
+    ? `${input.authorName} publicó un Flash Boom`
+    : input.postFormat === 'post' && input.mediaType === 'video'
+      ? `${input.authorName} publicó un Boom Clip`
+      : `${input.authorName} publicó algo nuevo`;
+
+  for (const uidRecipient of recipients) {
+    if (uidRecipient === input.authorUid) continue;
+    const ref = doc(collection(db, 'users', uidRecipient, 'postAlerts'));
+    batch.set(ref, {
+      authorUid: input.authorUid,
+      authorUsername: input.authorUsername.toLowerCase(),
+      authorName: input.authorName,
+      postId: input.postId,
+      postFormat: input.postFormat || (input.story ? 'story' : null),
+      mediaType: input.mediaType || null,
+      title,
+      href,
+      createdAt: serverTimestamp(),
+      createdAtMs: at,
+    });
+  }
+  await batch.commit();
+  return recipients.filter((uidRecipient) => uidRecipient !== input.authorUid).length;
+}
+
+export type PostAlertItem = {
+  id: string;
+  text: string;
+  href: string;
+  at: number;
+  postId?: string;
+  authorUid?: string;
+  authorUsername?: string;
+  postFormat?: 'story' | 'post';
+  mediaType?: 'photo' | 'video' | 'text';
+};
+
+export function buildPostAlertTarget(alert: PostAlertItem): { pathname: string; search: string } {
+  let postId = alert.postId?.trim();
+  let author = alert.authorUsername?.trim();
+  let authorUid = alert.authorUid?.trim();
+  try {
+    const url = new URL(alert.href, 'https://liveboom.local');
+    postId = postId || url.searchParams.get('flash') || url.searchParams.get('clip') || url.searchParams.get('post') || undefined;
+    author = author || url.searchParams.get('u') || undefined;
+    authorUid = authorUid || url.searchParams.get('uid') || undefined;
+    if (!author) {
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'u' && parts[1]) author = decodeURIComponent(parts[1]);
+    }
+    if (url.searchParams.has('flash') || alert.href.includes('flash=')) {
+      if (postId && author) {
+        return { pathname: '/', search: `?flash=${encodeURIComponent(postId)}&u=${encodeURIComponent(author)}` };
+      }
+    }
+    if (url.searchParams.has('clip') || alert.href.includes('clip=')) {
+      if (postId && author) {
+        const uidQ = authorUid ? `&uid=${encodeURIComponent(authorUid)}` : '';
+        return { pathname: '/', search: `?clip=${encodeURIComponent(postId)}&u=${encodeURIComponent(author)}${uidQ}` };
+      }
+    }
+    if (url.pathname.startsWith('/u/') && postId) {
+      const uidQ = authorUid ? `&uid=${encodeURIComponent(authorUid)}` : '';
+      return {
+        pathname: url.pathname,
+        search: `?post=${encodeURIComponent(postId)}${uidQ}`,
+      };
+    }
+    return { pathname: url.pathname, search: url.search };
+  } catch {
+    return { pathname: '/', search: '' };
+  }
+}
+
+export function listenPostAlerts(
+  uid: string,
+  onChange: (alerts: PostAlertItem[]) => void,
+): Unsubscribe {
+  const col = collection(db, 'users', uid, 'postAlerts');
+  const q = query(col, orderBy('createdAtMs', 'desc'), limit(20));
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        snap.docs.map((item) => {
+          const data = item.data();
+          return {
+            id: item.id,
+            text: String(data.title || 'Un amigo publicó algo nuevo'),
+            href: String(data.href || '/'),
+            at: Number(data.createdAtMs || Date.now()),
+            postId: String(data.postId || '').trim() || undefined,
+            authorUid: String(data.authorUid || '').trim() || undefined,
+            authorUsername: String(data.authorUsername || '').trim() || undefined,
+            postFormat: data.postFormat === 'story' || data.postFormat === 'post' ? data.postFormat : undefined,
+            mediaType:
+              data.mediaType === 'photo' || data.mediaType === 'video' || data.mediaType === 'text'
+                ? data.mediaType
+                : undefined,
+          };
+        }),
+      );
+    },
+    (err) => {
+      console.warn('[postAlerts]', err);
+    },
+  );
+}
+
+export async function deletePostAlert(uid: string, alertId: string) {
+  const id = String(alertId || '').trim();
+  if (!uid || !id) return;
+  await deleteDoc(doc(db, 'users', uid, 'postAlerts', id));
+}
+
+/** Borra todas las alertas de publicaciones del usuario (máx. 40). */
+export async function clearPostAlerts(uid: string) {
+  if (!uid) return;
+  const col = collection(db, 'users', uid, 'postAlerts');
+  const snap = await getDocs(query(col, orderBy('createdAtMs', 'desc'), limit(40)));
+  if (snap.empty) return;
+  const batch = writeBatch(db);
+  snap.docs.forEach((item) => batch.delete(item.ref));
+  await batch.commit();
+}
+
 export async function createPost(input: {
   authorUid: string;
   username: string;
+  authorDisplayName?: string;
   type: 'photo' | 'video' | 'text';
   caption: string;
   mediaFile?: File | Blob | null;
   mediaUrl?: string | null;
-  visibility?: 'public' | 'friends' | 'private';
+  visibility?: 'public' | 'friends' | 'private' | 'circle';
+  postFormat?: 'story' | 'post';
+  durationSec?: number;
+  notifyFriends?: boolean;
 }): Promise<{
   id: string;
   mediaUrl: string | null;
   storagePath: string | null;
-  visibility: 'public' | 'friends' | 'private';
+  visibility: 'public' | 'friends' | 'private' | 'circle';
+  postFormat?: 'story' | 'post';
 }> {
   let mediaUrl: string | null = null;
   let storagePath: string | null = null;
-  const visibility = input.visibility || 'public';
+  const isStory = input.postFormat === 'story';
+  const isBoomClip = input.postFormat === 'post';
+  const visibility = isStory ? 'circle' : input.visibility || 'public';
+  const postFormat =
+    isStory || isBoomClip
+      ? input.postFormat
+      : input.type === 'video'
+        ? 'post'
+        : undefined;
 
   if (input.type === 'photo' || input.type === 'video') {
     if (input.mediaFile) {
@@ -857,14 +1759,72 @@ export async function createPost(input: {
     visibility,
     likes: 0,
     createdAt: serverTimestamp(),
+    ...(postFormat ? { postFormat } : {}),
+    ...(isStory
+      ? {
+          storyExpiresAtMs: storyExpiresAtFromNow(),
+          ...(input.type === 'video'
+            ? { durationSec: Math.max(0, Math.floor(Number(input.durationSec) || 0)) }
+            : {}),
+        }
+      : {}),
+    ...(postFormat === 'post' ? reelLifecycleFromCreatedAt(Date.now()) : {}),
   });
-  return { id: ref.id, mediaUrl, storagePath, visibility };
+  if (visibility === 'public' && input.caption.trim()) {
+    void import('./trendsFirestore')
+      .then(({ bumpHashtagsFromCaption }) => bumpHashtagsFromCaption(input.caption))
+      .catch(() => undefined);
+  }
+
+  if (input.notifyFriends && visibility !== 'private' && visibility !== 'circle') {
+    const friends = await listFriends(input.authorUid);
+    void notifyFriendsAboutPost({
+      authorUid: input.authorUid,
+      authorUsername: input.username,
+      authorName: input.authorDisplayName?.trim() || input.username,
+      postId: ref.id,
+      recipientUids: friends.map((friend) => friend.uid),
+      postFormat: postFormat || undefined,
+      mediaType: input.type,
+    }).catch(() => undefined);
+  }
+
+  if (input.type === 'video' || isBoomClip) {
+    void sweepAuthorReelLifecycle(input.authorUid).catch(() => undefined);
+  }
+
+  if (isStory) {
+    const [friends, followers] = await Promise.all([
+      listFriends(input.authorUid),
+      listFollowers(input.authorUid),
+    ]);
+    const recipientUids = [
+      ...new Set([
+        ...friends.map((friend) => friend.uid),
+        ...followers.map((follower) => follower.uid),
+      ]),
+    ].filter((id) => id && id !== input.authorUid);
+    if (recipientUids.length > 0) {
+      void notifyFriendsAboutPost({
+        authorUid: input.authorUid,
+        authorUsername: input.username,
+        authorName: input.authorDisplayName?.trim() || input.username,
+        postId: ref.id,
+        recipientUids,
+        story: true,
+        postFormat: 'story',
+        mediaType: input.type,
+      }).catch(() => undefined);
+    }
+  }
+
+  return { id: ref.id, mediaUrl, storagePath, visibility, postFormat };
 }
 
 export async function updatePostVisibility(
   postId: string,
   authorUid: string,
-  visibility: 'public' | 'friends' | 'private',
+  visibility: 'public' | 'friends' | 'private' | 'circle',
 ) {
   const ref = doc(db, 'posts', postId);
   const snap = await getDoc(ref);
@@ -889,11 +1849,33 @@ export async function deletePost(postId: string, authorUid: string) {
   await deleteDoc(ref);
 }
 
+export type PostReactionUser = {
+  uid: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
 export type PostReactionStats = {
   likes: number;
   dislikes: number;
+  booms: number;
   viewerReaction: 'like' | 'dislike' | null;
+  viewerBoom: boolean;
+  likers: PostReactionUser[];
+  dislikers: PostReactionUser[];
+  boomers: PostReactionUser[];
 };
+
+function reactionUserFromDoc(id: string, data: Record<string, unknown>): PostReactionUser {
+  const username = String(data.username || '').trim();
+  return {
+    uid: id,
+    username: username || id.slice(0, 8),
+    displayName: String(data.displayName || username || 'Usuario'),
+    avatarUrl: (data.avatarUrl as string | null) ?? null,
+  };
+}
 
 export function listenPostReactions(
   postId: string,
@@ -903,16 +1885,35 @@ export function listenPostReactions(
   return onSnapshot(collection(db, 'posts', postId, 'reactions'), (snap) => {
     let likes = 0;
     let dislikes = 0;
+    let booms = 0;
     let viewerReaction: PostReactionStats['viewerReaction'] = null;
+    let viewerBoom = false;
+    const likers: PostReactionUser[] = [];
+    const dislikers: PostReactionUser[] = [];
+    const boomers: PostReactionUser[] = [];
     for (const item of snap.docs) {
-      const type = String(item.data().type || '');
-      if (type === 'like') likes += 1;
-      if (type === 'dislike') dislikes += 1;
-      if (viewerUid && item.id === viewerUid && (type === 'like' || type === 'dislike')) {
-        viewerReaction = type;
+      const data = item.data() as Record<string, unknown>;
+      const type = String(data.type || '');
+      const hasBoom = Boolean(data.boom);
+      const user = reactionUserFromDoc(item.id, data);
+      if (type === 'like') {
+        likes += 1;
+        likers.push(user);
+      }
+      if (type === 'dislike') {
+        dislikes += 1;
+        dislikers.push(user);
+      }
+      if (hasBoom) {
+        booms += 1;
+        boomers.push(user);
+      }
+      if (viewerUid && item.id === viewerUid) {
+        if (type === 'like' || type === 'dislike') viewerReaction = type;
+        viewerBoom = hasBoom;
       }
     }
-    onChange({ likes, dislikes, viewerReaction });
+    onChange({ likes, dislikes, booms, viewerReaction, viewerBoom, likers, dislikers, boomers });
   });
 }
 
@@ -920,13 +1921,62 @@ export async function setPostReaction(
   postId: string,
   uid: string,
   reaction: 'like' | 'dislike' | null,
+  profile?: { username: string; displayName: string; avatarUrl: string | null },
 ) {
   const ref = doc(db, 'posts', postId, 'reactions', uid);
   if (!reaction) {
-    await deleteDoc(ref);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    if (Boolean(snap.data()?.boom)) {
+      await updateDoc(ref, { type: null });
+    } else {
+      await deleteDoc(ref);
+    }
     return;
   }
-  await setDoc(ref, { type: reaction, updatedAt: serverTimestamp() });
+  await setDoc(
+    ref,
+    {
+      type: reaction,
+      username: profile?.username || '',
+      displayName: profile?.displayName || profile?.username || '',
+      avatarUrl: profile?.avatarUrl ?? null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+/** Toggle del BOOM especial (independiente del like). */
+export async function setPostBoom(
+  postId: string,
+  uid: string,
+  active: boolean,
+  profile?: { username: string; displayName: string; avatarUrl: string | null },
+) {
+  const ref = doc(db, 'posts', postId, 'reactions', uid);
+  if (!active) {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const type = String(snap.data()?.type || '');
+    if (type === 'like' || type === 'dislike') {
+      await updateDoc(ref, { boom: false });
+    } else {
+      await deleteDoc(ref);
+    }
+    return;
+  }
+  await setDoc(
+    ref,
+    {
+      boom: true,
+      username: profile?.username || '',
+      displayName: profile?.displayName || profile?.username || '',
+      avatarUrl: profile?.avatarUrl ?? null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 }
 
 export type PostComment = {

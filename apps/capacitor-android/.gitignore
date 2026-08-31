@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+dist/
+.DS_Store
+
+# Capacitor local
+.capacitor/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Android Studio / local
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+android/.idea/
+*.iml

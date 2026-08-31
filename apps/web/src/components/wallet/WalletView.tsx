@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { api, type CoinPackage, type TxnDto } from '../../lib/api';
-import { COIN_TO_COP, coinsToCop, formatCop } from '../../lib/coinPackages';
 import { useAuthStore } from '../../store/authStore';
 import { TopupModal } from './TopupModal';
 import { WithdrawModal } from './WithdrawModal';
@@ -46,9 +45,6 @@ export function WalletView() {
         {balance.toLocaleString('es-ES')}{' '}
         <span className="text-lg font-semibold text-boom-gold">COINS</span>
       </h1>
-      <p className="mt-1 text-sm text-zinc-400">
-        ≈ {formatCop(coinsToCop(balance))} · 1 coin = ${COIN_TO_COP} COP
-      </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"

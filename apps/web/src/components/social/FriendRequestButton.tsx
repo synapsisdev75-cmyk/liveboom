@@ -103,7 +103,12 @@ export function FriendRequestButton({
         <button
           type="button"
           disabled={busy}
-          onClick={() => void run(() => cancelFriendRequest(profile.firebaseUid, username), 'none')}
+          onClick={() =>
+            void run(
+              () => cancelFriendRequest(profile.firebaseUid, uid || username),
+              'none',
+            )
+          }
           className={`${className} border border-zinc-600 bg-zinc-800 text-zinc-300`}
         >
           {compact ? 'Pendiente' : 'Solicitud enviada'}
@@ -118,7 +123,10 @@ export function FriendRequestButton({
             type="button"
             disabled={busy}
             onClick={() =>
-              void run(() => acceptFriendRequest(profile.firebaseUid, username), 'friends')
+              void run(
+                () => acceptFriendRequest(profile.firebaseUid, uid || username),
+                'friends',
+              )
             }
             className={`${className} bg-emerald-500/20 text-emerald-300`}
           >
@@ -128,7 +136,10 @@ export function FriendRequestButton({
             type="button"
             disabled={busy}
             onClick={() =>
-              void run(() => rejectFriendRequest(profile.firebaseUid, username), 'none')
+              void run(
+                () => rejectFriendRequest(profile.firebaseUid, uid || username),
+                'none',
+              )
             }
             className={`${className} border border-zinc-600 text-zinc-400`}
           >
@@ -153,6 +164,7 @@ export function FriendRequestButton({
                   avatarUrl: profile.avatarUrl,
                 },
                 username,
+                uid,
               ),
             'pending_sent',
           )
@@ -168,7 +180,9 @@ export function FriendRequestButton({
   return (
     <div className="flex flex-col items-end gap-1">
       {body}
-      {error ? <p className="max-w-[12rem] text-right text-[10px] text-fuchsia-300">{error}</p> : null}
+      {error ? (
+        <p className="max-w-[14rem] text-right text-[10px] leading-snug text-fuchsia-300">{error}</p>
+      ) : null}
     </div>
   );
 }

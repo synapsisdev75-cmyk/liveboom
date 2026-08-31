@@ -1,8 +1,32 @@
 @import 'tailwindcss';
 @config '../tailwind.config.js';
 
+/* Clases dinámicas de levelFrameConfig.ts — evita que el avatar pierda tamaño/posición. */
+@source inline("top-[19%] left-[19%] h-[61%] w-[63%]");
+@source inline("top-[8.5%] left-[18%] h-[64%] w-[64%]");
+@source inline("top-[12%] left-[26%] h-[48%] w-[48%]");
+
+.lb-insignia {
+  width: var(--ins-w-mobile, 76px);
+  height: var(--ins-h-mobile, 92px);
+}
+
+@media (min-width: 640px) {
+  .lb-insignia {
+    width: var(--ins-w-desktop, 88px);
+    height: var(--ins-h-desktop, 108px);
+  }
+}
+
 :root {
   color-scheme: dark;
+  --lb-safe-top: env(safe-area-inset-top, 0px);
+  --lb-safe-right: env(safe-area-inset-right, 0px);
+  --lb-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --lb-safe-left: env(safe-area-inset-left, 0px);
+  --lb-bottom-nav-h: 4.25rem;
+  /* Espacio bajo el contenido hasta que desaparece la bottom nav (lg) */
+  --lb-main-pad-bottom: calc(7.5rem + var(--lb-safe-bottom));
 }
 
 html,
@@ -26,8 +50,18 @@ body {
   }
 }
 
+.lk-participant-media-video,
+.lk-video-track video,
+video.lk-participant-media-video {
+  transform: none !important;
+}
+
 .live-ring {
   background: conic-gradient(from 140deg, #00f0ff, #ff0055, #f5c84c, #00f0ff);
+}
+
+.story-ring {
+  background: conic-gradient(from 200deg, #ec4899, #06b6d4, #a855f7, #ec4899);
 }
 
 .chat-scroll::-webkit-scrollbar {
@@ -42,6 +76,7 @@ body {
 .gift-row {
   scrollbar-width: thin;
   scrollbar-color: #2a2d36 transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 .gift-row::-webkit-scrollbar {
@@ -51,6 +86,51 @@ body {
 .gift-row::-webkit-scrollbar-thumb {
   background: #2a2d36;
   border-radius: 999px;
+}
+
+/* Caja de regalos horizontal (estilo live / swipe) */
+.gift-box-row {
+  scroll-padding-inline: 0.75rem;
+  mask-image: linear-gradient(to right, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 8px, #000 calc(100% - 8px), transparent 100%);
+}
+
+.gift-box-row::-webkit-scrollbar {
+  display: none;
+}
+
+.gift-box-row {
+  scrollbar-width: none;
+}
+
+@media (min-width: 1024px) {
+  .gift-box-row {
+    mask-image: none;
+    -webkit-mask-image: none;
+    scrollbar-width: thin;
+    scrollbar-color: #2a2d36 transparent;
+  }
+
+  .gift-box-row::-webkit-scrollbar {
+    display: block;
+    width: 6px;
+    height: 6px;
+  }
+
+  .gift-box-row::-webkit-scrollbar-thumb {
+    background: #2a2d36;
+    border-radius: 999px;
+  }
+}
+
+.gift-box-item {
+  min-height: 5rem;
+}
+
+@media (min-width: 640px) {
+  .gift-box-item {
+    min-height: 5.35rem;
+  }
 }
 
 .mask-fade {
@@ -128,4 +208,138 @@ input[type='date'] {
 
 .live-dot {
   animation: pulse-live 1.6s infinite;
+}
+
+/* —— LiveBoom UI motion / mockup polish —— */
+@keyframes lb-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lb-boom-pop {
+  0% {
+    transform: scale(0.85) rotate(-8deg);
+  }
+  45% {
+    transform: scale(1.28) rotate(6deg);
+  }
+  70% {
+    transform: scale(0.96) rotate(-2deg);
+  }
+  100% {
+    transform: scale(1.1) rotate(0deg);
+  }
+}
+
+.lb-boom-pop {
+  animation: lb-boom-pop 0.42s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+@keyframes lb-soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+.lb-page {
+  animation: lb-fade-up 0.38s ease-out both;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Márgenes seguros reutilizables (móvil / tablet / notch) */
+.lb-safe-x {
+  padding-left: max(0.75rem, var(--lb-safe-left));
+  padding-right: max(0.75rem, var(--lb-safe-right));
+}
+
+.lb-safe-sheet {
+  padding-bottom: max(1rem, var(--lb-safe-bottom));
+}
+
+.lb-card {
+  transition:
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    background-color 0.22s ease;
+}
+
+.lb-card:hover {
+  transform: translateY(-2px);
+}
+
+.lb-nav-item {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+}
+
+.lb-nav-item:active {
+  transform: scale(0.98);
+}
+
+/* Active nav: borde degradado cian-púrpura sutil (mockup sidebar) */
+.lb-nav-active {
+  position: relative;
+  border-radius: 0.75rem;
+  background: linear-gradient(#121218, #121218) padding-box,
+    linear-gradient(105deg, #a855f7, #06b6d4) border-box;
+  border: 1.5px solid transparent;
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.2);
+  color: #fff;
+}
+
+.lb-nav-active .lb-nav-icon {
+  color: #c084fc;
+}
+
+.lb-gradient-btn {
+  background-image: linear-gradient(90deg, #ff0055, #7c3aed, #00f0ff);
+  background-size: 180% 100%;
+  transition:
+    background-position 0.35s ease,
+    filter 0.2s ease,
+    transform 0.15s ease;
+}
+
+.lb-gradient-btn:hover {
+  background-position: 100% 0;
+  filter: brightness(1.08);
+}
+
+.lb-panel {
+  background: linear-gradient(180deg, rgba(24, 24, 27, 0.92), rgba(9, 9, 11, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.lb-badge-pulse {
+  animation: lb-soft-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-page,
+  .lb-card,
+  .lb-nav-item,
+  .lb-nav-active,
+  .lb-gradient-btn,
+  .lb-badge-pulse,
+  .live-dot {
+    animation: none !important;
+    transition: none !important;
+  }
 }

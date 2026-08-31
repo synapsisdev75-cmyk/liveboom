@@ -62,7 +62,7 @@ function mapEntry(entry: LiveActivityEntry): LiveActivity {
 export function ActivityHistory({
   username,
   compact = false,
-  limit = 8,
+  limit = 2,
   showAllLink = true,
 }: {
   username: string;
@@ -140,8 +140,8 @@ export function ActivityHistory({
           Historial de actividad
         </h2>
         {showAllLink ? (
-          <Link to="/actividad" className="text-xs text-cyan-400 hover:underline">
-            Ver todo
+          <Link to="/actividad" className="text-xs font-semibold text-cyan-400 hover:underline">
+            Ver más
           </Link>
         ) : null}
       </div>
@@ -152,7 +152,9 @@ export function ActivityHistory({
           {lives.slice(0, limit).map((live) => (
             <li
               key={live.id || `${live.username}-${live.startedAt}`}
-              className="rounded-xl border border-white/10 bg-zinc-950/70 p-3"
+              className={`rounded-xl border border-white/10 bg-zinc-950/70 p-3 ${
+                showAllLink && limit <= 2 ? 'opacity-80' : ''
+              }`}
             >
               <p className="font-semibold text-white">{live.title}</p>
               <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-400">

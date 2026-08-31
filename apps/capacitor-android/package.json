@@ -1,0 +1,25 @@
+{
+  "name": "@liveboom/android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LiveBoom Android (Capacitor) — envuelve apps/web",
+  "type": "module",
+  "scripts": {
+    "build:web": "npm run build -w @liveboom/web",
+    "sync": "npm run build:web && npx cap sync android",
+    "open": "npx cap open android",
+    "run:android": "npm run sync && npx cap run android",
+    "add:android": "npx cap add android",
+    "lint": "node -e \"process.exit(0)\""
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/splash-screen": "^7.0.3",
+    "@capacitor/status-bar": "^7.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3"
+  }
+}

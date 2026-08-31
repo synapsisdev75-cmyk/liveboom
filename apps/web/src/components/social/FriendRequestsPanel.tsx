@@ -19,6 +19,7 @@ export function FriendRequestsPanel() {
   const [outgoing, setOutgoing] = useState<FriendRequest[]>([]);
   const [tab, setTab] = useState<'incoming' | 'outgoing'>('incoming');
   const [busy, setBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
 
   useEffect(() => {
@@ -45,28 +46,37 @@ export function FriendRequestsPanel() {
 
   if (!profile) return null;
 
-  async function accept(username: string) {
-    setBusy(username);
+  async function accept(user: FriendRequest) {
+    setBusy(user.id);
+    setActionError(null);
     try {
-      await acceptFriendRequest(profile!.firebaseUid, username);
+      await acceptFriendRequest(profile!.firebaseUid, user.uid || user.username);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo aceptar la solicitud');
     } finally {
       setBusy(null);
     }
   }
 
-  async function reject(username: string) {
-    setBusy(username);
+  async function reject(user: FriendRequest) {
+    setBusy(user.id);
+    setActionError(null);
     try {
-      await rejectFriendRequest(profile!.firebaseUid, username);
+      await rejectFriendRequest(profile!.firebaseUid, user.uid || user.username);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo rechazar');
     } finally {
       setBusy(null);
     }
   }
 
-  async function cancel(username: string) {
-    setBusy(username);
+  async function cancel(user: FriendRequest) {
+    setBusy(user.id);
+    setActionError(null);
     try {
-      await cancelFriendRequest(profile!.firebaseUid, username);
+      await cancelFriendRequest(profile!.firebaseUid, user.uid || user.username);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'No se pudo cancelar');
     } finally {
       setBusy(null);
     }
@@ -115,6 +125,10 @@ export function FriendRequestsPanel() {
         </button>
       </div>
 
+      {actionError ? (
+        <p className="mt-2 rounded-lg bg-fuchsia-500/10 px-3 py-2 text-xs text-fuchsia-300">{actionError}</p>
+      ) : null}
+
       <ul className="mt-3 space-y-2">
         {tab === 'incoming' ? (
           incoming.length === 0 ? (
@@ -126,8 +140,8 @@ export function FriendRequestsPanel() {
               <RequestRow key={user.id} user={user}>
                 <button
                   type="button"
-                  disabled={busy === user.username}
-                  onClick={() => void accept(user.username)}
+                  disabled={busy === user.id}
+                  onClick={() => void accept(user)}
                   className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-semibold text-emerald-300 disabled:opacity-50"
                 >
                   <Check size={14} />
@@ -135,8 +149,8 @@ export function FriendRequestsPanel() {
                 </button>
                 <button
                   type="button"
-                  disabled={busy === user.username}
-                  onClick={() => void reject(user.username)}
+                  disabled={busy === user.id}
+                  onClick={() => void reject(user)}
                   className="inline-flex items-center gap-1 rounded-lg bg-fuchsia-500/20 px-3 py-1.5 text-xs font-semibold text-fuchsia-300 disabled:opacity-50"
                 >
                   <X size={14} />
@@ -158,8 +172,8 @@ export function FriendRequestsPanel() {
               </span>
               <button
                 type="button"
-                disabled={busy === user.username}
-                onClick={() => void cancel(user.username)}
+                disabled={busy === user.id}
+                onClick={() => void cancel(user)}
                 className="inline-flex items-center gap-1 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-300 disabled:opacity-50"
               >
                 <X size={14} />

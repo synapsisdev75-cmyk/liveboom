@@ -112,6 +112,7 @@ export type SessionUser = {
   category?: string | null;
   coins: number;
   coinsBalance: number;
+  levelXp?: number;
 };
 
 type PostgresUser = {

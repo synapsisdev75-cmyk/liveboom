@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   limit,
@@ -10,12 +11,14 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
+  where,
   writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { roomKey } from './roomKey';
 
 export type LiveGiftEvent = {
   id: string;
@@ -25,24 +28,55 @@ export type LiveGiftEvent = {
   senderName: string;
   senderUid: string;
   coins: number;
+  multiplier?: number;
 };
 
-function roomKey(roomName: string) {
-  return roomName.trim().toLowerCase() || 'room';
-}
-
 /** Marca la sala como en vivo (nueva transmisión). */
-export async function markLiveRoomActive(roomName: string, hostUid: string) {
+export async function markLiveRoomActive(
+  roomName: string,
+  hostUid: string,
+  meta?: {
+    displayName?: string;
+    avatarUrl?: string | null;
+    title?: string;
+    category?: string;
+    isPrivate?: boolean;
+  },
+) {
+  const username = roomKey(roomName);
   await setDoc(
-    doc(db, 'liveRooms', roomKey(roomName)),
+    doc(db, 'liveRooms', username),
     {
       status: 'live',
       hostUid,
+      username,
+      displayName: meta?.displayName || roomName,
+      avatarUrl: meta?.avatarUrl ?? null,
+      title: meta?.title || `Live de ${meta?.displayName || roomName}`,
+      category: meta?.category || 'otro',
+      isPrivate: Boolean(meta?.isPrivate),
+      lockGiftId: null,
+      viewers: 0,
       startedAtMs: Date.now(),
+      heartbeatAtMs: Date.now(),
       endedAtMs: null,
       coinsEarned: 0,
       topGifters: [],
       gifters: {},
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+/** Pulso del host: el feed solo muestra salas con heartbeat reciente. */
+export async function touchLiveRoomHeartbeat(roomName: string) {
+  const now = Date.now();
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    {
+      status: 'live',
+      heartbeatAtMs: now,
       updatedAt: serverTimestamp(),
     },
     { merge: true },
@@ -56,9 +90,133 @@ export async function markLiveRoomEnded(roomName: string) {
     {
       status: 'ended',
       endedAtMs: Date.now(),
+      heartbeatAtMs: 0,
+      isPrivate: false,
+      lockGiftId: null,
       updatedAt: serverTimestamp(),
     },
     { merge: true },
+  );
+}
+
+/** Segundos máximos sin pulso antes de ocultar/cerrar un live en el feed. */
+export const LIVE_HEARTBEAT_TTL_MS = 90_000;
+export const LIVE_START_GRACE_MS = 90_000;
+
+export async function updateLiveRoomFeed(
+  roomName: string,
+  patch: {
+    isPrivate?: boolean;
+    lockGiftId?: string | null;
+    viewers?: number;
+    title?: string;
+  },
+) {
+  const data: Record<string, unknown> = { updatedAt: serverTimestamp() };
+  if (typeof patch.isPrivate === 'boolean') data.isPrivate = patch.isPrivate;
+  if (patch.lockGiftId !== undefined) data.lockGiftId = patch.lockGiftId;
+  if (typeof patch.viewers === 'number') data.viewers = Math.max(0, Math.floor(patch.viewers));
+  if (typeof patch.title === 'string' && patch.title.trim()) data.title = patch.title.trim().slice(0, 80);
+  await setDoc(doc(db, 'liveRooms', roomKey(roomName)), data, { merge: true });
+}
+
+export type ActiveLiveFeedItem = {
+  username: string;
+  uid: string;
+  displayName: string;
+  avatarUrl: string | null;
+  title: string;
+  startedAt: string;
+  viewers: number;
+  isPrivate: boolean;
+  category: string;
+};
+
+function isLiveHeartbeatFresh(data: DocumentData, now = Date.now()) {
+  const heartbeatAtMs = Number(data.heartbeatAtMs || 0);
+  const startedAtMs = Number(data.startedAtMs || 0);
+  if (heartbeatAtMs > 0) {
+    return now - heartbeatAtMs <= LIVE_HEARTBEAT_TTL_MS;
+  }
+  // Salas viejas sin heartbeat: solo gracia corta tras el start.
+  if (startedAtMs > 0) {
+    return now - startedAtMs <= LIVE_START_GRACE_MS;
+  }
+  return false;
+}
+
+/** Feed de lives en tiempo real (aparece/desaparece al instante). */
+export function listenActiveLiveRooms(
+  onChange: (streams: ActiveLiveFeedItem[]) => void,
+): Unsubscribe {
+  const q = query(collection(db, 'liveRooms'), where('status', '==', 'live'));
+  let latestDocs: QueryDocumentSnapshot[] = [];
+
+  const emit = () => {
+    const now = Date.now();
+    const streams: ActiveLiveFeedItem[] = [];
+    for (const item of latestDocs) {
+      const data = item.data();
+      const username = String(data.username || item.id || '').trim();
+      if (!username) continue;
+      if (data.isPrivate || data.lockGiftId) continue;
+      if (!isLiveHeartbeatFresh(data, now)) continue;
+      const startedAtMs = Number(data.startedAtMs || Date.now());
+      streams.push({
+        username,
+        uid: String(data.hostUid || ''),
+        displayName: String(data.displayName || username),
+        avatarUrl: (data.avatarUrl as string | null) ?? null,
+        title: String(data.title || `Live de ${data.displayName || username}`),
+        startedAt: new Date(startedAtMs).toISOString(),
+        viewers: Math.max(0, Number(data.viewers || 0)),
+        isPrivate: false,
+        category: String(data.category || 'otro'),
+      });
+    }
+    streams.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+    onChange(streams);
+    // No marcar ended aquí: solo oculta. El reconcile con API cierra salas muertas.
+  };
+
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      latestDocs = snap.docs;
+      emit();
+    },
+    (err) => {
+      console.error('[live] listenActiveLiveRooms', err);
+      onChange([]);
+    },
+  );
+
+  // Revisa heartbeats aunque no haya writes nuevos.
+  const timer = window.setInterval(emit, 10_000);
+  return () => {
+    unsub();
+    window.clearInterval(timer);
+  };
+}
+
+/** Cierra en Firestore las salas que ya no aparecen como activas en el API. */
+export async function reconcileLiveFeedWithApi(activeUsernames: string[]) {
+  const active = new Set(
+    activeUsernames.map((name) => roomKey(name)).filter(Boolean),
+  );
+  const snap = await getDocs(query(collection(db, 'liveRooms'), where('status', '==', 'live')));
+  const now = Date.now();
+  await Promise.all(
+    snap.docs.map(async (item) => {
+      const data = item.data();
+      const username = String(data.username || item.id || '').trim();
+      if (!username) return;
+      if (active.has(roomKey(username))) return;
+      // Si el API no la tiene y el heartbeat ya expiró (o nunca hubo), cerrar.
+      if (!isLiveHeartbeatFresh(data, now)) {
+        await markLiveRoomEnded(username).catch(() => undefined);
+      }
+    }),
   );
 }
 
@@ -270,6 +428,7 @@ export function listenLiveGifts(
         const data = change.doc.data() as Record<string, unknown>;
         const giftId = String(data.giftId || '');
         if (!giftId) continue;
+        const rawMult = Math.floor(Number(data.multiplier) || 1);
         onGift({
           id: String(data.clientId || change.doc.id),
           giftId,
@@ -278,6 +437,7 @@ export function listenLiveGifts(
           senderName: String(data.senderName || 'Liveboomer'),
           senderUid: String(data.senderUid || ''),
           coins: Number(data.coins || 0),
+          multiplier: [1, 2, 4, 8].includes(rawMult) ? rawMult : 1,
         });
       }
     },
@@ -299,6 +459,9 @@ export async function publishLiveGift(
     senderName: gift.senderName,
     senderUid: gift.senderUid,
     coins: gift.coins,
+    multiplier: [1, 2, 4, 8].includes(Math.floor(Number(gift.multiplier) || 1))
+      ? Math.floor(Number(gift.multiplier) || 1)
+      : 1,
     createdAt: serverTimestamp(),
   });
   void recordLiveGiftEarnings(roomName, {
@@ -383,5 +546,96 @@ export async function publishLiveChatMessage(
     gift: message.gift || null,
     createdAt: serverTimestamp(),
     createdAtMs: Date.now(),
+  });
+}
+
+/** Avisa a amigos/seguidores que el host está en LIVE (máx. 40). */
+export async function notifyNetworkImLive(input: {
+  hostUid: string;
+  hostUsername: string;
+  hostName: string;
+  recipientUids: string[];
+}) {
+  const recipients = Array.from(new Set(input.recipientUids.filter(Boolean))).slice(0, 40);
+  const batch = writeBatch(db);
+  const at = Date.now();
+  for (const uid of recipients) {
+    if (uid === input.hostUid) continue;
+    const ref = doc(collection(db, 'users', uid, 'liveAlerts'));
+    batch.set(ref, {
+      hostUid: input.hostUid,
+      hostUsername: input.hostUsername,
+      hostName: input.hostName,
+      title: `${input.hostName} está en LIVE`,
+      href: `/stream/${encodeURIComponent(input.hostUsername)}`,
+      createdAt: serverTimestamp(),
+      createdAtMs: at,
+    });
+  }
+  await batch.commit();
+  return recipients.length;
+}
+
+export function listenLiveAlerts(
+  uid: string,
+  onChange: (alerts: Array<{ id: string; text: string; href: string; at: number }>) => void,
+): Unsubscribe {
+  const col = collection(db, 'users', uid, 'liveAlerts');
+  const q = query(col, orderBy('createdAtMs', 'desc'), limit(20));
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        snap.docs.map((item) => {
+          const data = item.data();
+          return {
+            id: item.id,
+            text: String(data.title || 'Un amigo está en LIVE'),
+            href: String(data.href || '/'),
+            at: Number(data.createdAtMs || Date.now()),
+          };
+        }),
+      );
+    },
+    (err) => {
+      console.warn('[liveAlerts]', err);
+    },
+  );
+}
+
+/** Borra una alerta LIVE del usuario. */
+export async function deleteLiveAlert(uid: string, alertId: string) {
+  const id = String(alertId || '').trim();
+  if (!uid || !id) return;
+  await deleteDoc(doc(db, 'users', uid, 'liveAlerts', id));
+}
+
+/** Borra todas las alertas LIVE del usuario (máx. 40). */
+export async function clearLiveAlerts(uid: string) {
+  if (!uid) return;
+  const col = collection(db, 'users', uid, 'liveAlerts');
+  const snap = await getDocs(query(col, orderBy('createdAtMs', 'desc'), limit(40)));
+  if (snap.empty) return;
+  const batch = writeBatch(db);
+  snap.docs.forEach((item) => batch.delete(item.ref));
+  await batch.commit();
+}
+
+export async function setLiveWishlist(roomName: string, giftIds: string[]) {
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    { wishlist: giftIds.slice(0, 5), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
+
+export function listenLiveWishlist(
+  roomName: string,
+  onChange: (giftIds: string[]) => void,
+): Unsubscribe {
+  return onSnapshot(doc(db, 'liveRooms', roomKey(roomName)), (snap) => {
+    const data = snap.data();
+    const list = Array.isArray(data?.wishlist) ? data.wishlist.map(String) : [];
+    onChange(list);
   });
 }

@@ -14,6 +14,10 @@ service firebase.storage {
         || firestore.exists(/databases/(default)/documents/users/$(userId)/friends/$(request.auth.uid))
       );
     }
+    function isFollower(userId) {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(userId)/followers/$(request.auth.uid));
+    }
     function canReadPostFile(userId) {
       return isOwner(userId)
         || (
@@ -23,6 +27,10 @@ service firebase.storage {
         || (
           resource.metadata.visibility == 'friends'
           && isFriend(userId)
+        )
+        || (
+          resource.metadata.visibility == 'circle'
+          && (isFriend(userId) || isFollower(userId))
         );
     }
 
@@ -34,7 +42,7 @@ service firebase.storage {
     match /users/{userId}/avatar/{fileName} {
       allow read: if true;
       allow write: if isOwner(userId)
-        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.size < 20 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
@@ -51,7 +59,7 @@ service firebase.storage {
     match /users/{userId}/chat/{fileName} {
       allow read: if signedIn();
       allow write: if isOwner(userId)
-        && request.resource.size < 12 * 1024 * 1024
+        && request.resource.size < 20 * 1024 * 1024
         && (
           request.resource.contentType.matches('image/.*')
           || request.resource.contentType.matches('audio/.*')
@@ -59,10 +67,18 @@ service firebase.storage {
         );
     }
 
+    // Media de grupos (portada / chat) bajo la carpeta del usuario — permisos fiables.
+    match /users/{userId}/groups/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /avatars/{userId}/{fileName} {
       allow read: if true;
       allow write: if isOwner(userId)
-        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.size < 20 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
@@ -79,12 +95,28 @@ service firebase.storage {
     match /chat/{userId}/{fileName} {
       allow read: if signedIn();
       allow write: if isOwner(userId)
-        && request.resource.size < 12 * 1024 * 1024
+        && request.resource.size < 20 * 1024 * 1024
         && (
           request.resource.contentType.matches('image/.*')
           || request.resource.contentType.matches('audio/.*')
           || request.resource.contentType.matches('video/.*')
         );
+    }
+
+    // Ruta legacy groups/… — cualquier usuario autenticado (miembro validado en app).
+    match /groups/{groupId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if signedIn()
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /admin/levels/{slug}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn()
+        && request.auth.token.email == 'synapsisdev75@gmail.com'
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
     }
 
     match /logo/{fileName} {

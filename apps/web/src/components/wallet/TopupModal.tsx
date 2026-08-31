@@ -42,19 +42,22 @@ export function TopupModal({ packages, onClose, onDone }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
-      <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#131417] p-6 shadow-gift">
-        <h2 className="text-lg font-bold text-white">Recargar coins</h2>
-        <p className="mt-1 text-sm text-zinc-400">
-          Pagos con Wompi (cuenta empresarial). Montos en COP.
-        </p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+    <div
+      className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="lb-safe-sheet w-full max-w-lg overflow-y-auto rounded-t-3xl border border-white/10 bg-[#131417] p-4 shadow-gift sm:rounded-3xl sm:p-6">
+        <h2 className="text-lg font-bold text-white">Recargar blast</h2>
+        <p className="mt-1 text-sm text-zinc-400">Elige un paquete de blast para recargar.</p>
+        <div className="mt-4 grid grid-cols-2 gap-2.5 sm:gap-3">
           {packages.map((pack) => (
             <button
               key={pack.id}
               type="button"
               onClick={() => setSelected(pack.id)}
-              className={`rounded-2xl border p-4 text-left ${
+              className={`min-h-11 rounded-2xl border p-3 text-left sm:p-4 ${
                 selected === pack.id
                   ? 'border-boom-cyan bg-boom-cyan/10'
                   : 'border-white/10 bg-black/30'
@@ -65,22 +68,26 @@ export function TopupModal({ packages, onClose, onDone }: Props) {
                   Popular
                 </span>
               ) : null}
-              <p className="text-xl font-bold text-white">{pack.coins.toLocaleString('es-ES')}</p>
-              <p className="text-xs text-zinc-400">
-                ${(pack.amountCents / 100).toLocaleString('es-CO')} COP
+              <p className="text-lg font-bold text-white sm:text-xl">
+                {pack.coins.toLocaleString('es-ES')}
               </p>
+              <p className="text-xs text-zinc-400">blast</p>
             </button>
           ))}
         </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-sm text-zinc-400">
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-11 rounded-xl px-4 py-2 text-sm text-zinc-400"
+          >
             Cancelar
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={() => void pay()}
-            className="rounded-xl bg-boom-cyan px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-60"
+            className="min-h-11 rounded-xl bg-boom-cyan px-4 py-2 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
             {busy ? 'Procesando…' : 'Pagar con Wompi'}
           </button>
