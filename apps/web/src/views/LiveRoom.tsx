@@ -1928,6 +1928,19 @@ function CreatorStage({
               >
                 <FlipHorizontal size={18} />
               </button>
+              <button
+                type="button"
+                onClick={() => void toggleScreenCapture()}
+                className={`grid h-10 w-10 place-items-center rounded-full backdrop-blur sm:h-9 sm:w-9 ${
+                  screenSharing
+                    ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400/50 hover:bg-emerald-500/45'
+                    : 'bg-black/55 text-white hover:bg-black/75'
+                }`}
+                aria-label={screenSharing ? 'Detener pantalla compartida' : 'Compartir pantalla'}
+                title={screenSharing ? 'Detener pantalla' : 'Compartir pantalla'}
+              >
+                <MonitorUp size={18} />
+              </button>
               </>
             ) : null}
             <button
@@ -2128,7 +2141,6 @@ function CreatorStage({
             {recording ? <Circle className="animate-pulse text-red-400" size={12} /> : <Video size={14} />}
             {recording ? 'Grabando…' : 'Reel 15s'}
           </button>
-              {canUseDisplayMedia() ? (
               <button
                 type="button"
                 onClick={() => void toggleScreenCapture()}
@@ -2141,7 +2153,6 @@ function CreatorStage({
                 <MonitorUp size={14} />
                 {screenSharing ? 'Pantalla on' : 'Pantalla'}
               </button>
-              ) : null}
             </>
           ) : null}
         </div>
@@ -2194,6 +2205,19 @@ function CreatorStage({
             title={screenSharing ? 'Espejo en cámara PiP' : 'Modo espejo'}
           >
             <FlipHorizontal size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void toggleScreenCapture()}
+            className={`grid h-12 w-12 place-items-center rounded-full shadow-lg backdrop-blur ring-1 ${
+              screenSharing
+                ? 'bg-emerald-500/40 text-white ring-emerald-400/50'
+                : 'bg-black/60 text-white ring-white/20'
+            }`}
+            aria-label={screenSharing ? 'Detener pantalla compartida' : 'Compartir pantalla'}
+            title={screenSharing ? 'Detener pantalla' : 'Compartir pantalla'}
+          >
+            <MonitorUp size={20} />
           </button>
         </div>
       ) : null}
@@ -2574,7 +2598,7 @@ function CreatorVideo({
         <VideoTrack
           key={`${trackRenderKey(shown)}-${trackEpoch}`}
           trackRef={shown}
-          className={`absolute inset-0 h-full w-full bg-black object-contain ${
+          className={`absolute inset-0 h-full w-full bg-black [&_video]:h-full [&_video]:w-full [&_video]:object-contain ${
             mirrorLocalPreview ? '[&_video]:scale-x-[-1]' : '[&_video]:!transform-none'
           }`}
         />
