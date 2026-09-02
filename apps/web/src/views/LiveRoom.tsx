@@ -25,6 +25,7 @@ import {
   Send,
   Share2,
   SwitchCamera,
+  FlipHorizontal,
   Unlock,
   UserPlus,
   Users,
@@ -108,6 +109,17 @@ type LockInfo = {
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string; combo?: number };
 
 const REEL_SECONDS = 15;
+const LIVE_MIRROR_KEY = 'liveboom.liveMirror.v1';
+
+function loadLiveMirrorPref(): boolean | null {
+  try {
+    const raw = localStorage.getItem(LIVE_MIRROR_KEY);
+    if (raw === null) return null;
+    return raw === '1';
+  } catch {
+    return null;
+  }
+}
 
 const LIVEKIT_ROOM_OPTIONS: RoomOptions = {
   adaptiveStream: true,
@@ -657,6 +669,7 @@ function CreatorStage({
   const giftComboRef = useRef<{ key: string; count: number; at: number }>({ key: '', count: 0, at: 0 });
   const stageVideoRef = useRef<HTMLDivElement>(null);
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
+  const [mirrorMode, setMirrorMode] = useState(() => loadLiveMirrorPref() ?? true);
   const [flipping, setFlipping] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -683,6 +696,15 @@ function CreatorStage({
     [firebaseUid, handle, displayName],
   );
   useLivePresence(username, room, presenceUser, isSpectator);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LIVE_MIRROR_KEY, mirrorMode ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [mirrorMode]);
+
   const [inviteHandle, setInviteHandle] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteNote, setInviteNote] = useState<string | null>(null);
@@ -701,6 +723,11 @@ function CreatorStage({
   const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
   const stoppingScreenRef = useRef(false);
   const [lock, setLock] = useState<LockInfo | null>(null);
+
+  useEffect(() => {
+    screenComposerRef.current?.setPipMirrored(mirrorMode);
+  }, [mirrorMode, screenSharing]);
+
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
   const [viewersList, setViewersList] = useState<{ identity: string; name: string }[]>([]);
@@ -1506,6 +1533,7 @@ function CreatorStage({
         const initialPip = defaultPipPosition(dims.width, dims.height);
         composer.setPipPosition(initialPip.nx, initialPip.ny);
         composer.setPipVisible(true);
+        composer.setPipMirrored(mirrorMode);
         setPipPos(initialPip);
         setPipVisible(true);
 
@@ -1654,6 +1682,8 @@ function CreatorStage({
               canPublish={canPublish}
               hostUid={hostUid}
               facing={facing}
+              mirrorMode={mirrorMode}
+              screenSharing={screenSharing}
               cameraTrackRef={cameraTrackRef}
             />
             {isHost && screenSharing ? (
@@ -1872,6 +1902,27 @@ function CreatorStage({
                   title={facing === 'user' ? 'Cámara trasera' : 'Cámara frontal'}
               >
                   <SwitchCamera size={18} className={flipping ? 'animate-spin' : ''} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setMirrorMode((current) => !current)}
+                className={`grid h-10 w-10 place-items-center rounded-full backdrop-blur sm:h-9 sm:w-9 ${
+                  mirrorMode
+                    ? 'bg-cyan-500/35 text-cyan-100 ring-1 ring-cyan-400/50 hover:bg-cyan-500/45'
+                    : 'bg-black/55 text-white hover:bg-black/75'
+                }`}
+                aria-label={mirrorMode ? 'Desactivar modo espejo' : 'Activar modo espejo'}
+                title={
+                  screenSharing
+                    ? mirrorMode
+                      ? 'Espejo PiP activo'
+                      : 'Espejo PiP desactivado'
+                    : mirrorMode
+                      ? 'Modo espejo activo'
+                      : 'Modo espejo desactivado'
+                }
+              >
+                <FlipHorizontal size={18} />
               </button>
               </>
             ) : null}
@@ -2125,6 +2176,19 @@ function CreatorStage({
           >
             <SwitchCamera size={20} className={flipping ? 'animate-spin' : ''} />
           </button>
+          <button
+            type="button"
+            onClick={() => setMirrorMode((current) => !current)}
+            className={`grid h-12 w-12 place-items-center rounded-full shadow-lg backdrop-blur ring-1 ${
+              mirrorMode
+                ? 'bg-cyan-500/40 text-white ring-cyan-400/50'
+                : 'bg-black/60 text-white ring-white/20'
+            }`}
+            aria-label={mirrorMode ? 'Desactivar modo espejo' : 'Activar modo espejo'}
+            title={screenSharing ? 'Espejo en cámara PiP' : 'Modo espejo'}
+          >
+            <FlipHorizontal size={20} />
+          </button>
         </div>
       ) : null}
       {viewersOpen ? (
@@ -2332,11 +2396,15 @@ function CreatorVideo({
   canPublish,
   hostUid,
   facing,
+  mirrorMode,
+  screenSharing,
   cameraTrackRef,
 }: {
   canPublish: boolean;
   hostUid?: string;
   facing: 'user' | 'environment';
+  mirrorMode: boolean;
+  screenSharing: boolean;
   cameraTrackRef: React.MutableRefObject<LocalVideoTrack | null>;
 }) {
   const room = useRoomContext();
@@ -2380,6 +2448,8 @@ function CreatorVideo({
   const cached =
     lastMainRef.current.room === room.name ? lastMainRef.current.track : null;
   const shown = trackIsRenderable(main) ? main : trackIsRenderable(cached) ? cached : main;
+  const mirrorLocalPreview =
+    mirrorMode && canPublish && Boolean(shown?.participant.isLocal) && !screenSharing;
 
   useEffect(() => {
     let timer = 0;
@@ -2498,7 +2568,9 @@ function CreatorVideo({
         <VideoTrack
           key={`${trackRenderKey(shown)}-${trackEpoch}`}
           trackRef={shown}
-          className="absolute inset-0 h-full w-full bg-black object-contain [&_video]:!transform-none"
+          className={`absolute inset-0 h-full w-full bg-black object-contain ${
+            mirrorLocalPreview ? '[&_video]:scale-x-[-1]' : '[&_video]:!transform-none'
+          }`}
         />
       ) : null}
       {guests.map((guest) => (

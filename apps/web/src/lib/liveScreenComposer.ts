@@ -248,6 +248,7 @@ export class LiveScreenComposer {
   private readonly fps: number;
   private rafId = 0;
   private pipVisible = true;
+  private pipMirrored = false;
   private pipPos: PipNormalizedPos;
   private screenLayout: ScreenLayoutMode = 'neutral';
   private screenTrack: MediaStreamTrack | null = null;
@@ -295,6 +296,10 @@ export class LiveScreenComposer {
 
   setPipVisible(visible: boolean) {
     this.pipVisible = visible;
+  }
+
+  setPipMirrored(mirrored: boolean) {
+    this.pipMirrored = mirrored;
   }
 
   isPipVisible() {
@@ -393,7 +398,13 @@ export class LiveScreenComposer {
       ctx.save();
       roundRectPath(ctx, px, py, pipW, pipH, 18);
       ctx.clip();
-      drawCover(ctx, this.cameraVideo, px, py, pipW, pipH);
+      if (this.pipMirrored) {
+        ctx.translate(px + pipW, py);
+        ctx.scale(-1, 1);
+        drawCover(ctx, this.cameraVideo, 0, 0, pipW, pipH);
+      } else {
+        drawCover(ctx, this.cameraVideo, px, py, pipW, pipH);
+      }
       ctx.restore();
 
       ctx.strokeStyle = 'rgba(255,255,255,0.45)';
