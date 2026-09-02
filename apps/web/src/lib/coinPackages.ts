@@ -2,8 +2,34 @@
 export const COIN_TO_COP = 50;
 export const MIN_WITHDRAW_COINS = 50;
 
-/** Descuento por volumen al comprar paquetes (centavos Wompi = blast × rate × 100). */
+/** Precio final cliente (COP) para paquetes desde Popular en adelante. */
+const FIXED_PACK_PRICE_COP: Record<number, number> = {
+  200: 10_900,
+  350: 17_900,
+  500: 24_900,
+  750: 36_900,
+  1000: 48_900,
+  1500: 71_900,
+  2500: 118_900,
+  5000: 234_900,
+  7500: 349_900,
+  25000: 1_154_900,
+};
+
+const ENTRY_PACK_MARKUP = 0.0265;
+const ENTRY_PACK_FEE_COP = 700;
+
+/** Impulso y Plus: base (blast × $50) + 2,65 % + $700 COP. */
+function entryPackAmountInCop(blast: number) {
+  const baseCop = blast * COIN_TO_COP;
+  return Math.round(baseCop * (1 + ENTRY_PACK_MARKUP) + ENTRY_PACK_FEE_COP) * 100;
+}
+
+/** Centavos Wompi = precio COP × 100. */
 function packAmountInCop(blast: number) {
+  if (blast === 125 || blast === 150) return entryPackAmountInCop(blast);
+  const fixed = FIXED_PACK_PRICE_COP[blast];
+  if (fixed !== undefined) return fixed * 100;
   let rate = 50;
   if (blast >= 1000) rate = 42.5;
   else if (blast >= 200) rate = 45;
@@ -11,10 +37,6 @@ function packAmountInCop(blast: number) {
 }
 
 export const COIN_PACKAGES = [
-  { id: 'flash_20', name: 'Flash', coins: 20, amountInCop: packAmountInCop(20), popular: false, bestValue: false, artUrl: '/blast/pack-flash.png' },
-  { id: 'mini_40', name: 'Mini', coins: 40, amountInCop: packAmountInCop(40), popular: false, bestValue: false, artUrl: '/blast/pack-mini.png' },
-  { id: 'inicio_75', name: 'Inicio', coins: 75, amountInCop: packAmountInCop(75), popular: false, bestValue: false, artUrl: '/blast/pack-inicio.png' },
-  { id: 'basico_100', name: 'Básico', coins: 100, amountInCop: packAmountInCop(100), popular: false, bestValue: false, artUrl: '/blast/pack-basico.png' },
   { id: 'impulso_125', name: 'Impulso', coins: 125, amountInCop: packAmountInCop(125), popular: false, bestValue: false, artUrl: '/blast/pack-impulso.png' },
   { id: 'plus_150', name: 'Plus', coins: 150, amountInCop: packAmountInCop(150), popular: false, bestValue: false, artUrl: '/blast/pack-plus.png' },
   { id: 'popular_200', name: 'Popular', coins: 200, amountInCop: packAmountInCop(200), popular: true, bestValue: false, artUrl: '/blast/pack-popular.png' },
