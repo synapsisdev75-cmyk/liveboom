@@ -65,7 +65,7 @@ export async function openWompiWidget(
     amountInCents,
     reference: order.reference,
     publicKey: order.publicKey,
-    redirectUrl: `${window.location.origin}/billetera`,
+    redirectUrl: `${window.location.origin}/billetera?lb_ref=${encodeURIComponent(order.reference)}`,
     signature: { integrity: order.integritySignature },
     ...(order.customerEmail
       ? {

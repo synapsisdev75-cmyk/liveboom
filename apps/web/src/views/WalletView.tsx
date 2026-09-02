@@ -19,10 +19,10 @@ import {
   type CoinPackageId,
 } from '../lib/coinPackages';
 import { api } from '../lib/api';
-import { setFirestoreCoins } from '../lib/profileFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { useAuthStore } from '../store/authStore';
+import { settleWompiReturnOnWalletPage } from '../lib/paymentsClient';
 
 type WithdrawalRow = {
   id: string;
@@ -85,35 +85,14 @@ export function WalletView() {
   useEffect(() => {
     if (!profile?.firebaseUid || wompiReturnHandled.current) return;
     const params = new URLSearchParams(window.location.search);
-    const transactionId = params.get('id');
-    if (!transactionId) return;
+    if (!params.get('id') && !params.get('lb_ref') && !params.get('reference')) return;
     wompiReturnHandled.current = true;
     let cancelled = false;
     void (async () => {
       setPayNote('Confirmando tu pago con Wompi…');
       try {
-        const paid = await api<{ coinsBalance: number; coins?: number }>(
-          '/api/payments/complete-widget',
-          {
-            method: 'POST',
-            timeoutMs: 25_000,
-            body: JSON.stringify({
-              transactionId,
-              reference: params.get('reference') || undefined,
-              currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
-            }),
-          },
-        );
-        if (cancelled) return;
-        const store = useAuthStore.getState();
-        const current = store.profile?.coinsBalance ?? 0;
-        const fromApi = Number(paid.coinsBalance);
-        const added = Math.max(0, Number(paid.coins) || 0);
-        const next = Math.max(Number.isFinite(fromApi) ? fromApi : 0, current + added);
-        store.setCoins(next);
-        if (profile.firebaseUid) {
-          void setFirestoreCoins(profile.firebaseUid, next).catch(() => undefined);
-        }
+        const settled = await settleWompiReturnOnWalletPage();
+        if (cancelled || !settled) return;
         setPayNote('Pago aprobado. Tu blast ya está en la billetera.');
       } catch (error) {
         if (!cancelled) {
@@ -123,11 +102,6 @@ export function WalletView() {
               : 'No se pudo confirmar el pago. Si ya pagaste, espera unos segundos y recarga.',
           );
         }
-      } finally {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('id');
-        url.searchParams.delete('reference');
-        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
       }
     })();
     return () => {

@@ -72,6 +72,13 @@ export async function api<T>(path: string, init: RequestInit & { timeoutMs?: num
     );
   }
   const raw = await response.text();
+  const looksHtml = /^\s*</.test(raw) || /text\/html/i.test(response.headers.get('content-type') || '');
+  if (looksHtml) {
+    throw new ApiError(
+      response.status,
+      'El API de pagos no está conectado en esta página. En Firebase, /api/payments debe llegar a Cloud Functions.',
+    );
+  }
   let data: { error?: string; message?: string } & T;
   try {
     data = JSON.parse(raw) as { error?: string; message?: string } & T;
@@ -79,7 +86,7 @@ export async function api<T>(path: string, init: RequestInit & { timeoutMs?: num
     throw new ApiError(
       response.status,
       raw.trim()
-        ? `El API en línea falló (${response.status}). Intenta de nuevo en un momento.`
+        ? `El API de pagos no respondió JSON (${response.status}).`
         : `El servidor respondió ${response.status} sin JSON`,
     );
   }
@@ -103,7 +110,19 @@ export async function apiPublic<T>(path: string): Promise<T> {
       'No se pudo conectar con el servidor. Revisa tu red o intenta de nuevo.',
     );
   }
-  const data = (await response.json().catch(() => ({}))) as { error?: string } & T;
+  const raw = await response.text();
+  if (/^\s*</.test(raw)) {
+    throw new ApiError(
+      response.status,
+      'El API de pagos no está conectado en esta página (Firebase /api).',
+    );
+  }
+  let data: { error?: string } & T;
+  try {
+    data = JSON.parse(raw || '{}') as { error?: string } & T;
+  } catch {
+    throw new ApiError(response.status, 'El API de pagos no respondió JSON.');
+  }
   if (!response.ok) {
     throw new ApiError(response.status, data.error ?? 'Error de red');
   }
