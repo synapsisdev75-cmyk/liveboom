@@ -771,3 +771,80 @@ input[type='date'] {
     transition: none !important;
   }
 }
+
+/* LIVE stage: formato de transmisión fijo + adaptación por orientación (móvil/tablet) */
+@media (min-width: 1024px) {
+  .lb-live-stage--16x9 .lb-live-stage-inner {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: 100%;
+    aspect-ratio: 16 / 9;
+  }
+
+  .lb-live-stage--9x16 .lb-live-stage-inner {
+    height: 100%;
+    max-height: 100%;
+    width: auto;
+    max-width: 100%;
+    aspect-ratio: 9 / 16;
+  }
+}
+
+@media (max-width: 1023px) {
+  .lb-live-stage-section {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .lb-live-stage-outer {
+    height: 100%;
+    width: 100%;
+  }
+
+  /* 16:9 — portrait: ancho completo, altura proporcional dentro del espacio disponible */
+  .lb-live-orient-portrait.lb-live-stage--16x9 .lb-live-stage-inner {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    max-height: 100%;
+    aspect-ratio: 16 / 9;
+  }
+
+  /* 16:9 — landscape: altura completa, ancho proporcional (formato horizontal nativo) */
+  .lb-live-orient-landscape.lb-live-stage--16x9 .lb-live-stage-inner {
+    height: 100%;
+    max-height: 100%;
+    width: auto;
+    max-width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+
+  /* 9:16 — portrait: vertical centrado ocupando la altura disponible */
+  .lb-live-orient-portrait.lb-live-stage--9x16 .lb-live-stage-inner {
+    height: 100%;
+    max-height: 100%;
+    width: auto;
+    max-width: min(100%, calc(100dvh * 9 / 16));
+    aspect-ratio: 9 / 16;
+  }
+
+  /* 9:16 — landscape: altura completa con letterbox lateral */
+  .lb-live-orient-landscape.lb-live-stage--9x16 .lb-live-stage-inner {
+    height: 100%;
+    max-height: 100%;
+    width: auto;
+    max-width: 100%;
+    aspect-ratio: 9 / 16;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .lb-live-surface-tablet.lb-live-orient-portrait.lb-live-stage--16x9 .lb-live-stage-inner {
+    max-width: min(100%, 48rem);
+  }
+
+  .lb-live-surface-tablet.lb-live-orient-portrait.lb-live-stage--9x16 .lb-live-stage-inner {
+    max-width: min(100%, calc(100dvh * 9 / 16), 28rem);
+  }
+}

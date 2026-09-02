@@ -70,6 +70,7 @@ import {
   listenLiveWishlist,
 } from '../lib/liveGiftsFirestore';
 import { useLivePresence } from '../hooks/useLivePresence';
+import { useLiveViewport } from '../hooks/useLiveViewport';
 import { chatAuthorClass } from '../lib/chatAuthorStyle';
 import { downloadReelBlob, savePendingReel } from '../lib/pendingReelStore';
 import { addFirestoreCoins, addLevelXp, fetchLevelXp, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
@@ -89,6 +90,8 @@ import {
   liveCanvasDimensions,
   liveStageInnerClass,
   liveStageOuterClass,
+  liveStageSectionClass,
+  liveHostControlsBottomClass,
   parseLiveAspectRatio,
   type LiveAspectRatio,
 } from '../lib/liveAspectRatio';
@@ -656,6 +659,7 @@ function CreatorStage({
 }) {
   const navigate = useNavigate();
   const room = useRoomContext();
+  const liveViewport = useLiveViewport();
   const { isMicrophoneEnabled } = useLocalParticipant();
   const handle = useAuthStore((state) => state.profile?.handle);
   const displayName = useAuthStore((state) => state.profile?.displayName);
@@ -1656,9 +1660,9 @@ function CreatorStage({
   }
 
   return (
-    <section className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-black lg:w-[70%] lg:rounded-2xl lg:border lg:border-white/10 lg:shadow-[0_0_48px_rgba(0,240,255,0.12)]">
+    <section className={liveStageSectionClass()}>
       <div className="relative h-full w-full max-w-full lg:max-h-full">
-        <div className={liveStageOuterClass(aspectRatio)}>
+        <div className={liveStageOuterClass(aspectRatio, liveViewport)}>
           <div
             ref={stageVideoRef}
             className={liveStageInnerClass(aspectRatio)}
@@ -2154,7 +2158,9 @@ function CreatorStage({
         />
       ) : null}
       {canPublish ? (
-        <div className="pointer-events-auto absolute bottom-[48dvh] right-3 z-30 flex flex-col gap-2 lg:bottom-8 lg:right-6">
+        <div
+          className={`pointer-events-auto absolute right-3 z-30 flex flex-col gap-2 lg:right-6 ${liveHostControlsBottomClass(liveViewport)}`}
+        >
           <button
             type="button"
             onClick={() => void toggleMic()}
