@@ -4,13 +4,14 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const defaultApi = 'https://liveboom.vercel.app';
-  const rawApi = (env.VITE_API_URL || defaultApi).replace(/\/$/, '');
-  // .env.local suele tener localhost; en build de producción nunca debe publicarse.
+  const rawApi = String(env.VITE_API_URL || '').replace(/\/$/, '');
+  // Producción = mismo origen en Firebase Hosting. Nunca Vercel ni localhost.
   const apiOnline =
-    mode === 'production' && /localhost|127\.0\.0\.1/.test(rawApi)
-      ? 'https://liveboom.vercel.app'
-      : rawApi;
+    mode === 'production'
+      ? /localhost|127\.0\.0\.1|vercel\.app/i.test(rawApi)
+        ? ''
+        : rawApi
+      : rawApi || 'http://localhost:4000';
 
   return {
     plugins: [react(), tailwindcss()],
@@ -20,7 +21,6 @@ export default defineConfig(({ mode }) => {
     },
     assetsInclude: ['**/*.wasm'],
     define: {
-      // Garantiza API en línea aunque .env venga vacío en el build de Hosting/Vercel
       'import.meta.env.VITE_API_URL': JSON.stringify(apiOnline),
     },
     server: {

@@ -18,9 +18,7 @@ function allowedOrigin(origin) {
     origin === 'https://liveboom-app.web.app' ||
     origin === 'https://liveboom-app.firebaseapp.com' ||
     origin === 'https://liveboomapp.com' ||
-    origin === 'https://www.liveboomapp.com' ||
-    origin === 'https://liveboom.vercel.app' ||
-    origin.endsWith('.vercel.app')
+    origin === 'https://www.liveboomapp.com'
   );
 }
 

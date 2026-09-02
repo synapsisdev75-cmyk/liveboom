@@ -1,10 +1,17 @@
 import { auth } from './firebase';
 
-const ONLINE_API = 'https://liveboom.vercel.app';
+function isLocalHost(value: string) {
+  return /localhost|127\.0\.0\.1/.test(value);
+}
+
+function isVercelHost(value: string) {
+  return /vercel\.app/i.test(value);
+}
 
 /**
- * Resuelve la URL del API.
- * En dominios desplegados NUNCA usa localhost (evita "Failed to fetch" en www).
+ * URL del API.
+ * En www (Firebase Hosting) usa el mismo origen: /api/* lo sirve Cloud Functions.
+ * No apunta a Vercel.
  */
 export function getApiBase(): string {
   const fromEnv = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -13,17 +20,17 @@ export function getApiBase(): string {
   const browsingLocal = host === 'localhost' || host === '127.0.0.1';
 
   if (browsingLocal) {
-    if (fromEnv && !/localhost|127\.0\.0\.1/.test(fromEnv)) {
+    if (fromEnv && !isLocalHost(fromEnv) && !isVercelHost(fromEnv)) {
       return fromEnv;
     }
-    return fromEnv || ONLINE_API;
+    if (fromEnv && isLocalHost(fromEnv)) return fromEnv;
+    return 'http://localhost:4000';
   }
 
-  // Sitio en producción / preview: ignorar .env.local con localhost
-  if (fromEnv && !/localhost|127\.0\.0\.1/.test(fromEnv)) {
+  if (fromEnv && !isLocalHost(fromEnv) && !isVercelHost(fromEnv)) {
     return fromEnv;
   }
-  return ONLINE_API;
+  return '';
 }
 
 export class ApiError extends Error {

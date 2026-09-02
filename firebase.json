@@ -9,7 +9,6 @@
           "http://localhost",
           "https://liveboom-app.firebaseapp.com",
           "https://liveboom-app.web.app",
-          "https://liveboom.vercel.app",
           "https://liveboomapp.com",
           "https://www.liveboomapp.com"
         ]
@@ -31,6 +30,21 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "functions": [
+    {
+      "source": "backend",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        ".data",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
   "hosting": {
     "public": "apps/web/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
@@ -63,6 +77,13 @@
       }
     ],
     "rewrites": [
+      {
+        "source": "/api/**",
+        "function": {
+          "functionId": "api",
+          "region": "us-central1"
+        }
+      },
       {
         "source": "**",
         "destination": "/index.html"

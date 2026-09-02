@@ -16,9 +16,8 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "build:web": "npm run build -w apps/web",
-    "deploy:hosting": "npm run build:web && firebase deploy --only hosting --project liveboom-app",
-    "deploy:vercel": "npx vercel --prod",
-    "deploy:prod": "npm run build:web && firebase deploy --only hosting --project liveboom-app && npx vercel --prod",
+    "deploy:hosting": "npm run build:web && firebase deploy --only hosting,functions,firestore:rules --project liveboom-app",
+    "deploy:prod": "npm run deploy:hosting",
     "android:sync": "npm run sync -w @liveboom/android",
     "android:open": "npm run open -w @liveboom/android"
   },

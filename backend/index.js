@@ -15,6 +15,7 @@ const { prisma } = require('./src/lib/prisma');
 const { getBalance } = require('./src/lib/walletMemory');
 
 const app = express();
+app.set('trust proxy', true);
 const httpServer = http.createServer(app);
 const port = Number(process.env.PORT) || 4000;
 
@@ -32,7 +33,7 @@ app.get('/api/health', async (_req, res) => {
     status: 'ok',
     message: 'Liveboom Backend Running',
     db: prisma ? 'connected-or-ready' : 'disconnected',
-    api: 'https://liveboom.vercel.app',
+    api: 'firebase-hosting',
     auth: 'firebase-jwt-crypto',
   });
 });
@@ -122,9 +123,14 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const isServerless = Boolean(
+  process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.FUNCTION_TARGET ||
+    process.env.K_SERVICE,
+);
 
-if (!isServerless) {
+if (require.main === module && !isServerless) {
   try {
     const { initSocket } = require('./src/lib/socket');
     initSocket(httpServer);
@@ -145,3 +151,20 @@ if (!isServerless) {
 
 module.exports = app;
 module.exports.default = app;
+
+try {
+  const { onRequest } = require('firebase-functions/v2/https');
+  const { setGlobalOptions } = require('firebase-functions/v2');
+  setGlobalOptions({ region: 'us-central1', maxInstances: 20 });
+  module.exports.api = onRequest(
+    {
+      cors: true,
+      invoker: 'public',
+      timeoutSeconds: 60,
+      memory: '512MiB',
+    },
+    app,
+  );
+} catch (error) {
+  console.warn('[liveboom] firebase-functions no disponible:', error.message);
+}
