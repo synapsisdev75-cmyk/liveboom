@@ -92,6 +92,33 @@ export function formatScreenShareSourceLabel(track: MediaStreamTrack): string | 
   return null;
 }
 
+export async function requestScreenCaptureStream(): Promise<MediaStream> {
+  if (!canUseDisplayMedia()) {
+    throw new Error('getDisplayMedia no disponible');
+  }
+  try {
+    return await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: LIVE_SCREEN_FPS, max: 30 } },
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      } as MediaTrackConstraints,
+    });
+  } catch {
+    return await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: true,
+    });
+  }
+}
+
+export function screenShareAudioStatusMessage(hasAudio: boolean): string {
+  return hasAudio
+    ? 'Audio de pantalla activo. Si no se escucha, marca "Compartir audio" en el diálogo del navegador.'
+    : 'Sin audio de pantalla. En el diálogo del navegador activa "Compartir audio de la pestaña".';
+}
+
 export function screenShareStatusMessage(track: MediaStreamTrack, dims?: ScreenTrackDimensions): string {
   const label = formatScreenShareSourceLabel(track);
   if (label) return `Compartiendo: ${label}`;

@@ -484,6 +484,13 @@ video.lk-participant-media-video {
   transform: none !important;
 }
 
+/* LIVE — modo espejo (excepción al reset de transform de LiveKit) */
+.lb-live-stage-inner.lb-live-mirror-on .lk-video-track video,
+.lb-live-stage-inner.lb-live-mirror-on video.lk-participant-media-video {
+  transform: scaleX(-1) !important;
+  -webkit-transform: scaleX(-1) !important;
+}
+
 .live-ring {
   background: conic-gradient(from 140deg, #00f0ff, #ff0055, #f5c84c, #00f0ff);
 }

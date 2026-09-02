@@ -9,6 +9,7 @@ import {
   type TrackReference,
 } from '@livekit/components-react';
 import {
+  LocalAudioTrack,
   LocalVideoTrack,
   Room,
   RoomEvent,
@@ -82,6 +83,8 @@ import {
   defaultPipPosition,
   LiveScreenComposer,
   readScreenTrackDimensions,
+  requestScreenCaptureStream,
+  screenShareAudioStatusMessage,
   screenShareStatusMessage,
   type PipNormalizedPos,
 } from '../lib/liveScreenComposer';
@@ -724,6 +727,8 @@ function CreatorStage({
   const rawCameraTrackRef = useRef<LocalVideoTrack | null>(null);
   const compositeTrackRef = useRef<LocalVideoTrack | null>(null);
   const screenMediaTrackRef = useRef<MediaStreamTrack | null>(null);
+  const screenAudioTrackRef = useRef<MediaStreamTrack | null>(null);
+  const screenAudioLiveTrackRef = useRef<LocalAudioTrack | null>(null);
   const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
   const stoppingScreenRef = useRef(false);
   const [lock, setLock] = useState<LockInfo | null>(null);
@@ -1418,7 +1423,8 @@ function CreatorStage({
     if (
       !screenComposerRef.current &&
       !compositeTrackRef.current &&
-      !screenMediaTrackRef.current
+      !screenMediaTrackRef.current &&
+      !screenAudioLiveTrackRef.current
     ) {
       return;
     }
@@ -1428,15 +1434,27 @@ function CreatorStage({
       const composite = compositeTrackRef.current;
       const rawCamera = rawCameraTrackRef.current;
       const screenMedia = screenMediaTrackRef.current;
+      const screenAudio = screenAudioTrackRef.current;
+      const screenAudioLive = screenAudioLiveTrackRef.current;
       const pipInput = pipInputTrackRef.current;
 
       screenComposerRef.current = null;
       compositeTrackRef.current = null;
       rawCameraTrackRef.current = null;
       screenMediaTrackRef.current = null;
+      screenAudioTrackRef.current = null;
+      screenAudioLiveTrackRef.current = null;
       pipInputTrackRef.current = null;
 
       composer?.stop();
+
+      if (screenAudioLive) {
+        try {
+          await room.localParticipant.unpublishTrack(screenAudioLive, true);
+        } catch {
+          /* ignore */
+        }
+      }
 
       if (composite) {
         try {
@@ -1448,6 +1466,10 @@ function CreatorStage({
 
       if (screenMedia) {
         screenMedia.stop();
+      }
+
+      if (screenAudio) {
+        screenAudio.stop();
       }
 
       if (pipInput && pipInput !== rawCamera?.mediaStreamTrack) {
@@ -1470,11 +1492,12 @@ function CreatorStage({
 
       setScreenSharing(false);
       setPipVisible(true);
-      setPipPos(defaultPipPosition(720, 1280));
+      const stopDims = liveCanvasDimensions(aspectRatio);
+      setPipPos(defaultPipPosition(stopDims.width, stopDims.height));
     } finally {
       stoppingScreenRef.current = false;
     }
-  }, [room]);
+  }, [room, aspectRatio]);
 
   useEffect(() => {
     return () => {
@@ -1503,15 +1526,19 @@ function CreatorStage({
         return;
       }
 
-      const display = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      });
+      const display = await requestScreenCaptureStream();
       const screenMedia = display.getVideoTracks()[0];
-      if (!screenMedia) throw new Error('Sin pista de pantalla');
+      const screenAudio = display.getAudioTracks()[0];
+      if (!screenMedia) {
+        display.getTracks().forEach((track) => track.stop());
+        throw new Error('Sin pista de pantalla');
+      }
 
       rawCameraTrackRef.current = cameraTrack;
       screenMediaTrackRef.current = screenMedia;
+      if (screenAudio) {
+        screenAudioTrackRef.current = screenAudio;
+      }
 
       let pipInput = cameraTrack.mediaStreamTrack;
       if (typeof pipInput.clone === 'function') {
@@ -1556,15 +1583,39 @@ function CreatorStage({
           simulcast: false,
         });
 
+        if (screenAudio) {
+          const audioLive = new LocalAudioTrack(screenAudio);
+          screenAudioLiveTrackRef.current = audioLive;
+          await room.localParticipant.publishTrack(audioLive, {
+            source: Track.Source.ScreenShareAudio,
+            name: 'screen_audio',
+          });
+        }
+
         setScreenSharing(true);
-        setReelNote(screenShareStatusMessage(screenMedia, readScreenTrackDimensions(screenMedia)));
+        const baseMsg = screenShareStatusMessage(screenMedia, readScreenTrackDimensions(screenMedia));
+        setReelNote(
+          screenAudio
+            ? `${baseMsg} · ${screenShareAudioStatusMessage(true)}`
+            : `${baseMsg} · ${screenShareAudioStatusMessage(false)}`,
+        );
 
         screenMedia.onended = () => {
           void stopScreenCapture().then(() => setReelNote(null));
         };
       } catch (inner) {
         screenMedia.stop();
+        screenAudio?.stop();
         screenMediaTrackRef.current = null;
+        screenAudioTrackRef.current = null;
+        if (screenAudioLiveTrackRef.current) {
+          try {
+            await room.localParticipant.unpublishTrack(screenAudioLiveTrackRef.current, true);
+          } catch {
+            /* ignore */
+          }
+          screenAudioLiveTrackRef.current = null;
+        }
         pipInputTrackRef.current?.stop();
         pipInputTrackRef.current = null;
         screenComposerRef.current?.stop();
@@ -1659,13 +1710,23 @@ function CreatorStage({
     }
   }
 
+  const toggleMirror = useCallback(() => {
+    setMirrorMode((current) => {
+      const next = !current;
+      screenComposerRef.current?.setPipMirrored(next);
+      return next;
+    });
+  }, []);
+
+  const showLocalMirror = canPublish && mirrorMode && !screenSharing;
+
   return (
     <section className={liveStageSectionClass()}>
       <div className="relative h-full w-full max-w-full lg:max-h-full">
         <div className={liveStageOuterClass(aspectRatio, liveViewport)}>
           <div
             ref={stageVideoRef}
-            className={liveStageInnerClass(aspectRatio)}
+            className={`${liveStageInnerClass(aspectRatio)}${showLocalMirror ? ' lb-live-mirror-on' : ''}`}
             onTouchStart={(event) => {
               if (isHost || canPublish) return;
               const touch = event.changedTouches[0];
@@ -1686,8 +1747,6 @@ function CreatorStage({
               canPublish={canPublish}
               hostUid={hostUid}
               facing={facing}
-              mirrorMode={mirrorMode}
-              screenSharing={screenSharing}
               cameraTrackRef={cameraTrackRef}
             />
             {isHost && screenSharing ? (
@@ -1882,8 +1941,10 @@ function CreatorStage({
             >
               <Share2 size={16} />
             </button>
-            {canPublish ? (
+            {canPublish || isHost ? (
               <>
+                {canPublish ? (
+                <>
                 <button
                   type="button"
                   onClick={() => void toggleMic()}
@@ -1907,9 +1968,11 @@ function CreatorStage({
               >
                   <SwitchCamera size={18} className={flipping ? 'animate-spin' : ''} />
               </button>
+                </>
+                ) : null}
               <button
                 type="button"
-                onClick={() => setMirrorMode((current) => !current)}
+                onClick={toggleMirror}
                 className={`grid h-10 w-10 place-items-center rounded-full backdrop-blur sm:h-9 sm:w-9 ${
                   mirrorMode
                     ? 'bg-cyan-500/35 text-cyan-100 ring-1 ring-cyan-400/50 hover:bg-cyan-500/45'
@@ -2168,10 +2231,12 @@ function CreatorStage({
           onClose={() => setWithdrawOpen(false)}
         />
       ) : null}
-      {canPublish ? (
+      {canPublish || isHost ? (
         <div
           className={`pointer-events-auto absolute right-3 z-30 flex flex-col gap-2 lg:right-6 ${liveHostControlsBottomClass(liveViewport)}`}
         >
+          {canPublish ? (
+          <>
           <button
             type="button"
             onClick={() => void toggleMic()}
@@ -2193,9 +2258,11 @@ function CreatorStage({
           >
             <SwitchCamera size={20} className={flipping ? 'animate-spin' : ''} />
           </button>
+          </>
+          ) : null}
           <button
             type="button"
-            onClick={() => setMirrorMode((current) => !current)}
+            onClick={toggleMirror}
             className={`grid h-12 w-12 place-items-center rounded-full shadow-lg backdrop-blur ring-1 ${
               mirrorMode
                 ? 'bg-cyan-500/40 text-white ring-cyan-400/50'
@@ -2426,15 +2493,11 @@ function CreatorVideo({
   canPublish,
   hostUid,
   facing,
-  mirrorMode,
-  screenSharing,
   cameraTrackRef,
 }: {
   canPublish: boolean;
   hostUid?: string;
   facing: 'user' | 'environment';
-  mirrorMode: boolean;
-  screenSharing: boolean;
   cameraTrackRef: React.MutableRefObject<LocalVideoTrack | null>;
 }) {
   const room = useRoomContext();
@@ -2478,8 +2541,6 @@ function CreatorVideo({
   const cached =
     lastMainRef.current.room === room.name ? lastMainRef.current.track : null;
   const shown = trackIsRenderable(main) ? main : trackIsRenderable(cached) ? cached : main;
-  const mirrorLocalPreview =
-    mirrorMode && canPublish && Boolean(shown?.participant.isLocal) && !screenSharing;
 
   useEffect(() => {
     let timer = 0;
@@ -2598,9 +2659,7 @@ function CreatorVideo({
         <VideoTrack
           key={`${trackRenderKey(shown)}-${trackEpoch}`}
           trackRef={shown}
-          className={`absolute inset-0 h-full w-full bg-black [&_video]:h-full [&_video]:w-full [&_video]:object-contain ${
-            mirrorLocalPreview ? '[&_video]:scale-x-[-1]' : '[&_video]:!transform-none'
-          }`}
+          className="absolute inset-0 h-full w-full bg-black [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
         />
       ) : null}
       {guests.map((guest) => (
