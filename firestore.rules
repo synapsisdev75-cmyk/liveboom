@@ -481,6 +481,11 @@ service cloud.firestore {
       }
     }
 
+    match /paymentOrders/{orderId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

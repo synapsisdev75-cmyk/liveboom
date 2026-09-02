@@ -1,10 +1,17 @@
 import { auth } from './firebase';
 
-const ONLINE_API = 'https://liveboom.vercel.app';
+function isLocalHost(value: string) {
+  return /localhost|127\.0\.0\.1/.test(value);
+}
+
+function isVercelHost(value: string) {
+  return /vercel\.app/i.test(value);
+}
 
 /**
- * Resuelve la URL del API.
- * En dominios desplegados NUNCA usa localhost (evita "Failed to fetch" en www).
+ * URL del API.
+ * En www (Firebase Hosting) usa el mismo origen: /api/* lo sirve Cloud Functions.
+ * No apunta a Vercel.
  */
 export function getApiBase(): string {
   const fromEnv = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -13,17 +20,17 @@ export function getApiBase(): string {
   const browsingLocal = host === 'localhost' || host === '127.0.0.1';
 
   if (browsingLocal) {
-    if (fromEnv && !/localhost|127\.0\.0\.1/.test(fromEnv)) {
+    if (fromEnv && !isLocalHost(fromEnv) && !isVercelHost(fromEnv)) {
       return fromEnv;
     }
-    return fromEnv || ONLINE_API;
+    if (fromEnv && isLocalHost(fromEnv)) return fromEnv;
+    return 'http://localhost:4000';
   }
 
-  // Sitio en producción / preview: ignorar .env.local con localhost
-  if (fromEnv && !/localhost|127\.0\.0\.1/.test(fromEnv)) {
+  if (fromEnv && !isLocalHost(fromEnv) && !isVercelHost(fromEnv)) {
     return fromEnv;
   }
-  return ONLINE_API;
+  return '';
 }
 
 export class ApiError extends Error {
@@ -44,18 +51,19 @@ async function token(): Promise<string> {
   return user.getIdToken();
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   const jwt = await token();
   headers.set('Authorization', `Bearer ${jwt}`);
 
+  const { timeoutMs, ...fetchInit } = init;
   let response: Response;
   try {
     response = await fetch(`${getApiBase()}${path}`, {
-      ...init,
+      ...fetchInit,
       headers,
-      signal: init.signal ?? AbortSignal.timeout(12_000),
+      signal: fetchInit.signal ?? AbortSignal.timeout(timeoutMs ?? 12_000),
     });
   } catch {
     throw new ApiError(
@@ -64,6 +72,13 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     );
   }
   const raw = await response.text();
+  const looksHtml = /^\s*</.test(raw) || /text\/html/i.test(response.headers.get('content-type') || '');
+  if (looksHtml) {
+    throw new ApiError(
+      response.status,
+      'El API de pagos no está conectado en esta página. En Firebase, /api/payments debe llegar a Cloud Functions.',
+    );
+  }
   let data: { error?: string; message?: string } & T;
   try {
     data = JSON.parse(raw) as { error?: string; message?: string } & T;
@@ -71,7 +86,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(
       response.status,
       raw.trim()
-        ? `El API en línea falló (${response.status}). Intenta de nuevo en un momento.`
+        ? `El API de pagos no respondió JSON (${response.status}).`
         : `El servidor respondió ${response.status} sin JSON`,
     );
   }
@@ -95,7 +110,19 @@ export async function apiPublic<T>(path: string): Promise<T> {
       'No se pudo conectar con el servidor. Revisa tu red o intenta de nuevo.',
     );
   }
-  const data = (await response.json().catch(() => ({}))) as { error?: string } & T;
+  const raw = await response.text();
+  if (/^\s*</.test(raw)) {
+    throw new ApiError(
+      response.status,
+      'El API de pagos no está conectado en esta página (Firebase /api).',
+    );
+  }
+  let data: { error?: string } & T;
+  try {
+    data = JSON.parse(raw || '{}') as { error?: string } & T;
+  } catch {
+    throw new ApiError(response.status, 'El API de pagos no respondió JSON.');
+  }
   if (!response.ok) {
     throw new ApiError(response.status, data.error ?? 'Error de red');
   }

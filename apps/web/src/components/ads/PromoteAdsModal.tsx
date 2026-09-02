@@ -185,35 +185,32 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
         body: JSON.stringify({ packageId, days, regionId }),
       });
 
-      openWompiWidget(order, (result) => {
-        const status = result.transaction?.status;
-        if (status === 'APPROVED') {
-          void api<{ days: number; hours: number; amountPaidCop: number }>('/api/ads/complete', {
-            method: 'POST',
-            body: JSON.stringify({ reference: order.reference }),
-          })
-            .then(async (paid) => {
-              await activateAfterPay(paid.hours || order.hours, paid.amountPaidCop || order.totalCop);
-              setNote('Pago aprobado. Tu publicidad ya está activa.');
-              onDone?.();
-              window.setTimeout(onClose, 1200);
-            })
-            .catch((err) => {
-              setNote(err instanceof Error ? err.message : 'Pago ok, pero no se activó el anuncio');
-            })
-            .finally(() => setBusy(false));
-          return;
-        }
-        if (status === 'PENDING') {
-          setNote('Pago en proceso. Cuando Wompi confirme, vuelve a publicar o contacta soporte.');
-          setBusy(false);
-          return;
-        }
-        setNote(status ? `El pago quedó en estado ${status}.` : 'Pago cancelado.');
-        setBusy(false);
-      });
+      const result = await openWompiWidget(order);
+      const status = result?.transaction?.status;
+      const transactionId = result?.transaction?.id;
+      if (status === 'APPROVED' || transactionId) {
+        const paid = await api<{ days: number; hours: number; amountPaidCop: number }>('/api/ads/complete', {
+          method: 'POST',
+          timeoutMs: 25_000,
+          body: JSON.stringify({
+            reference: result?.transaction?.reference || order.reference,
+            transactionId,
+          }),
+        });
+        await activateAfterPay(paid.hours || order.hours, paid.amountPaidCop || order.totalCop);
+        setNote('Pago aprobado. Tu publicidad ya está activa.');
+        onDone?.();
+        window.setTimeout(onClose, 1200);
+        return;
+      }
+      if (status === 'PENDING') {
+        setNote('Pago en proceso. Cuando Wompi confirme, vuelve a publicar o contacta soporte.');
+        return;
+      }
+      setNote(status ? `El pago quedó en estado ${status}.` : 'Pago cancelado.');
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo iniciar el pago');
+    } finally {
       setBusy(false);
     }
   }

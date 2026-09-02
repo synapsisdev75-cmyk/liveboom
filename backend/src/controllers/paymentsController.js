@@ -1,19 +1,32 @@
-const { resolveCoinPackage, COIN_TO_COP, MIN_WITHDRAW_COINS, coinsToCop } = require('../lib/coinPackages');
+const { resolveCoinPackage, COIN_PACKAGES, COIN_TO_COP, MIN_WITHDRAW_COINS, coinsToCop } = require('../lib/coinPackages');
 const {
   assertIntegrityPair,
   cleanWompiSecret,
   createWidgetIntegritySignature,
+  fetchWompiTransaction,
+  fetchWompiTransactionByReference,
+  buildPaymentReference,
+  parsePackageIdFromReference,
 } = require('../lib/wompi');
 const {
   credit,
   debit,
   rememberOrder,
-  takeOrder,
+  peekOrder,
+  getOrder,
+  markOrderCompleted,
   getBalance,
   setBalance,
   listWithdrawals,
   addWithdrawal,
 } = require('../lib/walletMemory');
+const {
+  firestoreConfigured,
+  savePaymentOrder,
+  getPaymentOrder,
+  getFirestoreCoins,
+  creditApprovedOrder,
+} = require('../lib/walletFirestore');
 const dbUserFromTokenMod = require('../lib/dbUserFromToken');
 const { randomUUID } = require('crypto');
 const { prisma, hasDatabase } = require('../lib/prisma');
@@ -30,9 +43,7 @@ function userForOrder(req) {
   return req.dbUser || (req.user ? dbUserFromToken(req.user) : null);
 }
 
-/** Recarga = saldo actual (memoria, Prisma o el que ya ve el usuario) + coins del paquete. */
-async function creditTopup(uid, coins, floorFromClient = 0) {
-  const amount = Math.max(0, Math.floor(Number(coins) || 0));
+async function readPersistedCoins(uid) {
   let dbCoins = 0;
   if (hasDatabase && prisma) {
     try {
@@ -45,11 +56,15 @@ async function creditTopup(uid, coins, floorFromClient = 0) {
       dbCoins = 0;
     }
   }
-  const floor = Math.max(
-    getBalance(uid),
-    dbCoins,
-    Math.max(0, Math.floor(Number(floorFromClient) || 0)),
-  );
+  const fsCoins = await getFirestoreCoins(uid);
+  return Math.max(getBalance(uid), dbCoins, fsCoins);
+}
+
+/** Recarga = saldo actual (Firestore, memoria, Prisma o el que ya ve el usuario) + coins del paquete. */
+async function creditTopup(uid, coins, floorFromClient = 0) {
+  const amount = Math.max(0, Math.floor(Number(coins) || 0));
+  const persisted = await readPersistedCoins(uid);
+  const floor = Math.max(persisted, Math.max(0, Math.floor(Number(floorFromClient) || 0)));
   if (floor > getBalance(uid)) {
     setBalance(uid, floor);
   }
@@ -67,8 +82,85 @@ async function creditTopup(uid, coins, floorFromClient = 0) {
   return coinsBalance;
 }
 
-function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey }) {
-  const reference = `lb_${String(dbUser.id).slice(0, 24)}_${randomUUID().replace(/-/g, '')}`;
+async function settleApprovedTopup({ uid, order, wompiTxnId, floorFromClient = 0 }) {
+  const floor = Math.max(
+    Number(floorFromClient) || 0,
+    Number(order.floor) || 0,
+  );
+  const fsResult = await creditApprovedOrder({
+    uid,
+    coins: order.coins,
+    reference: order.reference,
+    wompiTxnId,
+    floor,
+  });
+  if (fsResult) {
+    setBalance(uid, fsResult.coinsBalance);
+    if (hasDatabase && prisma && !fsResult.duplicate) {
+      try {
+        await prisma.user.update({
+          where: { firebaseUid: uid },
+          data: { coinsBalance: fsResult.coinsBalance },
+        });
+      } catch (error) {
+        console.warn('[payments] no se persistió el saldo prisma:', error.message);
+      }
+      try {
+        await prisma.transaction.updateMany({
+          where: { reference: order.reference },
+          data: { status: 'completed', wompiTxnId: wompiTxnId || undefined },
+        });
+      } catch (error) {
+        console.warn('[payments] no se actualizó la transacción:', error.message);
+      }
+    }
+    markOrderCompleted(order.reference);
+    return fsResult;
+  }
+
+  const memoryOrder = getOrder(order.reference);
+  if (memoryOrder?.status === 'completed') {
+    const coinsBalance = Math.max(getBalance(uid), await readPersistedCoins(uid));
+    return { duplicate: true, coinsBalance };
+  }
+
+  const coinsBalance = await creditTopup(uid, order.coins, floor);
+  markOrderCompleted(order.reference);
+  return { duplicate: false, coinsBalance };
+}
+
+async function resolvePendingOrder({ reference, uid, txn }) {
+  const fromFs = await getPaymentOrder(reference);
+  if (fromFs) {
+    return { ...fromFs, reference };
+  }
+  const fromMem = peekOrder(reference, uid) || getOrder(reference);
+  if (fromMem && (!fromMem.uid || fromMem.uid === String(uid))) {
+    return { ...fromMem, reference };
+  }
+  const packageId =
+    parsePackageIdFromReference(reference, Object.keys(COIN_PACKAGES)) ||
+    (txn && Number(txn.amount_in_cents)
+      ? Object.keys(COIN_PACKAGES).find(
+          (id) => COIN_PACKAGES[id].amountInCop === Number(txn.amount_in_cents),
+        )
+      : null);
+  if (!packageId || !COIN_PACKAGES[packageId]) return null;
+  const pack = COIN_PACKAGES[packageId];
+  return {
+    reference,
+    uid,
+    coins: pack.coins,
+    packageId,
+    amountInCop: pack.amountInCop,
+    floor: 0,
+    kind: 'coins',
+  };
+}
+
+function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey, customerEmail, customerName }) {
+  const uid = dbUser.firebaseUid || dbUser.id;
+  const reference = buildPaymentReference(packageId, uid);
   const currency = 'COP';
   const integritySecret = assertIntegrityPair(publicKey, process.env.WOMPI_INTEGRITY_SECRET);
   const integritySignature = createWidgetIntegritySignature(
@@ -89,34 +181,85 @@ function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey })
     packageId,
     coins: pack.coins,
     integritySignature,
+    customerEmail: customerEmail || undefined,
+    customerName: customerName || undefined,
   };
 }
 
 async function completeWidget(req, res) {
   try {
-    const reference = typeof req.body?.reference === 'string' ? req.body.reference.trim() : '';
-    if (!reference) {
-      res.status(400).json({ error: 'reference es obligatorio' });
+    const referenceIn =
+      typeof req.body?.reference === 'string' ? req.body.reference.trim() : '';
+    const transactionId =
+      typeof req.body?.transactionId === 'string' ? req.body.transactionId.trim() : '';
+    const uid = req.user?.uid;
+    if (!uid) {
+      res.status(401).json({ error: 'Inicia sesión para acreditar la recarga' });
+      return;
+    }
+    if (!referenceIn && !transactionId) {
+      res.status(400).json({ error: 'reference o transactionId es obligatorio' });
       return;
     }
 
-    const uid = req.user?.uid;
-    const order = takeOrder(reference, uid);
+    let txn = null;
+    if (transactionId) {
+      txn = await fetchWompiTransaction(transactionId);
+    }
+    if (!txn && referenceIn) {
+      txn = await fetchWompiTransactionByReference(referenceIn);
+    }
+    if (!txn) {
+      res.status(409).json({
+        error:
+          'No se pudo verificar el pago con Wompi. Si ya pagaste, espera unos segundos y recarga la billetera.',
+      });
+      return;
+    }
+    if (txn.status !== 'APPROVED') {
+      res.status(409).json({
+        error: `El pago quedó en ${txn.status}. Aún no se acredita blast.`,
+        status: txn.status,
+      });
+      return;
+    }
+
+    const reference = String(txn.reference || referenceIn || '').trim();
+    if (!reference) {
+      res.status(400).json({ error: 'La transacción de Wompi no trae referencia' });
+      return;
+    }
+
+    const order = await resolvePendingOrder({ reference, uid, txn });
     if (!order) {
       res.status(404).json({ error: 'No encontramos esa orden de recarga' });
       return;
     }
+    if (order.uid && order.uid !== String(uid)) {
+      res.status(403).json({ error: 'Esta orden pertenece a otra cuenta' });
+      return;
+    }
+    if (order.kind && order.kind !== 'coins') {
+      res.status(400).json({ error: 'Esta orden no es una recarga de blast' });
+      return;
+    }
+    if (order.amountInCop && Number(txn.amount_in_cents) !== Number(order.amountInCop)) {
+      res.status(400).json({ error: 'El monto pagado no coincide con el paquete' });
+      return;
+    }
 
-    const coinsBalance = await creditTopup(
+    const result = await settleApprovedTopup({
       uid,
-      order.coins,
-      Math.max(Number(req.body?.currentBalance) || 0, Number(order.floor) || 0),
-    );
+      order: { ...order, reference },
+      wompiTxnId: txn.id,
+      floorFromClient: req.body?.currentBalance,
+    });
 
     res.json({
       reference,
       coins: order.coins,
-      coinsBalance,
+      coinsBalance: result.coinsBalance,
+      duplicate: Boolean(result.duplicate),
     });
   } catch (error) {
     console.error('[payments/complete-widget]', error);
@@ -151,6 +294,7 @@ function getPaymentStatus(_req, res) {
     configured: Boolean(publicKey && integrity),
     sandbox,
     pairOk,
+    firestore: firestoreConfigured(),
     simulateAvailable: simulateTopupAllowed(),
     coinToCop: COIN_TO_COP,
     minWithdrawCoins: MIN_WITHDRAW_COINS,
@@ -179,7 +323,28 @@ async function simulateTopup(req, res) {
       res.status(401).json({ error: 'Inicia sesión para recargar' });
       return;
     }
-    const coinsBalance = await creditTopup(uid, resolved.pack.coins, req.body?.currentBalance);
+    const simRef = `sim_${String(uid).slice(0, 16)}_${Date.now()}`;
+    await savePaymentOrder({
+      reference: simRef,
+      uid,
+      coins: resolved.pack.coins,
+      packageId,
+      amountInCop: resolved.pack.amountInCop,
+      kind: 'coins',
+      floor: Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0)),
+    });
+    const fsResult = await creditApprovedOrder({
+      uid,
+      coins: resolved.pack.coins,
+      reference: simRef,
+      floor: req.body?.currentBalance,
+    });
+    const coinsBalance =
+      fsResult?.coinsBalance ??
+      (await creditTopup(uid, resolved.pack.coins, req.body?.currentBalance));
+    if (fsResult?.coinsBalance != null) {
+      setBalance(uid, fsResult.coinsBalance);
+    }
     res.json({
       coins: resolved.pack.coins,
       coinsBalance,
@@ -225,15 +390,23 @@ async function createOrder(req, res) {
       packageId,
       amountInCop,
       publicKey,
+      customerEmail: req.user?.email || dbUser.email,
+      customerName: dbUser.displayName || dbUser.username,
     });
 
-    rememberOrder({
+    const pending = {
       reference: order.reference,
       uid: dbUser.firebaseUid || dbUser.id,
       coins: resolved.pack.coins,
       packageId,
       floor: Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0)),
-    });
+      amountInCop,
+      currency: order.currency,
+      kind: 'coins',
+      status: 'pending',
+    };
+    rememberOrder(pending);
+    await savePaymentOrder(pending);
 
     if (hasDatabase && prisma) {
       try {
@@ -399,6 +572,8 @@ module.exports = {
   simulateTopup,
   withdrawCoins,
   listMyWithdrawals,
+  settleApprovedTopup,
+  resolvePendingOrder,
 };
 module.exports.createOrder = createOrder;
 module.exports.completeWidget = completeWidget;
@@ -406,3 +581,5 @@ module.exports.getPaymentStatus = getPaymentStatus;
 module.exports.simulateTopup = simulateTopup;
 module.exports.withdrawCoins = withdrawCoins;
 module.exports.listMyWithdrawals = listMyWithdrawals;
+module.exports.settleApprovedTopup = settleApprovedTopup;
+module.exports.resolvePendingOrder = resolvePendingOrder;

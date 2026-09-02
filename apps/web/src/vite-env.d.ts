@@ -35,5 +35,11 @@ interface Window {
     publicKey: string;
     redirectUrl?: string;
     signature?: { integrity: string };
+    customerData?: {
+      email?: string;
+      fullName?: string;
+      phoneNumber?: string;
+      phoneNumberPrefix?: string;
+    };
   }) => WompiWidgetCheckout;
 }

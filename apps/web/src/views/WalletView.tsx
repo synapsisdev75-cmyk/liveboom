@@ -22,6 +22,7 @@ import { api } from '../lib/api';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { useAuthStore } from '../store/authStore';
+import { settleWompiReturnOnWalletPage } from '../lib/paymentsClient';
 
 type WithdrawalRow = {
   id: string;
@@ -64,7 +65,9 @@ export function WalletView() {
   const [openWithdraw, setOpenWithdraw] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [payNote, setPayNote] = useState<string | null>(null);
   const packsRef = useRef<HTMLDivElement>(null);
+  const wompiReturnHandled = useRef(false);
 
   async function refreshWithdrawals() {
     try {
@@ -77,6 +80,33 @@ export function WalletView() {
 
   useEffect(() => {
     if (profile) void refreshWithdrawals();
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!profile?.firebaseUid || wompiReturnHandled.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('id') && !params.get('lb_ref') && !params.get('reference')) return;
+    wompiReturnHandled.current = true;
+    let cancelled = false;
+    void (async () => {
+      setPayNote('Confirmando tu pago con Wompi…');
+      try {
+        const settled = await settleWompiReturnOnWalletPage();
+        if (cancelled || !settled) return;
+        setPayNote('Pago aprobado. Tu blast ya está en la billetera.');
+      } catch (error) {
+        if (!cancelled) {
+          setPayNote(
+            error instanceof Error
+              ? error.message
+              : 'No se pudo confirmar el pago. Si ya pagaste, espera unos segundos y recarga.',
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [profile?.firebaseUid]);
 
   const balance = profile?.coinsBalance ?? 0;
@@ -116,6 +146,18 @@ export function WalletView() {
           <span className="hidden sm:inline">Historial de transacciones</span>
         </button>
       </header>
+
+      {payNote ? (
+        <p
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            payNote.includes('aprobado')
+              ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+              : 'border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-300'
+          }`}
+        >
+          {payNote}
+        </p>
+      ) : null}
 
       {profile ? (
         <>

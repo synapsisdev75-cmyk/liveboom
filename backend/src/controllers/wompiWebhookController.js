@@ -1,5 +1,6 @@
-const { prisma } = require('../lib/prisma');
+const { prisma, hasDatabase } = require('../lib/prisma');
 const { verifyWompiChecksum } = require('../lib/wompi');
+const { getPaymentOrder } = require('../lib/walletFirestore');
 
 function mapWompiStatus(status) {
   if (status === 'APPROVED') return 'completed';
@@ -11,7 +12,8 @@ function mapWompiStatus(status) {
  * Acredita coins una sola vez aunque Wompi reenvíe el webhook.
  * Compare-and-swap: solo el primer UPDATE de pending → completed incrementa el saldo.
  */
-async function creditApprovedOrder(order, wompiTxnId) {
+async function creditApprovedOrderPrisma(order, wompiTxnId) {
+  if (!hasDatabase || !prisma) return null;
   return prisma.$transaction(async (tx) => {
     const claimed = await tx.transaction.updateMany({
       where: {
@@ -71,22 +73,51 @@ async function handleWompiWebhook(req, res) {
       return;
     }
 
-    const order = await prisma.transaction.findUnique({
-      where: { reference },
-    });
-
-    if (!order) {
-      res.status(200).json({ ok: true, unmatched: true });
-      return;
-    }
-
-    if (order.status === 'completed') {
-      res.status(200).json({ ok: true, duplicate: true });
-      return;
-    }
-
     if (txn.status === 'APPROVED') {
-      if (Number(txn.amount_in_cents) !== order.amountInCop) {
+      const { settleApprovedTopup, resolvePendingOrder } = require('./paymentsController');
+      let prismaOrder = null;
+      if (hasDatabase && prisma) {
+        try {
+          prismaOrder = await prisma.transaction.findUnique({ where: { reference } });
+        } catch (error) {
+          console.warn('[webhooks/wompi] prisma lookup:', error.message);
+        }
+      }
+
+      if (prismaOrder && Number(txn.amount_in_cents) !== prismaOrder.amountInCop) {
+        console.error('[webhooks/wompi] monto distinto al de la orden', {
+          reference,
+          expected: prismaOrder.amountInCop,
+          received: txn.amount_in_cents,
+        });
+        res.status(400).json({ error: 'El monto del evento no coincide con la orden' });
+        return;
+      }
+
+      const stored = (await getPaymentOrder(reference)) || {};
+      const uid =
+        stored.uid ||
+        (prismaOrder && hasDatabase && prisma
+          ? (
+              await prisma.user.findUnique({
+                where: { id: prismaOrder.userId },
+                select: { firebaseUid: true },
+              }).catch(() => null)
+            )?.firebaseUid
+          : null);
+
+      const order = await resolvePendingOrder({ reference, uid, txn });
+      if (!order || !uid) {
+        if (prismaOrder) {
+          const result = await creditApprovedOrderPrisma(prismaOrder, txn.id);
+          res.status(200).json({ ok: true, duplicate: result?.duplicate, via: 'prisma' });
+          return;
+        }
+        res.status(200).json({ ok: true, unmatched: true });
+        return;
+      }
+
+      if (order.amountInCop && Number(txn.amount_in_cents) !== Number(order.amountInCop)) {
         console.error('[webhooks/wompi] monto distinto al de la orden', {
           reference,
           expected: order.amountInCop,
@@ -96,19 +127,31 @@ async function handleWompiWebhook(req, res) {
         return;
       }
 
-      const result = await creditApprovedOrder(order, txn.id);
+      const result = await settleApprovedTopup({
+        uid,
+        order: { ...order, reference },
+        wompiTxnId: txn.id,
+        floorFromClient: order.floor,
+      });
       res.status(200).json({ ok: true, duplicate: result.duplicate });
       return;
     }
 
-    if (order.status === 'pending') {
-      await prisma.transaction.updateMany({
-        where: { id: order.id, status: 'pending' },
-        data: {
-          status: mapWompiStatus(txn.status),
-          wompiTxnId: txn.id,
-        },
-      });
+    if (hasDatabase && prisma) {
+      try {
+        const order = await prisma.transaction.findUnique({ where: { reference } });
+        if (order?.status === 'pending') {
+          await prisma.transaction.updateMany({
+            where: { id: order.id, status: 'pending' },
+            data: {
+              status: mapWompiStatus(txn.status),
+              wompiTxnId: txn.id,
+            },
+          });
+        }
+      } catch (error) {
+        console.warn('[webhooks/wompi] status update:', error.message);
+      }
     }
 
     res.status(200).json({ ok: true, status: txn.status });
@@ -118,4 +161,4 @@ async function handleWompiWebhook(req, res) {
   }
 }
 
-module.exports = { handleWompiWebhook, creditApprovedOrder };
+module.exports = { handleWompiWebhook, creditApprovedOrder: creditApprovedOrderPrisma };

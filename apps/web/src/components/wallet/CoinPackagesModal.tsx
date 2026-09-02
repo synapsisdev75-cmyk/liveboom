@@ -1,12 +1,17 @@
-import { useState } from 'react';
-import { api } from '../../lib/api';
+import { useEffect, useState } from 'react';
 import {
   COIN_PACKAGES,
   packageCopLabel,
   type CoinPackageId,
 } from '../../lib/coinPackages';
-import { setFirestoreCoins } from '../../lib/profileFirestore';
-import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
+import {
+  applyPaidCoinsToPage,
+  fetchPaymentStatus,
+  keepPaidCoinsOnPage,
+  payCoinPackageWithWompi,
+  type PaymentStatus,
+} from '../../lib/paymentsClient';
+import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = {
@@ -23,7 +28,6 @@ function packBadge(pack: (typeof COIN_PACKAGES)[number]) {
 }
 
 export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
-  const syncProfile = useAuthStore((state) => state.syncProfile);
   const currentCoins = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
   const [selected, setSelected] = useState<CoinPackageId>(
     initialPackageId && COIN_PACKAGES.some((p) => p.id === initialPackageId)
@@ -32,43 +36,20 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   );
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [payStatus, setPayStatus] = useState<PaymentStatus | null>(null);
+
+  useEffect(() => {
+    void fetchPaymentStatus()
+      .then(setPayStatus)
+      .catch(() =>
+        setPayStatus({ configured: false, sandbox: false, pairOk: false }),
+      );
+  }, []);
 
   function applyLocalSimulateTopup(packageId: CoinPackageId) {
     const pack = COIN_PACKAGES.find((p) => p.id === packageId);
     if (!pack) throw new Error('Paquete inválido');
-    const store = useAuthStore.getState();
-    const current = store.profile?.coinsBalance ?? 0;
-    const next = current + pack.coins;
-    store.setCoins(next);
-    const uid = store.profile?.firebaseUid;
-    if (uid) {
-      void setFirestoreCoins(uid, next).catch(() => undefined);
-    }
-    return next;
-  }
-
-  function applyTopup(paid: { coinsBalance?: number; coins?: number }) {
-    const store = useAuthStore.getState();
-    const current = store.profile?.coinsBalance ?? 0;
-    const fromApi = Number(paid.coinsBalance);
-    const added = Math.max(0, Number(paid.coins) || 0);
-    const next = Math.max(Number.isFinite(fromApi) ? fromApi : 0, current + added);
-    store.setCoins(next);
-    const uid = store.profile?.firebaseUid;
-    if (uid) {
-      void setFirestoreCoins(uid, next).catch(() => undefined);
-    }
-    return next;
-  }
-
-  async function keepTopup(next: number) {
-    await syncProfile();
-    const now = useAuthStore.getState().profile?.coinsBalance ?? 0;
-    if (now < next) {
-      useAuthStore.getState().setCoins(next);
-      const uid = useAuthStore.getState().profile?.firebaseUid;
-      if (uid) void setFirestoreCoins(uid, next).catch(() => undefined);
-    }
+    return applyPaidCoinsToPage({ coins: pack.coins });
   }
 
   async function simulatePay() {
@@ -81,12 +62,12 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
           method: 'POST',
           body: JSON.stringify({ packageId: selected, currentBalance }),
         });
-        const next = applyTopup(paid);
-        await keepTopup(next);
+        const next = applyPaidCoinsToPage(paid);
+        await keepPaidCoinsOnPage(next);
         setNote(`Recarga acreditada. Nuevo saldo: ${next.toLocaleString('es-CO')} blast.`);
       } catch {
         const next = applyLocalSimulateTopup(selected);
-        await keepTopup(next);
+        await keepPaidCoinsOnPage(next);
         setNote(
           `Recarga de prueba acreditada (sin Wompi). Nuevo saldo: ${next.toLocaleString('es-CO')} blast.`,
         );
@@ -102,43 +83,22 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     setBusy(true);
     setNote(null);
     try {
-      const order = await api<WompiOrder>('/api/payments/create-order', {
-        method: 'POST',
-        body: JSON.stringify({
-          packageId: selected,
-          currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
-        }),
-      });
-      openWompiWidget(order, (result) => {
-        const status = result.transaction?.status;
-        if (status === 'APPROVED') {
-          void api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-widget', {
-            method: 'POST',
-            body: JSON.stringify({
-              reference: order.reference,
-              currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
-            }),
-          })
-            .then((paid) => {
-              const next = applyTopup(paid);
-              void keepTopup(next);
-            })
-            .catch(() => {
-              void syncProfile();
-            });
-          setNote('Pago aprobado. Tu blast ya está en la billetera.');
-          return;
-        }
-        if (status === 'PENDING') {
-          setNote('Pago en proceso. Wompi confirmará la recarga en breve.');
-          return;
-        }
-        if (status) {
-          setNote(
-            `El pago quedó en estado ${status}. Si ves "firma inválida", usa Recarga de prueba o revisa las llaves Wompi en Vercel.`,
-          );
-        }
-      });
+      const result = await payCoinPackageWithWompi(selected);
+      if (result.outcome === 'approved') {
+        setNote('Pago aprobado. Tu blast ya está en la billetera.');
+        return;
+      }
+      if (result.outcome === 'pending') {
+        setNote('Pago en proceso. Wompi confirmará la recarga al volver a la billetera.');
+        return;
+      }
+      if (result.outcome === 'rejected') {
+        setNote(
+          `El pago quedó en estado ${result.status}. Revisa las llaves Wompi en Firebase Functions.`,
+        );
+        return;
+      }
+      setNote('Cerraste Wompi sin completar el pago. Si pagaste, recarga la billetera.');
     } catch (error) {
       setNote(error instanceof Error ? error.message : 'No se pudo crear el pedido');
     } finally {
@@ -163,6 +123,17 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
               <p className="mt-1 text-sm text-zinc-400">
                 El paquete se suma a tu saldo actual. Paga con Wompi sobre esta pantalla.
               </p>
+              {payStatus && !payStatus.configured ? (
+                <p className="mt-2 text-xs text-fuchsia-400">
+                  El API de pagos no está conectado. En Firebase, /api/payments debe responder.
+                </p>
+              ) : null}
+              {payStatus?.configured ? (
+                <p className="mt-2 text-xs text-zinc-500">
+                  Wompi {payStatus.sandbox ? 'en pruebas' : 'en producción'}
+                  {payStatus.pairOk ? ' · llaves OK' : ' · revisa integridad en Functions'}
+                </p>
+              ) : null}
               <p className="mt-2 text-sm text-cyan-300">
                 Tienes {currentCoins.toLocaleString('es-CO')} blast
                 {' → '}

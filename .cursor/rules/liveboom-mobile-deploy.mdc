@@ -24,7 +24,8 @@ Cuando el usuario pida ver cambios en producción o tras features listas:
 1. `npm run build -w apps/web`
 2. Desplegar Firebase al proyecto `liveboom-app`:
    - Hosting (sirve **https://liveboomapp.com**, **https://www.liveboomapp.com** y **https://liveboom-app.web.app** — mismo sitio)
+   - Cloud Functions (`backend/` → función `api`, rewrite `/api/**`)
    - Incluir `firestore:rules` / indexes / storage si se tocaron
-3. Si cambió el API (`backend/`), desplegar también Vercel (`liveboom.vercel.app`) para que www use la lógica nueva (coins, gifts, locks).
+3. El API de pagos, coins y locks vive en Firebase (mismo origen). **No** usar Vercel.
 
 No dar por “listo en www” solo con build local.
