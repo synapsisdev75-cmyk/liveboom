@@ -12,14 +12,53 @@ service cloud.firestore {
       return value is string && value.size() >= 3 && value.size() <= 24;
     }
 
-    function isSuperAdmin() {
+    function isOwner() {
       return signedIn()
         && request.auth.token.email == 'synapsisdev75@gmail.com';
+    }
+
+    function superAdminEmails() {
+      return exists(/databases/$(database)/documents/config/superAdmins)
+        ? get(/databases/$(database)/documents/config/superAdmins).data.get('emails', [])
+        : [];
+    }
+
+    function isSuperAdmin() {
+      return isOwner()
+        || (signedIn() && request.auth.token.email in superAdminEmails());
     }
 
     match /config/levels {
       allow read: if true;
       allow write: if isSuperAdmin();
+    }
+
+    match /config/superAdmins {
+      allow read: if isOwner()
+        || (signedIn() && request.auth.token.email in resource.data.get('emails', []));
+      allow create, update: if isOwner()
+        && request.resource.data.ownerEmail == 'synapsisdev75@gmail.com'
+        && request.resource.data.emails is list
+        && 'synapsisdev75@gmail.com' in request.resource.data.emails;
+      allow delete: if false;
+    }
+
+    match /adminChangeRequests/{requestId} {
+      allow read: if isSuperAdmin();
+      allow create: if isSuperAdmin()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.prompt is string
+        && request.resource.data.prompt.size() > 0
+        && request.resource.data.prompt.size() <= 8000
+        && request.resource.data.imageUrls is list
+        && request.resource.data.imageUrls.size() <= 8;
+      allow update: if isOwner()
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.createdByEmail == resource.data.createdByEmail
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'reviewNote', 'reviewedByEmail', 'updatedAt']);
+      allow delete: if isOwner();
     }
 
     match /users/{userId} {
@@ -37,7 +76,7 @@ service cloud.firestore {
           isSuperAdmin()
           && request.resource.data.firebaseUid == resource.data.firebaseUid
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['levelXp', 'updatedAt'])
+            .hasOnly(['levelXp', 'levelXpPinned', 'updatedAt'])
         );
       allow delete: if isSelf(userId);
 
@@ -97,6 +136,20 @@ service cloud.firestore {
         allow read: if isSelf(userId);
         allow create: if signedIn();
         allow update, delete: if isSelf(userId);
+      }
+
+      match /giftInbox/{giftId} {
+        allow read: if isSelf(userId);
+        allow create: if signedIn()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.recipientUid == userId
+          && request.resource.data.coins is number
+          && request.resource.data.coins > 0
+          && request.resource.data.coins <= 500000
+          && request.resource.data.giftId is string
+          && request.resource.data.processed == false;
+        allow update: if isSelf(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['processed', 'processedAtMs']);
       }
 
       // Ubicación solo del dueño (targeting interno de ads; no se revela a otros).
@@ -417,6 +470,14 @@ service cloud.firestore {
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 500;
         allow delete: if signedIn();
+      }
+
+      match /viewers/{viewerUid} {
+        allow read: if true;
+        allow create, update: if signedIn()
+          && request.auth.uid == viewerUid
+          && request.resource.data.uid == viewerUid;
+        allow delete: if signedIn() && request.auth.uid == viewerUid;
       }
     }
 

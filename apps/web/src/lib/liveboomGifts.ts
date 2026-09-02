@@ -80,6 +80,11 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
   return LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
 }
 
+/** Catálogo completo ordenado por precio — mismo set en publicaciones, Flash, LIVE y Boom Clip. */
+export function sortedLiveboomGiftCatalog(): LiveGift[] {
+  return [...LIVEBOOM_GIFTS].sort((a, b) => a.coins - b.coins);
+}
+
 export function giftsByLevel(level: GiftLevel) {
   return LIVEBOOM_GIFTS.filter((g) => g.level === level);
 }

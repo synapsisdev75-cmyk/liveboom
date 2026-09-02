@@ -10,15 +10,36 @@ const MAX_CHAT_FILE_BYTES = 20 * 1024 * 1024;
 
 export type MediaVisibility = 'public' | 'friends' | 'private' | 'circle';
 
+/** Carpetas de media por módulo (no mezclar publicación con Boom Clip). */
+export const USER_MEDIA_FOLDERS = {
+  publication: 'publicaciones',
+  boom_clip: 'boom-clips',
+  flash_boom: 'flash-boom',
+} as const;
+
+export type UserMediaStorageKind = keyof typeof USER_MEDIA_FOLDERS;
+
 export function userStorageFolder(uid: string) {
   return `users/${uid}`;
 }
 
+export function userMediaStorageFolder(uid: string, kind: UserMediaStorageKind) {
+  return `${userStorageFolder(uid)}/${USER_MEDIA_FOLDERS[kind]}`;
+}
+
 export async function ensureUserStorageFolder(uid: string): Promise<void> {
-  const objectRef = ref(storage, `${userStorageFolder(uid)}/.keep`);
-  await uploadBytes(objectRef, new Blob(['liveboom'], { type: 'text/plain' }), {
-    contentType: 'text/plain',
-  });
+  const base = userStorageFolder(uid);
+  const paths = [
+    `${base}/.keep`,
+    ...Object.values(USER_MEDIA_FOLDERS).map((folder) => `${base}/${folder}/.keep`),
+  ];
+  await Promise.all(
+    paths.map((path) =>
+      uploadBytes(ref(storage, path), new Blob(['liveboom'], { type: 'text/plain' }), {
+        contentType: 'text/plain',
+      }).catch(() => undefined),
+    ),
+  );
 }
 
 type LoadedImage = {
@@ -170,6 +191,7 @@ export async function uploadUserMedia(
   file: Blob,
   name: string,
   visibility: MediaVisibility = 'private',
+  kind: UserMediaStorageKind = 'publication',
 ): Promise<{ url: string; storagePath: string }> {
   const type = file.type || 'application/octet-stream';
   const isVideo = type.startsWith('video/');
@@ -187,12 +209,12 @@ export async function uploadUserMedia(
 
   await ensureUserStorageFolder(uid).catch(() => undefined);
   const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || (isVideo ? 'clip.mp4' : 'photo.jpg');
-  const storagePath = `${userStorageFolder(uid)}/posts/${Date.now()}_${safeName}`;
+  const storagePath = `${userMediaStorageFolder(uid, kind)}/${Date.now()}_${safeName}`;
   const objectRef = ref(storage, storagePath);
   const contentType = isImage ? payload.type || 'image/jpeg' : type;
   await uploadBytes(objectRef, payload, {
     contentType,
-    customMetadata: { visibility },
+    customMetadata: { visibility, contentKind: kind },
   });
   const url = await getDownloadURL(objectRef);
   return { url, storagePath };

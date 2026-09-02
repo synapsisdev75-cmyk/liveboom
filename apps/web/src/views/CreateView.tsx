@@ -1,6 +1,7 @@
-import { Clock, Image, PenLine, Radio, Video } from 'lucide-react';
+import { Clock, Image, PenLine, Radio, Upload } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../lib/brand';
+import { MAX_CLIP_DURATION_SECONDS } from '../lib/contentType';
 import { STORY_MAX_DURATION_SEC } from '../lib/storyLifecycle';
 import { useAuthStore } from '../store/authStore';
 
@@ -67,15 +68,15 @@ export function CreateView() {
       <button
         type="button"
         onClick={() => navigate(`${profilePath}?crear=video`)}
-        className="flex items-center gap-4 rounded-2xl border border-white/10 bg-zinc-950 p-4 text-left transition hover:border-cyan-400/40"
+        className="flex min-h-[4.5rem] items-center gap-3 rounded-2xl border border-cyan-400/40 bg-gradient-to-r from-cyan-500/15 to-fuchsia-500/10 p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
       >
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-cyan-500/15 text-cyan-300">
-          <Video size={22} />
+        <span className="grid h-12 w-12 place-items-center rounded-xl bg-cyan-500/25 text-cyan-200">
+          <Upload size={22} />
         </span>
         <span>
-          <span className="block text-base font-bold text-white">{BOOM_CLIP_LABEL}</span>
+          <span className="block text-base font-bold text-white">Subir video · {BOOM_CLIP_LABEL}</span>
           <span className="mt-0.5 block text-xs text-zinc-400">
-            Foto o video en tu feed y explorar.
+            Video corto 0–{MAX_CLIP_DURATION_SECONDS} s · aparece en el carrusel de Inicio.
           </span>
         </span>
       </button>

@@ -1,7 +1,6 @@
 import { auth } from './firebase';
 
 const ONLINE_API = 'https://liveboom.vercel.app';
-const LOCAL_API = 'http://localhost:4000';
 
 /**
  * Resuelve la URL del API.
@@ -14,7 +13,10 @@ export function getApiBase(): string {
   const browsingLocal = host === 'localhost' || host === '127.0.0.1';
 
   if (browsingLocal) {
-    return fromEnv || LOCAL_API;
+    if (fromEnv && !/localhost|127\.0\.0\.1/.test(fromEnv)) {
+      return fromEnv;
+    }
+    return fromEnv || ONLINE_API;
   }
 
   // Sitio en producción / preview: ignorar .env.local con localhost

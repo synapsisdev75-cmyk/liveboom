@@ -1,8 +1,8 @@
 import { Gift } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { api } from '../../lib/api';
-import { findLiveGift, LIVEBOOM_GIFTS } from '../../lib/liveboomGifts';
+import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
+import { sendLiveboomGift } from '../../lib/giftsFirestore';
 import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { FloatingGift } from '../live/FloatingGift';
@@ -15,9 +15,11 @@ type Props = {
   authorUsername: string;
   authorUid?: string;
   postId: string;
+  /** Fila compacta del feed (sin etiqueta debajo). */
+  inline?: boolean;
 };
 
-export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
+export function ReelGiftControls({ authorUsername, authorUid, postId, inline = false }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
   const coins = profile?.coinsBalance ?? 0;
@@ -28,6 +30,8 @@ export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
   const [rechargeNeeded, setRechargeNeeded] = useState<number | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [floats, setFloats] = useState<FloatItem[]>([]);
+
+  const giftCatalog = sortedLiveboomGiftCatalog();
 
   const isSelf =
     Boolean(profile?.firebaseUid && authorUid && profile.firebaseUid === authorUid);
@@ -64,15 +68,15 @@ export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
     const senderName = profile.displayName || profile.handle || 'Liveboomer';
 
     try {
-      const result = await api<{ senderBalance: number }>('/api/gifts/send', {
-        method: 'POST',
-        body: JSON.stringify({
-          giftId: catalog.id,
-          roomName: authorUsername,
-          clientId,
-          currentBalance: coins,
-          multiplier: 1,
-        }),
+      const result = await sendLiveboomGift({
+        giftId: catalog.id,
+        senderUid: profile.firebaseUid,
+        senderName,
+        senderBalance: coins,
+        recipientUsername: authorUsername,
+        recipientUid: authorUid,
+        clientId,
+        postId,
       });
       setCoins(result.senderBalance);
       void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
@@ -89,7 +93,7 @@ export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
 
   return (
     <>
-      <div className="relative flex flex-col items-center gap-1">
+      <div className={`relative flex items-center ${inline ? 'gap-0' : 'flex-col gap-1'}`}>
         <button
           type="button"
           disabled={isSelf}
@@ -99,7 +103,9 @@ export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
             setOpenGifts((value) => !value);
             setGiftError(null);
           }}
-          className={`grid h-12 w-12 place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-45 ${
+          className={`grid place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-45 ${
+            inline ? 'h-9 w-9' : 'h-12 w-12'
+          } ${
             openGifts
               ? 'bg-gradient-to-br from-amber-400 to-fuchsia-500 text-zinc-950'
               : 'bg-black/55 text-amber-300'
@@ -107,14 +113,16 @@ export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
           aria-label="Regalos"
           title={isSelf ? 'No puedes enviarte regalos a ti mismo' : 'Enviar regalo'}
         >
-          <Gift size={20} />
+          <Gift size={inline ? 16 : 20} />
         </button>
-        <span className="text-[11px] font-bold text-white drop-shadow">Regalo</span>
+        {!inline ? (
+          <span className="text-[11px] font-bold text-white drop-shadow">Regalo</span>
+        ) : null}
       </div>
 
       {floats.length > 0 && typeof document !== 'undefined'
         ? createPortal(
-            <div className="pointer-events-none fixed inset-0 z-[72] overflow-hidden">
+            <div className="pointer-events-none fixed inset-0 z-[112] overflow-hidden">
               {floats.map((item) => (
                 <FloatingGift
                   key={item.id}
@@ -132,9 +140,9 @@ export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
 
       {openGifts && typeof document !== 'undefined'
         ? createPortal(
-            <div className="fixed inset-x-0 bottom-0 z-[75]">
+            <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-[115]">
               <GiftBoxStrip
-                gifts={LIVEBOOM_GIFTS}
+                gifts={giftCatalog}
                 sendingGiftId={sendingGift}
                 coins={coins}
                 error={giftError}
@@ -153,7 +161,14 @@ export function ReelGiftControls({ authorUsername, authorUid, postId }: Props) {
           )
         : null}
 
-      {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
+      {rechargeOpen
+        ? createPortal(
+            <div className="pointer-events-auto fixed inset-0 z-[120]">
+              <CoinModal onClose={() => setRechargeOpen(false)} />
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

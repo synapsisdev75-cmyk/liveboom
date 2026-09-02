@@ -1,5 +1,6 @@
 /** Niveles LiveBoom — progreso por XP (regalos enviados + recibidos). */
 
+import { LEVEL_BADGE_VERSION } from './defaultLevelTiers';
 import {
   avatarLayoutFromTier,
   imageWithVersion,
@@ -23,6 +24,8 @@ export type UserLevelInfo = {
   rangeLabel: string;
   avatarLayout: ReturnType<typeof avatarLayoutFromTier>;
   insigniaSize: ReturnType<typeof insigniaSizeFromTier>;
+  badgeAnimWebm: string | null;
+  badgeAnimMp4: string | null;
 };
 
 function formatXp(n: number) {
@@ -71,6 +74,19 @@ export function xpProgressInTier(xp: number): { pct: number; span: number; withi
 export function levelFromXp(xp: number): UserLevelInfo {
   const tier = tierFromXp(xp);
   const version = getConfigVersion();
+  const animFromTier = {
+    webm: tier.badgeAnimWebm ?? null,
+    mp4: tier.badgeAnimMp4 ?? null,
+  };
+  // Convención local: /levels/{slug}-anim.(webm|mp4) — LEYENDA ya exportada.
+  const animFallback =
+    tier.slug === 'leyenda'
+      ? {
+          webm: `/levels/leyenda-anim.webm?v=${LEVEL_BADGE_VERSION}`,
+          mp4: `/levels/leyenda-anim.mp4?v=${LEVEL_BADGE_VERSION}`,
+        }
+      : { webm: null as string | null, mp4: null as string | null };
+
   return {
     tier: tier.tier,
     level: tier.tier,
@@ -86,5 +102,7 @@ export function levelFromXp(xp: number): UserLevelInfo {
     rangeLabel: rangeLabelFor(tier),
     avatarLayout: avatarLayoutFromTier(tier),
     insigniaSize: insigniaSizeFromTier(tier),
+    badgeAnimWebm: animFromTier.webm || animFallback.webm,
+    badgeAnimMp4: animFromTier.mp4 || animFallback.mp4,
   };
 }

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { BOOM_CLIP_LABEL } from '../../lib/brand';
+import { isBoomClipPost } from '../../lib/contentType';
 import { listenPostsByUsername, type FsPost } from '../../lib/socialFirestore';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useAuthStore } from '../../store/authStore';
@@ -16,12 +18,14 @@ function toReel(post: FsPost): ReelItem {
     authorUid: post.authorUid,
     caption: post.caption || 'Video',
     mediaUrl: post.mediaUrl || '',
+    mediaType: 'video',
     shared: true,
     createdAt: post.createdAt,
+    durationSec: post.durationSec,
   };
 }
 
-function MyReelTile({ reel }: { reel: ReelItem }) {
+function MyClipTile({ reel }: { reel: ReelItem }) {
   const videoAspect = useVideoAspect(reel.mediaUrl);
 
   return (
@@ -42,25 +46,32 @@ function MyReelTile({ reel }: { reel: ReelItem }) {
   );
 }
 
+/** Biblioteca de Boom Clips del usuario (perfil / ajustes). */
 export function MyReelsPanel({ username }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const [reels, setReels] = useState<ReelItem[]>([]);
 
   useEffect(() => {
-    return listenPostsByUsername(username, (posts) => {
-      setReels(posts.filter((post) => post.type === 'video' && post.mediaUrl).map(toReel));
-    }, profile ? { uid: profile.firebaseUid, isOwner: true } : null);
+    return listenPostsByUsername(
+      username,
+      (posts) => {
+        setReels(posts.filter((post) => isBoomClipPost(post) && post.mediaUrl).map(toReel));
+      },
+      profile ? { uid: profile.firebaseUid, isOwner: true } : null,
+    );
   }, [username, profile?.firebaseUid]);
 
   if (reels.length === 0) return null;
 
   return (
     <section className="mt-8 space-y-3 border-t border-zinc-800 pt-6">
-      <h2 className="text-base font-bold text-white">Mis videos / reels</h2>
-      <p className="text-xs text-zinc-500">Se guardan en Firebase Storage y aparecen en tu biblioteca.</p>
+      <h2 className="text-base font-bold text-white">Mis {BOOM_CLIP_LABEL}</h2>
+      <p className="text-xs text-zinc-500">
+        Videos cortos publicados como {BOOM_CLIP_LABEL}. También aparecen en Inicio → Boom Clip.
+      </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {reels.map((reel) => (
-          <MyReelTile key={reel.id} reel={reel} />
+          <MyClipTile key={reel.id} reel={reel} />
         ))}
       </div>
     </section>

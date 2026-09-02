@@ -3,19 +3,30 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import {
   CO_REGIONS,
-  PROMO_DAYS_MAX,
-  PROMO_DAYS_MIN,
+  PROMO_BANNER_HEIGHT,
+  PROMO_BANNER_SIZE_LABEL,
+  PROMO_BANNER_WIDTH,
+  PROMO_PACKAGES,
   PROMO_KINDS,
   formatPromoCop,
   promoCopPerDay,
-  promoTotalCop,
+  promoPackageByDays,
   regionLabel,
   type PromoKind,
+  type PromoPackageId,
 } from '../../lib/promoRegions';
 import { createPromotion } from '../../lib/promotionsFirestore';
 import { dataUrlToBlob, uploadUserMedia } from '../../lib/storage';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
 import { useAuthStore } from '../../store/authStore';
+
+type PromoPackageOption = {
+  id: string;
+  days: number;
+  priceCop: number;
+  label: string;
+  pricePerDayCop?: number;
+};
 
 type Props = {
   onClose: () => void;
@@ -30,12 +41,34 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
   const [linkUrl, setLinkUrl] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
   const [regionId, setRegionId] = useState(defaultRegionId || 'nacional');
-  const [days, setDays] = useState(3);
+  const [packageId, setPackageId] = useState<PromoPackageId>('3d');
+  const [packages, setPackages] = useState<PromoPackageOption[]>([...PROMO_PACKAGES]);
+  const [wompiReady, setWompiReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  const perDay = useMemo(() => promoCopPerDay(regionId), [regionId]);
-  const totalCop = useMemo(() => promoTotalCop(days, regionId), [days, regionId]);
+  const selectedPackage = useMemo(
+    () => packages.find((p) => p.id === packageId) ?? promoPackageByDays(3),
+    [packageId, packages],
+  );
+  const days = selectedPackage.days;
+  const perDay = useMemo(() => promoCopPerDay(days), [days]);
+  const totalCop = useMemo(() => selectedPackage.priceCop, [selectedPackage]);
+
+  useEffect(() => {
+    void api<{ packages: PromoPackageOption[]; wompiConfigured?: boolean }>('/api/ads/packages')
+      .then((res) => {
+        if (res.packages?.length) setPackages(res.packages);
+        setWompiReady(Boolean(res.wompiConfigured));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!packages.some((p) => p.id === packageId)) {
+      setPackageId((packages[0]?.id as PromoPackageId) || '3d');
+    }
+  }, [packageId, packages]);
 
   useEffect(() => {
     if (defaultRegionId) setRegionId(defaultRegionId);
@@ -48,11 +81,35 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     }
   }, [kind, profile?.handle]);
 
+  function readImageDimensions(file: File) {
+    return new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('No se pudieron leer las dimensiones de la imagen'));
+      };
+      img.src = url;
+    });
+  }
+
   async function onPickFile(file?: File | null) {
     if (!file || !profile) return;
     setBusy(true);
     setNote(null);
     try {
+      if (file.type.startsWith('image/')) {
+        const { width, height } = await readImageDimensions(file);
+        if (width !== PROMO_BANNER_WIDTH || height !== PROMO_BANNER_HEIGHT) {
+          throw new Error(
+            `El banner debe medir ${PROMO_BANNER_SIZE_LABEL} px (formato 3:1). Tu archivo es ${width} × ${height} px.`,
+          );
+        }
+      }
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ''));
@@ -69,7 +126,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     }
   }
 
-  async function publishAfterPay(hours: number, amountPaidCop: number) {
+  async function activateAfterPay(hours: number, amountPaidCop: number) {
     if (!profile) return;
     const cleanTitle = title.trim() || PROMO_KINDS.find((k) => k.id === kind)?.label || 'Promoción';
     await createPromotion({
@@ -88,7 +145,35 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     });
   }
 
-  async function submit() {
+  async function simulatePay() {
+    if (!profile) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      let hours = days * 24;
+      let amountPaidCop = totalCop;
+      try {
+        const paid = await api<{ hours: number; amountPaidCop: number }>('/api/ads/simulate', {
+          method: 'POST',
+          body: JSON.stringify({ packageId, days, regionId }),
+        });
+        hours = paid.hours || hours;
+        amountPaidCop = paid.amountPaidCop || amountPaidCop;
+      } catch {
+        // Sin API: activar directo en Firestore para pruebas.
+      }
+      await activateAfterPay(hours, amountPaidCop);
+      setNote('Publicidad activada (pago simulado).');
+      onDone?.();
+      window.setTimeout(onClose, 1200);
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'No se pudo activar la publicidad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function payWithWompi() {
     if (!profile) return;
     setBusy(true);
     setNote(null);
@@ -97,7 +182,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
         WompiOrder & { days: number; hours: number; totalCop: number }
       >('/api/ads/create-order', {
         method: 'POST',
-        body: JSON.stringify({ days, regionId }),
+        body: JSON.stringify({ packageId, days, regionId }),
       });
 
       openWompiWidget(order, (result) => {
@@ -108,7 +193,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
             body: JSON.stringify({ reference: order.reference }),
           })
             .then(async (paid) => {
-              await publishAfterPay(paid.hours || order.hours, paid.amountPaidCop || order.totalCop);
+              await activateAfterPay(paid.hours || order.hours, paid.amountPaidCop || order.totalCop);
               setNote('Pago aprobado. Tu publicidad ya está activa.');
               onDone?.();
               window.setTimeout(onClose, 1200);
@@ -146,9 +231,9 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-cyan-400">
               <Megaphone size={14} /> Publicidad paga
             </p>
-            <h2 className="mt-1 text-lg font-bold text-white">Promocionar en LiveBoom</h2>
+            <h2 className="mt-1 text-lg font-bold text-white">Configurar y comprar publicidad</h2>
             <p className="mt-1 text-xs text-zinc-400">
-              Elige los días y paga en pesos (COP) con Wompi. Sin usar coins.
+              Tu anuncio aparece en el panel Publicidad. Por ahora puedes activarlo en modo prueba sin Wompi.
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-zinc-500 hover:text-white" aria-label="Cerrar">
@@ -209,10 +294,36 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
           </label>
 
           <div className="rounded-2xl border border-white/10 bg-zinc-900/80 p-3">
-            <div className="flex items-end justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Paquete</p>
+            <div className="mt-2 grid gap-2">
+              {packages.map((pkg) => {
+                const active = pkg.id === packageId;
+                return (
+                  <button
+                    key={pkg.id}
+                    type="button"
+                    onClick={() => setPackageId(pkg.id as PromoPackageId)}
+                    className={`flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                      active
+                        ? 'border-cyan-400/50 bg-cyan-500/10'
+                        : 'border-white/10 bg-zinc-950/60 hover:border-white/20'
+                    }`}
+                  >
+                    <span>
+                      <span className="block text-sm font-bold text-white">{pkg.label}</span>
+                      <span className="block text-[10px] text-zinc-500">
+                        {formatPromoCop(Math.round(pkg.priceCop / pkg.days))} / día
+                      </span>
+                    </span>
+                    <span className="text-sm font-bold text-amber-300">{formatPromoCop(pkg.priceCop)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex items-end justify-between gap-2 border-t border-white/5 pt-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Duración</p>
-                <p className="mt-1 text-2xl font-black text-white">
+                <p className="text-[11px] text-zinc-500">Duración seleccionada</p>
+                <p className="text-lg font-black text-white">
                   {days} {days === 1 ? 'día' : 'días'}
                 </p>
               </div>
@@ -221,32 +332,43 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
                 <p className="text-lg font-bold text-amber-300">{formatPromoCop(totalCop)}</p>
               </div>
             </div>
-            <input
-              type="range"
-              min={PROMO_DAYS_MIN}
-              max={PROMO_DAYS_MAX}
-              step={1}
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value))}
-              className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-cyan-400"
-              aria-label="Días de publicidad"
-            />
-            <div className="mt-1 flex justify-between text-[10px] text-zinc-500">
-              <span>{PROMO_DAYS_MIN} día</span>
-              <span>{PROMO_DAYS_MAX} días</span>
-            </div>
           </div>
 
-          <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 bg-zinc-900/60 px-3 py-3 text-sm text-zinc-300">
-            <Upload size={16} />
-            {mediaUrl ? 'Cambiar imagen / video' : 'Subir imagen o video (opcional)'}
-            <input
-              type="file"
-              accept="image/*,video/*"
-              className="hidden"
-              onChange={(e) => void onPickFile(e.target.files?.[0])}
-            />
-          </label>
+          <div className="rounded-xl border border-amber-400/25 bg-zinc-900/70 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-200">
+              Dimensiones obligatorias
+            </p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {PROMO_BANNER_SIZE_LABEL} px <span className="text-zinc-400">(formato 3:1)</span>
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+              Usa esta medida exacta para tu imagen o video banner. Así se verá completo en el panel y al
+              expandir.
+            </p>
+            <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 bg-zinc-950/60 px-3 py-3 text-sm text-zinc-300">
+              <Upload size={16} />
+              {mediaUrl ? 'Cambiar imagen / video' : 'Subir imagen o video (opcional)'}
+              <input
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={(e) => void onPickFile(e.target.files?.[0])}
+              />
+            </label>
+          </div>
+
+          {mediaUrl ? (
+            <div className="mt-3 overflow-hidden rounded-xl border border-white/10">
+              <p className="bg-zinc-900/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Vista previa del banner · {PROMO_BANNER_SIZE_LABEL} px
+              </p>
+              {/\.(mp4|webm)(\?|$)/i.test(mediaUrl) ? (
+                <video src={mediaUrl} className="aspect-[3/1] w-full object-contain bg-black" muted playsInline controls />
+              ) : (
+                <img src={mediaUrl} alt="" className="aspect-[3/1] w-full object-contain bg-black" />
+              )}
+            </div>
+          ) : null}
 
           {note ? (
             <p
@@ -261,16 +383,27 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
           <button
             type="button"
             disabled={busy || !profile}
-            onClick={() => void submit()}
+            onClick={() => void simulatePay()}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-4 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
             <Radio size={16} />
-            {busy ? 'Abriendo Wompi…' : `Pagar ${formatPromoCop(totalCop)}`}
+            {busy ? 'Activando…' : `Activar publicidad (prueba) · ${formatPromoCop(totalCop)}`}
           </button>
+          {wompiReady ? (
+            <button
+              type="button"
+              disabled={busy || !profile}
+              onClick={() => void payWithWompi()}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-zinc-900 px-4 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              Pagar con Wompi
+            </button>
+          ) : null}
           <p className="flex items-start gap-1.5 text-[11px] text-zinc-500">
             <MapPin size={12} className="mt-0.5 shrink-0" />
-            Pago directo en pesos con Wompi. La ubicación del público solo se usa para mostrar anuncios de su
-            región.
+            {wompiReady
+              ? 'Puedes probar con activación simulada o pagar con Wompi cuando quieras.'
+              : 'Modo prueba: el pago está simulado hasta conectar Wompi. Tu anuncio se publica al instante.'}
           </p>
         </div>
       </div>

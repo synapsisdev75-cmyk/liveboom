@@ -12,6 +12,7 @@ import {
 import { auth, googleProvider } from '../lib/firebase';
 import { api, getApiBase, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
 import { ensureFirestoreProfile, fetchFirestoreProfile, updateFirestoreProfileFields } from '../lib/profileFirestore';
+import { processGiftInbox } from '../lib/giftsFirestore';
 import { readPendingBirthDate, storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
 
@@ -65,8 +66,13 @@ async function syncWithBackend(user: FirebaseUser) {
         photoURL: googlePhoto,
       }));
 
-    if (fsProfile) {
-      // Si el doc ya existía sin foto, ensureFirestoreProfile la rellena; relee por si acaso.
+      if (fsProfile) {
+        const inboxCoins = await processGiftInbox(user.uid).catch(() => 0);
+        if (inboxCoins > 0) {
+          fsProfile = (await fetchFirestoreProfile(user.uid)) ?? fsProfile;
+        }
+
+        // Si el doc ya existía sin foto, ensureFirestoreProfile la rellena; relee por si acaso.
       if (!fsProfile.avatarUrl && googlePhoto) {
         fsProfile =
           (await ensureFirestoreProfile({

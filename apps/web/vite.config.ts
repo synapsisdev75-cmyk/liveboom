@@ -4,8 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const defaultApi =
-    mode === 'development' ? 'http://localhost:4000' : 'https://liveboom.vercel.app';
+  const defaultApi = 'https://liveboom.vercel.app';
   const rawApi = (env.VITE_API_URL || defaultApi).replace(/\/$/, '');
   // .env.local suele tener localhost; en build de producción nunca debe publicarse.
   const apiOnline =

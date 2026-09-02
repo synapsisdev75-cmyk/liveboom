@@ -1,5 +1,5 @@
 /** Tiers por defecto (fallback si Firestore no tiene config). */
-export const LEVEL_BADGE_VERSION = '12';
+export const LEVEL_BADGE_VERSION = '13';
 
 export type DefaultTierSeed = {
   tier: number;
@@ -25,6 +25,17 @@ function badgeUrl(slug: string) {
 
 function frameUrl(slug: string) {
   return `/levels/frames/${slug}.png?v=${LEVEL_BADGE_VERSION}`;
+}
+
+/** Animación hover/toque (solo tiers con asset exportado). */
+function badgeAnimUrls(slug: string): { badgeAnimWebm: string | null; badgeAnimMp4: string | null } {
+  if (slug === 'leyenda') {
+    return {
+      badgeAnimWebm: `/levels/leyenda-anim.webm?v=${LEVEL_BADGE_VERSION}`,
+      badgeAnimMp4: `/levels/leyenda-anim.mp4?v=${LEVEL_BADGE_VERSION}`,
+    };
+  }
+  return { badgeAnimWebm: null, badgeAnimMp4: null };
 }
 
 const PLATED = { avatarTop: 19, avatarLeft: 19, avatarWidth: 63, avatarHeight: 61 };
@@ -154,5 +165,6 @@ export function seedToUrls(seed: DefaultTierSeed) {
   return {
     frameImageUrl: frameUrl(seed.slug),
     badgeImageUrl: badgeUrl(seed.slug),
+    ...badgeAnimUrls(seed.slug),
   };
 }

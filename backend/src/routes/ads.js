@@ -9,41 +9,131 @@ const {
 } = require('../lib/wompi');
 const { rememberOrder, takeOrder } = require('../lib/walletMemory');
 
+const {
+  PROMO_PACKAGES,
+  promoPackageByDays,
+  promoPackageById,
+  promoTotalCop,
+  promoAmountInCents,
+} = require('../lib/promoPackages');
+
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
 
-const PROMO_COP_PER_DAY = 15_000;
-const DAYS_MIN = 1;
-const DAYS_MAX = 14;
-
-function clampDays(value) {
-  return Math.min(DAYS_MAX, Math.max(DAYS_MIN, Math.floor(Number(value) || 1)));
+function resolvePackage(body) {
+  const packageId = String(body?.packageId || '').trim();
+  if (packageId) {
+    const byId = promoPackageById(packageId);
+    if (byId) return byId;
+  }
+  const days = Math.floor(Number(body?.days) || 0);
+  return promoPackageByDays(days);
 }
 
-function pricePerDayCop(regionId) {
-  return String(regionId || '') === 'nacional'
-    ? Math.round(PROMO_COP_PER_DAY * 1.5)
-    : PROMO_COP_PER_DAY;
+function simulatePromoAllowed() {
+  const flag = String(
+    process.env.ALLOW_SIMULATE_PROMO ?? process.env.ALLOW_SIMULATE_TOPUP ?? '1',
+  )
+    .trim()
+    .toLowerCase();
+  if (flag === '0' || flag === 'false' || flag === 'off' || flag === 'no') return false;
+  return true;
 }
 
-/** Wompi usa centavos: $15.000 COP = 1_500_000. */
-function amountInCents(days, regionId) {
-  return clampDays(days) * pricePerDayCop(regionId) * 100;
+function wompiConfigured() {
+  const publicKey = cleanWompiSecret(process.env.WOMPI_PUBLIC_KEY);
+  const integrity = cleanWompiSecret(process.env.WOMPI_INTEGRITY_SECRET);
+  if (!publicKey || !integrity) return false;
+  try {
+    assertIntegrityPair(publicKey, integrity);
+    return true;
+  } catch {
+    return false;
+  }
 }
+
+router.get('/packages', (_req, res) => {
+  res.json({
+    packages: PROMO_PACKAGES.map((pkg) => ({
+      ...pkg,
+      pricePerDayCop: Math.round(pkg.priceCop / pkg.days),
+    })),
+    simulateAvailable: simulatePromoAllowed(),
+    wompiConfigured: wompiConfigured(),
+  });
+});
+
+router.post('/simulate', requireAuth, requireDbUser, async (req, res) => {
+  try {
+    if (!simulatePromoAllowed()) {
+      res.status(403).json({ error: 'Simulación de publicidad deshabilitada' });
+      return;
+    }
+    const pkg = resolvePackage(req.body);
+    const regionId = String(req.body?.regionId || 'nacional').trim().slice(0, 40) || 'nacional';
+    const reference = `ad_sim_${String(req.dbUser.id).slice(0, 20)}_${randomUUID().replace(/-/g, '')}`;
+
+    if (hasDatabase && prisma) {
+      try {
+        await prisma.transaction.create({
+          data: {
+            userId: req.dbUser.id,
+            amount: 0,
+            amountInCop: promoAmountInCents(pkg.days),
+            type: 'promo_simulated',
+            status: 'completed',
+            packageId: pkg.id,
+            reference,
+            currency: 'COP',
+          },
+        });
+      } catch (error) {
+        console.warn('[ads/simulate] txn', error.message);
+      }
+    }
+
+    res.json({
+      simulated: true,
+      reference,
+      packageId: pkg.id,
+      days: pkg.days,
+      hours: pkg.days * 24,
+      amountPaidCop: pkg.priceCop,
+      regionId,
+    });
+  } catch (error) {
+    console.error('[ads/simulate]', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo simular el pago de publicidad',
+    });
+  }
+});
 
 router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
   try {
-    const days = clampDays(req.body?.days);
+    const pkg = resolvePackage(req.body);
+    const days = pkg.days;
     const regionId = String(req.body?.regionId || 'nacional').trim().slice(0, 40) || 'nacional';
     const publicKey = String(process.env.WOMPI_PUBLIC_KEY || '').trim();
-    if (!publicKey) {
-      res.status(500).json({ error: 'WOMPI_PUBLIC_KEY no está configurada en el API' });
+    if (!wompiConfigured()) {
+      const reference = `ad_mock_${String(req.dbUser.id).slice(0, 20)}_${randomUUID().replace(/-/g, '')}`;
+      res.status(201).json({
+        mock: true,
+        reference,
+        days,
+        hours: days * 24,
+        totalCop: promoTotalCop(days),
+        packageId: pkg.id,
+        regionId,
+        message:
+          'Wompi no está configurado. Usa la activación de prueba o POST /api/ads/simulate.',
+      });
       return;
     }
 
-    const amount = amountInCents(days, regionId);
-    const packageId = `promo_${days}d_${regionId}`;
+    const amount = promoAmountInCents(days);
+    const packageId = pkg.id;
     const reference = `ad_${String(req.dbUser.id).slice(0, 20)}_${randomUUID().replace(/-/g, '')}`;
     const currency = 'COP';
     const integritySecret = assertIntegrityPair(publicKey, process.env.WOMPI_INTEGRITY_SECRET);
@@ -100,8 +190,8 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       integritySignature,
       days,
       hours: days * 24,
-      totalCop: amount / 100,
-      pricePerDayCop: pricePerDayCop(regionId),
+      totalCop: promoTotalCop(days),
+      pricePerDayCop: Math.round(pkg.priceCop / pkg.days),
       regionId,
       packageId,
     });

@@ -48,9 +48,17 @@ export function GiftBoxStrip({
           <X size={16} />
         </button>
       </div>
-      <p className="hidden px-3 pb-1 text-[10px] text-zinc-500 lg:block">Desplázate para ver todos los regalos</p>
+      <p className="px-3 pb-1 text-[10px] text-zinc-500">
+        {compact ? 'Desliza o desplázate para ver todos los regalos' : 'Desplázate para ver todos los regalos'}
+      </p>
 
-      <div className="gift-row gift-box-row chat-scroll flex snap-x snap-mandatory gap-1.5 overflow-x-auto overflow-y-hidden px-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-0.5 sm:gap-2 sm:px-3 sm:pb-3 lg:grid lg:max-h-[11rem] lg:grid-cols-4 lg:overflow-x-hidden lg:overflow-y-auto lg:snap-none xl:grid-cols-5">
+      <div
+        className={`gift-row gift-box-row chat-scroll gap-1.5 px-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-0.5 sm:gap-2 sm:px-3 sm:pb-3 ${
+          compact
+            ? 'grid max-h-[min(44dvh,22rem)] grid-cols-4 overflow-x-hidden overflow-y-auto sm:grid-cols-5'
+            : 'flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden lg:grid lg:max-h-[min(52dvh,26rem)] lg:grid-cols-4 lg:overflow-x-hidden lg:overflow-y-auto lg:snap-none xl:grid-cols-5'
+        }`}
+      >
         {gifts.map((gift) => {
           const busy = sendingGiftId === gift.id;
           return (
@@ -59,9 +67,11 @@ export function GiftBoxStrip({
               type="button"
               disabled={Boolean(sendingGiftId)}
               onClick={() => onSelect(gift.id)}
-              className={`gift-box-item flex w-[4.35rem] shrink-0 snap-start flex-col items-center justify-end rounded-xl border border-white/5 bg-zinc-900/90 px-1 pb-1.5 pt-2 transition active:scale-95 disabled:opacity-50 sm:w-[4.85rem] ${
-                busy ? 'ring-2 ring-cyan-400/60' : 'hover:border-cyan-400/40 hover:bg-zinc-800'
-              }`}
+              className={`gift-box-item flex shrink-0 flex-col items-center justify-end rounded-xl border border-white/5 bg-zinc-900/90 px-1 pb-1.5 pt-2 transition active:scale-95 disabled:opacity-50 ${
+                compact
+                  ? 'w-full snap-none'
+                  : 'w-[4.35rem] snap-start sm:w-[4.85rem]'
+              } ${busy ? 'ring-2 ring-cyan-400/60' : 'hover:border-cyan-400/40 hover:bg-zinc-800'}`}
             >
               <GiftIcon giftId={gift.id} size={compact ? 30 : 36} />
               <span className="mt-1 w-full truncate px-0.5 text-center text-[8px] font-medium leading-tight text-zinc-400">

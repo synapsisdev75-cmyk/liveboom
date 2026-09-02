@@ -1,0 +1,33 @@
+---
+description: LiveBoom responsive universal — una sola app PC/tablet/móvil; paridad de funciones
+alwaysApply: true
+---
+
+# LiveBoom: responsive universal
+
+## Principio
+
+Una sola arquitectura. Misma identidad, funciones, botones, acciones e información en PC, tablet, Android e iOS. Solo cambia la distribución al viewport.
+
+**No** apps separadas (`DesktopX` / `MobileX`) salvo necesidad técnica real. **No** layout según CPU. Adaptar por: viewport, orientación, `pointer`, touch, safe-area, densidades.
+
+## Layout fluido
+
+- Preferir `%`, `min()`, `max()`, `clamp()`, `calc()`, `aspect-ratio`, `max-width` sobre px fijos rígidos.
+- Fullscreen: `100dvh` (+ fallback `100vh` si hace falta). Tokens: `--lb-safe-*` / `env(safe-area-inset-*)`.
+- Touch (`pointer: coarse`): targets ≥ ~44px. Acciones esenciales **sin** depender de hover.
+- Sin scroll horizontal de página; solo carruseles locales. Media: `object-fit: contain` cuando no deba croppear.
+
+## Componentes compartidos (reutilizar)
+
+`AppShell`, `UserAvatar`, `PostActionRail`, viewers/composers, paneles de comentarios/regalos — un cambio = todos los dispositivos.
+
+Paneles: lateral en desktop ancho; bottom sheet / flotante en estrecho. Navegación: sidebar PC → compacta tablet → bottom/drawer móvil. **No** eliminar Inicio, Explorar, Grupos, Billetera, Mensajes, Actividad, Perfil, Config, Transmitir.
+
+## Contenido (paridad)
+
+Boom Clip / Explorar / Publicaciones / Flash Boom / Composer / `+ Clip`: mismas acciones en todos lados. Explorar: un video a la vez; swipe + wheel/teclado según input.
+
+## Criterio de “terminado”
+
+No dar por listo solo desktop. Verificar mentalmente desktop + tablet + móvil, portrait + landscape, mouse + touch. Feature nueva en un lado ⇒ misma feature en el otro vía el mismo componente.

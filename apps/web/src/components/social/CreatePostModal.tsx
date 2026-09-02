@@ -1,4 +1,4 @@
-import { Bell, Camera, Globe, Image, Lock, Paperclip, PenLine, Users, Video, X, Zap } from 'lucide-react';
+import { Bell, Camera, Globe, Image, Lock, Music2, Paperclip, PenLine, Users, Video, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
@@ -6,6 +6,7 @@ import { createPost } from '../../lib/socialFirestore';
 import { reelLifecycleHint } from '../../lib/reelLifecycle';
 import { storyLifecycleHint, STORY_MAX_DURATION_SEC } from '../../lib/storyLifecycle';
 import { readVideoDurationSec } from '../../lib/videoDuration';
+import { MAX_CLIP_DURATION_SECONDS } from '../../lib/contentType';
 import { BOOM_CLIP_MAX_DURATION_SEC } from '../../lib/videoTrim';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
@@ -14,7 +15,9 @@ import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput } from './EmojiInput';
 import { VideoTrimEditor } from './VideoTrimEditor';
+import { MusicPickerModal } from './MusicPickerModal';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
+import { findMusicTrack, type SelectedMusicClip } from '../../lib/musicLibrary';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import type { SocialPost } from './SocialPostCard';
 
@@ -35,7 +38,6 @@ type Props = {
 
 type PostKind = 'photo' | 'video' | 'text';
 type Visibility = 'public' | 'friends' | 'private';
-type VideoMode = 'story' | 'post';
 type ComposeTab = 'publication' | 'boomclip' | 'flashboom';
 
 export function CreatePostModal({
@@ -66,11 +68,6 @@ export function CreatePostModal({
   const isBoomClip = composeTab === 'boomclip';
   const isMediaTab = isBoomClip || isFlashBoom;
   const [kind, setKind] = useState<PostKind>(initialKind);
-  const [videoMode, setVideoMode] = useState<VideoMode | null>(() => {
-    if (defaultVideoMode === 'story') return 'story';
-    if (defaultVideoMode === 'post' || initialTab() === 'boomclip') return 'post';
-    return null;
-  });
   const [visibility, setVisibility] = useState<Visibility>('public');
   const [notifyFriends, setNotifyFriends] = useState(false);
   const [caption, setCaption] = useState('');
@@ -87,6 +84,8 @@ export function CreatePostModal({
     forcedKind?: PostKind;
   } | null>(null);
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
+  const [musicPickerOpen, setMusicPickerOpen] = useState(false);
+  const [selectedMusic, setSelectedMusic] = useState<SelectedMusicClip | null>(null);
   const galleryPhotoRef = useRef<HTMLInputElement>(null);
   const galleryVideoRef = useRef<HTMLInputElement>(null);
   const cameraPhotoRef = useRef<HTMLInputElement>(null);
@@ -113,21 +112,17 @@ export function CreatePostModal({
     if (defaultKind === 'photo') {
       setComposeTab('publication');
       setKind('photo');
-      setVideoMode(null);
     } else if (defaultKind === 'text') {
       setComposeTab('publication');
       setKind('text');
-      setVideoMode(null);
     }
     if (defaultVideoMode === 'post') {
       setComposeTab('boomclip');
       setKind('video');
-      setVideoMode('post');
     }
     if (defaultVideoMode === 'story') {
       setComposeTab('flashboom');
       setKind('video');
-      setVideoMode('story');
     }
   }, [defaultKind, defaultVideoMode]);
 
@@ -152,11 +147,10 @@ export function CreatePostModal({
     setNotifyFriends(false);
     setComposeTab(initialTab());
     setKind(initialKind);
-    setVideoMode(
-      defaultVideoMode === 'story' ? 'story' : defaultVideoMode === 'post' || initialTab() === 'boomclip' ? 'post' : null,
-    );
     setMediaMenuOpen(false);
     setTrimDraft(null);
+    setSelectedMusic(null);
+    setMusicPickerOpen(false);
   }
 
   function switchTab(tab: ComposeTab) {
@@ -164,11 +158,14 @@ export function CreatePostModal({
     setError(null);
     setMediaMenuOpen(false);
     if (tab === 'boomclip') {
-      setVideoMode('post');
-    } else if (tab === 'flashboom') {
-      setVideoMode('story');
-    } else {
-      setVideoMode(null);
+      setKind('video');
+      // Boom Clip = solo video; si había foto, limpiar
+      if (mediaFile && mediaKindFromFile(mediaFile) === 'photo') {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setMediaFile(null);
+        setPreviewUrl(null);
+      }
+    } else if (tab === 'publication') {
       if (kind === 'video') {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         setMediaFile(null);
@@ -186,22 +183,14 @@ export function CreatePostModal({
     const detected = mediaKindFromFile(file);
     if (detected === 'video' || forcedKind === 'video') {
       setKind('video');
-      if (composeTab === 'flashboom') {
-        setVideoMode('story');
-      } else if (composeTab === 'boomclip') {
-        setVideoMode('post');
-      } else {
-        setVideoMode('post');
-      }
     } else {
       setKind('photo');
-      if (composeTab === 'flashboom') {
-        setVideoMode('story');
-      } else if (composeTab === 'boomclip') {
-        setVideoMode('post');
-      } else {
+      if (composeTab === 'boomclip') {
+        // Fotos no son Boom Clip → Publicación
         setComposeTab('publication');
-        setVideoMode(null);
+        setError('Las fotos van como Publicación. Boom Clip es solo video (máx. 90 s).');
+      } else if (composeTab !== 'flashboom') {
+        setComposeTab('publication');
       }
     }
   }
@@ -227,7 +216,14 @@ export function CreatePostModal({
           file,
           knownDurationSec && knownDurationSec > 0 ? knownDurationSec : 0,
         );
-        const needsEditor = durationSec > BOOM_CLIP_MAX_DURATION_SEC;
+        // Solo Flash Boom / Boom Clip obligan a recortar; Publicación acepta video largo
+        const clipCapSec =
+          composeTab === 'flashboom'
+            ? STORY_MAX_DURATION_SEC
+            : composeTab === 'boomclip'
+              ? MAX_CLIP_DURATION_SECONDS
+              : 0;
+        const needsEditor = clipCapSec > 0 && durationSec > clipCapSec;
 
         if (needsEditor) {
           if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -235,11 +231,10 @@ export function CreatePostModal({
             file,
             url: URL.createObjectURL(file),
             durationSec,
-            maxDurationSec: BOOM_CLIP_MAX_DURATION_SEC,
+            maxDurationSec: clipCapSec,
           });
           if (isMediaTab) {
             setKind('video');
-            setVideoMode(composeTab === 'flashboom' ? 'story' : 'post');
           }
           return;
         }
@@ -274,16 +269,13 @@ export function CreatePostModal({
     setMediaMenuOpen(false);
     if (mode === 'video') {
       setKind('video');
-      setVideoMode(composeTab === 'flashboom' ? 'story' : 'post');
     } else {
       setKind('photo');
-      if (composeTab === 'flashboom') {
-        setVideoMode('story');
-      } else if (composeTab === 'boomclip') {
-        setVideoMode('post');
-      } else {
+      if (composeTab === 'boomclip') {
         setComposeTab('publication');
-        setVideoMode(null);
+        setError('Las fotos van como Publicación. Boom Clip es solo video (máx. 90 s).');
+      } else if (composeTab !== 'flashboom') {
+        setComposeTab('publication');
       }
     }
     const target = mode === 'video' ? galleryVideoRef.current : galleryPhotoRef.current;
@@ -297,20 +289,17 @@ export function CreatePostModal({
     setMediaMenuOpen(false);
     if (mode === 'video') {
       setKind('video');
-      setVideoMode(composeTab === 'flashboom' ? 'story' : 'post');
       if (composeTab === 'flashboom') {
         setCameraCaptureOpen(true);
         return;
       }
     } else {
       setKind('photo');
-      if (composeTab === 'flashboom') {
-        setVideoMode('story');
-      } else if (composeTab === 'boomclip') {
-        setVideoMode('post');
-      } else {
+      if (composeTab === 'boomclip') {
         setComposeTab('publication');
-        setVideoMode(null);
+        setError('Las fotos van como Publicación. Boom Clip es solo video (máx. 90 s).');
+      } else if (composeTab !== 'flashboom') {
+        setComposeTab('publication');
       }
     }
     const target = mode === 'video' ? cameraVideoRef.current : cameraPhotoRef.current;
@@ -345,14 +334,12 @@ export function CreatePostModal({
     setError(null);
     try {
       let durationSec = 0;
-      const publishKind = isMediaTab ? kind : kind;
-      const publishPostFormat = isMediaTab
-        ? isFlashBoom
-          ? 'story'
-          : 'post'
-        : publishKind === 'video'
-          ? videoMode || 'post'
-          : undefined;
+      const publishKind = kind;
+      if (isBoomClip && publishKind !== 'video') {
+        setError(`${BOOM_CLIP_LABEL} solo admite video (máx. ${MAX_CLIP_DURATION_SECONDS} s).`);
+        return;
+      }
+      const publishPostFormat = isFlashBoom ? 'story' : isBoomClip ? 'post' : undefined;
 
       if (publishKind === 'video' && mediaFile) {
         try {
@@ -361,13 +348,15 @@ export function CreatePostModal({
           if (mediaFile.size > 800) durationSec = 1;
           else throw new Error('No se pudo leer la duración del video');
         }
-        const capped = publishPostFormat === 'story' || isMediaTab;
-        if (capped && durationSec > BOOM_CLIP_MAX_DURATION_SEC) {
+        if (isFlashBoom && durationSec > STORY_MAX_DURATION_SEC) {
+          setError(`${FLASH_BOOM_LABEL} debe durar máximo ${STORY_MAX_DURATION_SEC} segundos.`);
+          return;
+        }
+        if (isBoomClip && durationSec > MAX_CLIP_DURATION_SECONDS) {
           setError(
-            publishPostFormat === 'story'
-              ? `${FLASH_BOOM_LABEL} debe durar máximo ${STORY_MAX_DURATION_SEC} segundos.`
-              : `${BOOM_CLIP_LABEL} debe durar máximo ${BOOM_CLIP_MAX_DURATION_SEC} segundos.`,
+            `${BOOM_CLIP_LABEL} puede durar hasta ${MAX_CLIP_DURATION_SECONDS} segundos. Puedes publicarlo como Publicación.`,
           );
+          setBusy(false);
           return;
         }
         if (durationSec < 1 && mediaFile.size > 800) {
@@ -379,17 +368,31 @@ export function CreatePostModal({
         }
       }
 
+      let uploadFile = mediaFile;
+      if (publishKind === 'video' && uploadFile && selectedMusic) {
+        setError(null);
+        const { mergeVideoWithMusicClip } = await import('../../lib/audioTrim');
+        uploadFile = await mergeVideoWithMusicClip(
+          uploadFile,
+          selectedMusic.trackId,
+          selectedMusic.startSec,
+          selectedMusic.clipSec,
+        );
+      }
+
       const created = await createPost({
         authorUid: profile.firebaseUid,
         username: profile.handle || username,
         authorDisplayName: profile.displayName,
         type: publishKind,
         caption,
-        mediaFile: publishKind === 'text' ? null : mediaFile,
+        mediaFile: publishKind === 'text' ? null : uploadFile,
         visibility: publishPostFormat === 'story' ? 'circle' : visibility,
         postFormat: publishPostFormat,
         durationSec,
         notifyFriends: visibility !== 'private' && notifyFriends && publishPostFormat !== 'story',
+        musicTrackId: selectedMusic?.trackId,
+        musicStartSec: selectedMusic?.startSec,
       });
 
       onCreated({
@@ -404,6 +407,8 @@ export function CreatePostModal({
         likes: 0,
         dislikes: 0,
         viewerReaction: null,
+        postFormat: publishPostFormat || null,
+        durationSec: durationSec || null,
       });
       reset();
       closeModal();
@@ -553,26 +558,32 @@ export function CreatePostModal({
               </button>
               {mediaMenuOpen ? (
                 <div className="absolute bottom-full left-0 z-10 mb-1.5 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-xl">
-                  <button
-                    type="button"
-                    onClick={() => openGallery('photo')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                  >
-                    <Image size={14} className="text-cyan-300" />
-                    Fotos · galería
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openCamera('photo')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                  >
-                    <Camera size={14} className="text-cyan-300" />
-                    Fotos · cámara
-                  </button>
+                  {!isBoomClip ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openGallery('photo')}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
+                      >
+                        <Image size={14} className="text-cyan-300" />
+                        Fotos · galería
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openCamera('photo')}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
+                      >
+                        <Camera size={14} className="text-cyan-300" />
+                        Fotos · cámara
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => openGallery('video')}
-                    className="flex w-full items-center gap-2 border-t border-white/10 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
+                    className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5 ${
+                      isBoomClip ? '' : 'border-t border-white/10'
+                    }`}
                   >
                     <Video size={14} className="text-fuchsia-300" />
                     Videos · galería
@@ -609,32 +620,53 @@ export function CreatePostModal({
                 />
               ) : null}
               {kind === 'video' ? (
-                <button
-                  type="button"
-                  className="mt-2 text-xs font-semibold text-fuchsia-300"
-                  onClick={() => {
-                    if (!mediaFile) return;
-                    void readVideoDurationSec(mediaFile, BOOM_CLIP_MAX_DURATION_SEC)
-                      .then((durationSec) => {
-                        setTrimDraft({
-                          file: mediaFile,
-                          url: previewUrl || URL.createObjectURL(mediaFile),
-                          durationSec: Math.max(1, durationSec),
-                          maxDurationSec: BOOM_CLIP_MAX_DURATION_SEC,
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-fuchsia-300"
+                    onClick={() => {
+                      if (!mediaFile) return;
+                      void readVideoDurationSec(mediaFile, BOOM_CLIP_MAX_DURATION_SEC)
+                        .then((durationSec) => {
+                          setTrimDraft({
+                            file: mediaFile,
+                            url: previewUrl || URL.createObjectURL(mediaFile),
+                            durationSec: Math.max(1, durationSec),
+                            maxDurationSec: BOOM_CLIP_MAX_DURATION_SEC,
+                          });
+                        })
+                        .catch(() => {
+                          setTrimDraft({
+                            file: mediaFile,
+                            url: previewUrl || URL.createObjectURL(mediaFile),
+                            durationSec: 0,
+                            maxDurationSec: BOOM_CLIP_MAX_DURATION_SEC,
+                          });
                         });
-                      })
-                      .catch(() => {
-                        setTrimDraft({
-                          file: mediaFile,
-                          url: previewUrl || URL.createObjectURL(mediaFile),
-                          durationSec: 0,
-                          maxDurationSec: BOOM_CLIP_MAX_DURATION_SEC,
-                        });
-                      });
-                  }}
-                >
-                  Editar recorte
-                </button>
+                    }}
+                  >
+                    Editar recorte
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-300"
+                    onClick={() => setMusicPickerOpen(true)}
+                  >
+                    <Music2 size={12} />
+                    {selectedMusic
+                      ? `Música: ${findMusicTrack(selectedMusic.trackId)?.title ?? 'Elegida'}`
+                      : 'Añadir música'}
+                  </button>
+                  {selectedMusic ? (
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-zinc-500"
+                      onClick={() => setSelectedMusic(null)}
+                    >
+                      Quitar música
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -719,7 +751,23 @@ export function CreatePostModal({
         </>
       ) : null}
 
-      {error && !isModalOpen ? <p className="mt-2 text-sm text-fuchsia-400">{error}</p> : null}
+      {error && !isModalOpen ? (
+        <div className="mt-2 space-y-2">
+          <p className="text-sm text-fuchsia-400">{error}</p>
+          {isBoomClip && error.includes('Publicación') && mediaFile ? (
+            <button
+              type="button"
+              onClick={() => {
+                setComposeTab('publication');
+                setError(null);
+              }}
+              className="text-xs font-semibold text-cyan-400 hover:underline"
+            >
+              Publicar como publicación
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {!isModalOpen ? (
         <div className={`mt-3 flex justify-end gap-2 ${isInline ? '' : 'pb-[max(0.5rem,env(safe-area-inset-bottom))]'}`}>
           {!isInline ? (
@@ -745,7 +793,23 @@ export function CreatePostModal({
       {isFlashBoom ? (
         <p className="mb-2 text-center text-[10px] text-zinc-500">{storyLifecycleHint()}</p>
       ) : null}
-      {error ? <p className="mb-2 text-sm text-fuchsia-400">{error}</p> : null}
+      {error ? (
+        <div className="mb-2 space-y-2">
+          <p className="text-sm text-fuchsia-400">{error}</p>
+          {isBoomClip && error.includes('Publicación') && mediaFile ? (
+            <button
+              type="button"
+              onClick={() => {
+                setComposeTab('publication');
+                setError(null);
+              }}
+              className="text-xs font-semibold text-cyan-400 hover:underline"
+            >
+              Publicar como publicación
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={closeModal} className="px-4 py-2 text-sm text-zinc-400">
           Cancelar
@@ -837,6 +901,16 @@ export function CreatePostModal({
         onClose={() => setCameraCaptureOpen(false)}
         onCapture={(file) => void onCameraCapture(file)}
       />
+      {musicPickerOpen ? (
+        <MusicPickerModal
+          initial={selectedMusic}
+          onCancel={() => setMusicPickerOpen(false)}
+          onConfirm={(clip) => {
+            setSelectedMusic(clip);
+            setMusicPickerOpen(false);
+          }}
+        />
+      ) : null}
     </>
   );
 }

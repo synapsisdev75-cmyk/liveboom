@@ -1,4 +1,4 @@
-import { Eye, Lock, Radio } from 'lucide-react';
+import { Lock, Radio } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export type LiveFeedItem = {
@@ -42,10 +42,6 @@ export function LiveFeedCard({ stream }: Props) {
             <Lock size={10} /> Privado
           </span>
         ) : null}
-      </div>
-      <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[10px] font-semibold text-cyan-200">
-        <Eye size={11} />
-        {stream.viewers || 0}
       </div>
       <div className="absolute inset-x-0 bottom-0 p-3">
         <p className="line-clamp-2 text-sm font-bold text-white">{stream.title}</p>

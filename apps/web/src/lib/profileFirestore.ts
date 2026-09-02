@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -30,8 +31,22 @@ export type PublicFsUser = {
   birthDate: string | null;
   category: string | null;
   coinsBalance: number;
+  /** XP efectivo (fijado por admin o orgánico). */
   levelXp: number;
+  levelXpOrganic?: number;
+  levelXpPinned?: number | null;
 };
+
+export function readLevelXpFields(data: Record<string, unknown> | undefined) {
+  const organic = Math.max(0, Math.floor(Number(data?.levelXp ?? 0)));
+  const pinnedRaw = data?.levelXpPinned;
+  const pinned =
+    pinnedRaw !== undefined && pinnedRaw !== null && pinnedRaw !== ''
+      ? Math.max(0, Math.floor(Number(pinnedRaw)))
+      : null;
+  const effective = pinned != null ? pinned : organic;
+  return { organic, pinned, effective };
+}
 
 function normalizeUsername(value: string) {
   return value.trim().replace(/^@/, '').toLowerCase();
@@ -71,6 +86,7 @@ function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
   const avatarRaw = data.avatarUrl;
   const avatarUrl =
     typeof avatarRaw === 'string' && avatarRaw.trim() ? avatarRaw.trim() : null;
+  const xp = readLevelXpFields(data);
   return {
     id,
     firebaseUid: String(data.firebaseUid || id),
@@ -82,7 +98,9 @@ function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
     birthDate: asIsoDate(data.birthDate),
     category: (data.category as string | null) ?? null,
     coinsBalance: Number(data.coinsBalance ?? 0),
-    levelXp: Number(data.levelXp ?? 0),
+    levelXp: xp.effective,
+    levelXpOrganic: xp.organic,
+    levelXpPinned: xp.pinned,
   };
 }
 
@@ -127,29 +145,44 @@ export async function addLevelXp(uid: string, amount: number) {
   const ref = doc(db, 'users', id);
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
-    const current = snap.exists() ? Number(snap.data()?.levelXp ?? 0) : 0;
-    const next = current + delta;
+    const xp = readLevelXpFields(
+      snap.exists() ? (snap.data() as Record<string, unknown>) : undefined,
+    );
+    const nextOrganic = xp.organic + delta;
     tx.set(
       ref,
       {
-        levelXp: next,
+        levelXp: nextOrganic,
         updatedAt: serverTimestamp(),
       },
       { merge: true },
     );
-    return next;
+    return xp.pinned != null ? xp.pinned : nextOrganic;
   });
 }
 
+/** Super Admin: fija el nivel (XP) aunque el usuario gane más por regalos/compras. */
 export async function setLevelXp(uid: string, xp: number) {
   const id = String(uid || '').trim();
   if (!id) return 0;
   const next = Math.max(0, Math.floor(Number(xp) || 0));
   await updateDoc(doc(db, 'users', id), {
-    levelXp: next,
+    levelXpPinned: next,
     updatedAt: serverTimestamp(),
   });
   return next;
+}
+
+/** Quita el fijado: el nivel vuelve a depender del XP orgánico. */
+export async function clearLevelXpPin(uid: string) {
+  const id = String(uid || '').trim();
+  if (!id) return 0;
+  await updateDoc(doc(db, 'users', id), {
+    levelXpPinned: deleteField(),
+    updatedAt: serverTimestamp(),
+  });
+  const snap = await getDoc(doc(db, 'users', id));
+  return snap.exists() ? readLevelXpFields(snap.data() as Record<string, unknown>).effective : 0;
 }
 
 /** Suma o resta XP (delta puede ser negativo). */
@@ -160,8 +193,20 @@ export async function adjustLevelXp(uid: string, delta: number) {
   return runTransaction(db, async (tx) => {
     const ref = doc(db, 'users', id);
     const snap = await tx.get(ref);
-    const current = snap.exists() ? Number(snap.data()?.levelXp ?? 0) : 0;
-    const next = Math.max(0, current + amount);
+    const xp = readLevelXpFields(snap.exists() ? (snap.data() as Record<string, unknown>) : undefined);
+    if (xp.pinned != null) {
+      const next = Math.max(0, xp.pinned + amount);
+      tx.set(
+        ref,
+        {
+          levelXpPinned: next,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return next;
+    }
+    const next = Math.max(0, xp.organic + amount);
     tx.set(
       ref,
       {
@@ -177,7 +222,7 @@ export async function adjustLevelXp(uid: string, delta: number) {
 export async function fetchLevelXp(uid: string) {
   const snap = await getDoc(doc(db, 'users', String(uid || '').trim()));
   if (!snap.exists()) return 0;
-  return Number(snap.data()?.levelXp ?? 0);
+  return readLevelXpFields(snap.data() as Record<string, unknown>).effective;
 }
 
 /** Suma coins al saldo Firestore (ganancias del host, etc.). */

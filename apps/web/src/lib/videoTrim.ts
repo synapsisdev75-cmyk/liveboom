@@ -1,5 +1,7 @@
-/** Duración máxima de un Boom Clip / Flash Boom (segundos). */
+/** Duración máxima de un Boom Clip (segundos). Alias canónico: MAX_CLIP_DURATION_SECONDS. */
 export const BOOM_CLIP_MAX_DURATION_SEC = 90;
+/** Nombre oficial de la regla de negocio (front). */
+export const MAX_CLIP_DURATION_SECONDS = BOOM_CLIP_MAX_DURATION_SEC;
 
 function pickRecorderMimeType(): string {
   const candidates = [

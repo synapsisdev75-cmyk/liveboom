@@ -1,13 +1,15 @@
 import {
   addDoc,
   collection,
+  doc,
   getDocs,
   limit,
+  onSnapshot,
   query,
   serverTimestamp,
+  updateDoc,
   where,
   type Unsubscribe,
-  onSnapshot,
 } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 import { firebaseApp } from './firebase';
@@ -111,6 +113,51 @@ export async function createPromotion(input: {
     createdAtMs: Date.now(),
   });
   return { id: ref.id, expiresAtMs };
+}
+
+export function listenMyPromotions(
+  ownerUid: string | null | undefined,
+  onChange: (ads: PromotionAd[]) => void,
+): Unsubscribe {
+  if (!ownerUid) {
+    onChange([]);
+    return () => undefined;
+  }
+  const q = query(collection(db, 'promotions'), where('ownerUid', '==', ownerUid), limit(40));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const now = Date.now();
+      const ads = snap.docs
+        .map((item) => mapAd(item.id, item.data() as Record<string, unknown>))
+        .filter((ad) => ad.active && ad.expiresAtMs > now)
+        .sort((a, b) => b.expiresAtMs - a.expiresAtMs);
+      onChange(ads);
+    },
+    () => onChange([]),
+  );
+}
+
+export async function updatePromotion(
+  promoId: string,
+  patch: Partial<Pick<PromotionAd, 'title' | 'linkUrl' | 'mediaUrl' | 'kind'>>,
+) {
+  const data: {
+    title?: string;
+    linkUrl?: string;
+    mediaUrl?: string;
+    kind?: PromoKind;
+  } = {};
+  if (patch.title !== undefined) data.title = patch.title.slice(0, 80);
+  if (patch.linkUrl !== undefined) data.linkUrl = patch.linkUrl.slice(0, 500);
+  if (patch.mediaUrl !== undefined) data.mediaUrl = patch.mediaUrl.slice(0, 500);
+  if (patch.kind !== undefined) data.kind = patch.kind;
+  if (Object.keys(data).length === 0) return;
+  await updateDoc(doc(db, 'promotions', promoId), data);
+}
+
+export async function deactivatePromotion(promoId: string) {
+  await updateDoc(doc(db, 'promotions', promoId), { active: false });
 }
 
 /** Fallback one-shot si el listener falla. */

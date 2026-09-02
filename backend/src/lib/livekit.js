@@ -55,7 +55,7 @@ async function listActiveLiveRooms() {
         startedAt: room.creationTime
           ? new Date(Number(room.creationTime) * 1000).toISOString()
           : new Date().toISOString(),
-        viewers: Number(room.numParticipants || 0),
+        viewers: Number(room.numParticipants || 0) - 1,
       }))
       .filter((item) => item.username);
   } catch (error) {

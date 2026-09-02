@@ -28,8 +28,9 @@ import {
   reelLifecycleFromCreatedAt,
   targetReelVisibility,
 } from './reelLifecycle';
+import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS } from './contentType';
 import { isStoryActive, isStoryPost, storyExpiresAtFromNow } from './storyLifecycle';
-import { updateStoredMediaVisibility, uploadUserMedia } from './storage';
+import { updateStoredMediaVisibility, uploadUserMedia, type UserMediaStorageKind } from './storage';
 
 export type FriendshipStatus =
   | 'none'
@@ -1185,8 +1186,10 @@ export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscr
       const posts = snap.docs.map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>));
       onChange(
         posts.filter((post) => {
-          if (post.type === 'video' && isStoryPost(post)) return false;
-          return post.type !== 'video' || isReelInPublicFeed(post);
+          if (isStoryPost(post)) return false;
+          // Explorar “Todo”: publicaciones + clips (el UI filtra por chip)
+          if (post.type === 'video') return isReelInPublicFeed(post) || isPublicationPost(post);
+          return true;
         }).slice(0, 60),
       );
     },
@@ -1203,6 +1206,8 @@ function isHomeFeedPost(
 ): boolean {
   if (isStoryPost(post)) return false;
   if (post.visibility === 'circle') return false;
+  // Boom Clip vive solo en la sección Boom Clip, no en Publicaciones
+  if (isBoomClipPost(post)) return false;
 
   const isFriend = friendUids.has(post.authorUid);
   const isFollowing = followingUids.has(post.authorUid);
@@ -1214,10 +1219,9 @@ function isHomeFeedPost(
 
   if (post.visibility === 'friends') return isOwn || isFriend;
 
+  // Videos largos (publicación) públicos
   if (post.type === 'video') {
-    if (post.visibility !== 'public') return false;
-    if (isReelInPublicFeed(post)) return true;
-    return (isFriend || isOwn) && targetReelVisibility(post) === 'friends';
+    return post.visibility === 'public' || post.visibility == null;
   }
 
   return post.visibility === 'public' || post.visibility == null;
@@ -1484,18 +1488,12 @@ export async function getPostById(postId: string): Promise<FsPost | null> {
   return postFromDoc(snap.id, snap.data() as Record<string, unknown>);
 }
 
-/** Reels / videos públicos en carrusel (no historias). */
+/** Boom Clip: solo videos cortos públicos en carrusel (no fotos ni historias). */
 export function listenActiveReels(onChange: (posts: FsPost[]) => void): Unsubscribe {
   return listenRecentPosts((posts) => {
     onChange(
       diversifyReelFeed(
-        posts.filter(
-          (post) =>
-            (post.type === 'video' || post.type === 'photo') &&
-            post.mediaUrl &&
-            !isStoryPost(post) &&
-            isReelInPublicFeed(post),
-        ),
+        posts.filter((post) => isBoomClipPost(post) && isReelInPublicFeed(post)),
         2,
         16,
       ),
@@ -1702,6 +1700,8 @@ export async function createPost(input: {
   postFormat?: 'story' | 'post';
   durationSec?: number;
   notifyFriends?: boolean;
+  musicTrackId?: string;
+  musicStartSec?: number;
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -1712,16 +1712,29 @@ export async function createPost(input: {
   let mediaUrl: string | null = null;
   let storagePath: string | null = null;
   const isStory = input.postFormat === 'story';
-  const isBoomClip = input.postFormat === 'post';
+  // Boom Clip = solo video con postFormat post (nunca foto)
+  const isBoomClip = input.postFormat === 'post' && input.type === 'video';
   const visibility = isStory ? 'circle' : input.visibility || 'public';
-  const postFormat =
-    isStory || isBoomClip
-      ? input.postFormat
-      : input.type === 'video'
-        ? 'post'
-        : undefined;
+  const durationSec = Math.max(0, Math.floor(Number(input.durationSec) || 0));
+  const postFormat = isStory
+    ? 'story'
+    : isBoomClip
+      ? 'post'
+      : undefined;
+
+  if (input.postFormat === 'post' && input.type !== 'video') {
+    throw new Error('Boom Clip solo admite video (máx. 90 s). Usa Publicación para fotos.');
+  }
+  if (isBoomClip && durationSec > 0 && durationSec > MAX_CLIP_DURATION_SECONDS) {
+    throw new Error(`Boom Clip debe durar máximo ${MAX_CLIP_DURATION_SECONDS} segundos.`);
+  }
 
   if (input.type === 'photo' || input.type === 'video') {
+    const storageKind: UserMediaStorageKind = isStory
+      ? 'flash_boom'
+      : isBoomClip
+        ? 'boom_clip'
+        : 'publication';
     if (input.mediaFile) {
       const fileName =
         input.mediaFile instanceof File && input.mediaFile.name
@@ -1729,7 +1742,13 @@ export async function createPost(input: {
           : input.type === 'video'
             ? 'clip.mp4'
             : 'photo.jpg';
-      const uploaded = await uploadUserMedia(input.authorUid, input.mediaFile, fileName, visibility);
+      const uploaded = await uploadUserMedia(
+        input.authorUid,
+        input.mediaFile,
+        fileName,
+        visibility,
+        storageKind,
+      );
       mediaUrl = uploaded.url;
       storagePath = uploaded.storagePath;
     } else if (input.mediaUrl?.startsWith('data:')) {
@@ -1739,6 +1758,7 @@ export async function createPost(input: {
         blob,
         input.type === 'video' ? 'clip.mp4' : 'photo.jpg',
         visibility,
+        storageKind,
       );
       mediaUrl = uploaded.url;
       storagePath = uploaded.storagePath;
@@ -1763,12 +1783,24 @@ export async function createPost(input: {
     ...(isStory
       ? {
           storyExpiresAtMs: storyExpiresAtFromNow(),
-          ...(input.type === 'video'
-            ? { durationSec: Math.max(0, Math.floor(Number(input.durationSec) || 0)) }
-            : {}),
+          ...(input.type === 'video' ? { durationSec } : {}),
         }
       : {}),
-    ...(postFormat === 'post' ? reelLifecycleFromCreatedAt(Date.now()) : {}),
+    ...(isBoomClip
+      ? {
+          ...reelLifecycleFromCreatedAt(Date.now()),
+          durationSec,
+        }
+      : {}),
+    ...(input.type === 'video' && !isStory && !isBoomClip && durationSec > 0
+      ? { durationSec }
+      : {}),
+    ...(input.musicTrackId
+      ? {
+          musicTrackId: input.musicTrackId,
+          ...(input.musicStartSec != null ? { musicStartSec: input.musicStartSec } : {}),
+        }
+      : {}),
   });
   if (visibility === 'public' && input.caption.trim()) {
     void import('./trendsFirestore')

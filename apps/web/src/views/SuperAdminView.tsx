@@ -196,11 +196,11 @@ export function SuperAdminView() {
       <div className="flex flex-wrap gap-2">
         {(
           [
-            ['users', 'Usuarios / XP'],
-            ['messages', 'Mensajes'],
-            ['levels', 'Niveles / Marcos'],
-          ] as const
-        ).map(([id, label]) => (
+            { id: 'users' as const, label: 'Usuarios / XP' },
+            { id: 'messages' as const, label: 'Mensajes' },
+            { id: 'levels' as const, label: 'Niveles / Marcos' },
+          ] as { id: AdminTab; label: string }[]
+        ).map(({ id, label }) => (
           <button
             key={id}
             type="button"

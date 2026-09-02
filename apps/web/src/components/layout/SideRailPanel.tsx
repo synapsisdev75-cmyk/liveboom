@@ -13,7 +13,6 @@ import {
   MessageCircle,
   Plus,
   Radio,
-  Rocket,
   ShieldCheck,
   Sparkles,
   Star,
@@ -24,7 +23,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useLocation, useMatch } from 'react-router-dom';
+import { MyPromotionsModal } from '../ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../ads/PromoteAdsModal';
+import { PublicidadSidebarCard } from '../ads/PublicidadSidebarCard';
 import { FollowButton } from '../social/SocialPostCard';
 import {
   joinGroup,
@@ -35,7 +36,7 @@ import {
 } from '../../lib/groupsFirestore';
 import { listenLiveActivity, listenLiveAlerts, type LiveActivityEntry } from '../../lib/liveGiftsFirestore';
 import { fetchLevelXp } from '../../lib/profileFirestore';
-import { listenActivePromotions, type PromotionAd } from '../../lib/promotionsFirestore';
+import { listenActivePromotions, listenMyPromotions, type PromotionAd } from '../../lib/promotionsFirestore';
 import {
   browseSuggestedCreators,
   listenIncomingRequests,
@@ -632,7 +633,7 @@ function ActivityRail() {
                   />
                   <path d={pathD} fill="none" stroke="#8B5CF6" strokeWidth="2.5" strokeLinejoin="round" />
                 </>
-              ) : null}
+          ) : null}
               {coords.map((p, i) => (
                 <circle key={i} cx={p.x} cy={p.y} r={p === peak ? 4.5 : 3} fill="#A78BFA" />
               ))}
@@ -732,7 +733,7 @@ function ActivityRail() {
           <p className="text-sm font-bold text-white">Grupos populares</p>
           <Link to="/grupos" className="text-[11px] font-semibold text-violet-400 hover:underline">
             Ver todos
-          </Link>
+        </Link>
         </div>
         {suggestedGroups.length === 0 ? (
           <p className="text-xs text-zinc-500">Pronto verás grupos sugeridos aquí.</p>
@@ -1051,12 +1052,12 @@ function MessagesRail() {
                     Unirse
                   </button>
                 ) : (
-                  <Link
+                <Link
                     to="/login"
                     className="shrink-0 rounded-full border border-cyan-400/70 px-2.5 py-1 text-[10px] font-bold text-cyan-300"
-                  >
+                >
                     Unirse
-                  </Link>
+                </Link>
                 )}
               </li>
             ))}
@@ -1067,12 +1068,12 @@ function MessagesRail() {
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-sm font-bold text-white">Actividad reciente</p>
-          <Link
+        <Link
             to="/actividad"
             className="shrink-0 text-[11px] font-semibold text-cyan-400 hover:underline"
-          >
+        >
             Ver todas
-          </Link>
+        </Link>
         </div>
         {activity.length === 0 ? (
           <p className="text-xs text-zinc-500">Cuando haya actividad, la verás aquí.</p>
@@ -1142,7 +1143,7 @@ function SettingsRail() {
     return sameDay ? `Hoy, ${time}` : d.toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
   })();
 
-  return (
+    return (
     <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <p className="text-sm font-bold text-white">Resumen de cuenta</p>
@@ -1151,7 +1152,7 @@ function SettingsRail() {
             <span className="text-xs text-zinc-500">Mi nivel</span>
             <span className="inline-flex items-center gap-1 text-sm font-bold text-violet-300">
               <ShieldCheck size={14} /> {levelInfo.title} · Nv {levelInfo.level}
-            </span>
+      </span>
           </li>
           <li className="flex items-center justify-between gap-2">
             <span className="text-xs text-zinc-500">Coins actuales</span>
@@ -1272,25 +1273,20 @@ function SettingsRail() {
   );
 }
 
-function adHref(ad: PromotionAd) {
-  const raw = ad.linkUrl.trim();
-  if (!raw) return `/u/${encodeURIComponent(ad.ownerUsername)}`;
-  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) return raw;
-  return `/${raw}`;
-}
-
 function DiscoveryRail() {
   const profile = useAuthStore((state) => state.profile);
   const locationPath = useLocation().pathname;
   const onGroups = locationPath.startsWith('/grupos');
   const [location, setLocation] = useState<PrivateUserLocation | null>(null);
   const [ads, setAds] = useState<PromotionAd[]>([]);
+  const [myAds, setMyAds] = useState<PromotionAd[]>([]);
   const [trends, setTrends] = useState<TrendTag[]>([]);
   const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5);
   const [publicGroups, setPublicGroups] = useState<LiveGroup[]>([]);
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [joinBusy, setJoinBusy] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
+  const [myPromotionsOpen, setMyPromotionsOpen] = useState(false);
   const [locBusy, setLocBusy] = useState(false);
   const [showPrompt, setShowPrompt] = useState(() => !locationPromptDismissed());
 
@@ -1305,6 +1301,7 @@ function DiscoveryRail() {
   }, [profile?.firebaseUid]);
 
   useEffect(() => listenActivePromotions(location?.regionId || 'nacional', setAds), [location?.regionId]);
+  useEffect(() => listenMyPromotions(profile?.firebaseUid, setMyAds), [profile?.firebaseUid]);
   useEffect(() => listenTopTrends(setTrends), []);
   useEffect(() => {
     if (!onGroups) return;
@@ -1356,7 +1353,6 @@ function DiscoveryRail() {
     }
   }
 
-  const featuredAd = ads[0];
   const suggestedGroups = publicGroups
     .filter((g) => !myGroups.some((m) => m.id === g.id))
     .slice(0, 5);
@@ -1364,7 +1360,7 @@ function DiscoveryRail() {
 
   return (
     <>
-      <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:p-4">
+      <aside className="chat-scroll hidden w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:max-w-[19rem] lg:p-4">
         {/* Arrow 1: Crear tu grupo — arriba de Publicidad */}
         {onGroups ? (
           <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
@@ -1377,7 +1373,7 @@ function DiscoveryRail() {
                 </p>
               </div>
             </div>
-            <Link
+    <Link
               to="/grupos?tab=crear"
               className={`mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-full text-xs font-bold ${JOIN_BTN}`}
             >
@@ -1386,64 +1382,13 @@ function DiscoveryRail() {
           </section>
         ) : null}
 
-        <section className="lb-card overflow-hidden rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-600/40 via-violet-700/30 to-pink-600/20 p-3.5 shadow-[0_0_28px_rgba(168,85,247,0.18)]">
-          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-fuchsia-200">
-            <Megaphone size={12} /> Publicidad
-          </p>
-          {featuredAd ? (
-            <Link to={adHref(featuredAd)} className="mt-2 block">
-              {featuredAd.mediaUrl && !featuredAd.mediaUrl.match(/\.(mp4|webm)/i) ? (
-                <img
-                  src={featuredAd.mediaUrl}
-                  alt=""
-                  className="mb-2 aspect-[16/9] w-full rounded-xl object-cover"
-                />
-              ) : null}
-              <p className="text-sm font-bold text-white">{featuredAd.title}</p>
-              <p className="mt-1 text-[11px] text-zinc-300">@{featuredAd.ownerUsername}</p>
-            </Link>
-          ) : (
-            <>
-              <p className="mt-2 text-sm font-bold leading-snug text-white">
-                Recarga Coins y obtén hasta 20% EXTRA
-              </p>
-              <p className="mt-1 text-[11px] text-zinc-300">Promociona tu live o marca por región.</p>
-            </>
-          )}
-          <div className="mt-3 flex flex-col gap-2">
-            <Link
-              to="/billetera"
-              className="lb-gradient-btn grid min-h-10 place-items-center rounded-xl px-3 text-xs font-bold text-white"
-            >
-              Recargar ahora
-            </Link>
-            {profile ? (
-              <button
-                type="button"
-                onClick={() => setPromoteOpen(true)}
-                className="text-center text-[11px] font-semibold text-fuchsia-200 hover:underline"
-              >
-                Promocionar anuncio
-              </button>
-            ) : null}
-          </div>
-        </section>
-
-        {/* Arrow 2: Impulsa — entre Publicidad y Tu zona */}
-        {onGroups ? (
-          <section className="relative overflow-hidden rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-500/15 via-[#14151c] to-violet-600/20 p-3.5">
-            <Rocket className="absolute -right-2 top-1 h-14 w-14 rotate-12 text-orange-400/40" />
-            <p className="text-sm font-bold text-white">Impulsa tu grupo</p>
-            <p className="mt-1 text-[11px] text-zinc-400">Destácalo y llega a más personas.</p>
-            <button
-              type="button"
-              onClick={() => setPromoteOpen(true)}
-              className={`mt-3 flex h-9 w-full items-center justify-center rounded-full text-xs font-bold ${JOIN_BTN}`}
-            >
-              Promocionar
-            </button>
-          </section>
-        ) : null}
+        <PublicidadSidebarCard
+          ads={ads}
+          myAds={myAds}
+          loggedIn={Boolean(profile)}
+          onConfigure={() => setPromoteOpen(true)}
+          onManageMyPromotions={() => setMyPromotionsOpen(true)}
+        />
 
         {profile ? (
           <section className="lb-panel rounded-2xl p-3">
@@ -1540,7 +1485,7 @@ function DiscoveryRail() {
                         <span className="block truncate text-xs font-semibold text-white">{g.name}</span>
                         <span className="text-[10px] text-zinc-500">
                           {formatCount(g.memberCount)} miembros
-                        </span>
+      </span>
                       </span>
                       {profile ? (
                         <button
@@ -1557,7 +1502,7 @@ function DiscoveryRail() {
                           className="shrink-0 rounded-full border border-cyan-400/50 px-2.5 py-1 text-[10px] font-bold text-cyan-300"
                         >
                           Unirse
-                        </Link>
+    </Link>
                       )}
                     </li>
                   ))}
@@ -1675,7 +1620,7 @@ function DiscoveryRail() {
               onClick={() => setPromoteOpen(true)}
               className="min-h-10 shrink-0 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-3 py-2 text-[11px] font-bold text-zinc-950"
             >
-              Promocionar
+              Publicidad
             </button>
           ) : null}
           <Link
@@ -1698,6 +1643,9 @@ function DiscoveryRail() {
           defaultRegionId={location?.regionId || 'nacional'}
           onClose={() => setPromoteOpen(false)}
         />
+      ) : null}
+      {myPromotionsOpen ? (
+        <MyPromotionsModal ads={myAds} onClose={() => setMyPromotionsOpen(false)} />
       ) : null}
     </>
   );

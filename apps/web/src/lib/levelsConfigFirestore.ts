@@ -15,6 +15,8 @@ const DOC_PATH = 'config/levels';
 export type RemoteTierConfig = DefaultTierSeed & {
   frameImageUrl: string;
   badgeImageUrl: string;
+  badgeAnimWebm?: string | null;
+  badgeAnimMp4?: string | null;
 };
 
 export type LevelsConfigDoc = {

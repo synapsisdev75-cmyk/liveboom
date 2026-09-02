@@ -207,6 +207,8 @@ export function GroupsView() {
   const featuredRef = useRef<HTMLDivElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const chatImageRef = useRef<HTMLInputElement>(null);
+  const openedGroupRef = useRef<string | null>(null);
+  const groupDeepLink = searchParams.get('group')?.trim() || '';
 
   useEffect(() => {
     if (searchParams.get('tab') === 'crear') setTab('crear');
@@ -283,6 +285,72 @@ export function GroupsView() {
   }, [profile?.firebaseUid]);
 
   useEffect(() => listenPublicGroups(setPublicGroups), []);
+
+  useEffect(() => {
+    if (!groupDeepLink || !profile) return;
+    if (openedGroupRef.current === groupDeepLink) return;
+
+    const group = [...mine, ...publicGroups].find((g) => g.id === groupDeepLink);
+    if (!group) return;
+
+    openedGroupRef.current = groupDeepLink;
+    let cancelled = false;
+
+    void (async () => {
+      setBusy(true);
+      setNote(null);
+      try {
+        const isMember = mine.some((m) => m.id === groupDeepLink);
+        if (isMember) {
+          await ensureGroupMembership(groupDeepLink, {
+            uid: profile.firebaseUid,
+            username: profile.handle,
+            displayName: profile.displayName || profile.handle,
+            avatarUrl: profile.avatarUrl,
+          });
+          if (!cancelled) {
+            setActiveId(groupDeepLink);
+            selectTab('chat');
+          }
+          return;
+        }
+        if (group.isPublic !== false) {
+          await joinGroup(groupDeepLink, {
+            uid: profile.firebaseUid,
+            username: profile.handle,
+            displayName: profile.displayName || profile.handle,
+            avatarUrl: profile.avatarUrl,
+          });
+          if (!cancelled) {
+            setActiveId(groupDeepLink);
+            selectTab('chat');
+          }
+        } else if (!cancelled) {
+          selectTab('descubrir');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setNote(err instanceof Error ? err.message : 'No se pudo abrir el grupo');
+        }
+      } finally {
+        if (!cancelled) setBusy(false);
+        if (!cancelled) {
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete('group');
+              return next;
+            },
+            { replace: true },
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [groupDeepLink, profile?.firebaseUid, mine, publicGroups]);
 
   useEffect(() => {
     if (!activeId) {

@@ -56,6 +56,36 @@ service firebase.storage {
         );
     }
 
+    // Publicaciones (foto / video / carrusel) — carpeta dedicada
+    match /users/{userId}/publicaciones/{fileName} {
+      allow read: if canReadPostFile(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 50 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
+    // Boom Clip — videos cortos (máx. 90 s)
+    match /users/{userId}/boom-clips/{fileName} {
+      allow read: if canReadPostFile(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 50 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+    }
+
+    // Flash Boom — historias 24 h
+    match /users/{userId}/flash-boom/{fileName} {
+      allow read: if canReadPostFile(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 50 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
     match /users/{userId}/chat/{fileName} {
       allow read: if signedIn();
       allow write: if isOwner(userId)
@@ -116,6 +146,16 @@ service firebase.storage {
       allow write: if signedIn()
         && request.auth.token.email == 'synapsisdev75@gmail.com'
         && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Pedidos UI — capturas. Solo el UID dueño de la carpeta puede subir.
+    // Quién es super admin se valida en Firestore (adminChangeRequests) + UI.
+    match /admin/change-requests/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 

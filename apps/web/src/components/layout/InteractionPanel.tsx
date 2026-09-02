@@ -2,7 +2,7 @@ import { Gift, Send, Smile, WalletCards } from 'lucide-react';
 import { useMemo } from 'react';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { api } from '../../lib/api';
-import { LIVEBOOM_GIFTS } from '../../lib/liveboomGifts';
+import { sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { getSocket } from '../../lib/socket';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
@@ -20,10 +20,7 @@ export function InteractionPanel() {
   const coins = useAuthStore((s) => s.profile?.coins ?? 0);
   const setCoins = useAuthStore((s) => s.setCoins);
   const syncProfile = useAuthStore((s) => s.syncProfile);
-  const giftCatalog = useMemo(
-    () => [...LIVEBOOM_GIFTS].sort((a, b) => a.coins - b.coins),
-    [],
-  );
+  const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
 
   const first = donors.find((d) => d.rank === 1);
   const second = donors.find((d) => d.rank === 2);
@@ -39,7 +36,7 @@ export function InteractionPanel() {
 
   async function sendGift(giftId: string) {
     if (!stream) return;
-    const gift = LIVEBOOM_GIFTS.find((item) => item.id === giftId);
+    const gift = giftCatalog.find((item) => item.id === giftId);
     if (!gift) return;
     if (coins < gift.coins) {
       setToast('Saldo insuficiente. Recarga coins para continuar.');

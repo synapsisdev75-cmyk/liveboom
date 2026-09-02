@@ -1,0 +1,30 @@
+---
+description: Mobile-first UI and always deploy LiveBoom to Firebase (liveboomapp.com / www)
+alwaysApply: true
+---
+
+# LiveBoom: móvil + deploy
+
+## Parte de responsive universal
+
+Ver también `liveboom-responsive-universal.mdc`: **una sola app** PC/tablet/móvil con paridad de funciones. Móvil es prioridad de prueba, no una “versión distinta”.
+
+## Mobile-first (siempre)
+
+- Toda UI y función nueva debe funcionar en viewport estrecho, safe-area y touch — y también en desktop/tablet.
+- Prioriza `dvh`, `env(safe-area-inset-*)` / `--lb-safe-*`, bottom nav y paneles absolutos sin tapar controles críticos.
+- Evita paneles que choquen en pantallas pequeñas; un solo panel abierto a la vez cuando sea posible.
+- Thumb reach, botones ≥ ~44px (touch), texto legible, regalos/overlays sin tapar la cara del host.
+- No dar por terminado un cambio que solo se ve bien en escritorio.
+
+## Deploy obligatorio al cerrar cambios de producto
+
+Cuando el usuario pida ver cambios en producción o tras features listas:
+
+1. `npm run build -w apps/web`
+2. Desplegar Firebase al proyecto `liveboom-app`:
+   - Hosting (sirve **https://liveboomapp.com**, **https://www.liveboomapp.com** y **https://liveboom-app.web.app** — mismo sitio)
+   - Incluir `firestore:rules` / indexes / storage si se tocaron
+3. Si cambió el API (`backend/`), desplegar también Vercel (`liveboom.vercel.app`) para que www use la lógica nueva (coins, gifts, locks).
+
+No dar por “listo en www” solo con build local.

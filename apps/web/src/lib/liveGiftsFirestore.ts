@@ -41,6 +41,7 @@ export async function markLiveRoomActive(
     title?: string;
     category?: string;
     isPrivate?: boolean;
+    aspectRatio?: '16:9' | '9:16';
   },
 ) {
   const username = roomKey(roomName);
@@ -55,6 +56,7 @@ export async function markLiveRoomActive(
       title: meta?.title || `Live de ${meta?.displayName || roomName}`,
       category: meta?.category || 'otro',
       isPrivate: Boolean(meta?.isPrivate),
+      aspectRatio: meta?.aspectRatio === '16:9' ? '16:9' : '9:16',
       lockGiftId: null,
       viewers: 0,
       startedAtMs: Date.now(),
@@ -85,6 +87,7 @@ export async function touchLiveRoomHeartbeat(roomName: string) {
 
 /** Marca la sala como cerrada cuando el anfitrión deja de transmitir. */
 export async function markLiveRoomEnded(roomName: string) {
+  await clearLiveViewers(roomName).catch(() => undefined);
   await setDoc(
     doc(db, 'liveRooms', roomKey(roomName)),
     {
@@ -118,6 +121,152 @@ export async function updateLiveRoomFeed(
   if (typeof patch.viewers === 'number') data.viewers = Math.max(0, Math.floor(patch.viewers));
   if (typeof patch.title === 'string' && patch.title.trim()) data.title = patch.title.trim().slice(0, 80);
   await setDoc(doc(db, 'liveRooms', roomKey(roomName)), data, { merge: true });
+}
+
+/** TTL de pulso de espectador: sin heartbeat reciente no cuenta en el total. */
+export const LIVE_VIEWER_HEARTBEAT_TTL_MS = 45_000;
+
+export type LiveViewerPresence = {
+  uid: string;
+  username: string;
+  displayName: string;
+  joinedAtMs: number;
+  heartbeatAtMs: number;
+};
+
+function countActiveViewerDocs(docs: { data: () => DocumentData }[], now = Date.now()) {
+  return docs.filter((item) => {
+    const data = item.data();
+    const heartbeatAtMs = Number(data.heartbeatAtMs || data.joinedAtMs || 0);
+    return heartbeatAtMs > 0 && now - heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS;
+  }).length;
+}
+
+async function syncLiveViewerCount(roomName: string) {
+  const key = roomKey(roomName);
+  const snap = await getDocs(collection(db, 'liveRooms', key, 'viewers'));
+  const now = Date.now();
+  let active = 0;
+  const batch = writeBatch(db);
+  let hasDeletes = false;
+  for (const item of snap.docs) {
+    const heartbeatAtMs = Number(item.data().heartbeatAtMs || item.data().joinedAtMs || 0);
+    if (heartbeatAtMs > 0 && now - heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS) {
+      active += 1;
+    } else {
+      batch.delete(item.ref);
+      hasDeletes = true;
+    }
+  }
+  if (hasDeletes) await batch.commit();
+  await updateLiveRoomFeed(roomName, { viewers: active });
+}
+
+/** Host: limpia espectadores inactivos y actualiza contador en feed. */
+export async function refreshLiveViewerCount(roomName: string) {
+  await syncLiveViewerCount(roomName);
+}
+
+/** Espectador entra al live: +1 en contador real. */
+export async function registerLiveViewer(
+  roomName: string,
+  user: { uid: string; username: string; displayName?: string },
+) {
+  const uid = String(user.uid || '').trim();
+  if (!uid) return;
+  const now = Date.now();
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName), 'viewers', uid),
+    {
+      uid,
+      username: String(user.username || uid).slice(0, 40),
+      displayName: String(user.displayName || user.username || 'Espectador').slice(0, 60),
+      joinedAtMs: now,
+      heartbeatAtMs: now,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await syncLiveViewerCount(roomName);
+}
+
+/** Pulso del espectador mientras permanece en la sala. */
+export async function touchLiveViewerHeartbeat(roomName: string, uid: string) {
+  const id = String(uid || '').trim();
+  if (!id) return;
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName), 'viewers', id),
+    {
+      heartbeatAtMs: Date.now(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+/** Espectador sale del live: -1 en contador real. */
+export async function unregisterLiveViewer(roomName: string, uid: string) {
+  const id = String(uid || '').trim();
+  if (!id) return;
+  await deleteDoc(doc(db, 'liveRooms', roomKey(roomName), 'viewers', id)).catch(() => undefined);
+  await syncLiveViewerCount(roomName);
+}
+
+/** Limpia presencia al cerrar el live. */
+export async function clearLiveViewers(roomName: string) {
+  const key = roomKey(roomName);
+  const snap = await getDocs(collection(db, 'liveRooms', key, 'viewers'));
+  if (!snap.empty) {
+    const batch = writeBatch(db);
+    snap.docs.forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+  }
+  await updateLiveRoomFeed(roomName, { viewers: 0 });
+}
+
+/** Contador en tiempo real de espectadores activos (solo quienes están en /stream). */
+export function listenLiveRoomViewerCount(
+  roomName: string,
+  onChange: (count: number) => void,
+): Unsubscribe {
+  const key = roomKey(roomName);
+  const emit = (snap: { docs: { data: () => DocumentData }[] }) => {
+    onChange(countActiveViewerDocs(snap.docs));
+  };
+  return onSnapshot(
+    collection(db, 'liveRooms', key, 'viewers'),
+    emit,
+    () => onChange(0),
+  );
+}
+
+/** Lista de espectadores activos para el panel del host. */
+export function listenLiveViewers(
+  roomName: string,
+  onChange: (viewers: LiveViewerPresence[]) => void,
+): Unsubscribe {
+  const key = roomKey(roomName);
+  return onSnapshot(
+    collection(db, 'liveRooms', key, 'viewers'),
+    (snap) => {
+      const now = Date.now();
+      const list = snap.docs
+        .map((item) => {
+          const data = item.data();
+          return {
+            uid: item.id,
+            username: String(data.username || item.id),
+            displayName: String(data.displayName || data.username || item.id),
+            joinedAtMs: Number(data.joinedAtMs || 0),
+            heartbeatAtMs: Number(data.heartbeatAtMs || data.joinedAtMs || 0),
+          };
+        })
+        .filter((v) => v.heartbeatAtMs > 0 && now - v.heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS)
+        .sort((a, b) => b.joinedAtMs - a.joinedAtMs);
+      onChange(list);
+    },
+    () => onChange([]),
+  );
 }
 
 export type ActiveLiveFeedItem = {

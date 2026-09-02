@@ -34,25 +34,47 @@ export const PROMO_KINDS = [
 
 export type PromoKind = (typeof PROMO_KINDS)[number]['id'];
 
-/** Precio base por día en pesos colombianos (COP). */
-export const PROMO_COP_PER_DAY = 15_000;
-export const PROMO_DAYS_MIN = 1;
-export const PROMO_DAYS_MAX = 14;
+/** Paquetes de publicidad (duración fija + precio COP). Mantener sincronizado con `backend/src/lib/promoPackages.js`. */
+export const PROMO_PACKAGES = [
+  { id: '1d', days: 1, priceCop: 19_900, label: '1 día' },
+  { id: '3d', days: 3, priceCop: 49_900, label: '3 días' },
+  { id: '7d', days: 7, priceCop: 99_900, label: '7 días' },
+  { id: '15d', days: 15, priceCop: 179_900, label: '15 días' },
+  { id: '30d', days: 30, priceCop: 299_900, label: '30 días' },
+] as const;
 
-/** Nacional cuesta 50% más por día. */
-export function promoCopPerDay(regionId: string) {
-  const base = PROMO_COP_PER_DAY;
-  return regionId === 'nacional' ? Math.round(base * 1.5) : base;
+/** Banner publicitario 3:1 — referencia obligatoria para imagen y video. */
+export const PROMO_BANNER_WIDTH = 2172;
+export const PROMO_BANNER_HEIGHT = 724;
+export const PROMO_BANNER_SIZE_LABEL = `${PROMO_BANNER_WIDTH} × ${PROMO_BANNER_HEIGHT}`;
+
+export type PromoPackageId = (typeof PROMO_PACKAGES)[number]['id'];
+
+export const PROMO_DAYS_MIN = PROMO_PACKAGES[0]!.days;
+export const PROMO_DAYS_MAX = PROMO_PACKAGES[PROMO_PACKAGES.length - 1]!.days;
+
+export function promoPackageByDays(days: number) {
+  const d = Math.floor(Number(days) || PROMO_PACKAGES[0].days);
+  return PROMO_PACKAGES.find((p) => p.days === d) ?? PROMO_PACKAGES[0];
+}
+
+export function promoPackageById(id: string) {
+  return PROMO_PACKAGES.find((p) => p.id === id) ?? PROMO_PACKAGES[0];
+}
+
+/** Precio efectivo por día del paquete seleccionado (solo informativo). */
+export function promoCopPerDay(days: number, _regionId?: string) {
+  const pkg = promoPackageByDays(days);
+  return Math.round(pkg.priceCop / pkg.days);
 }
 
 /** Centavos COP para Wompi (1 COP = 100 cents). */
-export function promoAmountInCents(days: number, regionId: string) {
-  const d = Math.min(PROMO_DAYS_MAX, Math.max(PROMO_DAYS_MIN, Math.floor(Number(days) || 1)));
-  return d * promoCopPerDay(regionId) * 100;
+export function promoAmountInCents(days: number, _regionId?: string) {
+  return promoPackageByDays(days).priceCop * 100;
 }
 
-export function promoTotalCop(days: number, regionId: string) {
-  return promoAmountInCents(days, regionId) / 100;
+export function promoTotalCop(days: number, _regionId?: string) {
+  return promoPackageByDays(days).priceCop;
 }
 
 export function formatPromoCop(amount: number) {

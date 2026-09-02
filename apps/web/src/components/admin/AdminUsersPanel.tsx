@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Minus, Plus, RefreshCw, Search, Users } from 'lucide-react';
+import { ExternalLink, Minus, Plus, RefreshCw, Search, Shield, Users } from 'lucide-react';
 import { listAdminUsers, type AdminUserRow } from '../../lib/adminUsersFirestore';
-import { adjustLevelXp, profileHref, setLevelXp } from '../../lib/profileFirestore';
+import { adjustLevelXp, clearLevelXpPin, profileHref, setLevelXp } from '../../lib/profileFirestore';
+import { isOwnerEmail } from '../../lib/superAdmin';
+import { listenSuperAdmins, saveSuperAdminEmails } from '../../lib/superAdminsFirestore';
+import { useAuthStore } from '../../store/authStore';
 
 type Filter = 'all' | 'online' | 'offline';
 
@@ -21,6 +24,8 @@ function formatWhen(iso: string | null) {
 }
 
 export function AdminUsersPanel() {
+  const profile = useAuthStore((s) => s.profile);
+  const owner = isOwnerEmail(profile?.email);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +34,18 @@ export function AdminUsersPanel() {
   const [xpDraft, setXpDraft] = useState<Record<string, string>>({});
   const [xpBusy, setXpBusy] = useState<string | null>(null);
   const [xpMsg, setXpMsg] = useState<string | null>(null);
+  const [superEmails, setSuperEmails] = useState<string[]>([]);
+  const [delegateBusy, setDelegateBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!owner) return;
+    return listenSuperAdmins((doc) => setSuperEmails(doc?.emails ?? []));
+  }, [owner]);
+
+  const superSet = useMemo(
+    () => new Set(superEmails.map((e) => e.toLowerCase())),
+    [superEmails],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,9 +88,22 @@ export function AdminUsersPanel() {
     });
   }, [users, filter, q]);
 
-  function patchUserXp(uid: string, nextXp: number) {
+  function patchUserXp(
+    uid: string,
+    nextXp: number,
+    opts?: { pinned?: number | null; organic?: number },
+  ) {
     setUsers((prev) =>
-      prev.map((u) => (u.uid === uid ? { ...u, levelXp: nextXp } : u)),
+      prev.map((u) =>
+        u.uid === uid
+          ? {
+              ...u,
+              levelXp: nextXp,
+              levelXpPinned: opts?.pinned !== undefined ? opts.pinned : u.levelXpPinned,
+              levelXpOrganic: opts?.organic ?? u.levelXpOrganic,
+            }
+          : u,
+      ),
     );
     setXpDraft((prev) => ({ ...prev, [uid]: String(nextXp) }));
   }
@@ -85,8 +115,8 @@ export function AdminUsersPanel() {
     setXpMsg(null);
     try {
       const next = await setLevelXp(uid, value);
-      patchUserXp(uid, next);
-      setXpMsg(`XP fijado a ${next.toLocaleString('es-CO')}`);
+      patchUserXp(uid, next, { pinned: next });
+      setXpMsg(`Nivel fijado en ${next.toLocaleString('es-CO')} XP (no cambia con regalos/compras)`);
     } catch (err) {
       setXpMsg(err instanceof Error ? err.message : 'Error al guardar XP');
     } finally {
@@ -100,7 +130,10 @@ export function AdminUsersPanel() {
     try {
       const next = await adjustLevelXp(uid, delta);
       if (next == null) return;
-      patchUserXp(uid, next);
+      const row = users.find((u) => u.uid === uid);
+      patchUserXp(uid, next, {
+        pinned: row?.levelXpPinned != null ? next : null,
+      });
       setXpMsg(
         delta >= 0
           ? `+${delta} XP → ${next.toLocaleString('es-CO')}`
@@ -110,6 +143,55 @@ export function AdminUsersPanel() {
       setXpMsg(err instanceof Error ? err.message : 'Error al ajustar XP');
     } finally {
       setXpBusy(null);
+    }
+  }
+
+  async function onClearPin(uid: string) {
+    setXpBusy(uid);
+    setXpMsg(null);
+    try {
+      const next = await clearLevelXpPin(uid);
+      patchUserXp(uid, next, { pinned: null, organic: next });
+      setXpMsg(`Nivel liberado → ${next.toLocaleString('es-CO')} XP (orgánico)`);
+    } catch (err) {
+      setXpMsg(err instanceof Error ? err.message : 'Error al liberar nivel');
+    } finally {
+      setXpBusy(null);
+    }
+  }
+
+  async function onDelegate(user: AdminUserRow) {
+    if (!owner || !profile?.email) return;
+    const em = user.email.trim().toLowerCase();
+    if (!em || isOwnerEmail(em) || superSet.has(em)) return;
+    setDelegateBusy(user.uid);
+    setXpMsg(null);
+    try {
+      await saveSuperAdminEmails([...superEmails, em], profile.email);
+      setXpMsg(`Delegado Super Admin: ${em}`);
+    } catch (err) {
+      setXpMsg(err instanceof Error ? err.message : 'No se pudo delegar');
+    } finally {
+      setDelegateBusy(null);
+    }
+  }
+
+  async function onRevoke(user: AdminUserRow) {
+    if (!owner || !profile?.email) return;
+    const em = user.email.trim().toLowerCase();
+    if (!em || isOwnerEmail(em)) return;
+    setDelegateBusy(user.uid);
+    setXpMsg(null);
+    try {
+      await saveSuperAdminEmails(
+        superEmails.filter((x) => x.toLowerCase() !== em),
+        profile.email,
+      );
+      setXpMsg(`Revocado Super Admin: ${em}`);
+    } catch (err) {
+      setXpMsg(err instanceof Error ? err.message : 'No se pudo revocar');
+    } finally {
+      setDelegateBusy(null);
     }
   }
 
@@ -232,18 +314,59 @@ export function AdminUsersPanel() {
                       @{u.username || 'sin-user'} · {u.email || 'sin email'}
                     </p>
                     <p className="mt-0.5 text-[10px] text-zinc-600">
-                      XP {u.levelXp.toLocaleString('es-CO')} · Coins{' '}
-                      {u.coinsBalance.toLocaleString('es-CO')} · Alta {formatWhen(u.createdAt)}
+                      XP {u.levelXp.toLocaleString('es-CO')}
+                      {u.levelXpPinned != null ? (
+                        <span className="ml-1 rounded bg-amber-500/20 px-1 py-px font-bold text-amber-300">
+                          FIJADO
+                        </span>
+                      ) : null}
+                      {u.levelXpPinned != null && u.levelXpOrganic !== u.levelXp ? (
+                        <span className="ml-1 text-zinc-500">
+                          (orgánico {u.levelXpOrganic.toLocaleString('es-CO')})
+                        </span>
+                      ) : null}
+                      {' · '}
+                      Coins {u.coinsBalance.toLocaleString('es-CO')} · Alta {formatWhen(u.createdAt)}
                     </p>
                   </div>
                 </div>
-                <Link
-                  to={u.profilePath || profileHref(u.username, u.uid)}
-                  className="inline-flex min-h-10 shrink-0 items-center gap-1.5 self-start rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-200 sm:self-center"
-                >
-                  Ver perfil
-                  <ExternalLink size={12} />
-                </Link>
+                <div className="flex shrink-0 flex-wrap gap-2 self-start sm:self-center">
+                  {owner && u.email && !isOwnerEmail(u.email) ? (
+                    superSet.has(u.email.toLowerCase()) ? (
+                      <button
+                        type="button"
+                        disabled={delegateBusy === u.uid}
+                        onClick={() => void onRevoke(u)}
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 disabled:opacity-50"
+                      >
+                        <Shield size={12} />
+                        Quitar super
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={delegateBusy === u.uid}
+                        onClick={() => void onDelegate(u)}
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 text-xs font-semibold text-fuchsia-200 disabled:opacity-50"
+                      >
+                        <Shield size={12} />
+                        Delegar super
+                      </button>
+                    )
+                  ) : null}
+                  {owner && isOwnerEmail(u.email) ? (
+                    <span className="inline-flex min-h-10 items-center rounded-xl bg-fuchsia-500/20 px-3 text-[10px] font-bold uppercase text-fuchsia-200">
+                      Dueño
+                    </span>
+                  ) : null}
+                  <Link
+                    to={u.profilePath || profileHref(u.username, u.uid)}
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-200"
+                  >
+                    Ver perfil
+                    <ExternalLink size={12} />
+                  </Link>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 rounded-xl bg-zinc-900/60 p-2">
@@ -281,10 +404,22 @@ export function AdminUsersPanel() {
                   type="button"
                   disabled={xpBusy === u.uid}
                   onClick={() => void onSetXp(u.uid)}
-                  className="h-9 rounded-lg border border-zinc-600 px-3 text-xs font-semibold text-zinc-200 disabled:opacity-50"
+                  className="h-9 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
+                  title="Fija el nivel aunque gane XP por regalos o compras"
                 >
                   Fijar
                 </button>
+                {u.levelXpPinned != null ? (
+                  <button
+                    type="button"
+                    disabled={xpBusy === u.uid}
+                    onClick={() => void onClearPin(u.uid)}
+                    className="h-9 rounded-lg border border-zinc-600 px-3 text-xs font-semibold text-zinc-300 disabled:opacity-50"
+                    title="Vuelve al nivel según XP orgánico acumulado"
+                  >
+                    Liberar
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={xpBusy === u.uid}
@@ -311,8 +446,8 @@ export function AdminUsersPanel() {
                       setXpBusy(u.uid);
                       try {
                         const next = await setLevelXp(u.uid, 0);
-                        patchUserXp(u.uid, next);
-                        setXpMsg('XP puesto en 0');
+                        patchUserXp(u.uid, next, { pinned: 0 });
+                        setXpMsg('Nivel fijado en 0 XP');
                       } catch (err) {
                         setXpMsg(err instanceof Error ? err.message : 'Error');
                       } finally {

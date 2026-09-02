@@ -654,8 +654,8 @@ export function SearchView() {
                       >
                         Rechazar
                       </button>
-                    </>
-                  ) : (
+        </>
+      ) : (
                     <button
                       type="button"
                       disabled={reqBusy === user.id}

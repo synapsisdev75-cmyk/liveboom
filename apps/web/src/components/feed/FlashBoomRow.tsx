@@ -249,7 +249,16 @@ export function FlashBoomRow() {
   function openAuthorStories(authorUid: string) {
     const authorStories = storiesByAuthor.get(authorUid);
     if (!authorStories?.length) return;
-    setViewerReels(authorStories);
+    const avatar =
+      authorUid === profile?.firebaseUid
+        ? profile.avatarUrl
+        : networkPeople.find((p) => p.uid === authorUid)?.avatarUrl;
+    setViewerReels(
+      authorStories.map((story) => ({
+        ...story,
+        authorAvatarUrl: avatar ?? story.authorAvatarUrl ?? null,
+      })),
+    );
     setViewerIndex(0);
   }
 
@@ -262,7 +271,17 @@ export function FlashBoomRow() {
 
     for (const uid of uids) {
       const list = storiesByAuthor.get(uid);
-      if (list?.length) ordered.push(...list);
+      if (!list?.length) continue;
+      const avatar =
+        uid === profile?.firebaseUid
+          ? profile.avatarUrl
+          : networkPeople.find((p) => p.uid === uid)?.avatarUrl;
+      ordered.push(
+        ...list.map((story) => ({
+          ...story,
+          authorAvatarUrl: avatar ?? story.authorAvatarUrl ?? null,
+        })),
+      );
     }
     if (!ordered.length) return;
     const startId = storiesByAuthor.get(startUid)?.[0]?.id;
@@ -358,6 +377,7 @@ export function FlashBoomRow() {
           reels={viewerReels}
           initialIndex={viewerIndex}
           storyMode
+          immersiveLandscapeLayout
           onClose={() => setViewerReels(null)}
         />
       ) : null}

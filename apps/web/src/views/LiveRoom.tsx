@@ -28,6 +28,7 @@ import {
   Unlock,
   UserPlus,
   Users,
+  User,
   Video,
   X,
   Megaphone,
@@ -41,6 +42,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-route
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { GiftBoxStrip } from '../components/live/GiftBoxStrip';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
+import { ScreenShareHostOverlay } from '../components/live/ScreenShareHostOverlay';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, apiPublic, ApiError } from '../lib/api';
@@ -57,18 +59,42 @@ import {
   markLiveRoomEnded,
   updateLiveRoomFeed,
   touchLiveRoomHeartbeat,
+  listenLiveRoomViewerCount,
+  listenLiveViewers,
+  refreshLiveViewerCount,
   listenLiveRoomStatus,
   archiveLiveActivity,
   notifyNetworkImLive,
   setLiveWishlist,
   listenLiveWishlist,
 } from '../lib/liveGiftsFirestore';
+import { useLivePresence } from '../hooks/useLivePresence';
 import { chatAuthorClass } from '../lib/chatAuthorStyle';
 import { downloadReelBlob, savePendingReel } from '../lib/pendingReelStore';
 import { addFirestoreCoins, addLevelXp, fetchLevelXp, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
+import { shareContent } from '../lib/shareContent';
 import { listFollowers, listFriends } from '../lib/socialFirestore';
+import { sendLiveboomGift } from '../lib/giftsFirestore';
+import {
+  canUseDisplayMedia,
+  defaultPipPosition,
+  LiveScreenComposer,
+  readScreenTrackDimensions,
+  screenShareStatusMessage,
+  type PipNormalizedPos,
+} from '../lib/liveScreenComposer';
+import {
+  DEFAULT_LIVE_ASPECT_RATIO,
+  liveCanvasDimensions,
+  liveStageInnerClass,
+  liveStageOuterClass,
+  parseLiveAspectRatio,
+  type LiveAspectRatio,
+} from '../lib/liveAspectRatio';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { levelFromXp } from '../lib/userLevels';
-import { LIVEBOOM_GIFTS, GIFT_LEVEL_FX, findLiveGift } from '../lib/liveboomGifts';
+import { GIFT_LEVEL_FX, findLiveGift, sortedLiveboomGiftCatalog } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 
@@ -95,6 +121,7 @@ type LiveLaunchState = {
   category?: string;
   goalCoins?: number;
   goalLabel?: string;
+  aspectRatio?: LiveAspectRatio;
 };
 
 type LiveSessionStats = {
@@ -167,29 +194,15 @@ function parseRoomData(payload: Uint8Array): RoomPayload | null {
   }
 }
 
-function useViewerCount() {
-  const room = useRoomContext();
-  const [connected, setConnected] = useState(1);
+function useViewerCount(roomName: string) {
+  const [viewers, setViewers] = useState(0);
 
   useEffect(() => {
-    const refresh = () => {
-      setConnected(Math.max(1, room.remoteParticipants.size + 1));
-    };
-    refresh();
-    room.on(RoomEvent.ParticipantConnected, refresh);
-    room.on(RoomEvent.ParticipantDisconnected, refresh);
-    room.on(RoomEvent.Connected, refresh);
-    return () => {
-      room.off(RoomEvent.ParticipantConnected, refresh);
-      room.off(RoomEvent.ParticipantDisconnected, refresh);
-      room.off(RoomEvent.Connected, refresh);
-    };
-  }, [room]);
+    if (!roomName) return;
+    return listenLiveRoomViewerCount(roomName, setViewers);
+  }, [roomName]);
 
-  return {
-    connected,
-    viewers: Math.max(0, connected - 1),
-  };
+  return { viewers };
 }
 
 export function LiveRoom() {
@@ -217,6 +230,10 @@ export function LiveRoom() {
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [viewerPaused, setViewerPaused] = useState(false);
+  const aspectRatioLockedRef = useRef<LiveAspectRatio>(
+    launch.aspectRatio ? parseLiveAspectRatio(launch.aspectRatio) : DEFAULT_LIVE_ASPECT_RATIO,
+  );
+  const [aspectRatio, setAspectRatio] = useState<LiveAspectRatio>(aspectRatioLockedRef.current);
 
   const handleViewerPaused = useCallback((paused: boolean, lock: LockInfo | null) => {
     setViewerPaused(paused);
@@ -243,6 +260,17 @@ export function LiveRoom() {
     };
   }, [livekitRoom]);
 
+  useEffect(() => {
+    if (launch.aspectRatio || !canonicalRoom) return;
+    return onSnapshot(doc(db, 'liveRooms', canonicalRoom), (snap) => {
+      const raw = snap.data()?.aspectRatio;
+      if (!raw) return;
+      const parsed = parseLiveAspectRatio(raw);
+      aspectRatioLockedRef.current = parsed;
+      setAspectRatio(parsed);
+    });
+  }, [canonicalRoom, launch.aspectRatio]);
+
   async function fetchToken() {
     const profile = useAuthStore.getState().profile;
     if (!username || !profile) return;
@@ -259,6 +287,7 @@ export function LiveRoom() {
         title: launch.title || `Live de ${profile.displayName || profile.handle}`,
         category: launch.category || profile.category || 'otro',
         isPrivate: Boolean(launch.isPrivate ?? isPrivate),
+        aspectRatio: aspectRatioLockedRef.current,
       }).catch((error) =>
         console.error('[live] mark active', error),
       );
@@ -271,6 +300,7 @@ export function LiveRoom() {
           category: launch.category || profile.category || 'otro',
           goalCoins: Number(launch.goalCoins) || 0,
           goalLabel: launch.goalLabel || '',
+          aspectRatio: aspectRatioLockedRef.current,
         }),
       }).catch(() => undefined);
       setLiveStarted(true);
@@ -556,6 +586,7 @@ export function LiveRoom() {
           canPublish={session.canPublish}
           isHost={Boolean(session.isHost ?? (session.canPublish && isOwnRoom))}
           isPrivate={isPrivate}
+          aspectRatio={aspectRatio}
           onPrivacyChange={setIsPrivate}
           onViewerPaused={handleViewerPaused}
           goalCoins={Number(launch.goalCoins) || 0}
@@ -592,6 +623,7 @@ function CreatorStage({
   canPublish,
   isHost,
   isPrivate,
+  aspectRatio,
   onPrivacyChange,
   onViewerPaused,
   goalCoins,
@@ -603,6 +635,7 @@ function CreatorStage({
   canPublish: boolean;
   isHost: boolean;
   isPrivate: boolean;
+  aspectRatio: LiveAspectRatio;
   onPrivacyChange?: (next: boolean) => void;
   onViewerPaused?: (paused: boolean, lock: LockInfo | null) => void;
   goalCoins: number;
@@ -616,7 +649,7 @@ function CreatorStage({
   const displayName = useAuthStore((state) => state.profile?.displayName);
   const firebaseUid = useAuthStore((state) => state.profile?.firebaseUid);
   const setCoins = useAuthStore((state) => state.setCoins);
-  const { viewers } = useViewerCount();
+  const { viewers } = useViewerCount(username);
   const liveStartedAt = useRef(Date.now());
   const creditedGifts = useRef(new Set<string>());
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
@@ -638,13 +671,35 @@ function CreatorStage({
   const onViewerPausedRef = useRef(onViewerPaused);
   onViewerPausedRef.current = onViewerPaused;
   const isSpectator = !isHost && !canPublish;
+  const presenceUser = useMemo(
+    () =>
+      firebaseUid
+        ? {
+            uid: firebaseUid,
+            username: handle || firebaseUid,
+            displayName: displayName || handle || 'Espectador',
+          }
+        : null,
+    [firebaseUid, handle, displayName],
+  );
+  useLivePresence(username, room, presenceUser, isSpectator);
   const [inviteHandle, setInviteHandle] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteNote, setInviteNote] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [reelNote, setReelNote] = useState<string | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
-  const screenTrackRef = useRef<LocalVideoTrack | null>(null);
+  const [pipVisible, setPipVisible] = useState(true);
+  const [pipPos, setPipPos] = useState<PipNormalizedPos>(() => {
+    const dims = liveCanvasDimensions(aspectRatio);
+    return defaultPipPosition(dims.width, dims.height);
+  });
+  const screenComposerRef = useRef<LiveScreenComposer | null>(null);
+  const rawCameraTrackRef = useRef<LocalVideoTrack | null>(null);
+  const compositeTrackRef = useRef<LocalVideoTrack | null>(null);
+  const screenMediaTrackRef = useRef<MediaStreamTrack | null>(null);
+  const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
+  const stoppingScreenRef = useRef(false);
   const [lock, setLock] = useState<LockInfo | null>(null);
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
@@ -691,8 +746,10 @@ function CreatorStage({
   useEffect(() => {
     if (!isHost || !username) return;
     void touchLiveRoomHeartbeat(username).catch(() => undefined);
+    void refreshLiveViewerCount(username).catch(() => undefined);
     const timer = window.setInterval(() => {
       void touchLiveRoomHeartbeat(username).catch(() => undefined);
+      void refreshLiveViewerCount(username).catch(() => undefined);
     }, 12_000);
     return () => window.clearInterval(timer);
   }, [isHost, username]);
@@ -710,7 +767,7 @@ function CreatorStage({
           const incoming = data.session!;
           if (!current) return incoming;
           return {
-            ...current,
+        ...current,
             goalCoins: Math.max(current.goalCoins || 0, incoming.goalCoins || 0) || current.goalCoins,
             goalLabel: current.goalLabel || incoming.goalLabel || '',
             startedAt: current.startedAt || incoming.startedAt,
@@ -789,14 +846,14 @@ function CreatorStage({
         }
         const maxVisible = isSpectator ? 2 : 4;
         return [
-          ...current,
-          {
-            id,
-            giftId,
+        ...current,
+        {
+          id,
+          giftId,
             left: 32 + Math.random() * 36,
-            senderName,
+          senderName,
             combo,
-          },
+        },
         ].slice(-maxVisible);
       });
       if (isFaceAnchoredGift(giftId)) {
@@ -1011,27 +1068,15 @@ function CreatorStage({
 
   useEffect(() => {
     if (!isHost) return;
-    let timer = 0;
-    const refresh = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const list = Array.from(room.remoteParticipants.values()).map((participant) => ({
-          identity: participant.identity,
-          name: participant.name || participant.identity.slice(0, 10),
-        }));
-        setViewersList(list);
-        void updateLiveRoomFeed(username, { viewers: list.length }).catch(() => undefined);
-      }, 450);
-    };
-    refresh();
-    room.on(RoomEvent.ParticipantConnected, refresh);
-    room.on(RoomEvent.ParticipantDisconnected, refresh);
-    return () => {
-      window.clearTimeout(timer);
-      room.off(RoomEvent.ParticipantConnected, refresh);
-      room.off(RoomEvent.ParticipantDisconnected, refresh);
-    };
-  }, [room, isHost, username]);
+    return listenLiveViewers(username, (list) => {
+      setViewersList(
+        list.map((viewer) => ({
+          identity: viewer.uid,
+          name: viewer.displayName || viewer.username,
+        })),
+      );
+    });
+  }, [isHost, username]);
 
   async function setLiveLock(giftId: string | null) {
     if (!isHost) return;
@@ -1040,12 +1085,12 @@ function CreatorStage({
       const result = await api<{ lock: LockInfo | null; locked: boolean; isPrivate?: boolean }>(
         '/api/stream/lock',
         {
-          method: 'POST',
-          body: JSON.stringify(
-            giftId
+        method: 'POST',
+        body: JSON.stringify(
+          giftId
               ? { roomName: username, giftId, handle }
               : { roomName: username, clear: true, handle },
-          ),
+        ),
         },
       );
       const next = result.locked ? result.lock : null;
@@ -1274,23 +1319,32 @@ function CreatorStage({
 
   async function shareLive() {
     const url = `${window.location.origin}/stream/${encodeURIComponent(username)}`;
-    const title = `LIVE de @${username} en LiveBoom`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, url, text: 'Mira este LIVE en LiveBoom' });
-        setShareNote('Compartido');
-      } else {
-        await navigator.clipboard.writeText(url);
-        setShareNote('Enlace copiado');
-      }
-    } catch {
-      try {
-        await navigator.clipboard.writeText(url);
-        setShareNote('Enlace copiado');
-      } catch {
-        setShareNote('No se pudo compartir');
-      }
-    }
+    const result = await shareContent({
+      url,
+      title: `LIVE de @${username} en LiveBoom`,
+      text: 'Mira este LIVE en LiveBoom',
+    });
+    setShareNote(
+      result === 'shared' ? 'LIVE compartido' : result === 'copied' ? 'Enlace del LIVE copiado' : 'No se pudo compartir',
+    );
+    window.setTimeout(() => setShareNote(null), 2500);
+  }
+
+  async function shareHostProfile() {
+    const path = profileHref(username, hostUid);
+    const url = `${window.location.origin}${path}`;
+    const result = await shareContent({
+      url,
+      title: `Perfil de @${username} en LiveBoom`,
+      text: `Mira el perfil de @${username} en LiveBoom`,
+    });
+    setShareNote(
+      result === 'shared'
+        ? 'Perfil compartido'
+        : result === 'copied'
+          ? 'Enlace del perfil copiado'
+          : 'No se pudo compartir',
+    );
     window.setTimeout(() => setShareNote(null), 2500);
   }
 
@@ -1328,56 +1382,182 @@ function CreatorStage({
     }
   }
 
-  async function toggleScreenCapture() {
-    if (!isHost) return;
-    if (screenSharing) {
-      const local = screenTrackRef.current;
-      if (local) {
+  const stopScreenCapture = useCallback(async () => {
+    if (stoppingScreenRef.current) return;
+    if (
+      !screenComposerRef.current &&
+      !compositeTrackRef.current &&
+      !screenMediaTrackRef.current
+    ) {
+      return;
+    }
+    stoppingScreenRef.current = true;
+    try {
+      const composer = screenComposerRef.current;
+      const composite = compositeTrackRef.current;
+      const rawCamera = rawCameraTrackRef.current;
+      const screenMedia = screenMediaTrackRef.current;
+      const pipInput = pipInputTrackRef.current;
+
+      screenComposerRef.current = null;
+      compositeTrackRef.current = null;
+      rawCameraTrackRef.current = null;
+      screenMediaTrackRef.current = null;
+      pipInputTrackRef.current = null;
+
+      composer?.stop();
+
+      if (composite) {
         try {
-          await room.localParticipant.unpublishTrack(local);
+          await room.localParticipant.unpublishTrack(composite, true);
         } catch {
           /* ignore */
         }
-        local.stop();
-        screenTrackRef.current = null;
       }
+
+      if (screenMedia) {
+        screenMedia.stop();
+      }
+
+      if (pipInput && pipInput !== rawCamera?.mediaStreamTrack) {
+        pipInput.stop();
+      }
+
+      if (rawCamera?.mediaStreamTrack?.readyState === 'live') {
+        try {
+          await room.localParticipant.publishTrack(rawCamera, {
+            source: Track.Source.Camera,
+            name: 'camera',
+          });
+          cameraTrackRef.current = rawCamera;
+        } catch {
+          await room.localParticipant.setCameraEnabled(true);
+        }
+      } else {
+        await room.localParticipant.setCameraEnabled(true);
+      }
+
       setScreenSharing(false);
+      setPipVisible(true);
+      setPipPos(defaultPipPosition(720, 1280));
+    } finally {
+      stoppingScreenRef.current = false;
+    }
+  }, [room]);
+
+  useEffect(() => {
+    return () => {
+      void stopScreenCapture();
+    };
+  }, [stopScreenCapture]);
+
+  async function toggleScreenCapture() {
+    if (!isHost) return;
+    if (screenSharing) {
+      await stopScreenCapture();
       setReelNote('Captura de pantalla detenida');
       return;
     }
+    if (!canUseDisplayMedia()) {
+      setReelNote(
+        'Este navegador no permite compartir pantalla. Usa un dispositivo o navegador compatible.',
+      );
+      return;
+    }
     try {
+      await waitConnected(room);
+      const cameraTrack = cameraTrackRef.current;
+      if (!cameraTrack?.mediaStreamTrack || cameraTrack.mediaStreamTrack.readyState !== 'live') {
+        setReelNote('Espera a que la cámara esté lista');
+        return;
+      }
+
       const display = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 24 },
+        video: true,
         audio: false,
       });
-      const mediaTrack = display.getVideoTracks()[0];
-      if (!mediaTrack) throw new Error('Sin pista de pantalla');
-      const local = new LocalVideoTrack(mediaTrack);
-      screenTrackRef.current = local;
-      await room.localParticipant.publishTrack(local, {
-        source: Track.Source.ScreenShare,
-        name: 'screen',
-      });
-      setScreenSharing(true);
-      setReelNote('Compartiendo pantalla en vivo');
-      mediaTrack.onended = () => {
-        void (async () => {
-          const current = screenTrackRef.current;
-          if (current) {
-            try {
-              await room.localParticipant.unpublishTrack(current);
-            } catch {
-              /* ignore */
-            }
-            current.stop();
+      const screenMedia = display.getVideoTracks()[0];
+      if (!screenMedia) throw new Error('Sin pista de pantalla');
+
+      rawCameraTrackRef.current = cameraTrack;
+      screenMediaTrackRef.current = screenMedia;
+
+      let pipInput = cameraTrack.mediaStreamTrack;
+      if (typeof pipInput.clone === 'function') {
+        const cloned = pipInput.clone();
+        pipInputTrackRef.current = cloned;
+        pipInput = cloned;
+      }
+
+      try {
+        await room.localParticipant.unpublishTrack(cameraTrack, false);
+
+        if (pipInput.readyState !== 'live' && cameraTrack.mediaStreamTrack.readyState === 'live') {
+          pipInput = cameraTrack.mediaStreamTrack;
+          pipInputTrackRef.current = null;
+        }
+
+        const dims = liveCanvasDimensions(aspectRatio);
+        const composer = new LiveScreenComposer({
+          width: dims.width,
+          height: dims.height,
+        });
+        screenComposerRef.current = composer;
+        const initialPip = defaultPipPosition(dims.width, dims.height);
+        composer.setPipPosition(initialPip.nx, initialPip.ny);
+        composer.setPipVisible(true);
+        setPipPos(initialPip);
+        setPipVisible(true);
+
+        const composite = await composer.start(screenMedia, pipInput, {
+          onDimensionsChange: (dims) => {
+            const track = screenMediaTrackRef.current;
+            if (track) setReelNote(screenShareStatusMessage(track, dims));
+          },
+        });
+        compositeTrackRef.current = composite;
+        cameraTrackRef.current = composite;
+
+        await room.localParticipant.publishTrack(composite, {
+          source: Track.Source.Camera,
+          name: 'camera',
+          simulcast: false,
+        });
+
+        setScreenSharing(true);
+        setReelNote(screenShareStatusMessage(screenMedia, readScreenTrackDimensions(screenMedia)));
+
+        screenMedia.onended = () => {
+          void stopScreenCapture().then(() => setReelNote(null));
+        };
+      } catch (inner) {
+        screenMedia.stop();
+        screenMediaTrackRef.current = null;
+        pipInputTrackRef.current?.stop();
+        pipInputTrackRef.current = null;
+        screenComposerRef.current?.stop();
+        screenComposerRef.current = null;
+        compositeTrackRef.current = null;
+        if (rawCameraTrackRef.current) {
+          try {
+            await room.localParticipant.publishTrack(rawCameraTrackRef.current, {
+              source: Track.Source.Camera,
+              name: 'camera',
+            });
+            cameraTrackRef.current = rawCameraTrackRef.current;
+          } catch {
+            await room.localParticipant.setCameraEnabled(true);
           }
-          screenTrackRef.current = null;
-          setScreenSharing(false);
-          setReelNote(null);
-        })();
-      };
+        }
+        rawCameraTrackRef.current = null;
+        throw inner;
+      }
     } catch (err) {
       const e = err as Error & { name?: string };
+      if (e?.name === 'AbortError') {
+        setReelNote('Compartir pantalla cancelado');
+        return;
+      }
       setReelNote(
         e?.name === 'NotAllowedError' || /permission|denied|NotAllowed/i.test(String(e?.message || ''))
           ? 'Permiso denegado. Autoriza capturar pantalla en el navegador.'
@@ -1390,7 +1570,7 @@ function CreatorStage({
 
   async function recordReel() {
     if (recording || !isHost) return;
-    const track = cameraTrackRef.current?.mediaStreamTrack;
+    const track = (rawCameraTrackRef.current ?? cameraTrackRef.current)?.mediaStreamTrack;
     if (!track) {
       setReelNote('Espera a que la cámara esté lista');
       return;
@@ -1450,10 +1630,10 @@ function CreatorStage({
   return (
     <section className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-black lg:w-[70%] lg:rounded-2xl lg:border lg:border-white/10 lg:shadow-[0_0_48px_rgba(0,240,255,0.12)]">
       <div className="relative h-full w-full max-w-full lg:max-h-full">
-        <div className="mx-auto flex h-full w-full max-w-[min(100%,calc(100dvh*9/16))] items-center justify-center">
+        <div className={liveStageOuterClass(aspectRatio)}>
           <div
             ref={stageVideoRef}
-            className="relative aspect-[9/16] h-full max-h-full w-auto max-w-full overflow-hidden bg-black lg:rounded-2xl"
+            className={liveStageInnerClass(aspectRatio)}
             onTouchStart={(event) => {
               if (isHost || canPublish) return;
               const touch = event.changedTouches[0];
@@ -1476,6 +1656,21 @@ function CreatorStage({
               facing={facing}
               cameraTrackRef={cameraTrackRef}
             />
+            {isHost && screenSharing ? (
+              <ScreenShareHostOverlay
+                pipVisible={pipVisible}
+                pipPos={pipPos}
+                onPipPosChange={(pos) => {
+                  setPipPos(pos);
+                  screenComposerRef.current?.setPipPosition(pos.nx, pos.ny);
+                }}
+                onTogglePip={() => {
+                  const next = !pipVisible;
+                  setPipVisible(next);
+                  screenComposerRef.current?.setPipVisible(next);
+                }}
+              />
+            ) : null}
             <FaceMeshGiftOverlay active={faceGift} onDone={() => setFaceGift(null)} />
             {floats.map((item) => (
               <FloatingGift
@@ -1519,12 +1714,12 @@ function CreatorStage({
                             ) : null}
                           </span>
                           <span className="block truncate text-[11px] text-zinc-400">
-                            {stream.viewers} viendo · {stream.title}
+                            {stream.title}
                           </span>
                         </span>
                       </Link>
                     ))}
-                  </div>
+          </div>
                 ) : (
                   <p className="text-xs text-zinc-500">No hay otros lives activos ahora.</p>
                 )}
@@ -1571,22 +1766,22 @@ function CreatorStage({
                   <Gift size={11} />
                   Deseos {wishlist.length ? `(${wishlist.length})` : ''}
                 </button>
-                <button
-                  type="button"
-                  disabled={lockBusy}
+              <button
+                type="button"
+                disabled={lockBusy}
                   onClick={() => {
                     setWishlistOpen(false);
                     setLockPicker((v) => !v);
                   }}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold backdrop-blur ${
-                    lock
-                      ? 'bg-amber-500/30 text-amber-200 ring-1 ring-amber-400/50'
-                      : 'bg-black/50 text-zinc-200 hover:text-white'
-                  }`}
-                >
-                  <Lock size={11} />
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold backdrop-blur ${
+                  lock
+                    ? 'bg-amber-500/30 text-amber-200 ring-1 ring-amber-400/50'
+                    : 'bg-black/50 text-zinc-200 hover:text-white'
+                }`}
+              >
+                <Lock size={11} />
                   {lock ? `${lock.emoji} Privado` : 'Privado'}
-                </button>
+              </button>
                 {lock ? (
                   <button
                     type="button"
@@ -1614,9 +1809,13 @@ function CreatorStage({
                 {lock ? `Privado · ${lock.emoji} ${lock.giftName}` : 'Privado'}
               </span>
             ) : null}
-            <span className="truncate rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur">
+            <Link
+              to={profileHref(username, hostUid)}
+              className="truncate rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur hover:bg-black/70 hover:text-cyan-200"
+              title="Ver perfil"
+            >
               @{username}
-            </span>
+            </Link>
             <span
               role="button"
               tabIndex={0}
@@ -1633,10 +1832,19 @@ function CreatorStage({
           <div className="pointer-events-auto flex shrink-0 items-center gap-2">
             <button
               type="button"
+              onClick={() => void shareHostProfile()}
+              className="grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 sm:h-9 sm:w-9"
+              aria-label="Compartir perfil"
+              title="Compartir perfil"
+            >
+              <User size={16} />
+            </button>
+            <button
+              type="button"
               onClick={() => void shareLive()}
               className="grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 sm:h-9 sm:w-9"
               aria-label="Compartir live"
-              title="Compartir"
+              title="Compartir LIVE"
             >
               <Share2 size={16} />
             </button>
@@ -1655,16 +1863,16 @@ function CreatorStage({
                 >
                   {isMicrophoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void flipCamera()}
-                  disabled={flipping}
+              <button
+                type="button"
+                onClick={() => void flipCamera()}
+                disabled={flipping}
                   className="grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 disabled:opacity-60 sm:h-9 sm:w-9"
                   aria-label={facing === 'user' ? 'Cambiar a cámara trasera' : 'Cambiar a cámara frontal'}
                   title={facing === 'user' ? 'Cámara trasera' : 'Cámara frontal'}
-                >
+              >
                   <SwitchCamera size={18} className={flipping ? 'animate-spin' : ''} />
-                </button>
+              </button>
               </>
             ) : null}
             <button
@@ -1729,7 +1937,7 @@ function CreatorStage({
             </button>
           </div>
           <div className="space-y-1">
-            {LIVEBOOM_GIFTS.filter((g) => g.level <= 3).map((gift) => {
+            {sortedLiveboomGiftCatalog().map((gift) => {
               const active = wishlist.includes(gift.id);
               return (
                 <button
@@ -1779,7 +1987,7 @@ function CreatorStage({
             entran quienes paguen. Puedes reabrir al público cuando quieras.
           </p>
           <div className="space-y-1">
-            {LIVEBOOM_GIFTS.filter((g) => g.coins <= 1000).map((gift) => (
+            {sortedLiveboomGiftCatalog().map((gift) => (
               <button
                 key={gift.id}
                 type="button"
@@ -1812,32 +2020,32 @@ function CreatorStage({
           {!lockPicker ? (
             <>
               {inviteOpen ? (
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-black/55 p-2 backdrop-blur sm:max-w-xs">
-                  <UserPlus size={16} className="shrink-0 text-cyan-300" />
-                  <input
-                    value={inviteHandle}
-                    onChange={(event) => setInviteHandle(event.target.value)}
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-black/55 p-2 backdrop-blur sm:max-w-xs">
+            <UserPlus size={16} className="shrink-0 text-cyan-300" />
+            <input
+              value={inviteHandle}
+              onChange={(event) => setInviteHandle(event.target.value)}
                     placeholder="@usuario a invitar"
                     autoFocus
-                    className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none"
-                    list="live-viewers"
+              className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none"
+              list="live-viewers"
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') void inviteGuest();
                       if (event.key === 'Escape') setInviteOpen(false);
                     }}
-                  />
-                  <datalist id="live-viewers">
-                    {viewersList.map((viewer) => (
-                      <option key={viewer.identity} value={viewer.name} />
-                    ))}
-                  </datalist>
-                  <button
-                    type="button"
-                    onClick={() => void inviteGuest()}
-                    className="shrink-0 rounded-lg bg-cyan-500/20 px-2 py-1 text-[10px] font-bold text-cyan-300"
-                  >
-                    Unir
-                  </button>
+            />
+            <datalist id="live-viewers">
+              {viewersList.map((viewer) => (
+                <option key={viewer.identity} value={viewer.name} />
+              ))}
+            </datalist>
+            <button
+              type="button"
+              onClick={() => void inviteGuest()}
+              className="shrink-0 rounded-lg bg-cyan-500/20 px-2 py-1 text-[10px] font-bold text-cyan-300"
+            >
+              Unir
+            </button>
                   <button
                     type="button"
                     onClick={() => setInviteOpen(false)}
@@ -1846,7 +2054,7 @@ function CreatorStage({
                   >
                     <X size={14} />
                   </button>
-                </div>
+          </div>
               ) : (
                 <button
                   type="button"
@@ -1856,15 +2064,16 @@ function CreatorStage({
                   <UserPlus size={14} /> Invitar
                 </button>
               )}
-              <button
-                type="button"
-                disabled={recording}
-                onClick={() => void recordReel()}
-                className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-white backdrop-blur disabled:opacity-60"
-              >
-                {recording ? <Circle className="animate-pulse text-red-400" size={12} /> : <Video size={14} />}
-                {recording ? 'Grabando…' : 'Reel 15s'}
-              </button>
+          <button
+            type="button"
+            disabled={recording}
+            onClick={() => void recordReel()}
+            className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-white backdrop-blur disabled:opacity-60"
+          >
+            {recording ? <Circle className="animate-pulse text-red-400" size={12} /> : <Video size={14} />}
+            {recording ? 'Grabando…' : 'Reel 15s'}
+          </button>
+              {canUseDisplayMedia() ? (
               <button
                 type="button"
                 onClick={() => void toggleScreenCapture()}
@@ -1877,6 +2086,7 @@ function CreatorStage({
                 <MonitorUp size={14} />
                 {screenSharing ? 'Pantalla on' : 'Pantalla'}
               </button>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -2069,7 +2279,6 @@ function CreatorStage({
                             <span className="ml-1 text-[9px] text-cyan-300">amigo</span>
                           ) : null}
                         </span>
-                        <span className="shrink-0 text-[10px] text-zinc-400">{stream.viewers}</span>
                       </Link>
                     </li>
                   ))}
@@ -2268,7 +2477,7 @@ function CreatorVideo({
               : camError || 'Preparando transmisión…'
             : trackEpoch > 0
               ? 'Reconectando cámara…'
-              : 'Esperando la cámara del creador…'}
+            : 'Esperando la cámara del creador…'}
         </p>
         {canPublish && camError ? (
           <button
@@ -2285,13 +2494,13 @@ function CreatorVideo({
 
   return (
     <>
-      <VideoTrack
-        key={`${trackRenderKey(shown)}-${trackEpoch}`}
-        trackRef={shown}
-        className={`absolute inset-0 h-full w-full [&_video]:!transform-none ${
-          shown.participant.isLocal ? 'object-contain bg-black' : 'object-cover bg-black'
-        }`}
-      />
+      {shown ? (
+        <VideoTrack
+          key={`${trackRenderKey(shown)}-${trackEpoch}`}
+          trackRef={shown}
+          className="absolute inset-0 h-full w-full bg-black object-contain [&_video]:!transform-none"
+        />
+      ) : null}
       {guests.map((guest) => (
         <div
           key={guest.participant.identity}
@@ -2350,10 +2559,7 @@ function ChatPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const seen = useRef(new Set<string>((liveChatCache.get(roomName) ?? []).map((msg) => msg.id)));
   const levelXpRef = useRef(0);
-  const giftCatalog = useMemo(
-    () => [...LIVEBOOM_GIFTS].sort((a, b) => a.coins - b.coins),
-    [],
-  );
+  const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
 
   useEffect(() => {
     return listenLiveRoomEarnings(roomName, (stats) => {
@@ -2553,26 +2759,15 @@ function ChatPanel({
     const senderName = profile.displayName || profile.handle || 'Liveboomer';
 
     try {
-      // Primero cobra en el API (sincroniza saldo de recarga); luego publica el regalo.
-      const result = await api<{
-        senderBalance: number;
-        gift: {
-          id: string;
-          giftId: string;
-          giftName: string;
-          emoji: string;
-          senderName: string;
-          multiplier?: number;
-        };
-      }>('/api/gifts/send', {
-        method: 'POST',
-        body: JSON.stringify({
-          giftId: catalog.id,
-          roomName,
-          clientId,
-          currentBalance: previousCoins,
-          multiplier: mult,
-        }),
+      const result = await sendLiveboomGift({
+        giftId: catalog.id,
+        senderUid: profile.firebaseUid,
+        senderName,
+        senderBalance: previousCoins,
+        recipientUsername: roomName,
+        clientId,
+        roomName,
+        multiplier: mult,
       });
       setCoins(result.senderBalance);
       void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
@@ -2582,7 +2777,7 @@ function ChatPanel({
         })
         .catch(() => undefined);
 
-      const levelInfo = levelFromXp(levelXpRef.current + totalCoins);
+      const levelInfo = levelFromXp(levelXpRef.current);
       const chatGift = {
         id: `gift-${clientId}`,
         author: senderName,
@@ -2608,16 +2803,18 @@ function ChatPanel({
         emoji: catalog.emoji,
         multiplier: mult,
       }).catch((error) => console.error('[gift] publishData', error));
-      void publishLiveGift(roomName, {
-        clientId,
-        giftId: catalog.id,
-        giftName: catalog.name,
-        emoji: catalog.emoji,
-        senderName,
-        senderUid: profile.firebaseUid,
-        coins: totalCoins,
-        multiplier: mult,
-      }).catch((error) => console.error('[gift] firestore', error));
+      if (!result.usedFallback) {
+        void publishLiveGift(roomName, {
+          clientId,
+          giftId: catalog.id,
+          giftName: catalog.name,
+          emoji: catalog.emoji,
+          senderName,
+          senderUid: profile.firebaseUid,
+          coins: totalCoins,
+          multiplier: mult,
+        }).catch((error) => console.error('[gift] firestore', error));
+      }
       void publishLiveChatMessage(roomName, {
         clientId: chatGift.id,
         authorUid: profile.firebaseUid,
@@ -2697,9 +2894,21 @@ function ChatPanel({
     >
       <div className={`pointer-events-auto shrink-0 px-4 py-2 ${canPublish ? 'bg-transparent' : 'border-b border-white/10'}`}>
         <div className="flex items-center justify-between gap-2">
-          <p className={`text-[11px] ${canPublish ? 'text-zinc-200 drop-shadow' : 'text-zinc-400'}`}>
-            Saldo: {coins.toLocaleString('es-CO')} coins
-          </p>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className={`text-[11px] ${canPublish ? 'text-zinc-200 drop-shadow' : 'text-zinc-400'}`}>
+              Saldo: {coins.toLocaleString('es-CO')} coins
+            </p>
+            {!isHostRoom ? (
+              <button
+                type="button"
+                onClick={() => setRechargeOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-2.5 py-1 text-[10px] font-bold text-zinc-950 shadow-[0_0_12px_rgba(255,0,85,0.35)]"
+              >
+                <Coins size={11} />
+                Recargar
+              </button>
+            ) : null}
+          </div>
           {isSpectator ? (
             <button
               type="button"
@@ -2827,9 +3036,9 @@ function ChatPanel({
                       const ok = coins >= cost;
                       const active = giftMultiplier === m;
                       return (
-                        <button
+                      <button
                           key={m}
-                          type="button"
+                        type="button"
                           onClick={() => setGiftMultiplier(m)}
                           className={`min-h-10 rounded-lg border text-xs font-bold transition active:scale-95 ${
                             active
@@ -2840,7 +3049,7 @@ function ChatPanel({
                           }`}
                         >
                           x{m}
-                        </button>
+                      </button>
                       );
                     })}
                   </div>
@@ -2863,7 +3072,7 @@ function ChatPanel({
                     >
                       {sendingGift ? '…' : `Enviar x${giftMultiplier}`}
                     </button>
-                  </div>
+                </div>
                   {giftError ? (
                     <p className="mt-2 text-center text-xs text-fuchsia-400">{giftError}</p>
                   ) : null}
@@ -2905,14 +3114,14 @@ function ChatPanel({
         ) : null}
         <div className="flex gap-2">
           {!isHostRoom ? (
-            <button
-              type="button"
-              onClick={() => setOpenGifts((value) => !value)}
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950 shadow-[0_0_18px_rgba(255,0,85,0.35)]"
-              aria-label="Caja de regalos"
-            >
-              <Gift size={18} />
-            </button>
+          <button
+            type="button"
+            onClick={() => setOpenGifts((value) => !value)}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950 shadow-[0_0_18px_rgba(255,0,85,0.35)]"
+            aria-label="Caja de regalos"
+          >
+            <Gift size={18} />
+          </button>
           ) : null}
           <input
             ref={inputRef}

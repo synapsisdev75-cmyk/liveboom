@@ -13,6 +13,11 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { LIVE_CATEGORIES } from '../lib/categories';
+import {
+  type LiveAspectRatio,
+  liveAspectRatioLabel,
+  livePreviewFrameClass,
+} from '../lib/liveAspectRatio';
 import { useAuthStore } from '../store/authStore';
 
 const CHECKLIST_KEY = 'liveboom.preLiveChecklist.v1';
@@ -107,6 +112,7 @@ export function TransmitView() {
   const [liveChat, setLiveChat] = useState(true);
   const [followersOnly, setFollowersOnly] = useState(false);
   const [saveProfile, setSaveProfile] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState<LiveAspectRatio>('9:16');
   const [checks, setChecks] = useState<ChecklistState>(() => loadChecklist());
   const [error, setError] = useState<string | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
@@ -225,6 +231,7 @@ export function TransmitView() {
         category: category || profile.category || 'otro',
         goalCoins: Math.max(0, Math.floor(Number(goalCoins) || 0)),
         goalLabel: goalLabel.trim().slice(0, 80) || 'Meta en coins',
+        aspectRatio,
         description: description.trim().slice(0, 200),
         allowGifts,
         liveChat,
@@ -482,6 +489,42 @@ export function TransmitView() {
                 </div>
 
                 <div>
+                  <p className="mb-2 text-sm font-bold uppercase tracking-wide text-white">
+                    Formato de transmisión
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAspectRatio('16:9')}
+                      className={`rounded-xl border px-3 py-3 text-left transition ${
+                        aspectRatio === '16:9'
+                          ? 'border-cyan-400/60 bg-cyan-500/10 ring-1 ring-cyan-400/30'
+                          : 'border-white/[0.06] bg-[#0f1016] hover:border-white/20'
+                      }`}
+                    >
+                      <span className="block text-sm font-black text-white">16:9</span>
+                      <span className="block text-[11px] text-zinc-500">Horizontal</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAspectRatio('9:16')}
+                      className={`rounded-xl border px-3 py-3 text-left transition ${
+                        aspectRatio === '9:16'
+                          ? 'border-cyan-400/60 bg-cyan-500/10 ring-1 ring-cyan-400/30'
+                          : 'border-white/[0.06] bg-[#0f1016] hover:border-white/20'
+                      }`}
+                    >
+                      <span className="block text-sm font-black text-white">9:16</span>
+                      <span className="block text-[11px] text-zinc-500">Vertical</span>
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[11px] text-zinc-500">
+                    El formato se mantiene durante toda la transmisión. Cámara y pantalla compartida se
+                    adaptan dentro del marco elegido.
+                  </p>
+                </div>
+
+                <div>
                   <p className="mb-2 text-sm font-bold text-white">Opciones del live</p>
                   <div className="space-y-2">
                     <Toggle
@@ -539,30 +582,59 @@ export function TransmitView() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="relative aspect-video overflow-hidden rounded-2xl bg-zinc-950 ring-1 ring-white/10">
-              <video
-                ref={previewVideoRef}
-                muted
-                playsInline
-                className="h-full w-full object-cover"
-              />
-              {!previewReady ? (
-                <div className="absolute inset-0 grid place-items-center bg-zinc-950/80 text-center">
-                  {thumbnail ? (
-                    <img src={thumbnail} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="px-4">
-                      <Camera className="mx-auto text-zinc-600" size={36} />
-                      <p className="mt-2 text-xs text-zinc-500">
-                        Permite la cámara para previsualizar, o usa la miniatura.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-              <span className="absolute left-3 top-3 rounded bg-violet-600 px-2 py-0.5 text-[10px] font-black uppercase text-white">
-                Preview
-              </span>
+            <div className="flex flex-col items-center justify-center gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                Vista previa · {liveAspectRatioLabel(aspectRatio)}
+              </p>
+              <div className={livePreviewFrameClass(aspectRatio)}>
+                <video
+                  ref={previewVideoRef}
+                  muted
+                  playsInline
+                  className="h-full w-full object-contain"
+                />
+                {!previewReady ? (
+                  <div className="absolute inset-0 grid place-items-center bg-zinc-950/80 text-center">
+                    {thumbnail ? (
+                      <img src={thumbnail} alt="" className="h-full w-full object-contain" />
+                    ) : (
+                      <div className="px-4">
+                        <Camera className="mx-auto text-zinc-600" size={36} />
+                        <p className="mt-2 text-xs text-zinc-500">
+                          Permite la cámara para previsualizar, o usa la miniatura.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+                <span className="absolute left-3 top-3 rounded bg-violet-600 px-2 py-0.5 text-[10px] font-black uppercase text-white">
+                  Preview
+                </span>
+              </div>
+              <div className="grid w-full max-w-md grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAspectRatio('16:9')}
+                  className={`rounded-xl border px-3 py-2 text-center text-xs font-bold transition ${
+                    aspectRatio === '16:9'
+                      ? 'border-cyan-400/60 bg-cyan-500/10 text-cyan-100'
+                      : 'border-white/[0.08] bg-zinc-950 text-zinc-400'
+                  }`}
+                >
+                  16:9 Horizontal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAspectRatio('9:16')}
+                  className={`rounded-xl border px-3 py-2 text-center text-xs font-bold transition ${
+                    aspectRatio === '9:16'
+                      ? 'border-cyan-400/60 bg-cyan-500/10 text-cyan-100'
+                      : 'border-white/[0.08] bg-zinc-950 text-zinc-400'
+                  }`}
+                >
+                  9:16 Vertical
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -582,6 +654,10 @@ export function TransmitView() {
                   <p className="text-xs text-zinc-400">{description}</p>
                 </div>
               ) : null}
+              <div>
+                <p className="text-[11px] font-medium text-zinc-500">Formato</p>
+                <p className="text-sm text-zinc-200">{liveAspectRatioLabel(aspectRatio)}</p>
+              </div>
               <div>
                 <p className="text-[11px] font-medium text-zinc-500">Objetivo</p>
                 <p className="text-sm text-amber-200">

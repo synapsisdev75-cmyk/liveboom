@@ -1,0 +1,110 @@
+---
+description: LiveBoom — aislamiento de cambios, protección contra regresiones, cambio mínimo
+alwaysApply: true
+---
+
+# LiveBoom: aislamiento de cambios + anti-regresiones
+
+## Prioridad
+
+Un cambio **no es exitoso** solo porque la función nueva funciona. Es exitoso solo si:
+
+**nueva función = funciona** Y **funciones anteriores = siguen funcionando**.
+
+Orden: (1) no romper existente, (2) corregir lo solicitado, (3) reutilizar bien, (4) responsive, (5) rendimiento, (6) mejorar código solo sin riesgo.
+
+## Antes de escribir código
+
+1. Identificar módulo solicitado, componentes y **todas** sus referencias.
+2. Determinar dependencias y si el fix puede ser **local**.
+3. Definir internamente: **SCOPE**, **OUT OF SCOPE**, **DEPENDENCIES**, **RISKS**, **TESTS**.
+4. Registrar comportamiento actual del módulo afectado.
+5. Solo entonces modificar.
+
+**No** empezar a codear sin comprender el impacto.
+
+## Módulos aislados (no mezclar tareas)
+
+| Módulo | Identidad |
+|--------|-----------|
+| **Publicaciones** | `contentType = post` — foto/video/carrusel/texto/expandir |
+| **Boom Clip** | `contentType = boom_clip` — ≤90s, agrupación, `+ Clip`, viewer |
+| **Flash Boom** | `contentType = flashboom` — 24h, agrupación, `+ Flash`, viewer secuencial |
+| **LIVE** | directos, sala, espectadores (contador solo en sala), cohost, regalos |
+| **Explorar** | feed vertical, virales/recientes/para ti |
+| **Regalos / Comentarios / Boom** | handlers centralizados, no reescribir para un bug de una pantalla |
+| **Perfil / Mensajes / Grupos / Billetera / Navegación** | fuera de scope salvo tarea explícita |
+
+Un cambio en un módulo **no autoriza** modificar otro. Una tarea = un alcance.
+
+## post ≠ boom_clip ≠ flashboom
+
+Aunque compartan `PostVideoPlayer`, `UserAvatar`, `PostActionRail`, etc., la **lógica funcional** debe estar aislada vía props/modo (`overlayOnly`, `reelFeed`, `storyMode`, `embedded`, etc.).
+
+- **Incorrecto:** reglas de Publicaciones dentro de un componente compartido sin prop explícita.
+- **Correcto:** comportamiento específico por consumidor; defaults que preservan comportamiento anterior.
+- **Nunca** inferir tipo solo por `mediaType === video`. Mantener `post` / `boom_clip` / `flashboom`.
+
+## Componentes compartidos
+
+Antes de editar un compartido: **Find all references**. Intentar resolver en el viewer/card del módulo primero.
+
+Contratos claros:
+- **MediaPlayer:** play/pause/mute/volume — no clasificar contenido ni abrir regalos.
+- **UserAvatar:** foto/fallback/marco — no navegación del post.
+- **GiftButton:** flujo de regalos — no layout del video.
+
+Si se modifica API compartida: backward-compatible, defaults seguros, probar **todos** los consumidores.
+
+## Cambio mínimo
+
+Menos archivos + menos componentes + menos lógica global. **No** refactorizar/reescribir módulos que ya funcionan por comodidad. **No** borrar función/prop/handler/CSS sin rastrear referencias (`handleExpand`, `openGiftPanel`, `handleBoom`, hooks de playback, etc.).
+
+## Efectos colaterales prohibidos
+
+- Estado global compartido innecesario (`global.isExpanded`, `currentVideo`) entre post/clip/flash.
+- `useEffect` en hooks compartidos que pause videos de otros módulos.
+- CSS global (`video {}`, `button {}`) o `!important` como parche.
+- Media queries sin contexto de módulo (`.publication-viewer .media`, no `video` a secas).
+- z-index/portals que bloqueen regalos, comentarios, Boom, compartir, cerrar (`pointer-events`).
+- Eventos sin `stopPropagation` donde corresponda (expand ≠ pause/gift/navigate).
+
+## Funcionalidades críticas protegidas
+
+Tras cualquier cambio, deben seguir OK:
+
+**Publicaciones:** play, pause, audio, expandir, regalo, boom, comentar, compartir, avatar.
+
+**Boom Clip:** play, navegación, agrupación, `+ Clip`, regalo, boom, comentar, compartir.
+
+**Flash Boom:** abrir, avanzar, retroceder, publicar, `+ Flash`, 24h.
+
+**LIVE:** transmitir, entrar/salir, contador en sala, chat, regalo, audio/video.
+
+**Responsive:** desktop + tablet + móvil (misma app, ver `liveboom-responsive-universal.mdc`).
+
+## Regression gate (obligatorio)
+
+Matriz interna antes de dar por terminado:
+
+| Funcionalidad | Antes | Después |
+|---------------|-------|---------|
+| Módulo cambiado | OK | OK (fix) |
+| Otros módulos críticos | OK | OK (sin cambio) |
+
+Nunca aceptar **OK → ERROR** en módulo no relacionado. Si hay regresión: identificar causa → revertir/aislar → corregir bien (no parches encima de parches).
+
+Usar framework de tests existente si hay; agregar tests de regresión para comportamientos críticos (expand conserva playback, `contentType` correcto, consumidores de compartidos).
+
+## Informe final de cada tarea
+
+Entregar brevemente:
+
+- **Archivos modificados**
+- **Cambio realizado**
+- **Compartidos modificados:** sí/no (+ cuáles y por qué)
+- **Regresiones comprobadas:** Publicaciones / Boom Clip / Flash Boom / LIVE / Explorar
+
+## Regla absoluta
+
+Si corregir Publicaciones rompe Boom Clip, Flash Boom, Regalos o LIVE → **el cambio es incorrecto**. Código que funciona no se modifica sin razón directa de la tarea.

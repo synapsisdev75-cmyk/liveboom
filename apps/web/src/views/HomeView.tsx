@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
+import { LayoutGroup } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Eye,
   Gift,
   MapPin,
   MessageCircle,
   Play,
   Search,
-  Trophy,
-  Users,
 } from 'lucide-react';
-import { LiveAvatarRow } from '../components/feed/LiveAvatarRow';
 import { FlashBoomRow } from '../components/feed/FlashBoomRow';
+import { LiveAvatarRow } from '../components/feed/LiveAvatarRow';
+import { TopLivesRail } from '../components/feed/TopLivesRail';
 import { ReelFeedViewer } from '../components/feed/ReelFeedViewer';
 import { ReelsRow } from '../components/feed/ReelsRow';
 import { CategoryChips } from '../components/search/CategoryChips';
@@ -25,14 +24,15 @@ import { PostPhotoViewer } from '../components/social/PostPhotoViewer';
 import { POST_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { EmojiText } from '../components/social/EmojiText';
 import { type SocialPost } from '../components/social/SocialPostCard';
+import { UserAvatar } from '../components/profile/UserAvatar';
 import { apiPublic } from '../lib/api';
 import { categoryLabel } from '../lib/categories';
-import { listenPublicGroups, type LiveGroup } from '../lib/groupsFirestore';
 import {
   listenActiveLiveRooms,
   reconcileLiveFeedWithApi,
   type ActiveLiveFeedItem,
 } from '../lib/liveGiftsFirestore';
+import { getLiveRanking } from '../lib/liveRanking';
 import {
   listenPostComments,
   listenPostReactions,
@@ -63,6 +63,9 @@ function toSocial(post: FsPost): SocialPost {
     likes: post.likes,
     dislikes: 0,
     viewerReaction: null,
+    postFormat: post.postFormat,
+    durationSec: post.durationSec,
+    reelFeedUntilMs: post.reelFeedUntilMs,
   };
 }
 
@@ -74,11 +77,6 @@ function timeAgo(iso: string) {
   const h = Math.floor(m / 60);
   if (h < 48) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
-}
-
-function formatCount(n: number) {
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, '')}K`;
-  return String(n);
 }
 
 /** Post destacado: video con autoplay + comentarios directos. */
@@ -159,11 +157,12 @@ function FeaturedFeedCard({
     <article className="lb-card lb-panel overflow-hidden rounded-2xl">
       <div className="flex items-center gap-3 px-3.5 pt-3.5 sm:px-4 sm:pt-4">
         <Link to={`/u/${encodeURIComponent(post.authorUsername)}`} className="shrink-0">
-          <span className="grid h-10 w-10 place-items-center overflow-hidden rounded-full bg-zinc-800 ring-2 ring-fuchsia-400/40">
-            <span className="text-sm font-black text-fuchsia-100">
-              {post.authorUsername.slice(0, 1).toUpperCase()}
-            </span>
-          </span>
+          <UserAvatar
+            uid={post.authorUid}
+            username={post.authorUsername}
+            size={40}
+            ringClassName="ring-2 ring-fuchsia-400/40"
+          />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -183,10 +182,6 @@ function FeaturedFeedCard({
           >
             <span className="live-dot h-1.5 w-1.5 rounded-full bg-white" />
             En vivo
-            <span className="inline-flex items-center gap-0.5 opacity-90">
-              <Eye size={10} />
-              {formatCount(live.viewers || 0)}
-            </span>
           </Link>
         ) : null}
       </div>
@@ -285,68 +280,11 @@ function FeaturedFeedCard({
   );
 }
 
-function GruposTopCard({ groups }: { groups: LiveGroup[] }) {
-  return (
-    <aside className="lb-panel flex h-full flex-col rounded-2xl p-3.5 sm:p-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-          <Trophy size={13} className="text-amber-300" />
-          Grupos top
-        </p>
-        <Link to="/grupos" className="text-[10px] font-semibold text-cyan-400 hover:underline">
-          Ver todos
-        </Link>
-      </div>
-      {groups.length === 0 ? (
-        <p className="mt-4 text-xs text-zinc-500">
-          Aún no hay grupos.{' '}
-          <Link to="/grupos" className="text-cyan-400 underline">
-            Crea el primero
-          </Link>
-        </p>
-      ) : (
-        <ul className="mt-3 flex-1 space-y-2">
-          {groups.slice(0, 5).map((g, i) => (
-            <li key={g.id}>
-              <Link
-                to="/grupos"
-                className="lb-card flex items-center gap-2.5 rounded-xl px-1.5 py-1.5 hover:bg-white/5"
-              >
-                <span
-                  className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-black ${
-                    i === 0
-                      ? 'bg-amber-400/25 text-amber-300'
-                      : i === 1
-                        ? 'bg-zinc-300/20 text-zinc-200'
-                        : i === 2
-                          ? 'bg-orange-400/25 text-orange-300'
-                          : 'bg-white/5 text-zinc-500'
-                  }`}
-                >
-                  {i + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-semibold text-white">{g.name}</span>
-                  <span className="flex items-center gap-1 text-[10px] text-zinc-500">
-                    <Users size={10} />
-                    {formatCount(g.memberCount)} miembros
-                  </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </aside>
-  );
-}
-
 export function HomeView() {
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
   const [streams, setStreams] = useState<ActiveLiveFeedItem[]>([]);
   const [posts, setPosts] = useState<SocialPost[]>([]);
-  const [groups, setGroups] = useState<LiveGroup[]>([]);
   const [category, setCategory] = useState('');
   const [tab, setTab] = useState<FeedTab>('para_ti');
   const [regionLabel, setRegionLabel] = useState<string | null>(null);
@@ -414,8 +352,6 @@ export function HomeView() {
   useEffect(() => {
     return listenActiveLiveRooms((list) => setStreams(list));
   }, []);
-
-  useEffect(() => listenPublicGroups(setGroups), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -520,10 +456,10 @@ export function HomeView() {
       .catch(() => undefined);
   }, [profile?.firebaseUid]);
 
-  const visibleLives = useMemo(() => {
-    if (!category) return streams;
-    return streams.filter((stream) => (stream.category || 'otro') === category);
-  }, [streams, category]);
+  const { topLives, regularLives } = useMemo(
+    () => getLiveRanking(streams, category),
+    [streams, category],
+  );
 
   const featured = posts[0] ?? null;
   const liveForFeatured = useMemo(() => {
@@ -586,30 +522,39 @@ export function HomeView() {
         </p>
       ) : null}
 
-      {/* 2. LIVE EN LÍNEA */}
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-2">
-          <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">
-            Live en línea
-          </h2>
-          <Link
-            to="/explorar"
-            className="text-[11px] font-semibold text-cyan-400 hover:underline"
-          >
-            Ver todos los LIVE →
-          </Link>
-        </div>
-        <LiveAvatarRow streams={visibleLives} />
-      </section>
-
-      {/* 2. Categorías */}
+      {/* Filtros de categoría — inicio del contenido central */}
       <CategoryChips value={category} onChange={setCategory} />
 
-      {/* 3. Flash Boom — historias 24 h */}
+      <LayoutGroup id="home-live-ranking">
+        {/* Directos top — top 5 por espectadores, video preview */}
+        <TopLivesRail streams={topLives} />
+
+        {/* Live en línea — resto de lives, avatar estático */}
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-2">
+            <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">Live en línea</h2>
+            <Link
+              to="/explorar"
+              className="text-[11px] font-semibold text-cyan-400 hover:underline"
+            >
+              Ver todos los LIVE →
+            </Link>
+          </div>
+          <LiveAvatarRow streams={regularLives} />
+        </section>
+      </LayoutGroup>
+
+      {/* Flash Boom — historias 24 h */}
       {profile ? <FlashBoomRow /> : null}
 
-      {/* 4. Boom Clip — reels públicos */}
-      {profile ? <ReelsRow title="Boom Clip" mode="reels" /> : null}
+      {/* Boom Clip — solo videos cortos ≤ 90 s */}
+      {profile ? (
+        <ReelsRow
+          title="Boom Clip"
+          subtitle="Videos cortos de hasta 90 segundos"
+          mode="reels"
+        />
+      ) : null}
 
       {tab === 'siguiendo' && !profile ? (
         <p className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-zinc-500">
@@ -620,40 +565,38 @@ export function HomeView() {
         </p>
       ) : null}
 
-      {/* 5. Posts del feed */}
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,15.5rem)] lg:items-start">
+      {/* 5. Publicaciones — feed (no Boom Clip) */}
+      <section className="space-y-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">Publicaciones</h2>
+          <p className="mt-0.5 text-[10px] text-zinc-500">
+            Fotos, texto y videos largos · feed social
+          </p>
+        </div>
         <div className="min-w-0">
           {!profile ? (
-            <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
-              <Link to="/login" className="text-cyan-400 underline">
-                Inicia sesión
-              </Link>{' '}
-              para ver el feed Para ti.
-            </div>
-          ) : featured ? (
-            <FeaturedFeedCard post={featured} live={liveForFeatured} />
-          ) : tab === 'siguiendo' ? (
-            <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
-              Aún no hay publicaciones de quienes sigues. Cuando tus amigos publiquen fotos, textos o
-              Boom Clip, aparecerán aquí. Los Flash Boom siguen en la fila de arriba.
-            </div>
-          ) : streams[0] ? (
-            <LiveHeroCard stream={streams[0]} />
-          ) : (
-            <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
-              Aún no hay posts. Publica desde Crear o espera un LIVE.
-            </div>
-          )}
-        </div>
-        <div className="hidden lg:block">
-          <GruposTopCard groups={groups} />
+              <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
+                <Link to="/login" className="text-cyan-400 underline">
+                  Inicia sesión
+                </Link>{' '}
+                para ver el feed Para ti.
+              </div>
+            ) : featured ? (
+              <FeaturedFeedCard post={featured} live={liveForFeatured} />
+            ) : tab === 'siguiendo' ? (
+              <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
+                Aún no hay publicaciones de quienes sigues. Cuando publiquen fotos, textos o videos,
+                aparecerán aquí. Los Flash Boom y Boom Clip están arriba.
+              </div>
+            ) : streams[0] ? (
+              <LiveHeroCard stream={streams[0]} />
+            ) : (
+              <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
+                Aún no hay publicaciones. Publica desde Crear o espera un LIVE.
+              </div>
+            )}
         </div>
       </section>
-
-      {/* Grupos top en móvil (debajo del post) */}
-      <div className="lg:hidden">
-        <GruposTopCard groups={groups} />
-      </div>
 
       {/* Más posts del feed */}
       {profile && posts.length > 1 ? (
@@ -672,6 +615,7 @@ export function HomeView() {
           reels={flashViewer.reels}
           initialIndex={flashViewer.index}
           storyMode={flashViewer.storyMode}
+          immersiveLandscapeLayout={flashViewer.storyMode}
           onClose={() => setFlashViewer(null)}
         />
       ) : null}
@@ -701,7 +645,7 @@ function LiveHeroCard({ stream }: { stream: ActiveLiveFeedItem }) {
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-600 px-2.5 py-1 text-[10px] font-black uppercase text-white">
           <span className="live-dot h-1.5 w-1.5 rounded-full bg-white" />
-          En vivo · {formatCount(stream.viewers || 0)}
+          En vivo
         </span>
       </div>
       <Link

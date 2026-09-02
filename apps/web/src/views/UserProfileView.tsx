@@ -32,7 +32,11 @@ import {
   updatePostVisibility,
 } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
+import { useUiStore } from '../store/uiStore';
 import type { PublicFsUser } from '../lib/profileFirestore';
+import { isBoomClipPost, isPublicationPost } from '../lib/contentType';
+import { isStoryPost } from '../lib/storyLifecycle';
+import { BOOM_CLIP_LABEL } from '../lib/brand';
 
 function LogoutProfileButton() {
   const logout = useAuthStore((state) => state.logout);
@@ -107,13 +111,53 @@ export function UserProfileView() {
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [expandVideoId, setExpandVideoId] = useState<string | null>(postHint || null);
   const [expandPhotoId, setExpandPhotoId] = useState<string | null>(postHint || null);
-  const [feedTab, setFeedTab] = useState<'all' | 'video' | 'photo'>('all');
+  const [feedTab, setFeedTab] = useState<'posts' | 'clips' | 'photos'>('posts');
   const highlightPostRef = useRef<HTMLDivElement | null>(null);
+  const setToast = useUiStore((s) => s.setToast);
+
+  const filteredPosts = useMemo(() => {
+    const withoutStories = posts.filter((post) => !isStoryPost(post as never));
+    if (feedTab === 'clips') {
+      return withoutStories.filter((post) =>
+        isBoomClipPost({
+          type: post.type,
+          mediaUrl: post.mediaUrl,
+          visibility: post.visibility,
+          postFormat: post.postFormat,
+          durationSec: post.durationSec,
+          reelFeedUntilMs: post.reelFeedUntilMs,
+        }),
+      );
+    }
+    if (feedTab === 'photos') {
+      return withoutStories.filter(
+        (post) =>
+          post.type === 'photo' &&
+          isPublicationPost({
+            type: post.type,
+            mediaUrl: post.mediaUrl,
+            visibility: post.visibility,
+            postFormat: post.postFormat,
+            durationSec: post.durationSec,
+            reelFeedUntilMs: post.reelFeedUntilMs,
+          }),
+      );
+    }
+    return withoutStories.filter((post) =>
+      isPublicationPost({
+        type: post.type,
+        mediaUrl: post.mediaUrl,
+        visibility: post.visibility,
+        postFormat: post.postFormat,
+        durationSec: post.durationSec,
+        reelFeedUntilMs: post.reelFeedUntilMs,
+      }),
+    );
+  }, [posts, feedTab]);
 
   const profileVideoPosts = useMemo(() => {
-    const filtered = feedTab === 'all' ? posts : posts.filter((post) => post.type === feedTab);
-    return filtered.filter((post) => post.type === 'video' && post.mediaUrl);
-  }, [posts, feedTab]);
+    return filteredPosts.filter((post) => post.type === 'video' && post.mediaUrl);
+  }, [filteredPosts]);
 
   const profileViewerIndex = expandVideoId
     ? profileVideoPosts.findIndex((post) => post.id === expandVideoId)
@@ -130,9 +174,9 @@ export function UserProfileView() {
     if (!postHint) return;
     void getPostById(postHint).then((post) => {
       if (!post) return;
-      if (post.type === 'video') setFeedTab('video');
-      else if (post.type === 'photo') setFeedTab('photo');
-      else setFeedTab('all');
+      if (post.type === 'video' && isBoomClipPost(post)) setFeedTab('clips');
+      else if (post.type === 'photo') setFeedTab('photos');
+      else setFeedTab('posts');
     });
   }, [postHint]);
 
@@ -268,6 +312,9 @@ export function UserProfileView() {
             likes: item.likes,
             dislikes: 0,
             viewerReaction: null,
+            postFormat: item.postFormat,
+            durationSec: item.durationSec,
+            reelFeedUntilMs: item.reelFeedUntilMs,
           })),
         );
       },
@@ -608,7 +655,20 @@ export function UserProfileView() {
             onCreated={(post) => {
               setLibraryError(null);
               setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+              const isClip = isBoomClipPost({
+                type: post.type,
+                mediaUrl: post.mediaUrl,
+                visibility: post.visibility,
+                postFormat: post.postFormat,
+                durationSec: post.durationSec,
+              });
+              if (isClip) {
+                setToast(`${BOOM_CLIP_LABEL} publicado`, 'success');
+                return;
+              }
+              setToast('Publicación lista', 'success');
               if (post.type === 'video') setExpandVideoId(post.id);
+              if (post.type === 'photo') setExpandPhotoId(post.id);
             }}
           />
         ) : null}
@@ -616,9 +676,9 @@ export function UserProfileView() {
           <div className="flex flex-wrap gap-1 rounded-full border border-white/10 bg-black/20 p-1">
             {(
               [
-                { id: 'all' as const, label: 'Publicaciones' },
-                { id: 'video' as const, label: 'Reels' },
-                { id: 'photo' as const, label: 'Fotos' },
+                { id: 'posts' as const, label: 'Publicaciones' },
+                { id: 'clips' as const, label: 'Boom Clips' },
+                { id: 'photos' as const, label: 'Fotos' },
               ] as const
             ).map((tab) => (
               <button
@@ -638,9 +698,7 @@ export function UserProfileView() {
         </div>
         {libraryError ? <p className="mb-3 text-sm text-fuchsia-400">{libraryError}</p> : null}
         {(() => {
-          const filtered =
-            feedTab === 'all' ? posts : posts.filter((post) => post.type === feedTab);
-          if (filtered.length === 0) {
+          if (filteredPosts.length === 0) {
             return (
               <p className="text-sm text-zinc-500">
                 {profile
@@ -651,7 +709,7 @@ export function UserProfileView() {
           }
           return (
             <div className="flex flex-col gap-3">
-              {filtered.map((post) => (
+              {filteredPosts.map((post) => (
                 <div
                   key={post.id}
                   ref={post.id === postHint ? highlightPostRef : undefined}

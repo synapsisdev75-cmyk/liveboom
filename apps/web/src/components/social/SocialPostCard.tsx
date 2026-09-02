@@ -19,6 +19,7 @@ import { PostPhotoViewer } from './PostPhotoViewer';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 import { PostReactionButtons } from './PostReactionButtons';
+import { ReelGiftControls } from '../feed/ReelGiftControls';
 
 type Props = {
   username: string;
@@ -195,6 +196,9 @@ export type SocialPost = {
   likes: number;
   dislikes: number;
   viewerReaction: 'like' | 'dislike' | null;
+  postFormat?: 'story' | 'post' | null;
+  durationSec?: number | null;
+  reelFeedUntilMs?: number | null;
 };
 
 export function PostCard({
@@ -386,13 +390,23 @@ export function PostCard({
           busy={busy}
           onReact={(reaction) => void react(reaction)}
         />
-        <ShareContentButton
-          url={shareUrl}
-          title={`@${post.authorUsername} en LiveBoom`}
-          text={shareText}
-          mediaUrl={post.mediaUrl}
-          mediaType={post.type === 'video' ? 'video' : post.type === 'photo' ? 'photo' : 'text'}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          {post.authorUsername ? (
+            <ReelGiftControls
+              authorUsername={post.authorUsername}
+              authorUid={post.authorUid}
+              postId={post.id}
+              inline
+            />
+          ) : null}
+          <ShareContentButton
+            url={shareUrl}
+            title={`@${post.authorUsername} en LiveBoom`}
+            text={shareText}
+            mediaUrl={post.mediaUrl}
+            mediaType={post.type === 'video' ? 'video' : post.type === 'photo' ? 'photo' : 'text'}
+          />
+        </div>
         {canDelete && !canChangeVisibility ? (
           <button
             type="button"

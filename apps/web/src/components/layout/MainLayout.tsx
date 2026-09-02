@@ -213,6 +213,8 @@ export function MainLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const onMessages = location.pathname.startsWith('/mensajes');
+  const onExplore = location.pathname.startsWith('/explorar');
+  const immersiveMain = onMessages || onExplore;
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -263,12 +265,14 @@ export function MainLayout() {
 
       <main
         className={`min-h-0 min-w-0 flex-1 ${
-          onMessages
-            ? 'overflow-hidden p-0 lg:w-[56%]'
-            : 'overflow-y-auto overflow-x-hidden pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4'
+          onExplore
+            ? 'overflow-hidden p-0 pb-[var(--lb-bottom-nav-h)] lg:w-[56%] lg:pb-0'
+            : onMessages
+              ? 'overflow-hidden p-0 lg:w-[56%]'
+              : 'overflow-y-auto overflow-x-hidden pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4'
         }`}
       >
-        {profile && !profile.birthDate && !location.pathname.startsWith('/perfil/editar') && !onMessages ? (
+        {profile && !profile.birthDate && !location.pathname.startsWith('/perfil/editar') && !immersiveMain ? (
           <Link
             to="/perfil/editar?completar=1"
             className="lb-page mb-3 flex items-start gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2.5 text-sm text-cyan-50"
@@ -281,7 +285,7 @@ export function MainLayout() {
         ) : null}
         <div
           key={location.pathname}
-          className={onMessages ? 'flex h-full min-h-0 flex-col' : 'lb-page'}
+          className={immersiveMain ? 'flex h-full min-h-0 flex-col' : 'lb-page'}
         >
           <Outlet />
         </div>

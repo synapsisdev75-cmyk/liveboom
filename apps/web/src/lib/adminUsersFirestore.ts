@@ -1,6 +1,6 @@
 import { collection, getDocs, getDoc, doc, limit, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
-import { profileHref } from './profileFirestore';
+import { profileHref, readLevelXpFields } from './profileFirestore';
 
 const PRESENCE_ONLINE_MS = 90_000;
 
@@ -11,6 +11,8 @@ export type AdminUserRow = {
   email: string;
   avatarUrl: string | null;
   levelXp: number;
+  levelXpPinned: number | null;
+  levelXpOrganic: number;
   coinsBalance: number;
   online: boolean;
   presenceAt: string | null;
@@ -60,13 +62,16 @@ export async function listAdminUsers(max = 200): Promise<AdminUserRow[]> {
     const uid = d.id;
     const username = String(data.username || '').replace(/^@/, '');
     const { online, presenceAt } = await isUserOnline(uid);
+    const xp = readLevelXpFields(data as Record<string, unknown>);
     rows.push({
       uid,
       username,
       displayName: String(data.displayName || username || 'Usuario'),
       email: String(data.email || ''),
       avatarUrl: (data.avatarUrl as string | null) ?? null,
-      levelXp: Number(data.levelXp ?? 0),
+      levelXp: xp.effective,
+      levelXpPinned: xp.pinned,
+      levelXpOrganic: xp.organic,
       coinsBalance: Number(data.coinsBalance ?? 0),
       online,
       presenceAt,

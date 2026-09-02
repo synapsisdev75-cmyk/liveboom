@@ -5,13 +5,16 @@ import {
   Lock,
   Maximize2,
   MessageCircle,
-  ThumbsDown,
+  Pause,
+  Play,
+  RotateCcw,
+  RotateCw,
   Volume2,
   VolumeX,
   X,
   Users,
 } from 'lucide-react';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type TouchEvent, type WheelEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
@@ -29,15 +32,15 @@ import {
   releaseUnmuted,
 } from '../../lib/videoPlayback';
 import { useVideoAspect } from '../../lib/videoAspect';
+import { usesImmersiveAsideRail } from '../../lib/immersiveMediaLayout';
 import { buildPostShareUrl } from '../../lib/shareContent';
-import { BoomLikeButton } from './BoomButtons';
 import { ShareContentButton } from './ShareContentButton';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { EmojiText } from './EmojiText';
 import { insertEmojiToken, COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
-import { ReactionList } from './PostReactionButtons';
-import { ReelGiftControls } from '../feed/ReelGiftControls';
+import { PostActionRail } from './PostActionRail';
+import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 
@@ -79,13 +82,28 @@ type Props = {
   reelPosition?: { current: number; total: number };
   /** Modo Flash Boom: auto-avance + barras de progreso. */
   storyMode?: boolean;
+  /** Foto del creador (se completa vía perfil si falta). */
+  authorAvatarUrl?: string | null;
+  /** Feed embebido en página (Explorar): sin portal fullscreen. */
+  embedded?: boolean;
+  /** Oculta el botón cerrar (p. ej. Explorar como página). */
+  hideClose?: boolean;
+  /** Badge discreto: Boom Clip / Publicación. */
+  contentBadge?: string | null;
+  /** Rail abajo-derecha en visor inmersivo (Explorar, Boom Clip, publicación). */
+  actionRailLayout?: 'corner' | 'default';
+  /** Explorar / Flash Boom: media horizontal + rail fijo al lado. */
+  immersiveLandscapeLayout?: boolean;
 };
+
+const SEEK_STEP_SEC = 10;
 
 export function PostVideoPlayer({
   src,
   postId,
   authorUid,
   authorUsername,
+  authorAvatarUrl,
   caption,
   likes,
   dislikes,
@@ -107,20 +125,33 @@ export function PostVideoPlayer({
   reelNavigation,
   reelPosition,
   storyMode = false,
+  embedded = false,
+  hideClose = false,
+  contentBadge = null,
+  actionRailLayout = 'corner',
+  immersiveLandscapeLayout = false,
 }: Props) {
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
   const wrapRef = useRef<HTMLDivElement>(null);
-  const inlineRef = useRef<HTMLVideoElement>(null);
-  const fullRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const swipeRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
+  const expandedRef = useRef(false);
+  const playbackSnapshotRef = useRef({
+    time: 0,
+    playing: false,
+    muted: true,
+    volume: 1,
+  });
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
   const [muted, setMuted] = useState(true);
-  const [showLikers, setShowLikers] = useState(false);
-  const [showDislikers, setShowDislikers] = useState(false);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [storyProgress, setStoryProgress] = useState(0);
+  const [seekHint, setSeekHint] = useState<string | null>(null);
+  const [playbackFlash, setPlaybackFlash] = useState<'play' | 'pause' | null>(null);
+  const playbackFlashTimerRef = useRef<number | null>(null);
+  const [mediaSize, setMediaSize] = useState({ width: 0, height: 0 });
   const shareUrl =
     authorUsername && postId
       ? buildPostShareUrl(authorUsername, postId, authorUid)
@@ -132,17 +163,34 @@ export function PostVideoPlayer({
   const videoAspect = useVideoAspect(src);
 
   useEffect(() => {
+    if (videoAspect.isReady) {
+      setMediaSize({ width: videoAspect.width, height: videoAspect.height });
+    }
+  }, [videoAspect.width, videoAspect.height, videoAspect.isReady]);
+
+  useEffect(() => {
     if (onRequestExpand) return;
     if (startExpanded || overlayOnly) setExpanded(true);
   }, [startExpanded, overlayOnly, onRequestExpand]);
+
+  useEffect(() => {
+    expandedRef.current = expanded;
+  }, [expanded]);
 
   useEffect(() => {
     onExpandChange?.(expanded);
   }, [expanded, onExpandChange]);
 
   useEffect(() => {
+    if (!seekHint) return;
+    const timer = window.setTimeout(() => setSeekHint(null), 900);
+    return () => window.clearTimeout(timer);
+  }, [seekHint]);
+
+  useEffect(() => {
     setStoryProgress(0);
     setCommentsPanelOpen(false);
+    setSeekHint(null);
   }, [postId, src]);
 
   useEffect(() => {
@@ -154,31 +202,32 @@ export function PostVideoPlayer({
     return registerFeedVideo({
       id: playerId,
       pause: () => {
-        inlineRef.current?.pause();
-        fullRef.current?.pause();
+        videoRef.current?.pause();
       },
       mute: () => {
         setMuted(true);
-        if (inlineRef.current) inlineRef.current.muted = true;
-        if (fullRef.current) fullRef.current.muted = true;
+        if (videoRef.current) videoRef.current.muted = true;
       },
     });
   }, [playerId]);
 
-  // Autoplay muted en viewport (solo inline, nunca si está expandido)
+  // Autoplay muted en viewport (solo inline; nunca pausar al expandir)
   useEffect(() => {
     const host = wrapRef.current;
-    const video = inlineRef.current;
-    if (!host || !video || expanded || overlayOnly) return;
+    const video = videoRef.current;
+    if (!host || !video || overlayOnly) return;
 
     const io = new IntersectionObserver(
       ([entry]) => {
+        if (expandedRef.current) return;
         if (!entry) return;
         if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
-          video.muted = true;
-          setMuted(true);
-          void video.play().catch(() => undefined);
-        } else {
+          if (video.muted) {
+            void video.play().catch(() => undefined);
+          } else {
+            void video.play().catch(() => undefined);
+          }
+        } else if (!expandedRef.current) {
           video.pause();
         }
       },
@@ -187,63 +236,113 @@ export function PostVideoPlayer({
     io.observe(host);
     return () => {
       io.disconnect();
-      video.pause();
+      if (!expandedRef.current) video.pause();
     };
-  }, [src, expanded, overlayOnly]);
+  }, [src, overlayOnly]);
 
-  const playExpandedVideo = useCallback(() => {
-    const full = fullRef.current;
-    if (!full || !expanded) return;
-    if (inlineRef.current) {
-      full.currentTime = inlineRef.current.currentTime;
-    }
-    full.muted = muted;
-    if (!muted) claimUnmuted(playerId);
-    else releaseUnmuted(playerId);
-    void full.play().catch(() => undefined);
-  }, [expanded, muted, playerId]);
+  // Boom Clip / Flash / Explorar: autoplay al abrir cada clip
+  useEffect(() => {
+    if (!overlayOnly) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const start = () => {
+      void video.play().catch(() => undefined);
+    };
+    if (video.readyState >= 2) start();
+    else video.addEventListener('loadeddata', start, { once: true });
+  }, [overlayOnly, src, postId]);
 
-  // Expandido: un solo <video> con audio; el inline queda pausado
+  const flashPlayback = useCallback((state: 'play' | 'pause') => {
+    setPlaybackFlash(state);
+    if (playbackFlashTimerRef.current) window.clearTimeout(playbackFlashTimerRef.current);
+    playbackFlashTimerRef.current = window.setTimeout(() => setPlaybackFlash(null), 650);
+  }, []);
+
+  const toggleExpandedPlayback = useCallback(
+    (event?: MouseEvent) => {
+      event?.stopPropagation();
+      const el = videoRef.current;
+      if (!el) return;
+      if (el.paused) {
+        void el.play().catch(() => undefined);
+        flashPlayback('play');
+      } else {
+        el.pause();
+        flashPlayback('pause');
+      }
+    },
+    [flashPlayback],
+  );
+
+  const seekExpanded = useCallback((deltaSec: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const next = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + deltaSec));
+    if (!Number.isFinite(next)) return;
+    video.currentTime = next;
+    setSeekHint(deltaSec < 0 ? `-${SEEK_STEP_SEC}s` : `+${SEEK_STEP_SEC}s`);
+    if (video.paused) void video.play().catch(() => undefined);
+  }, []);
+
+  const capturePlaybackSnapshot = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    playbackSnapshotRef.current = {
+      time: video.currentTime,
+      playing: !video.paused,
+      muted: video.muted,
+      volume: video.volume,
+    };
+  }, []);
+
+  const restorePlaybackSnapshot = useCallback(() => {
+    const video = videoRef.current;
+    const snap = playbackSnapshotRef.current;
+    if (!video) return;
+
+    const apply = () => {
+      if (Number.isFinite(snap.time)) {
+        video.currentTime = snap.time;
+      }
+      video.muted = snap.muted;
+      video.volume = snap.volume;
+      setMuted(snap.muted);
+      if (!snap.muted) claimUnmuted(playerId);
+      else releaseUnmuted(playerId);
+      if (snap.playing) {
+        void video.play().catch(() => undefined);
+      }
+    };
+
+    if (video.readyState >= 2) apply();
+    else video.addEventListener('loadeddata', apply, { once: true });
+  }, [playerId]);
+
+  // Expandido: portal a body + restaurar reproducción al montar el video
   useLayoutEffect(() => {
     if (!expanded) {
       releaseExclusivePlayback(playerId);
+      if (!overlayOnly) restorePlaybackSnapshot();
       return;
     }
 
     claimExclusivePlayback(playerId);
-    const inline = inlineRef.current;
-    if (inline) {
-      inline.pause();
-      inline.muted = true;
-    }
-
-    playExpandedVideo();
-    const kick = window.setTimeout(playExpandedVideo, 60);
-
     const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (!embedded && !overlayOnly) document.body.style.overflow = 'hidden';
+    restorePlaybackSnapshot();
     return () => {
-      window.clearTimeout(kick);
-      document.body.style.overflow = prevOverflow;
-      fullRef.current?.pause();
+      if (!embedded && !overlayOnly) document.body.style.overflow = prevOverflow;
       releaseExclusivePlayback(playerId);
-      if (inline && !overlayOnly) {
-        const full = fullRef.current;
-        if (full) inline.currentTime = full.currentTime;
-        inline.muted = true;
-        setMuted(true);
-        void inline.play().catch(() => undefined);
-      }
     };
-  }, [expanded, playerId, overlayOnly, src, playExpandedVideo]);
+  }, [expanded, playerId, embedded, overlayOnly, restorePlaybackSnapshot]);
 
   useEffect(() => {
-    const el = expanded ? fullRef.current : inlineRef.current;
+    const el = videoRef.current;
     if (!el) return;
     el.muted = muted;
     if (!muted) claimUnmuted(playerId);
     else releaseUnmuted(playerId);
-  }, [muted, expanded, playerId]);
+  }, [muted, playerId]);
 
   function toggleMute(event: MouseEvent) {
     event.stopPropagation();
@@ -257,10 +356,13 @@ export function PostVideoPlayer({
 
   function openExpand(event?: MouseEvent) {
     event?.stopPropagation();
+    event?.preventDefault();
     if (onRequestExpand) {
       onRequestExpand();
       return;
     }
+    capturePlaybackSnapshot();
+    expandedRef.current = true;
     setExpanded(true);
   }
 
@@ -269,6 +371,8 @@ export function PostVideoPlayer({
       onCloseExpand?.();
       return;
     }
+    capturePlaybackSnapshot();
+    expandedRef.current = false;
     setExpanded(false);
     onCloseExpand?.();
   }
@@ -295,15 +399,21 @@ export function PostVideoPlayer({
   }, [reelNavigation]);
 
   useEffect(() => {
-    if (!expanded || !reelNavigation) return;
-    const nav = reelNavigation;
+    if (!expanded) return;
     function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        if (hideClose) return;
+        event.preventDefault();
+        closeExpand();
+        return;
+      }
+      if (!reelNavigation) return;
       if (event.key === 'ArrowUp') {
         event.preventDefault();
-        nav.onNext();
+        reelNavigation.onNext();
       } else if (event.key === 'ArrowDown') {
         event.preventDefault();
-        nav.onPrev();
+        reelNavigation.onPrev();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -323,81 +433,237 @@ export function PostVideoPlayer({
   const inlineWrapStyle =
     !inlineLandscape && videoAspect.isReady ? videoAspect.aspectStyle : undefined;
 
-  const expandedOverlay =
-    expanded && typeof document !== 'undefined' ? (
-      <div className="fixed inset-0 z-[100] overflow-hidden overscroll-none bg-black">
-        <div
-          className="absolute inset-0"
-          onTouchStart={(event: TouchEvent<HTMLDivElement>) => {
-            const touch = event.touches[0];
-            if (!touch) return;
-            handleSwipeStart(touch.clientX, touch.clientY);
-          }}
-          onTouchEnd={(event: TouchEvent<HTMLDivElement>) => {
-            const touch = event.changedTouches[0];
-            if (!touch) return;
-            handleSwipeEnd(touch.clientX, touch.clientY);
-          }}
-          onWheel={(event: WheelEvent<HTMLDivElement>) => {
-            if (!reelNavigation) return;
-            event.preventDefault();
-            handleWheelNavigate(event.deltaY);
-          }}
-        >
-          <video
-            ref={fullRef}
-            src={src}
-            className="absolute inset-0 h-full w-full object-contain"
-            muted={muted}
-            loop={!storyMode}
-            playsInline
-            autoPlay
-            preload="auto"
-            onLoadedData={playExpandedVideo}
-            onCanPlay={playExpandedVideo}
-            onTimeUpdate={(event) => {
-              if (!storyMode) return;
-              const video = event.currentTarget;
-              if (video.duration > 0) {
-                setStoryProgress(Math.min(1, video.currentTime / video.duration));
-              }
-            }}
-            onEnded={() => {
-              if (!storyMode || commentsPanelOpen || !reelNavigation) return;
-              setStoryProgress(1);
-              reelNavigation.onNext();
-            }}
-            onClick={() => {
-              if (reelNavigation) return;
-              const el = fullRef.current;
+  const videoNode = (
+    <video
+      ref={videoRef}
+      src={src}
+      className="lb-post-media__video h-full w-full object-contain"
+      muted={muted}
+      loop={!storyMode}
+      playsInline
+      preload="auto"
+      onClick={
+        !expanded && !overlayOnly
+          ? (event) => {
+              event.stopPropagation();
+              const el = videoRef.current;
               if (!el) return;
-              if (el.paused) void el.play();
+              if (el.paused) void el.play().catch(() => undefined);
               else el.pause();
-            }}
-          />
-          {reelNavigation ? (
+            }
+          : undefined
+      }
+      onLoadedMetadata={(event) => {
+        const video = event.currentTarget;
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setMediaSize({ width: video.videoWidth, height: video.videoHeight });
+        }
+      }}
+      onTimeUpdate={(event) => {
+        if (!storyMode) return;
+        const video = event.currentTarget;
+        if (video.duration > 0) {
+          setStoryProgress(Math.min(1, video.currentTime / video.duration));
+        }
+      }}
+      onEnded={() => {
+        if (!storyMode || commentsPanelOpen || !reelNavigation) return;
+        setStoryProgress(1);
+        reelNavigation.onNext();
+      }}
+    />
+  );
+
+  const immersiveW = mediaSize.width || videoAspect.width || 9;
+  const immersiveH = mediaSize.height || videoAspect.height || 16;
+  const useLandscapeAside = usesImmersiveAsideRail(immersiveW, immersiveH, immersiveLandscapeLayout);
+
+  const reelNavChrome =
+    reelNavigation && !useLandscapeAside ? (
+      <div className="pointer-events-auto absolute -right-14 top-1/2 z-20 hidden -translate-y-1/2 flex-col gap-3 lg:flex">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            reelNavigation.onNext();
+          }}
+          className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
+          aria-label="Siguiente clip"
+        >
+          <ChevronUp size={26} strokeWidth={2.25} />
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            reelNavigation.onPrev();
+          }}
+          className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
+          aria-label="Clip anterior"
+        >
+          <ChevronDown size={26} strokeWidth={2.25} />
+        </button>
+      </div>
+    ) : null;
+
+  const expandedChrome =
+    expanded && (embedded || typeof document !== 'undefined') ? (
+      <div
+        className={`${
+          embedded ? 'absolute inset-0 z-10' : 'fixed inset-0 z-[100] h-[100dvh] max-h-[100dvh]'
+        } overflow-hidden overscroll-none bg-black`}
+      >
+        <ImmersiveMediaStage
+          mediaWidth={immersiveW}
+          mediaHeight={immersiveH}
+          mediaUrl={src}
+          mediaKind="video"
+          embedded={embedded}
+          landscapeRailAside={immersiveLandscapeLayout}
+          insets={{
+            top: storyMode ? 44 : 52,
+            bottom: embedded ? 88 : 112,
+            left: 4,
+            right: 4,
+            actionRail: 56,
+          }}
+          onSwipeStart={handleSwipeStart}
+          onSwipeEnd={handleSwipeEnd}
+          onWheel={reelNavigation ? handleWheelNavigate : undefined}
+          mediaOverlay={
             <>
               <button
                 type="button"
-                className="absolute inset-x-0 top-0 z-[5] h-[22%] md:hidden"
-                aria-label="Clip siguiente"
+                className={`absolute left-0 z-[4] w-[28%] bg-transparent ${
+                  reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
+                }`}
+                aria-label={`Retroceder ${SEEK_STEP_SEC} segundos`}
                 onClick={(event) => {
                   event.stopPropagation();
-                  reelNavigation.onNext();
+                  seekExpanded(-SEEK_STEP_SEC);
                 }}
               />
               <button
                 type="button"
-                className="absolute inset-x-0 bottom-0 z-[5] h-[22%] md:hidden"
-                aria-label="Clip anterior"
+                className={`absolute right-0 z-[4] w-[28%] bg-transparent ${
+                  reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
+                }`}
+                aria-label={`Adelantar ${SEEK_STEP_SEC} segundos`}
                 onClick={(event) => {
                   event.stopPropagation();
-                  reelNavigation.onPrev();
+                  seekExpanded(SEEK_STEP_SEC);
                 }}
               />
+              {seekHint ? (
+                <div className="pointer-events-none absolute inset-0 z-[6] grid place-items-center">
+                  <span className="rounded-full bg-black/65 px-4 py-2 text-lg font-bold tabular-nums text-white backdrop-blur-sm">
+                    {seekHint}
+                  </span>
+                </div>
+              ) : null}
+              {playbackFlash ? (
+                <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
+                  <div className="lb-playback-flash grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm sm:h-[4.5rem] sm:w-[4.5rem]">
+                    {playbackFlash === 'play' ? (
+                      <Play size={34} fill="currentColor" className="ml-1" />
+                    ) : (
+                      <Pause size={34} fill="currentColor" />
+                    )}
+                  </div>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className={`absolute inset-x-[28%] z-[3] bg-transparent ${
+                  reelNavigation ? 'inset-y-[18%] md:inset-y-0' : 'inset-y-0'
+                }`}
+                aria-label="Reproducir o pausar"
+                onClick={toggleExpandedPlayback}
+              />
+              {reelNavigation ? (
+                <>
+                  <button
+                    type="button"
+                    className="absolute inset-x-0 top-0 z-[5] h-[18%] md:hidden"
+                    aria-label="Clip siguiente"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      reelNavigation.onNext();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-x-0 bottom-0 z-[5] h-[18%] md:hidden"
+                    aria-label="Clip anterior"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      reelNavigation.onPrev();
+                    }}
+                  />
+                </>
+              ) : null}
             </>
-          ) : null}
-        </div>
+          }
+          sideChrome={
+            <>
+              {reelNavChrome}
+              <PostActionRail
+                postId={postId}
+                authorUid={authorUid}
+                authorUsername={authorUsername}
+                authorAvatarUrl={authorAvatarUrl}
+                likes={likes}
+                dislikes={dislikes}
+                viewerReaction={viewerReaction}
+                likers={likers}
+                dislikers={dislikers}
+                busy={busy}
+                onReact={onReact}
+                commentCount={commentCount}
+                commentsOpen={commentsPanelOpen}
+                onToggleComments={() => setCommentsPanelOpen((value) => !value)}
+                shareUrl={shareUrl}
+                shareTitle={shareTitle}
+                shareText={shareText}
+                mediaUrl={src}
+                mediaType="video"
+                commentsPanelOpen={commentsPanelOpen}
+                anchor="media"
+                layout={useLandscapeAside ? 'aside' : actionRailLayout}
+              />
+            </>
+          }
+        >
+          {videoNode}
+        </ImmersiveMediaStage>
+
+        {useLandscapeAside && reelNavigation ? (
+          <div className="pointer-events-auto absolute right-2 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-3 lg:flex">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                reelNavigation.onNext();
+              }}
+              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
+              aria-label="Siguiente clip"
+            >
+              <ChevronUp size={26} strokeWidth={2.25} />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                reelNavigation.onPrev();
+              }}
+              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
+              aria-label="Clip anterior"
+            >
+              <ChevronDown size={26} strokeWidth={2.25} />
+            </button>
+          </div>
+        ) : null}
+
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/85" />
 
         <div className="pointer-events-none absolute inset-0 z-10 flex min-h-0 flex-col">
@@ -425,17 +691,23 @@ export function PostVideoPlayer({
 
           <div
             className={`pointer-events-auto flex shrink-0 items-start justify-between gap-3 p-3 ${
-              storyMode ? 'pt-2' : 'pt-[max(0.75rem,var(--lb-safe-top))]'
+              storyMode ? 'pt-2' : embedded ? 'pt-3' : 'pt-[max(0.75rem,var(--lb-safe-top))]'
             }`}
           >
-            <button
-              type="button"
-              onClick={closeExpand}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
-              aria-label="Cerrar"
-            >
-              <X size={18} />
-            </button>
+            {hideClose ? (
+              <span className="inline-flex h-10 items-center rounded-full bg-black/45 px-3 text-[11px] font-bold uppercase tracking-wider text-cyan-200/90 backdrop-blur-sm">
+                Explorar
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={closeExpand}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            )}
             <div className="flex items-center gap-2">
               {reelPosition ? (
                 <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/80 backdrop-blur-sm">
@@ -444,134 +716,34 @@ export function PostVideoPlayer({
               ) : null}
               <button
                 type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  seekExpanded(-SEEK_STEP_SEC);
+                }}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm lg:hidden"
+                aria-label={`Retroceder ${SEEK_STEP_SEC} segundos`}
+              >
+                <RotateCcw size={17} />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  seekExpanded(SEEK_STEP_SEC);
+                }}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm lg:hidden"
+                aria-label={`Adelantar ${SEEK_STEP_SEC} segundos`}
+              >
+                <RotateCw size={17} />
+              </button>
+              <button
+                type="button"
                 onClick={toggleMute}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
                 aria-label={muted ? 'Activar sonido' : 'Silenciar'}
               >
                 {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
               </button>
-            </div>
-          </div>
-
-          <div className="pointer-events-none relative min-h-0 flex-1">
-            {reelNavigation ? (
-              <div className="pointer-events-auto absolute right-[4.75rem] top-1/2 z-20 flex -translate-y-1/2 flex-col gap-3 lg:right-[5.25rem]">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    reelNavigation.onNext();
-                  }}
-                  className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100 lg:h-12 lg:w-12"
-                  aria-label="Siguiente clip"
-                >
-                  <ChevronUp size={26} strokeWidth={2.25} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    reelNavigation.onPrev();
-                  }}
-                  className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100 lg:h-12 lg:w-12"
-                  aria-label="Clip anterior"
-                >
-                  <ChevronDown size={26} strokeWidth={2.25} />
-                </button>
-              </div>
-            ) : null}
-            <div
-              className={`pointer-events-auto absolute right-2 flex flex-col items-center gap-2 overflow-y-auto overscroll-contain pr-1 sm:right-3 sm:gap-3 ${
-                commentsPanelOpen
-                  ? 'bottom-[min(46dvh,calc(100dvh-8rem))] max-h-[min(40dvh,calc(100dvh-12rem))]'
-                  : 'bottom-[max(1rem,var(--lb-safe-bottom))] max-h-[min(72dvh,calc(100dvh-6rem))] sm:bottom-4 sm:max-h-none'
-              }`}
-            >
-              {authorUsername ? (
-                <ReelGiftControls
-                  authorUsername={authorUsername}
-                  authorUid={authorUid}
-                  postId={postId}
-                />
-              ) : null}
-              <div className="relative flex flex-col items-center gap-1">
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-black/55 shadow-lg backdrop-blur-sm sm:h-12 sm:w-12">
-                  <BoomLikeButton
-                    active={viewerReaction === 'like'}
-                    busy={busy}
-                    count={likes}
-                    showCount={false}
-                    size="md"
-                    onToggle={() => onReact('like')}
-                  />
-                </div>
-                <button
-                  type="button"
-                  disabled={likes === 0}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setShowDislikers(false);
-                    setShowLikers((v) => !v);
-                  }}
-                  className="text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
-                >
-                  {likes}
-                </button>
-                {showLikers ? (
-                  <div className="absolute bottom-full right-0 mb-2">
-                    <ReactionList title="Les gustó (Boom)" users={likers} onClose={() => setShowLikers(false)} />
-                  </div>
-                ) : null}
-              </div>
-              <div className="relative flex flex-col items-center gap-1">
-                <OverlayIconButton
-                  active={viewerReaction === 'dislike'}
-                  activeClass="bg-fuchsia-500 text-zinc-950"
-                  onClick={() => onReact('dislike')}
-                  disabled={busy}
-                >
-                  <ThumbsDown size={20} />
-                </OverlayIconButton>
-                <button
-                  type="button"
-                  disabled={dislikes === 0}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setShowLikers(false);
-                    setShowDislikers((v) => !v);
-                  }}
-                  className="text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
-                >
-                  {dislikes}
-                </button>
-                {showDislikers ? (
-                  <div className="absolute bottom-full right-0 mb-2">
-                    <ReactionList title="No les gustó" users={dislikers} onClose={() => setShowDislikers(false)} />
-                  </div>
-                ) : null}
-              </div>
-              <div className="relative flex flex-col items-center gap-0.5">
-                <OverlayIconButton
-                  active={commentsPanelOpen}
-                  activeClass="bg-cyan-500 text-zinc-950"
-                  onClick={() => setCommentsPanelOpen((value) => !value)}
-                >
-                  <MessageCircle size={20} />
-                </OverlayIconButton>
-                <span className="min-h-[14px] text-[10px] font-bold text-white drop-shadow">
-                  {commentCount > 0 ? commentCount : 'Comentar'}
-                </span>
-              </div>
-              {shareUrl ? (
-                <ShareContentButton
-                  url={shareUrl}
-                  title={shareTitle}
-                  text={shareText}
-                  mediaUrl={src}
-                  mediaType="video"
-                  iconOnly
-                />
-              ) : null}
             </div>
           </div>
 
@@ -607,8 +779,18 @@ export function PostVideoPlayer({
 
           {!commentsPanelOpen ? (
           <div
-            className="pointer-events-auto relative z-20 mt-auto shrink-0 space-y-2 px-3 pb-[max(0.75rem,var(--lb-safe-bottom))]"
+            className={`pointer-events-auto relative z-20 mt-auto shrink-0 space-y-2 px-3 ${
+              embedded || overlayOnly
+                ? 'pb-[max(0.75rem,var(--lb-safe-bottom))] pr-[4.25rem] sm:pr-[4.75rem] lg:pr-3'
+                : 'pb-[max(0.75rem,var(--lb-safe-bottom))]'
+            }`}
+            style={{ paddingRight: 'max(0.75rem, env(safe-area-inset-right))' }}
           >
+            {contentBadge ? (
+              <span className="inline-flex rounded-md bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-200 ring-1 ring-white/15">
+                {contentBadge}
+              </span>
+            ) : null}
             {authorUsername ? (
               <Link
                 to={profileHref(authorUsername, authorUid)}
@@ -665,81 +847,60 @@ export function PostVideoPlayer({
 
   return (
     <>
-      {!overlayOnly ? (
-        <div ref={wrapRef} className={inlineWrapClass} style={inlineWrapStyle}>
-          <video
-            ref={inlineRef}
-            src={src}
-            className="h-full w-full object-contain"
-            muted={muted}
-            loop
-            playsInline
-            preload="metadata"
-            onClick={openExpand}
-          />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 to-transparent" />
-          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={toggleMute}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
-              aria-label={muted ? 'Activar sonido' : 'Silenciar'}
-            >
-              {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-            </button>
-            <button
-              type="button"
-              onClick={openExpand}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
-            >
-              <Maximize2 size={14} /> Expandir
-            </button>
-            {shareUrl ? (
-              <ShareContentButton
-                url={shareUrl}
-                title={shareTitle}
-                text={shareText}
-                mediaUrl={src}
-                mediaType="video"
-                iconOnly
-              />
+      {overlayOnly ? (
+        embedded ? (
+          <div ref={wrapRef} className="relative h-full w-full overflow-hidden bg-black">
+            {expandedChrome}
+          </div>
+        ) : (
+          expandedChrome
+        )
+      ) : (
+        <>
+          {expanded ? (
+            <div className={inlineWrapClass} style={inlineWrapStyle} aria-hidden />
+          ) : null}
+          <div ref={wrapRef} className={inlineWrapClass} style={inlineWrapStyle}>
+            {!expanded ? (
+              <>
+                <div className="relative h-full w-full">{videoNode}</div>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 to-transparent" />
+                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleMute}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
+                    aria-label={muted ? 'Activar sonido' : 'Silenciar'}
+                  >
+                    {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openExpand}
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
+                  >
+                    <Maximize2 size={14} /> Expandir
+                  </button>
+                  {shareUrl ? (
+                    <ShareContentButton
+                      url={shareUrl}
+                      title={shareTitle}
+                      text={shareText}
+                      mediaUrl={src}
+                      mediaType="video"
+                      iconOnly
+                    />
+                  ) : null}
+                </div>
+              </>
             ) : null}
           </div>
-        </div>
-      ) : null}
-
-      {expandedOverlay ? createPortal(expandedOverlay, document.body) : null}
+          {expanded && typeof document !== 'undefined'
+            ? createPortal(expandedChrome, document.body)
+            : null}
+        </>
+      )}
     </>
-  );
-}
-
-function OverlayIconButton({
-  children,
-  onClick,
-  disabled,
-  active,
-  activeClass,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  active?: boolean;
-  activeClass: string;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick();
-      }}
-      className={`grid h-10 w-10 place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-50 sm:h-12 sm:w-12 ${
-        active ? activeClass : 'bg-black/55 text-white'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

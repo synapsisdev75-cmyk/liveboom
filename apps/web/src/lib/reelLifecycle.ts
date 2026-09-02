@@ -1,4 +1,5 @@
 import { BOOM_CLIP_LABEL } from './brand';
+import { isBoomClipPost } from './contentType';
 import { BOOM_CLIP_MAX_DURATION_SEC } from './videoTrim';
 import type { FsPost } from './socialFirestore';
 
@@ -38,21 +39,20 @@ export function postReelLifecycle(post: FsPost): ReelLifecycleTimestamps {
   };
 }
 
-/** ¿Sigue visible en fila de reels / feed público? */
+/** ¿Sigue visible en la sección Boom Clip? Solo videos cortos (no fotos ni publicaciones). */
 export function isReelInPublicFeed(post: FsPost, now = Date.now()): boolean {
-  if ((post.type !== 'video' && post.type !== 'photo') || !post.mediaUrl) return false;
-  if (post.postFormat === 'story') return false;
+  if (!isBoomClipPost(post) || !post.mediaUrl) return false;
   if (post.visibility !== 'public') return false;
   const { reelFeedUntilMs } = postReelLifecycle(post);
   return now < reelFeedUntilMs;
 }
 
-/** Visibilidad objetivo según antigüedad del reel (solo baja, nunca sube). */
+/** Visibilidad objetivo según antigüedad del clip (solo baja, nunca sube). */
 export function targetReelVisibility(
   post: FsPost,
   now = Date.now(),
 ): 'public' | 'friends' | 'private' | 'circle' {
-  if ((post.type !== 'video' && post.type !== 'photo') || post.postFormat === 'story') {
+  if (!isBoomClipPost(post)) {
     return post.visibility;
   }
   const { reelFriendsAtMs, reelPrivateAtMs } = postReelLifecycle(post);
@@ -61,7 +61,7 @@ export function targetReelVisibility(
   return post.visibility;
 }
 
-/** Evita que pocos autores monopolicen el carrusel cuando hay muchos reels. */
+/** Evita que pocos autores monopolicen el carrusel cuando hay muchos clips. */
 export function diversifyReelFeed(posts: FsPost[], maxPerAuthor = 2, limit = 16): FsPost[] {
   const counts = new Map<string, number>();
   const picked: FsPost[] = [];
@@ -76,5 +76,5 @@ export function diversifyReelFeed(posts: FsPost[], maxPerAuthor = 2, limit = 16)
 }
 
 export function reelLifecycleHint(): string {
-  return `${BOOM_CLIP_LABEL}: foto o video (0–${BOOM_CLIP_MAX_DURATION_SEC} s) en tu feed y explorar. No se eliminan; quedan en tu biblioteca.`;
+  return `${BOOM_CLIP_LABEL}: solo video (0–${BOOM_CLIP_MAX_DURATION_SEC} s) en tu carrusel. No se eliminan; quedan en tu biblioteca.`;
 }

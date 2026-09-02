@@ -23,7 +23,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
 import { api, mapPostgresUser, type SessionUser } from '../lib/api';
-import { isSuperAdminEmail } from '../lib/superAdmin';
+import { isOwnerEmail, isSuperAdminEmail } from '../lib/superAdmin';
+import { listenSuperAdmins } from '../lib/superAdminsFirestore';
 import {
   adultCutoffDate,
   ageFromIsoDate,
@@ -201,6 +202,16 @@ export function ProfileView() {
   const avatarMenuRef = useRef<HTMLDivElement>(null);
   const maxBirthDate = useMemo(() => adultCutoffDate(), []);
   const calculatedAge = useMemo(() => (birthDate ? ageFromIsoDate(birthDate) : null), [birthDate]);
+  const [superAllowlist, setSuperAllowlist] = useState<string[]>([]);
+  const showSuperAdminLink = isSuperAdminEmail(profile?.email, superAllowlist);
+
+  useEffect(() => {
+    if (!profile?.email || isOwnerEmail(profile.email)) {
+      setSuperAllowlist([]);
+      return;
+    }
+    return listenSuperAdmins((doc) => setSuperAllowlist(doc?.emails ?? []));
+  }, [profile?.email]);
 
   const referralPath = profile?.handle
     ? `liveboomapp.com/registro?ref=${encodeURIComponent(profile.handle)}`
@@ -1020,7 +1031,7 @@ export function ProfileView() {
           <Link to={`/u/${encodeURIComponent(profile.handle)}`} className="text-cyan-400 hover:underline">
             Ver mi perfil público
           </Link>
-          {isSuperAdminEmail(profile.email) ? (
+          {showSuperAdminLink ? (
             <>
               {' · '}
               <Link to="/super-admin" className="text-fuchsia-400/80 hover:underline">
