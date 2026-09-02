@@ -7,7 +7,8 @@ const {
   cleanWompiSecret,
   createWidgetIntegritySignature,
 } = require('../lib/wompi');
-const { rememberOrder, takeOrder } = require('../lib/walletMemory');
+const { rememberOrder, takeOrder, getOrder } = require('../lib/walletMemory');
+const { savePaymentOrder, getPaymentOrder } = require('../lib/walletFirestore');
 
 const {
   PROMO_PACKAGES,
@@ -149,7 +150,7 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
     }
 
     const uid = req.dbUser.firebaseUid || req.user.uid;
-    rememberOrder({
+    const pending = {
       reference,
       uid,
       coins: 0,
@@ -160,7 +161,10 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       hours: days * 24,
       amountInCop: amount,
       regionId,
-    });
+      status: 'pending',
+    };
+    rememberOrder(pending);
+    await savePaymentOrder(pending);
 
     if (hasDatabase && prisma) {
       try {
@@ -211,9 +215,19 @@ router.post('/complete', requireAuth, requireDbUser, async (req, res) => {
       return;
     }
     const uid = req.user.uid;
-    const order = takeOrder(reference, uid);
+    let order = takeOrder(reference, uid) || getOrder(reference);
+    if (!order || order.kind !== 'promo') {
+      const stored = await getPaymentOrder(reference);
+      if (stored && stored.kind === 'promo' && (!stored.uid || stored.uid === String(uid))) {
+        order = stored;
+      }
+    }
     if (!order || order.kind !== 'promo') {
       res.status(404).json({ error: 'No encontramos ese pago de publicidad' });
+      return;
+    }
+    if (order.uid && order.uid !== String(uid)) {
+      res.status(403).json({ error: 'Esta orden pertenece a otra cuenta' });
       return;
     }
 

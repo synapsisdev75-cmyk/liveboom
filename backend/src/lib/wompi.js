@@ -132,6 +132,70 @@ function createWidgetIntegritySignature(reference, amountInCents, currency, inte
   return sha256Hex(`${String(reference)}${amount}${String(currency)}${secret}`);
 }
 
+function wompiApiBase() {
+  const pub = cleanWompiSecret(process.env.WOMPI_PUBLIC_KEY);
+  if (pub.startsWith('pub_prod_')) return 'https://production.wompi.co/v1';
+  const fromEnv = String(process.env.WOMPI_BASE_URL || '').trim().replace(/\/$/, '');
+  if (fromEnv.includes('production.wompi.co')) return 'https://production.wompi.co/v1';
+  if (fromEnv) return fromEnv;
+  return 'https://sandbox.wompi.co/v1';
+}
+
+async function fetchWompiTransaction(transactionId) {
+  const id = String(transactionId || '').trim();
+  if (!id) return null;
+  const headers = {};
+  const privateKey = cleanWompiSecret(process.env.WOMPI_PRIVATE_KEY);
+  if (privateKey) headers.Authorization = `Bearer ${privateKey}`;
+  const response = await fetch(`${wompiApiBase()}/transactions/${encodeURIComponent(id)}`, {
+    headers,
+  });
+  if (!response.ok) return null;
+  const json = await response.json().catch(() => null);
+  return json?.data || null;
+}
+
+async function fetchWompiTransactionByReference(reference) {
+  const ref = String(reference || '').trim();
+  const privateKey = cleanWompiSecret(process.env.WOMPI_PRIVATE_KEY);
+  if (!ref || !privateKey) return null;
+  const response = await fetch(
+    `${wompiApiBase()}/transactions?reference=${encodeURIComponent(ref)}`,
+    { headers: { Authorization: `Bearer ${privateKey}` } },
+  );
+  if (!response.ok) return null;
+  const json = await response.json().catch(() => null);
+  const list = Array.isArray(json?.data) ? json.data : [];
+  if (!list.length) return null;
+  return list.find((item) => item?.status === 'APPROVED') || list[0];
+}
+
+/**
+ * Referencia: lb_{packageId}__{uid8}_{uuidhex}
+ * packageId puede traer guiones bajos (popular_200).
+ */
+function buildPaymentReference(packageId, uid) {
+  const pack = String(packageId || 'pack')
+    .replace(/[^a-z0-9_]/gi, '')
+    .slice(0, 40);
+  const user = String(uid || 'user')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 8);
+  const nonce = require('crypto').randomUUID().replace(/-/g, '');
+  return `lb_${pack}__${user}_${nonce}`;
+}
+
+function parsePackageIdFromReference(reference, knownIds) {
+  const raw = String(reference || '');
+  const match = raw.match(/^lb_([a-z0-9_]+)__[a-zA-Z0-9]+_[a-f0-9]+$/i);
+  if (match) return match[1];
+  const ids = [...(knownIds || [])].sort((a, b) => b.length - a.length);
+  for (const id of ids) {
+    if (raw.includes(`_${id}__`) || raw.startsWith(`lb_${id}__`)) return id;
+  }
+  return null;
+}
+
 module.exports = {
   computeWompiChecksum,
   computeOfficialEventChecksum,
@@ -139,4 +203,9 @@ module.exports = {
   createWidgetIntegritySignature,
   cleanWompiSecret,
   assertIntegrityPair,
+  wompiApiBase,
+  fetchWompiTransaction,
+  fetchWompiTransactionByReference,
+  buildPaymentReference,
+  parsePackageIdFromReference,
 };

@@ -107,10 +107,16 @@ async function syncWithBackend(user: FirebaseUser) {
           typeof mapPostgresUser
         >[0];
         if (response.ok && data.coinsBalance != null) {
+          const apiCoins = Number(data.coinsBalance);
+          const fsCoins = Number(fsProfile.coinsBalance ?? 0);
+          const coins = Math.max(
+            Number.isFinite(apiCoins) ? apiCoins : 0,
+            Number.isFinite(fsCoins) ? fsCoins : 0,
+          );
           return {
             ...fsProfile,
-            coins: data.coinsBalance,
-            coinsBalance: data.coinsBalance,
+            coins,
+            coinsBalance: coins,
             avatarUrl: fsProfile.avatarUrl || data.avatarUrl || googlePhoto,
             birthDate: fsProfile.birthDate || data.birthDate || pendingBirth,
           };

@@ -104,41 +104,50 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     try {
       const order = await api<WompiOrder>('/api/payments/create-order', {
         method: 'POST',
+        timeoutMs: 25_000,
         body: JSON.stringify({
           packageId: selected,
           currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
         }),
       });
-      openWompiWidget(order, (result) => {
-        const status = result.transaction?.status;
-        if (status === 'APPROVED') {
-          void api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-widget', {
+      const result = await openWompiWidget(order);
+      const status = result?.transaction?.status;
+      const transactionId = result?.transaction?.id;
+      if (status === 'APPROVED' || transactionId) {
+        try {
+          const paid = await api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-widget', {
             method: 'POST',
+            timeoutMs: 25_000,
             body: JSON.stringify({
-              reference: order.reference,
+              reference: result?.transaction?.reference || order.reference,
+              transactionId,
               currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
             }),
-          })
-            .then((paid) => {
-              const next = applyTopup(paid);
-              void keepTopup(next);
-            })
-            .catch(() => {
-              void syncProfile();
-            });
+          });
+          const next = applyTopup(paid);
+          await keepTopup(next);
           setNote('Pago aprobado. Tu blast ya está en la billetera.');
-          return;
-        }
-        if (status === 'PENDING') {
-          setNote('Pago en proceso. Wompi confirmará la recarga en breve.');
-          return;
-        }
-        if (status) {
+        } catch (error) {
           setNote(
-            `El pago quedó en estado ${status}. Si ves "firma inválida", usa Recarga de prueba o revisa las llaves Wompi en Vercel.`,
+            error instanceof Error
+              ? error.message
+              : 'Pago recibido. Estamos acreditando tu blast; recarga la billetera en unos segundos.',
           );
+          void syncProfile();
         }
-      });
+        return;
+      }
+      if (status === 'PENDING') {
+        setNote('Pago en proceso. Wompi confirmará la recarga en breve.');
+        return;
+      }
+      if (status) {
+        setNote(
+          `El pago quedó en estado ${status}. Si ves "firma inválida", usa Recarga de prueba o revisa las llaves Wompi en Vercel.`,
+        );
+        return;
+      }
+      setNote('Cerraste Wompi sin completar el pago.');
     } catch (error) {
       setNote(error instanceof Error ? error.message : 'No se pudo crear el pedido');
     } finally {

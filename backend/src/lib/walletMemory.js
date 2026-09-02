@@ -18,12 +18,14 @@ function hydrate() {
   }
 }
 
-function flush() {
-  persist.debouncedSave('wallet', {
+function flush(immediate = false) {
+  const payload = {
     balances: Object.fromEntries(balances),
     pendingOrders: Object.fromEntries(pendingOrders),
     withdrawals: Object.fromEntries(withdrawalsByUid),
-  });
+  };
+  if (immediate) persist.saveNow('wallet', payload);
+  else persist.debouncedSave('wallet', payload);
 }
 
 hydrate();
@@ -35,7 +37,7 @@ function getBalance(uid) {
 function setBalance(uid, coins) {
   const next = Math.max(0, Number(coins) || 0);
   balances.set(String(uid), next);
-  flush();
+  flush(true);
   return next;
 }
 
@@ -61,17 +63,36 @@ function rememberOrder(order) {
     hours: Number(order.hours) || 0,
     amountInCop: Number(order.amountInCop) || 0,
     regionId: order.regionId || '',
+    status: order.status || 'pending',
   });
-  flush();
+  // En Vercel el proceso se congela al responder: hay que persistir YA.
+  flush(true);
+}
+
+function peekOrder(reference, uid) {
+  const order = pendingOrders.get(reference);
+  if (!order) return null;
+  if (uid && order.uid !== String(uid)) return null;
+  return order;
+}
+
+function getOrder(reference) {
+  return pendingOrders.get(reference) || null;
+}
+
+function markOrderCompleted(reference) {
+  const order = pendingOrders.get(reference);
+  if (!order) return;
+  order.status = 'completed';
+  pendingOrders.set(reference, order);
+  flush(true);
 }
 
 function takeOrder(reference, uid) {
-  const order = pendingOrders.get(reference);
-  if (!order || order.uid !== String(uid)) {
-    return null;
-  }
+  const order = peekOrder(reference, uid);
+  if (!order) return null;
   pendingOrders.delete(reference);
-  flush();
+  flush(true);
   return order;
 }
 
@@ -96,6 +117,9 @@ module.exports = {
   credit,
   debit,
   rememberOrder,
+  peekOrder,
+  getOrder,
+  markOrderCompleted,
   takeOrder,
   listWithdrawals,
   addWithdrawal,

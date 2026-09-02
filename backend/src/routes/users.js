@@ -203,9 +203,21 @@ async function updateProfile(req, res) {
   }
 }
 
-router.get('/profile', requireAuth, requireDbUser, (req, res) => {
+router.get('/profile', requireAuth, requireDbUser, async (req, res) => {
   const memory = getProfile(req.user.uid);
-  res.json(mergeProfileRecord(req.user.uid, req.dbUser, memory));
+  const payload = mergeProfileRecord(req.user.uid, req.dbUser, memory);
+  try {
+    const { getFirestoreCoins } = require('../lib/walletFirestore');
+    const { setBalance } = require('../lib/walletMemory');
+    const fsCoins = await getFirestoreCoins(req.user.uid);
+    if (fsCoins > Number(payload.coinsBalance || 0)) {
+      payload.coinsBalance = fsCoins;
+      setBalance(req.user.uid, fsCoins);
+    }
+  } catch {
+    // Firestore opcional
+  }
+  res.json(payload);
 });
 
 router.patch('/profile', requireAuth, requireDbUser, updateProfile);

@@ -44,18 +44,19 @@ async function token(): Promise<string> {
   return user.getIdToken();
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   const jwt = await token();
   headers.set('Authorization', `Bearer ${jwt}`);
 
+  const { timeoutMs, ...fetchInit } = init;
   let response: Response;
   try {
     response = await fetch(`${getApiBase()}${path}`, {
-      ...init,
+      ...fetchInit,
       headers,
-      signal: init.signal ?? AbortSignal.timeout(12_000),
+      signal: fetchInit.signal ?? AbortSignal.timeout(timeoutMs ?? 12_000),
     });
   } catch {
     throw new ApiError(
