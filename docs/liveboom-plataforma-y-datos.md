@@ -1,6 +1,6 @@
 # LiveBoom — Funcionalidad de la plataforma y tratamiento de datos
 
-**Última actualización:** 1 de septiembre de 2026  
+**Última actualización:** 2 de septiembre de 2026  
 **Sitio:** [liveboomapp.com](https://liveboomapp.com)  
 **Contacto privacidad:** privacidad@liveboom.app  
 **Contacto legal:** legal@liveboom.app
@@ -39,8 +39,8 @@ Cada módulo tiene reglas propias; no se mezclan entre sí aunque compartan comp
 
 | Función | Descripción |
 |---------|-------------|
-| **Configuración previa** | Título, categoría, meta de coins, opciones (regalos, chat, solo seguidores) y **formato de transmisión** (16:9 horizontal o 9:16 vertical) con vista previa. |
-| **Sala LIVE** | Video en tiempo real (LiveKit), chat, contador de espectadores en sala, regalos, lista de deseos, meta de coins, invitados/cohost. |
+| **Configuración previa** | Título, categoría, meta de blats, opciones (regalos, chat, solo seguidores) y **formato de transmisión** (16:9 horizontal o 9:16 vertical) con vista previa. |
+| **Sala LIVE** | Video en tiempo real (LiveKit), chat, contador de espectadores en sala, regalos, lista de deseos, meta de blats, invitados/cohost. |
 | **Cámara** | Activar/desactivar micrófono, voltear cámara frontal/trasera, **modo espejo** (vista tipo selfie en cámara; en pantalla compartida aplica al PiP). |
 | **Pantalla compartida** | Compartir ventana/pestaña/monitor con cámara en PiP arrastrable; composición enviada a espectadores sin deformar el formato elegido. |
 | **Privado / bloqueo** | Live privado o sala con acceso por regalo (lock). |
@@ -50,7 +50,7 @@ Cada módulo tiene reglas propias; no se mezclan entre sí aunque compartan comp
 
 | Función | Descripción |
 |---------|-------------|
-| **Coins** | Moneda virtual para regalos y funciones premium. Compra vía proveedor de pagos (Wompi). |
+| **Blast** | Moneda virtual para regalos y funciones premium. Compra vía proveedor de pagos (Wompi). |
 | **Regalos** | Catálogo de regalos animados en publicaciones, clips, flash y lives. |
 | **Billetera** | Saldo, historial, recarga y retiro. |
 | **Niveles** | XP por actividad y regalos; insignias y marcos de nivel en perfil y chat. |
@@ -83,9 +83,9 @@ Banners y promociones en sidebar y modales; paquetes de visibilidad para creador
 | Base de datos | Cloud Firestore | Perfiles, posts, lives, chat, regalos |
 | Archivos | Firebase Storage | Fotos, videos, avatares (carpetas por tipo de contenido) |
 | Streaming | LiveKit + API backend | Salas LIVE en tiempo real |
-| Hosting | Firebase Hosting | liveboomapp.com |
-| API | Vercel (Node) | Tokens LiveKit, coins, regalos, locks, lives |
-| Pagos | Wompi | Compra de coins |
+| Hosting | Firebase Hosting | liveboomapp.com, www.liveboomapp.com |
+| API | Firebase Cloud Functions | Tokens LiveKit, Blast, regalos, locks, lives, pagos Wompi |
+| Pagos | Wompi (modo prueba / producción) | Compra de Blast — webhook: `https://liveboomapp.com/api/webhooks/wompi` |
 
 Documentación técnica adicional: `docs/liveboom-storage.md`, `docs/liveboom-video-viewer.md`.
 
@@ -116,7 +116,9 @@ Documentación técnica adicional: `docs/liveboom-storage.md`, `docs/liveboom-vi
 
 ### 4.4 Datos de pago
 
-- Las compras de coins se procesan en **Wompi**. LiveBoom **no almacena** números completos de tarjeta.
+- Las compras de Blast se procesan en **Wompi**. LiveBoom **no almacena** números completos de tarjeta.
+- **URL de eventos Wompi (webhook):** `https://liveboomapp.com/api/webhooks/wompi`
+- **Billetera para pruebas:** [liveboomapp.com/billetera](https://liveboomapp.com/billetera) — tarjeta aprobada sandbox: `4242 4242 4242 4242`
 - Conservamos referencias de transacción, monto y estado para soporte, fraude y retiros.
 
 ### 4.5 Permisos del dispositivo (solo cuando el usuario los autoriza)
@@ -160,10 +162,9 @@ Solo con **encargados del tratamiento** necesarios para operar LiveBoom, bajo co
 
 | Proveedor | Finalidad |
 |-----------|-----------|
-| **Google Firebase** | Auth, Firestore, Storage, Hosting |
+| **Google Firebase** | Auth, Firestore, Storage, Hosting, Cloud Functions (API) |
 | **LiveKit** | Infraestructura de video en vivo |
-| **Vercel** | API backend |
-| **Wompi** | Pagos y recargas |
+| **Wompi** | Pagos y recargas de Blast |
 
 **No vendemos** datos personales a terceros para publicidad externa.
 

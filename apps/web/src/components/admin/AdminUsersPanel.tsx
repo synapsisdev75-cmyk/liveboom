@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Minus, Plus, RefreshCw, Search, Shield, Users } from 'lucide-react';
-import { listAdminUsers, type AdminUserRow } from '../../lib/adminUsersFirestore';
-import { adjustLevelXp, clearLevelXpPin, profileHref, setLevelXp } from '../../lib/profileFirestore';
+import { ExternalLink, Minus, Plus, RefreshCw, Search, Shield, Users, Coins, ChevronDown } from 'lucide-react';
+import { listAdminUsers, subscribeAdminUserBalances, type AdminUserRow } from '../../lib/adminUsersFirestore';
+import {
+  adjustLevelXp,
+  clearLevelXpPin,
+  profileHref,
+  setLevelXp,
+  setFirestoreCoins,
+  addFirestoreCoins,
+} from '../../lib/profileFirestore';
 import { isOwnerEmail } from '../../lib/superAdmin';
 import { listenSuperAdmins, saveSuperAdminEmails } from '../../lib/superAdminsFirestore';
 import { useAuthStore } from '../../store/authStore';
@@ -32,7 +39,10 @@ export function AdminUsersPanel() {
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
   const [xpDraft, setXpDraft] = useState<Record<string, string>>({});
+  const [blastDraft, setBlastDraft] = useState<Record<string, string>>({});
+  const [blastExpanded, setBlastExpanded] = useState<Record<string, boolean>>({});
   const [xpBusy, setXpBusy] = useState<string | null>(null);
+  const [blastBusy, setBlastBusy] = useState<string | null>(null);
   const [xpMsg, setXpMsg] = useState<string | null>(null);
   const [superEmails, setSuperEmails] = useState<string[]>([]);
   const [delegateBusy, setDelegateBusy] = useState<string | null>(null);
@@ -60,6 +70,13 @@ export function AdminUsersPanel() {
         }
         return next;
       });
+      setBlastDraft((prev) => {
+        const next = { ...prev };
+        for (const u of rows) {
+          if (next[u.uid] === undefined) next[u.uid] = String(u.coinsBalance);
+        }
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron cargar usuarios');
     } finally {
@@ -70,6 +87,24 @@ export function AdminUsersPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    return subscribeAdminUserBalances((balances) => {
+      setUsers((prev) =>
+        prev.map((u) => {
+          const blast = balances[u.uid];
+          return blast !== undefined ? { ...u, coinsBalance: blast } : u;
+        }),
+      );
+      setBlastDraft((prev) => {
+        const next = { ...prev };
+        for (const [uid, blast] of Object.entries(balances)) {
+          if (blastBusy !== uid) next[uid] = String(blast);
+        }
+        return next;
+      });
+    });
+  }, [blastBusy]);
 
   const onlineCount = users.filter((u) => u.online).length;
   const offlineCount = users.length - onlineCount;
@@ -106,6 +141,48 @@ export function AdminUsersPanel() {
       ),
     );
     setXpDraft((prev) => ({ ...prev, [uid]: String(nextXp) }));
+  }
+
+  function patchUserBlast(uid: string, nextBlast: number) {
+    setUsers((prev) =>
+      prev.map((u) => (u.uid === uid ? { ...u, coinsBalance: nextBlast } : u)),
+    );
+    setBlastDraft((prev) => ({ ...prev, [uid]: String(nextBlast) }));
+  }
+
+  async function onSetBlast(uid: string) {
+    const raw = blastDraft[uid];
+    const value = Math.max(0, Math.floor(Number(raw) || 0));
+    setBlastBusy(uid);
+    setXpMsg(null);
+    try {
+      await setFirestoreCoins(uid, value);
+      patchUserBlast(uid, value);
+      setXpMsg(`Blast fijado en ${value.toLocaleString('es-CO')}`);
+    } catch (err) {
+      setXpMsg(err instanceof Error ? err.message : 'Error al guardar Blast');
+    } finally {
+      setBlastBusy(null);
+    }
+  }
+
+  async function onAdjustBlast(uid: string, delta: number) {
+    setBlastBusy(uid);
+    setXpMsg(null);
+    try {
+      const next = await addFirestoreCoins(uid, delta);
+      if (next == null) return;
+      patchUserBlast(uid, next);
+      setXpMsg(
+        delta >= 0
+          ? `+${delta} Blast → ${next.toLocaleString('es-CO')}`
+          : `${delta} Blast → ${next.toLocaleString('es-CO')}`,
+      );
+    } catch (err) {
+      setXpMsg(err instanceof Error ? err.message : 'Error al ajustar Blast');
+    } finally {
+      setBlastBusy(null);
+    }
   }
 
   async function onSetXp(uid: string) {
@@ -326,7 +403,25 @@ export function AdminUsersPanel() {
                         </span>
                       ) : null}
                       {' · '}
-                      Coins {u.coinsBalance.toLocaleString('es-CO')} · Alta {formatWhen(u.createdAt)}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBlastExpanded((prev) => ({
+                            ...prev,
+                            [u.uid]: !prev[u.uid],
+                          }))
+                        }
+                        className="inline-flex items-center gap-0.5 font-semibold text-amber-300 hover:text-amber-200"
+                      >
+                        <Coins size={10} className="inline" />
+                        Blast {u.coinsBalance.toLocaleString('es-CO')}
+                        <ChevronDown
+                          size={10}
+                          className={`transition ${blastExpanded[u.uid] ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+                      {' · Alta '}
+                      {formatWhen(u.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -460,6 +555,90 @@ export function AdminUsersPanel() {
                   Reset 0
                 </button>
               </div>
+
+              {blastExpanded[u.uid] ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-2">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                    <Coins size={11} />
+                    Blast
+                  </span>
+                  <button
+                    type="button"
+                    disabled={blastBusy === u.uid}
+                    onClick={() => void onAdjustBlast(u.uid, -100)}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 text-xs font-bold text-red-200 disabled:opacity-50"
+                    title="Quitar 100 Blast"
+                  >
+                    <Minus size={12} /> 100
+                  </button>
+                  <button
+                    type="button"
+                    disabled={blastBusy === u.uid}
+                    onClick={() => void onAdjustBlast(u.uid, -10)}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/5 px-2 text-xs font-semibold text-red-200/90 disabled:opacity-50"
+                    title="Quitar 10 Blast"
+                  >
+                    <Minus size={12} /> 10
+                  </button>
+                  <input
+                    type="number"
+                    min={0}
+                    value={blastDraft[u.uid] ?? String(u.coinsBalance)}
+                    onChange={(e) =>
+                      setBlastDraft((prev) => ({ ...prev, [u.uid]: e.target.value }))
+                    }
+                    className="h-9 w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-2 text-sm text-white"
+                  />
+                  <button
+                    type="button"
+                    disabled={blastBusy === u.uid}
+                    onClick={() => void onSetBlast(u.uid)}
+                    className="h-9 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
+                    title="Fijar saldo Blast exacto"
+                  >
+                    Fijar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={blastBusy === u.uid}
+                    onClick={() => void onAdjustBlast(u.uid, 10)}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2 text-xs font-semibold text-emerald-200/90 disabled:opacity-50"
+                    title="Sumar 10 Blast"
+                  >
+                    <Plus size={12} /> 10
+                  </button>
+                  <button
+                    type="button"
+                    disabled={blastBusy === u.uid}
+                    onClick={() => void onAdjustBlast(u.uid, 100)}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 text-xs font-bold text-emerald-200 disabled:opacity-50"
+                    title="Sumar 100 Blast"
+                  >
+                    <Plus size={12} /> 100
+                  </button>
+                  <button
+                    type="button"
+                    disabled={blastBusy === u.uid}
+                    onClick={() => {
+                      void (async () => {
+                        setBlastBusy(u.uid);
+                        try {
+                          await setFirestoreCoins(u.uid, 0);
+                          patchUserBlast(u.uid, 0);
+                          setXpMsg('Blast reseteado a 0');
+                        } catch (err) {
+                          setXpMsg(err instanceof Error ? err.message : 'Error');
+                        } finally {
+                          setBlastBusy(null);
+                        }
+                      })();
+                    }}
+                    className="h-9 rounded-lg border border-amber-500/40 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
+                  >
+                    Reset 0
+                  </button>
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

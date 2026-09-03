@@ -18,6 +18,8 @@ export type ReelFeedItem = {
   mediaUrl: string;
   mediaType?: 'photo' | 'video';
   authorAvatarUrl?: string | null;
+  /** Miniatura vertical para Boom Clip */
+  thumbUrl?: string | null;
   /** Boom Clip / Publicación */
   contentBadge?: string | null;
 };

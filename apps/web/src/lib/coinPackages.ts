@@ -2,8 +2,10 @@
 export const COIN_TO_COP = 50;
 export const MIN_WITHDRAW_COINS = 50;
 
-/** Precio final cliente (COP) para paquetes desde Popular en adelante. */
+/** Precio final cliente (COP) para paquetes con precio fijo. */
 const FIXED_PACK_PRICE_COP: Record<number, number> = {
+  125: 7_990,
+  150: 8_990,
   200: 10_900,
   350: 17_900,
   500: 24_900,
@@ -16,18 +18,8 @@ const FIXED_PACK_PRICE_COP: Record<number, number> = {
   25000: 1_154_900,
 };
 
-const ENTRY_PACK_MARKUP = 0.0265;
-const ENTRY_PACK_FEE_COP = 700;
-
-/** Impulso y Plus: base (blast × $50) + 2,65 % + $700 COP. */
-function entryPackAmountInCop(blast: number) {
-  const baseCop = blast * COIN_TO_COP;
-  return Math.round(baseCop * (1 + ENTRY_PACK_MARKUP) + ENTRY_PACK_FEE_COP) * 100;
-}
-
 /** Centavos Wompi = precio COP × 100. */
 function packAmountInCop(blast: number) {
-  if (blast === 125 || blast === 150) return entryPackAmountInCop(blast);
   const fixed = FIXED_PACK_PRICE_COP[blast];
   if (fixed !== undefined) return fixed * 100;
   let rate = 50;

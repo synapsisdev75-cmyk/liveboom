@@ -1,11 +1,15 @@
-const { resolveCoinPackage, COIN_TO_COP, MIN_WITHDRAW_COINS, coinsToCop } = require('../lib/coinPackages');
+const { resolveCoinPackage, COIN_TO_COP, MIN_WITHDRAW_COINS, coinsToCop, blastForPackage } = require('../lib/coinPackages');
 const {
   assertIntegrityPair,
   cleanWompiSecret,
   createWidgetIntegritySignature,
+  createPaymentLink,
+  createWompiReference,
+  getWompiTransaction,
+  getWompiMerchant,
+  isWompiMerchantActive,
 } = require('../lib/wompi');
 const {
-  credit,
   debit,
   rememberOrder,
   takeOrder,
@@ -15,8 +19,14 @@ const {
   addWithdrawal,
 } = require('../lib/walletMemory');
 const dbUserFromTokenMod = require('../lib/dbUserFromToken');
-const { randomUUID } = require('crypto');
 const { prisma, hasDatabase } = require('../lib/prisma');
+const {
+  firestoreConfigured,
+  savePaymentOrder,
+  completePaymentOrder,
+  readPaymentOrder,
+  readUserCoinsBalance,
+} = require('../lib/firestoreAdmin');
 
 function dbUserFromToken(decoded) {
   const fn =
@@ -30,9 +40,55 @@ function userForOrder(req) {
   return req.dbUser || (req.user ? dbUserFromToken(req.user) : null);
 }
 
-/** Recarga = saldo actual (memoria, Prisma o el que ya ve el usuario) + coins del paquete. */
-async function creditTopup(uid, coins, floorFromClient = 0) {
+/** Recarga = saldo Firestore (fuente real) + coins del paquete. */
+async function creditTopup(uid, coins) {
   const amount = Math.max(0, Math.floor(Number(coins) || 0));
+
+  if (firestoreConfigured()) {
+    try {
+      const { getAdminDb } = require('../lib/firestoreAdmin');
+      const { FieldValue } = require('firebase-admin/firestore');
+      const db = getAdminDb();
+      const userRef = db.collection('users').doc(String(uid));
+      const coinsBalance = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        const fsCoins = snap.exists ? Number(snap.data()?.coinsBalance ?? 0) : 0;
+        const next = fsCoins + amount;
+        if (snap.exists) {
+          tx.update(userRef, {
+            coinsBalance: next,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        } else {
+          tx.set(
+            userRef,
+            {
+              firebaseUid: String(uid),
+              coinsBalance: next,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          );
+        }
+        return next;
+      });
+      setBalance(uid, coinsBalance);
+      if (hasDatabase && prisma) {
+        try {
+          await prisma.user.update({
+            where: { firebaseUid: uid },
+            data: { coinsBalance },
+          });
+        } catch (error) {
+          console.warn('[payments] no se persistió el saldo en Prisma:', error.message);
+        }
+      }
+      return coinsBalance;
+    } catch (error) {
+      console.warn('[payments] firestore creditTopup fallback:', error.message);
+    }
+  }
+
   let dbCoins = 0;
   if (hasDatabase && prisma) {
     try {
@@ -45,15 +101,7 @@ async function creditTopup(uid, coins, floorFromClient = 0) {
       dbCoins = 0;
     }
   }
-  const floor = Math.max(
-    getBalance(uid),
-    dbCoins,
-    Math.max(0, Math.floor(Number(floorFromClient) || 0)),
-  );
-  if (floor > getBalance(uid)) {
-    setBalance(uid, floor);
-  }
-  const coinsBalance = credit(uid, amount);
+  const coinsBalance = setBalance(uid, dbCoins + amount);
   if (hasDatabase && prisma) {
     try {
       await prisma.user.update({
@@ -67,15 +115,17 @@ async function creditTopup(uid, coins, floorFromClient = 0) {
   return coinsBalance;
 }
 
-function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey }) {
-  const reference = `lb_${String(dbUser.id).slice(0, 24)}_${randomUUID().replace(/-/g, '')}`;
+function buildOrderResponse({ pack, packageId, amountInCop, publicKey }) {
+  const reference = createWompiReference('lb');
   const currency = 'COP';
+  const expirationTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
   const integritySecret = assertIntegrityPair(publicKey, process.env.WOMPI_INTEGRITY_SECRET);
   const integritySignature = createWidgetIntegritySignature(
     reference,
     amountInCop,
     currency,
     integritySecret,
+    expirationTime,
   );
   if (!integritySignature) {
     throw new Error('No se pudo generar la firma de integridad de Wompi');
@@ -89,7 +139,118 @@ function buildOrderResponse({ dbUser, pack, packageId, amountInCop, publicKey })
     packageId,
     coins: pack.coins,
     integritySignature,
+    expirationTime,
   };
+}
+
+async function completeRedirect(req, res) {
+  try {
+    const transactionId = String(req.body?.transactionId || '').trim();
+    if (!transactionId) {
+      res.status(400).json({ error: 'transactionId es obligatorio' });
+      return;
+    }
+
+    const txn = await getWompiTransaction(transactionId);
+    if (!txn) {
+      res.status(404).json({ error: 'Transacción no encontrada en Wompi' });
+      return;
+    }
+
+    const status = String(txn.status || '').toUpperCase();
+    if (status !== 'APPROVED') {
+      res.status(400).json({
+        error: `La transacción está en estado ${status || 'desconocido'}`,
+        status,
+      });
+      return;
+    }
+
+    const reference = String(txn.reference || '').trim();
+    const paymentLinkId = txn.payment_link_id ? String(txn.payment_link_id) : '';
+    const paidAmount = Number(txn.amount_in_cents);
+    const uid = req.user?.uid;
+
+    if (firestoreConfigured()) {
+      let result = null;
+      if (reference) {
+        result = await completePaymentOrder(reference, uid, {
+          amountInCop: paidAmount,
+          wompiTxnId: txn.id,
+        });
+      }
+      if (!result?.ok && paymentLinkId) {
+        const { completePaymentOrderByLinkId } = require('../lib/firestoreAdmin');
+        result = await completePaymentOrderByLinkId(paymentLinkId, {
+          amountInCop: paidAmount,
+          wompiTxnId: txn.id,
+        });
+      }
+      if (result?.ok) {
+        if (result.uid) {
+          setBalance(result.uid, result.coinsBalance);
+        }
+        res.json({
+          reference: reference || paymentLinkId,
+          coins: result.coins,
+          coinsBalance: result.coinsBalance,
+          duplicate: Boolean(result.duplicate),
+        });
+        return;
+      }
+      if (result?.error === 'forbidden') {
+        res.status(403).json({ error: 'Esta orden de recarga no es tuya' });
+        return;
+      }
+      if (result?.error === 'coins_mismatch') {
+        res.status(400).json({ error: 'El blast del paquete no coincide con la orden' });
+        return;
+      }
+      if (reference) {
+        const saved = await readPaymentOrder(reference);
+        if (saved?.status === 'completed') {
+          const balance = await readUserCoinsBalance(uid);
+          setBalance(uid, balance);
+          res.json({
+            reference,
+            coins: Number(saved.coins) || 0,
+            coinsBalance: balance,
+            duplicate: true,
+          });
+          return;
+        }
+      }
+      res.status(404).json({ error: 'No encontramos la orden asociada a esta transacción' });
+      return;
+    }
+
+    if (reference) {
+      const order = takeOrder(reference, uid);
+      if (order) {
+        const packCoins = blastForPackage(order.packageId, order.coins);
+        if (!packCoins) {
+          res.status(400).json({ error: 'El blast del paquete no coincide con la orden' });
+          return;
+        }
+        const coinsBalance = await creditTopup(uid, packCoins);
+        res.json({
+          reference,
+          coins: packCoins,
+          coinsBalance,
+        });
+        return;
+      }
+    }
+
+    res.status(404).json({ error: 'No encontramos la orden asociada a esta transacción' });
+  } catch (error) {
+    console.error('[payments/complete-redirect]', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'No se pudo verificar la transacción',
+      });
+    }
+  }
 }
 
 async function completeWidget(req, res) {
@@ -101,21 +262,64 @@ async function completeWidget(req, res) {
     }
 
     const uid = req.user?.uid;
+
+    if (firestoreConfigured()) {
+      try {
+        const result = await completePaymentOrder(reference, uid);
+        if (result.ok) {
+          setBalance(uid, result.coinsBalance);
+          res.json({
+            reference,
+            coins: result.coins,
+            coinsBalance: result.coinsBalance,
+            duplicate: Boolean(result.duplicate),
+          });
+          return;
+        }
+        if (result.error === 'forbidden') {
+          res.status(403).json({ error: 'Esta orden de recarga no es tuya' });
+          return;
+        }
+        if (result.error === 'coins_mismatch') {
+          res.status(400).json({ error: 'El blast del paquete no coincide con la orden' });
+          return;
+        }
+        const saved = await readPaymentOrder(reference);
+        if (saved?.status === 'completed') {
+          const balance = await readUserCoinsBalance(uid);
+          setBalance(uid, balance);
+          res.json({
+            reference,
+            coins: Number(saved.coins) || 0,
+            coinsBalance: balance,
+            duplicate: true,
+          });
+          return;
+        }
+      } catch (error) {
+        console.warn('[payments/complete-widget] firestore:', error.message);
+      }
+      res.status(404).json({ error: 'No encontramos esa orden de recarga' });
+      return;
+    }
+
     const order = takeOrder(reference, uid);
     if (!order) {
       res.status(404).json({ error: 'No encontramos esa orden de recarga' });
       return;
     }
 
-    const coinsBalance = await creditTopup(
-      uid,
-      order.coins,
-      Math.max(Number(req.body?.currentBalance) || 0, Number(order.floor) || 0),
-    );
+    const packCoins = blastForPackage(order.packageId, order.coins);
+    if (!packCoins) {
+      res.status(400).json({ error: 'El blast del paquete no coincide con la orden' });
+      return;
+    }
+
+    const coinsBalance = await creditTopup(uid, packCoins);
 
     res.json({
       reference,
-      coins: order.coins,
+      coins: packCoins,
       coinsBalance,
     });
   } catch (error) {
@@ -128,13 +332,7 @@ async function completeWidget(req, res) {
   }
 }
 
-function simulateTopupAllowed() {
-  const flag = String(process.env.ALLOW_SIMULATE_TOPUP ?? '1').trim().toLowerCase();
-  if (flag === '0' || flag === 'false' || flag === 'off' || flag === 'no') return false;
-  return true;
-}
-
-function getPaymentStatus(_req, res) {
+async function getPaymentStatus(_req, res) {
   const publicKey = cleanWompiSecret(process.env.WOMPI_PUBLIC_KEY);
   const integrity = cleanWompiSecret(process.env.WOMPI_INTEGRITY_SECRET);
   const sandbox = publicKey.startsWith('pub_test_');
@@ -147,49 +345,31 @@ function getPaymentStatus(_req, res) {
   } catch {
     pairOk = false;
   }
+  let merchantOk = false;
+  let merchantName = null;
+  if (publicKey) {
+    try {
+      const merchant = await getWompiMerchant(publicKey);
+      merchantOk = Boolean(merchant?.active);
+      merchantName = merchant?.name ? String(merchant.name) : null;
+    } catch {
+      merchantOk = false;
+    }
+  }
   res.json({
     configured: Boolean(publicKey && integrity),
     sandbox,
     pairOk,
-    simulateAvailable: simulateTopupAllowed(),
+    merchantOk,
+    merchantName,
+    widgetAvailable: merchantOk,
+    firestore: firestoreConfigured(),
     coinToCop: COIN_TO_COP,
     minWithdrawCoins: MIN_WITHDRAW_COINS,
+    hint: merchantOk
+      ? null
+      : 'La llave pública no existe en Wompi sandbox. Copia de nuevo desde el dashboard o usa checkout hospedado.',
   });
-}
-
-async function simulateTopup(req, res) {
-  try {
-    if (!simulateTopupAllowed()) {
-      res.status(403).json({ error: 'Simulación deshabilitada' });
-      return;
-    }
-    const packageId = req.body?.packageId;
-    if (!packageId || typeof packageId !== 'string') {
-      res.status(400).json({ error: 'packageId es obligatorio' });
-      return;
-    }
-    const resolved = resolveCoinPackage(packageId, req.body?.amountInCop);
-    if (resolved.error) {
-      res.status(400).json({ error: resolved.error });
-      return;
-    }
-    const dbUser = userForOrder(req);
-    const uid = req.user?.uid || dbUser?.firebaseUid || dbUser?.id;
-    if (!uid) {
-      res.status(401).json({ error: 'Inicia sesión para recargar' });
-      return;
-    }
-    const coinsBalance = await creditTopup(uid, resolved.pack.coins, req.body?.currentBalance);
-    res.json({
-      coins: resolved.pack.coins,
-      coinsBalance,
-      simulated: true,
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'No se pudo simular la recarga',
-    });
-  }
 }
 
 async function createOrder(req, res) {
@@ -219,6 +399,7 @@ async function createOrder(req, res) {
     }
 
     const amountInCop = resolved.pack.amountInCop;
+    const widgetAvailable = await isWompiMerchantActive(publicKey);
     const order = buildOrderResponse({
       dbUser,
       pack: resolved.pack,
@@ -227,13 +408,28 @@ async function createOrder(req, res) {
       publicKey,
     });
 
+    const orderUid = dbUser.firebaseUid || dbUser.id;
     rememberOrder({
       reference: order.reference,
-      uid: dbUser.firebaseUid || dbUser.id,
+      uid: orderUid,
       coins: resolved.pack.coins,
       packageId,
-      floor: Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0)),
+      amountInCop,
     });
+
+    if (firestoreConfigured()) {
+      try {
+        await savePaymentOrder({
+          reference: order.reference,
+          uid: orderUid,
+          coins: resolved.pack.coins,
+          packageId,
+          amountInCop,
+        });
+      } catch (error) {
+        console.error('[payments/create-order] firestore order:', error.message);
+      }
+    }
 
     if (hasDatabase && prisma) {
       try {
@@ -254,7 +450,51 @@ async function createOrder(req, res) {
       }
     }
 
-    res.status(201).json(order);
+    let checkoutUrl = null;
+    let paymentLinkId = null;
+    let checkoutError = null;
+    try {
+      const link = await createPaymentLink({
+        name: resolved.pack.coins ? `Blast ${resolved.pack.coins}` : packageId,
+        description: `Recarga Blast — ${resolved.pack.coins} blast`,
+        amountInCents: amountInCop,
+        reference: order.reference,
+      });
+      checkoutUrl = link.url;
+      paymentLinkId = link.id;
+      if (firestoreConfigured() && paymentLinkId) {
+        try {
+          const { getAdminDb } = require('../lib/firestoreAdmin');
+          const { FieldValue } = require('firebase-admin/firestore');
+          await getAdminDb()
+            .collection('paymentOrders')
+            .doc(order.reference)
+            .set({ paymentLinkId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        } catch (linkStoreError) {
+          console.warn('[payments/create-order] paymentLinkId:', linkStoreError.message);
+        }
+      }
+    } catch (linkError) {
+      checkoutError = linkError instanceof Error ? linkError.message : String(linkError);
+      console.warn('[payments/create-order] payment link:', checkoutError);
+    }
+
+    if (!widgetAvailable && !checkoutUrl) {
+      res.status(503).json({
+        error:
+          'Wompi no reconoce tus llaves sandbox. En el dashboard copia de nuevo la llave pública, privada y secretos, o contacta soporte Wompi.',
+        merchantOk: false,
+        checkoutError,
+      });
+      return;
+    }
+
+    res.status(201).json({
+      ...order,
+      checkoutUrl,
+      widgetAvailable,
+      preferCheckout: !widgetAvailable && Boolean(checkoutUrl),
+    });
   } catch (error) {
     console.error('[payments/create-order]', error);
     if (!res.headersSent) {
@@ -312,7 +552,7 @@ async function withdrawCoins(req, res) {
     }
 
     const amountCop = coinsToCop(coins);
-    const reference = `wd_${String(uid).slice(0, 16)}_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+    const reference = createWompiReference('wd');
     const record = addWithdrawal(uid, {
       id: reference,
       reference,
@@ -395,14 +635,14 @@ function listMyWithdrawals(req, res) {
 module.exports = {
   createOrder,
   completeWidget,
+  completeRedirect,
   getPaymentStatus,
-  simulateTopup,
   withdrawCoins,
   listMyWithdrawals,
 };
 module.exports.createOrder = createOrder;
 module.exports.completeWidget = completeWidget;
+module.exports.completeRedirect = completeRedirect;
 module.exports.getPaymentStatus = getPaymentStatus;
-module.exports.simulateTopup = simulateTopup;
 module.exports.withdrawCoins = withdrawCoins;
 module.exports.listMyWithdrawals = listMyWithdrawals;

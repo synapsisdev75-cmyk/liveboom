@@ -1,6 +1,4 @@
 import {
-  ChevronDown,
-  ChevronUp,
   Globe,
   Lock,
   Maximize2,
@@ -33,7 +31,9 @@ import {
 } from '../../lib/videoPlayback';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { usesImmersiveAsideRail } from '../../lib/immersiveMediaLayout';
+import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
+import { captureHtmlVideoPoster } from '../../lib/videoPoster';
 import { ShareContentButton } from './ShareContentButton';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
@@ -41,6 +41,7 @@ import { EmojiText } from './EmojiText';
 import { insertEmojiToken, COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
 import { PostActionRail } from './PostActionRail';
 import { ImmersiveMediaStage } from './ImmersiveMediaStage';
+import { PublicationMedia } from './PublicationMedia';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 
@@ -94,6 +95,11 @@ type Props = {
   actionRailLayout?: 'corner' | 'default';
   /** Explorar / Flash Boom: media horizontal + rail fijo al lado. */
   immersiveLandscapeLayout?: boolean;
+  /** Dimensiones conocidas (Publicaciones). */
+  mediaWidth?: number;
+  mediaHeight?: number;
+  /** Poster/thumbnail de Publicaciones (evita bloque negro). */
+  posterUrl?: string | null;
 };
 
 const SEEK_STEP_SEC = 10;
@@ -130,13 +136,18 @@ export function PostVideoPlayer({
   contentBadge = null,
   actionRailLayout = 'corner',
   immersiveLandscapeLayout = false,
+  mediaWidth: mediaWidthProp,
+  mediaHeight: mediaHeightProp,
+  posterUrl: posterUrlProp = null,
 }: Props) {
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
+  const isDesktop = useIsDesktop();
+  const [deviceLandscape, setDeviceLandscape] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const posterCapturedRef = useRef(false);
   const swipeRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
-  const expandedRef = useRef(false);
   const playbackSnapshotRef = useRef({
     time: 0,
     playing: false,
@@ -144,6 +155,8 @@ export function PostVideoPlayer({
     volume: 1,
   });
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
+  const [runtimePoster, setRuntimePoster] = useState<string | null>(null);
+  const expandedRef = useRef(false);
   const [muted, setMuted] = useState(true);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
@@ -169,6 +182,17 @@ export function PostVideoPlayer({
   }, [videoAspect.width, videoAspect.height, videoAspect.isReady]);
 
   useEffect(() => {
+    if (mediaWidthProp && mediaWidthProp > 0 && mediaHeightProp && mediaHeightProp > 0) {
+      setMediaSize({ width: mediaWidthProp, height: mediaHeightProp });
+    }
+  }, [mediaWidthProp, mediaHeightProp]);
+
+  useEffect(() => {
+    posterCapturedRef.current = false;
+    setRuntimePoster(null);
+  }, [src]);
+
+  useEffect(() => {
     if (onRequestExpand) return;
     if (startExpanded || overlayOnly) setExpanded(true);
   }, [startExpanded, overlayOnly, onRequestExpand]);
@@ -180,6 +204,18 @@ export function PostVideoPlayer({
   useEffect(() => {
     onExpandChange?.(expanded);
   }, [expanded, onExpandChange]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    const sync = () => setDeviceLandscape(mq.matches && window.innerWidth < 1024);
+    sync();
+    mq.addEventListener('change', sync);
+    window.addEventListener('resize', sync);
+    return () => {
+      mq.removeEventListener('change', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!seekHint) return;
@@ -424,24 +460,33 @@ export function PostVideoPlayer({
     event.stopPropagation();
   }, []);
 
-  const inlineLandscape = videoAspect.isLandscape;
-  const inlineWrapClass = inlineLandscape
-    ? 'relative mx-auto aspect-video w-full max-w-full min-h-[13rem] bg-black'
-    : `relative mx-auto w-full bg-black ${videoAspect.maxWidthClass} ${
-        videoAspect.isReady ? '' : videoAspect.aspectClass
-      }`;
-  const inlineWrapStyle =
-    !inlineLandscape && videoAspect.isReady ? videoAspect.aspectStyle : undefined;
+  const resolvedPoster = posterUrlProp || runtimePoster;
+  const pubW =
+    mediaSize.width || mediaWidthProp || (videoAspect.isReady ? videoAspect.width : 0) || 0;
+  const pubH =
+    mediaSize.height || mediaHeightProp || (videoAspect.isReady ? videoAspect.height : 0) || 0;
+
+  const tryCapturePoster = useCallback(() => {
+    if (overlayOnly || posterUrlProp || posterCapturedRef.current) return;
+    const el = videoRef.current;
+    if (!el || el.videoWidth <= 0) return;
+    const shot = captureHtmlVideoPoster(el);
+    if (shot) {
+      posterCapturedRef.current = true;
+      setRuntimePoster(shot);
+    }
+  }, [overlayOnly, posterUrlProp]);
 
   const videoNode = (
     <video
       ref={videoRef}
       src={src}
+      poster={resolvedPoster || undefined}
       className="lb-post-media__video h-full w-full object-contain"
       muted={muted}
       loop={!storyMode}
       playsInline
-      preload="auto"
+      preload={expanded || overlayOnly ? 'auto' : 'metadata'}
       onClick={
         !expanded && !overlayOnly
           ? (event) => {
@@ -459,6 +504,9 @@ export function PostVideoPlayer({
           setMediaSize({ width: video.videoWidth, height: video.videoHeight });
         }
       }}
+      onLoadedData={() => {
+        tryCapturePoster();
+      }}
       onTimeUpdate={(event) => {
         if (!storyMode) return;
         const video = event.currentTarget;
@@ -474,37 +522,16 @@ export function PostVideoPlayer({
     />
   );
 
-  const immersiveW = mediaSize.width || videoAspect.width || 9;
-  const immersiveH = mediaSize.height || videoAspect.height || 16;
-  const useLandscapeAside = usesImmersiveAsideRail(immersiveW, immersiveH, immersiveLandscapeLayout);
-
-  const reelNavChrome =
-    reelNavigation && !useLandscapeAside ? (
-      <div className="pointer-events-auto absolute -right-14 top-1/2 z-20 hidden -translate-y-1/2 flex-col gap-3 lg:flex">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            reelNavigation.onNext();
-          }}
-          className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
-          aria-label="Siguiente clip"
-        >
-          <ChevronUp size={26} strokeWidth={2.25} />
-        </button>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            reelNavigation.onPrev();
-          }}
-          className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
-          aria-label="Clip anterior"
-        >
-          <ChevronDown size={26} strokeWidth={2.25} />
-        </button>
-      </div>
-    ) : null;
+  const immersiveW = pubW || videoAspect.width || 9;
+  const immersiveH = pubH || videoAspect.height || 16;
+  // Rail lateral en escritorio (todos los formatos); en móvil landscape → borde derecho.
+  const useLandscapeAside =
+    isDesktop && usesImmersiveAsideRail(immersiveW, immersiveH, immersiveLandscapeLayout);
+  const parkRailAtDeviceEdge = deviceLandscape && immersiveLandscapeLayout;
+  const expandedRailLayout =
+    useLandscapeAside || parkRailAtDeviceEdge ? 'aside' : actionRailLayout;
+  /** Publicaciones (feed): contain en fullscreen; Explorar/clips mantienen auto. */
+  const publicationFillMode = !overlayOnly && !immersiveLandscapeLayout ? 'contain' : 'auto';
 
   const expandedChrome =
     expanded && (embedded || typeof document !== 'undefined') ? (
@@ -520,6 +547,7 @@ export function PostVideoPlayer({
           mediaKind="video"
           embedded={embedded}
           landscapeRailAside={immersiveLandscapeLayout}
+          fillMode={publicationFillMode}
           insets={{
             top: storyMode ? 44 : 52,
             bottom: embedded ? 88 : 112,
@@ -584,7 +612,7 @@ export function PostVideoPlayer({
                 <>
                   <button
                     type="button"
-                    className="absolute inset-x-0 top-0 z-[5] h-[18%] md:hidden"
+                    className="absolute inset-x-0 top-0 z-[5] h-[18%] lg:hidden"
                     aria-label="Clip siguiente"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -593,7 +621,7 @@ export function PostVideoPlayer({
                   />
                   <button
                     type="button"
-                    className="absolute inset-x-0 bottom-0 z-[5] h-[18%] md:hidden"
+                    className="absolute inset-x-0 bottom-0 z-[5] h-[18%] lg:hidden"
                     aria-label="Clip anterior"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -605,64 +633,34 @@ export function PostVideoPlayer({
             </>
           }
           sideChrome={
-            <>
-              {reelNavChrome}
-              <PostActionRail
-                postId={postId}
-                authorUid={authorUid}
-                authorUsername={authorUsername}
-                authorAvatarUrl={authorAvatarUrl}
-                likes={likes}
-                dislikes={dislikes}
-                viewerReaction={viewerReaction}
-                likers={likers}
-                dislikers={dislikers}
-                busy={busy}
-                onReact={onReact}
-                commentCount={commentCount}
-                commentsOpen={commentsPanelOpen}
-                onToggleComments={() => setCommentsPanelOpen((value) => !value)}
-                shareUrl={shareUrl}
-                shareTitle={shareTitle}
-                shareText={shareText}
-                mediaUrl={src}
-                mediaType="video"
-                commentsPanelOpen={commentsPanelOpen}
-                anchor="media"
-                layout={useLandscapeAside ? 'aside' : actionRailLayout}
-              />
-            </>
+            <PostActionRail
+              postId={postId}
+              authorUid={authorUid}
+              authorUsername={authorUsername}
+              authorAvatarUrl={authorAvatarUrl}
+              likes={likes}
+              dislikes={dislikes}
+              viewerReaction={viewerReaction}
+              likers={likers}
+              dislikers={dislikers}
+              busy={busy}
+              onReact={onReact}
+              commentCount={commentCount}
+              commentsOpen={commentsPanelOpen}
+              onToggleComments={() => setCommentsPanelOpen((value) => !value)}
+              shareUrl={shareUrl}
+              shareTitle={shareTitle}
+              shareText={shareText}
+              mediaUrl={src}
+              mediaType="video"
+              commentsPanelOpen={commentsPanelOpen}
+              anchor="media"
+              layout={expandedRailLayout}
+            />
           }
         >
           {videoNode}
         </ImmersiveMediaStage>
-
-        {useLandscapeAside && reelNavigation ? (
-          <div className="pointer-events-auto absolute right-2 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-3 lg:flex">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                reelNavigation.onNext();
-              }}
-              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
-              aria-label="Siguiente clip"
-            >
-              <ChevronUp size={26} strokeWidth={2.25} />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                reelNavigation.onPrev();
-              }}
-              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/30 opacity-70 transition hover:bg-black/35 hover:text-white/60 hover:opacity-100"
-              aria-label="Clip anterior"
-            >
-              <ChevronDown size={26} strokeWidth={2.25} />
-            </button>
-          </div>
-        ) : null}
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/85" />
 
@@ -691,13 +689,23 @@ export function PostVideoPlayer({
 
           <div
             className={`pointer-events-auto flex shrink-0 items-start justify-between gap-3 p-3 ${
-              storyMode ? 'pt-2' : embedded ? 'pt-3' : 'pt-[max(0.75rem,var(--lb-safe-top))]'
+              storyMode
+                ? 'pt-2'
+                : parkRailAtDeviceEdge
+                  ? 'pt-[max(0.35rem,var(--lb-safe-top))]'
+                  : embedded
+                    ? 'pt-3'
+                    : 'pt-[max(0.75rem,var(--lb-safe-top))]'
             }`}
           >
             {hideClose ? (
-              <span className="inline-flex h-10 items-center rounded-full bg-black/45 px-3 text-[11px] font-bold uppercase tracking-wider text-cyan-200/90 backdrop-blur-sm">
-                Explorar
-              </span>
+              parkRailAtDeviceEdge ? (
+                <span className="inline-flex h-8 w-8" aria-hidden />
+              ) : (
+                <span className="inline-flex h-10 items-center rounded-full bg-black/45 px-3 text-[11px] font-bold uppercase tracking-wider text-cyan-200/90 backdrop-blur-sm">
+                  Explorar
+                </span>
+              )
             ) : (
               <button
                 type="button"
@@ -858,41 +866,51 @@ export function PostVideoPlayer({
       ) : (
         <>
           {expanded ? (
-            <div className={inlineWrapClass} style={inlineWrapStyle} aria-hidden />
+            <div className="relative w-full min-w-0 lb-feed-media-frame" style={{ aspectRatio: pubW && pubH ? `${pubW} / ${pubH}` : '4 / 5', maxHeight: 'min(720px, 72dvh)' }} aria-hidden />
           ) : null}
-          <div ref={wrapRef} className={inlineWrapClass} style={inlineWrapStyle}>
+          <div ref={wrapRef} className="relative w-full min-w-0">
             {!expanded ? (
-              <>
-                <div className="relative h-full w-full">{videoNode}</div>
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 to-transparent" />
-                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={toggleMute}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
-                    aria-label={muted ? 'Activar sonido' : 'Silenciar'}
-                  >
-                    {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openExpand}
-                    className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
-                  >
-                    <Maximize2 size={14} /> Expandir
-                  </button>
-                  {shareUrl ? (
-                    <ShareContentButton
-                      url={shareUrl}
-                      title={shareTitle}
-                      text={shareText}
-                      mediaUrl={src}
-                      mediaType="video"
-                      iconOnly
-                    />
-                  ) : null}
-                </div>
-              </>
+              <PublicationMedia
+                src={src}
+                mediaKind="video"
+                width={pubW}
+                height={pubH}
+                posterUrl={resolvedPoster}
+                overlay={
+                  <>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 to-transparent" />
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleMute}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
+                        aria-label={muted ? 'Activar sonido' : 'Silenciar'}
+                      >
+                        {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openExpand}
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
+                      >
+                        <Maximize2 size={14} /> Expandir
+                      </button>
+                      {shareUrl ? (
+                        <ShareContentButton
+                          url={shareUrl}
+                          title={shareTitle}
+                          text={shareText}
+                          mediaUrl={src}
+                          mediaType="video"
+                          iconOnly
+                        />
+                      ) : null}
+                    </div>
+                  </>
+                }
+              >
+                {videoNode}
+              </PublicationMedia>
             ) : null}
           </div>
           {expanded && typeof document !== 'undefined'

@@ -8,7 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "npx concurrently -n api,web -c cyan,magenta \"npm run dev --prefix backend\" \"npm run dev -w @liveboom/web\"",
+    "dev:all": "turbo run dev",
     "dev:web": "npm run dev --workspace=@liveboom/web",
     "dev:api": "npm run dev --prefix backend",
     "dev:mobile": "npm run start --workspace=@liveboom/mobile",
@@ -17,8 +18,8 @@
     "lint": "turbo run lint",
     "build:web": "npm run build -w apps/web",
     "deploy:hosting": "npm run build:web && firebase deploy --only hosting --project liveboom-app",
-    "deploy:vercel": "npx vercel --prod",
-    "deploy:prod": "npm run build:web && firebase deploy --only hosting --project liveboom-app && npx vercel --prod",
+    "deploy:api": "firebase deploy --only functions --project liveboom-app",
+    "deploy:prod": "npm run build:web && firebase deploy --only hosting,functions --project liveboom-app",
     "android:sync": "npm run sync -w @liveboom/android",
     "android:open": "npm run open -w @liveboom/android"
   },

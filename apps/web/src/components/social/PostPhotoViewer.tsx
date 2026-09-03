@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Maximize2, X } from 'lucide-react';
+import { Maximize2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
@@ -11,9 +11,11 @@ import {
 import { profileHref } from '../../lib/profileFirestore';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { usesImmersiveAsideRail } from '../../lib/immersiveMediaLayout';
+import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { useAuthStore } from '../../store/authStore';
 import { PostActionRail } from './PostActionRail';
 import { ImmersiveMediaStage } from './ImmersiveMediaStage';
+import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
 
@@ -26,12 +28,14 @@ type Props = {
   onExpandChange?: (expanded: boolean) => void;
   /** Solo overlay (sin miniatura inline), p. ej. Explorar. */
   overlayOnly?: boolean;
-  /** aspect-square en perfil; aspect-video en feed. */
+  /** Fallback de aspect hasta cargar (perfil). Feed usa detección real. */
   aspect?: 'square' | 'video';
   postId?: string;
   authorUsername?: string;
   authorUid?: string;
   authorAvatarUrl?: string | null;
+  mediaWidth?: number;
+  mediaHeight?: number;
   /** Navegación opcional (p. ej. feed de reels/fotos). */
   navigation?: {
     onNext: () => void;
@@ -57,11 +61,14 @@ export function PostPhotoViewer({
   authorUsername,
   authorUid,
   authorAvatarUrl,
+  mediaWidth: mediaWidthProp,
+  mediaHeight: mediaHeightProp,
   navigation,
   position,
   immersiveLandscapeLayout = false,
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
+  const isDesktop = useIsDesktop();
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
@@ -71,7 +78,10 @@ export function PostPhotoViewer({
   const [likers, setLikers] = useState<PostReactionUser[]>([]);
   const [dislikers, setDislikers] = useState<PostReactionUser[]>([]);
   const [busy, setBusy] = useState(false);
-  const [mediaSize, setMediaSize] = useState({ width: 0, height: 0 });
+  const [mediaSize, setMediaSize] = useState({
+    width: mediaWidthProp && mediaWidthProp > 0 ? mediaWidthProp : 0,
+    height: mediaHeightProp && mediaHeightProp > 0 ? mediaHeightProp : 0,
+  });
   const swipeRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
 
   const shareUrl =
@@ -115,6 +125,20 @@ export function PostPhotoViewer({
     if (!expanded || !postId) return;
     return listenPostComments(postId, (list) => setCommentCount(list.length));
   }, [expanded, postId]);
+
+  useEffect(() => {
+    if (!src) return;
+    const img = new Image();
+    img.decoding = 'async';
+    const onLoad = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+        setMediaSize({ width: img.naturalWidth, height: img.naturalHeight });
+      }
+    };
+    img.addEventListener('load', onLoad);
+    img.src = src;
+    return () => img.removeEventListener('load', onLoad);
+  }, [src]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -168,12 +192,11 @@ export function PostPhotoViewer({
     }
   }
 
-  const aspectClass = aspect === 'video' ? 'aspect-video' : 'aspect-square';
-  const useLandscapeAside = usesImmersiveAsideRail(
-    mediaSize.width,
-    mediaSize.height,
-    immersiveLandscapeLayout,
-  );
+  const pubW = mediaSize.width > 0 ? mediaSize.width : mediaWidthProp && mediaWidthProp > 0 ? mediaWidthProp : 0;
+  const pubH = mediaSize.height > 0 ? mediaSize.height : mediaHeightProp && mediaHeightProp > 0 ? mediaHeightProp : 0;
+  const publicationFillMode = !immersiveLandscapeLayout ? 'contain' : 'auto';
+  const useLandscapeAside =
+    isDesktop && usesImmersiveAsideRail(pubW || 1, pubH || 1, immersiveLandscapeLayout);
 
   const expandedOverlay =
     expanded && typeof document !== 'undefined' ? (
@@ -184,11 +207,12 @@ export function PostPhotoViewer({
         aria-label="Publicación"
       >
         <ImmersiveMediaStage
-          mediaWidth={mediaSize.width || (aspect === 'video' ? 16 : 1)}
-          mediaHeight={mediaSize.height || (aspect === 'video' ? 9 : 1)}
+          mediaWidth={pubW || (aspect === 'video' ? 16 : 1)}
+          mediaHeight={pubH || (aspect === 'video' ? 9 : 1)}
           mediaUrl={src}
           mediaKind="image"
           landscapeRailAside={immersiveLandscapeLayout}
+          fillMode={publicationFillMode}
           insets={{ top: 56, bottom: 100, left: 4, right: 4, actionRail: 56 }}
           onSwipeStart={(x, y) => {
             if (!navigation) return;
@@ -279,33 +303,6 @@ export function PostPhotoViewer({
           </div>
         </header>
 
-        {navigation ? (
-          <div className="pointer-events-auto absolute right-4 top-1/2 z-20 hidden -translate-y-1/2 flex-col gap-3 lg:flex">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigation.onNext();
-              }}
-              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/40 opacity-80 transition hover:bg-black/40 hover:text-white hover:opacity-100"
-              aria-label="Siguiente"
-            >
-              <ChevronUp size={26} strokeWidth={2.25} />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigation.onPrev();
-              }}
-              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-black/15 text-white/40 opacity-80 transition hover:bg-black/40 hover:text-white hover:opacity-100"
-              aria-label="Anterior"
-            >
-              <ChevronDown size={26} strokeWidth={2.25} />
-            </button>
-          </div>
-        ) : null}
-
         {caption && !commentsOpen ? (
           <p
             className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 text-sm text-white/90"
@@ -354,26 +351,49 @@ export function PostPhotoViewer({
         <button
           type="button"
           onClick={openExpand}
-          className={`relative block w-full overflow-hidden bg-black ${aspectClass}`}
+          className="block w-full"
           aria-label="Expandir imagen"
         >
-          <img src={src} alt="" className="h-full w-full object-cover" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
-          <span className="absolute bottom-2 right-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
-            <Maximize2 size={14} /> Expandir
-          </span>
-          {shareUrl ? (
-            <span className="absolute bottom-2 left-2">
-              <ShareContentButton
-                url={shareUrl}
-                title={shareTitle}
-                text={shareText}
-                mediaUrl={src}
-                mediaType="photo"
-                iconOnly
-              />
-            </span>
-          ) : null}
+          <PublicationMedia
+            src={src}
+            mediaKind="image"
+            width={pubW}
+            height={pubH}
+            overlay={
+              <>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
+                <span className="absolute bottom-2 right-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
+                  <Maximize2 size={14} /> Expandir
+                </span>
+                {shareUrl ? (
+                  <span className="absolute bottom-2 left-2">
+                    <ShareContentButton
+                      url={shareUrl}
+                      title={shareTitle}
+                      text={shareText}
+                      mediaUrl={src}
+                      mediaType="photo"
+                      iconOnly
+                    />
+                  </span>
+                ) : null}
+              </>
+            }
+          >
+            <img
+              src={src}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="lb-post-media__img h-full w-full object-contain"
+              onLoad={(event) => {
+                const img = event.currentTarget;
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                  setMediaSize({ width: img.naturalWidth, height: img.naturalHeight });
+                }
+              }}
+            />
+          </PublicationMedia>
         </button>
       ) : null}
 

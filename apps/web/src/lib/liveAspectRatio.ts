@@ -14,7 +14,10 @@ export function liveCanvasDimensions(ratio: LiveAspectRatio) {
     : { width: 720, height: 1280 };
 }
 
-export function liveStageSectionClass(): string {
+export function liveStageSectionClass(opts?: { hostDashboard?: boolean }): string {
+  if (opts?.hostDashboard) {
+    return 'lb-live-stage-section relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-black lg:min-w-0 lg:rounded-2xl lg:border lg:border-white/10 lg:shadow-[0_0_40px_rgba(139,92,246,0.12)]';
+  }
   return 'lb-live-stage-section relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-black lg:w-[70%] lg:rounded-2xl lg:border lg:border-white/10 lg:shadow-[0_0_48px_rgba(0,240,255,0.12)]';
 }
 

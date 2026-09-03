@@ -72,6 +72,7 @@ export function CreatePostModal({
   const [notifyFriends, setNotifyFriends] = useState(false);
   const [caption, setCaption] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,6 +178,7 @@ export function CreatePostModal({
 
   function applyMediaFile(file: File, forcedKind?: PostKind) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setMediaFiles([]);
     setMediaFile(file);
     setPreviewUrl(URL.createObjectURL(file));
 
@@ -253,6 +255,35 @@ export function CreatePostModal({
     applyMediaFile(file, forcedKind || 'photo');
   }
 
+  async function onMultiPhotoChange(files: FileList) {
+    setError(null);
+    setMediaMenuOpen(false);
+    const picked = Array.from(files).filter((f) => mediaKindFromFile(f) === 'photo');
+    if (picked.length === 0) {
+      setError('Archivo no compatible. Usa foto (JPG, PNG).');
+      return;
+    }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    const first = picked[0];
+    if (!first) return;
+    setMediaFiles(picked);
+    setMediaFile(first);
+    setPreviewUrl(URL.createObjectURL(first));
+    setKind('photo');
+    if (composeTab === 'boomclip' || composeTab === 'flashboom') {
+      setComposeTab('publication');
+    }
+  }
+
+  function onGalleryPhotoChange(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (composeTab === 'publication' && files.length > 1) {
+      void onMultiPhotoChange(files);
+      return;
+    }
+    void onFileChange(files[0] || null, 'photo');
+  }
+
   function cancelTrim() {
     if (trimDraft?.url) URL.revokeObjectURL(trimDraft.url);
     setTrimDraft(null);
@@ -325,7 +356,7 @@ export function CreatePostModal({
         setError(`Elige una foto o video para tu ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}.`);
         return;
       }
-    } else if (kind === 'photo' && !mediaFile) {
+    } else if (kind === 'photo' && !mediaFile && mediaFiles.length === 0) {
       setError('Elige una foto, un video o escribe un post de texto.');
       return;
     }
@@ -386,7 +417,12 @@ export function CreatePostModal({
         authorDisplayName: profile.displayName,
         type: publishKind,
         caption,
-        mediaFile: publishKind === 'text' ? null : uploadFile,
+        mediaFile:
+          publishKind === 'text' || (publishKind === 'photo' && mediaFiles.length > 1)
+            ? null
+            : uploadFile,
+        mediaFiles:
+          publishKind === 'photo' && mediaFiles.length > 1 ? mediaFiles : undefined,
         visibility: publishPostFormat === 'story' ? 'circle' : visibility,
         postFormat: publishPostFormat,
         durationSec,
@@ -438,8 +474,9 @@ export function CreatePostModal({
         ref={galleryPhotoRef}
         type="file"
         accept="image/*"
+        multiple={composeTab === 'publication'}
         className="hidden"
-        onChange={(event) => onFileChange(event.target.files?.[0] || null, 'photo')}
+        onChange={(event) => onGalleryPhotoChange(event.target.files)}
       />
       <input
         ref={galleryVideoRef}
@@ -601,10 +638,12 @@ export function CreatePostModal({
             </div>
           </div>
 
-          {mediaFile ? (
+          {mediaFile || mediaFiles.length > 0 ? (
             <div className="mt-3 rounded-xl border border-white/15 p-2.5">
               <p className="text-xs text-cyan-300">
-                Archivo listo ✓ {mediaFile.name}
+                {mediaFiles.length > 1
+                  ? `${mediaFiles.length} fotos listas`
+                  : `Archivo listo ✓ ${mediaFile?.name ?? ''}`}
               </p>
               {previewUrl && kind === 'photo' ? (
                 <img src={previewUrl} alt="" className="mx-auto mt-2 max-h-28 rounded-lg object-contain" />

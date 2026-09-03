@@ -1,0 +1,33 @@
+/**
+ * Explorar en landscape — solo móvil/tablet (< 1024px).
+ * Ajustes de rail y marco; no aplica en desktop.
+ */
+
+@media (orientation: landscape) and (max-width: 1023px) {
+  :root {
+    --lb-mt-explore-rail-right: clamp(4.75rem, 16vw, 8.5rem);
+  }
+
+  /* Acerca el rail al video (zona letterbox), no pegado al borde. */
+  .lb-immersive-edge-rail {
+    right: max(var(--lb-mt-explore-rail-right), env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    max-height: min(92dvh, 100%);
+  }
+
+  .lb-immersive-edge-rail .lb-action-rail,
+  .lb-immersive-edge-rail .lb-action-rail--media,
+  .lb-immersive-edge-rail .lb-action-rail--corner {
+    position: static !important;
+    top: auto !important;
+    bottom: auto !important;
+    right: auto !important;
+    left: auto !important;
+    transform: none !important;
+    max-height: none;
+    overflow: visible;
+  }
+}

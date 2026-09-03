@@ -51,10 +51,8 @@ function yearsOld(isoDate) {
 
 function mergeProfileRecord(uid, dbUser, memory) {
   const { setBalance } = require('../lib/walletMemory');
-  const coinsBalance = Math.max(getBalance(uid), Number(dbUser?.coinsBalance ?? 0));
-  if (coinsBalance > getBalance(uid)) {
-    setBalance(uid, coinsBalance);
-  }
+  const coinsBalance = Number(dbUser?.coinsBalance ?? getBalance(uid));
+  setBalance(uid, coinsBalance);
   if (!memory) {
     return serializeUser({ ...dbUser, coinsBalance });
   }
@@ -203,9 +201,19 @@ async function updateProfile(req, res) {
   }
 }
 
-router.get('/profile', requireAuth, requireDbUser, (req, res) => {
+router.get('/profile', requireAuth, requireDbUser, async (req, res) => {
   const memory = getProfile(req.user.uid);
-  res.json(mergeProfileRecord(req.user.uid, req.dbUser, memory));
+  let dbUser = req.dbUser;
+  try {
+    const { firestoreConfigured, readUserCoinsBalance } = require('../lib/firestoreAdmin');
+    if (firestoreConfigured()) {
+      const fsCoins = await readUserCoinsBalance(req.user.uid);
+      dbUser = { ...dbUser, coinsBalance: fsCoins };
+    }
+  } catch (error) {
+    console.warn('[users/profile] firestore coins:', error.message);
+  }
+  res.json(mergeProfileRecord(req.user.uid, dbUser, memory));
 });
 
 router.patch('/profile', requireAuth, requireDbUser, updateProfile);

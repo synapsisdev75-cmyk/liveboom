@@ -8,6 +8,7 @@ import {
 import { setFirestoreCoins } from '../../lib/profileFirestore';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
 import { useAuthStore } from '../../store/authStore';
+import { PaymentMethodsStrip } from './PaymentMethodsStrip';
 
 type Props = {
   onClose: () => void;
@@ -33,69 +34,16 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  function applyLocalSimulateTopup(packageId: CoinPackageId) {
-    const pack = COIN_PACKAGES.find((p) => p.id === packageId);
-    if (!pack) throw new Error('Paquete inválido');
-    const store = useAuthStore.getState();
-    const current = store.profile?.coinsBalance ?? 0;
-    const next = current + pack.coins;
-    store.setCoins(next);
-    const uid = store.profile?.firebaseUid;
-    if (uid) {
-      void setFirestoreCoins(uid, next).catch(() => undefined);
-    }
-    return next;
-  }
-
   function applyTopup(paid: { coinsBalance?: number; coins?: number }) {
     const store = useAuthStore.getState();
-    const current = store.profile?.coinsBalance ?? 0;
     const fromApi = Number(paid.coinsBalance);
-    const added = Math.max(0, Number(paid.coins) || 0);
-    const next = Math.max(Number.isFinite(fromApi) ? fromApi : 0, current + added);
-    store.setCoins(next);
+    if (!Number.isFinite(fromApi)) return store.profile?.coinsBalance ?? 0;
+    store.setCoins(fromApi);
     const uid = store.profile?.firebaseUid;
     if (uid) {
-      void setFirestoreCoins(uid, next).catch(() => undefined);
+      void setFirestoreCoins(uid, fromApi).catch(() => undefined);
     }
-    return next;
-  }
-
-  async function keepTopup(next: number) {
-    await syncProfile();
-    const now = useAuthStore.getState().profile?.coinsBalance ?? 0;
-    if (now < next) {
-      useAuthStore.getState().setCoins(next);
-      const uid = useAuthStore.getState().profile?.firebaseUid;
-      if (uid) void setFirestoreCoins(uid, next).catch(() => undefined);
-    }
-  }
-
-  async function simulatePay() {
-    setBusy(true);
-    setNote(null);
-    try {
-      const currentBalance = useAuthStore.getState().profile?.coinsBalance ?? 0;
-      try {
-        const paid = await api<{ coinsBalance: number; coins?: number }>('/api/payments/simulate-topup', {
-          method: 'POST',
-          body: JSON.stringify({ packageId: selected, currentBalance }),
-        });
-        const next = applyTopup(paid);
-        await keepTopup(next);
-        setNote(`Recarga acreditada. Nuevo saldo: ${next.toLocaleString('es-CO')} blast.`);
-      } catch {
-        const next = applyLocalSimulateTopup(selected);
-        await keepTopup(next);
-        setNote(
-          `Recarga de prueba acreditada (sin Wompi). Nuevo saldo: ${next.toLocaleString('es-CO')} blast.`,
-        );
-      }
-    } catch (error) {
-      setNote(error instanceof Error ? error.message : 'No se pudo simular la recarga');
-    } finally {
-      setBusy(false);
-    }
+    return fromApi;
   }
 
   async function pay() {
@@ -104,41 +52,56 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     try {
       const order = await api<WompiOrder>('/api/payments/create-order', {
         method: 'POST',
-        body: JSON.stringify({
-          packageId: selected,
-          currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
-        }),
+        body: JSON.stringify({ packageId: selected }),
       });
-      openWompiWidget(order, (result) => {
-        const status = result.transaction?.status;
-        if (status === 'APPROVED') {
-          void api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-widget', {
-            method: 'POST',
-            body: JSON.stringify({
-              reference: order.reference,
-              currentBalance: useAuthStore.getState().profile?.coinsBalance ?? 0,
-            }),
-          })
-            .then((paid) => {
-              const next = applyTopup(paid);
-              void keepTopup(next);
+
+      if (order.checkoutUrl && (order.preferCheckout || !order.widgetAvailable)) {
+        setNote('Redirigiendo al checkout seguro de Wompi…');
+        window.location.href = order.checkoutUrl;
+        return;
+      }
+
+      if (!order.widgetAvailable) {
+        setNote('Wompi no reconoce la llave pública. Revisa las credenciales en el dashboard.');
+        return;
+      }
+
+      try {
+        openWompiWidget(order, (result) => {
+          const status = result.transaction?.status;
+          if (status === 'APPROVED') {
+            void api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-widget', {
+              method: 'POST',
+              body: JSON.stringify({ reference: order.reference }),
             })
-            .catch(() => {
-              void syncProfile();
-            });
-          setNote('Pago aprobado. Tu blast ya está en la billetera.');
+              .then((paid) => {
+                applyTopup(paid);
+                void syncProfile();
+              })
+              .catch(() => {
+                void syncProfile();
+              });
+            setNote('Pago aprobado. Tu blast ya está en la billetera.');
+            return;
+          }
+          if (status === 'PENDING') {
+            setNote('Pago en proceso. Wompi confirmará la recarga en breve.');
+            return;
+          }
+          if (status) {
+            setNote(
+              `El pago quedó en estado ${status}. Si ves "firma inválida", revisa las llaves Wompi en Firebase.`,
+            );
+          }
+        });
+      } catch (widgetError) {
+        if (order.checkoutUrl) {
+          setNote('Abriendo checkout alternativo de Wompi…');
+          window.location.href = order.checkoutUrl;
           return;
         }
-        if (status === 'PENDING') {
-          setNote('Pago en proceso. Wompi confirmará la recarga en breve.');
-          return;
-        }
-        if (status) {
-          setNote(
-            `El pago quedó en estado ${status}. Si ves "firma inválida", usa Recarga de prueba o revisa las llaves Wompi en Vercel.`,
-          );
-        }
-      });
+        throw widgetError;
+      }
     } catch (error) {
       setNote(error instanceof Error ? error.message : 'No se pudo crear el pedido');
     } finally {
@@ -228,6 +191,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
         </div>
 
         <div className="shrink-0 border-t border-white/5 p-4 sm:p-6">
+          <PaymentMethodsStrip compact className="mb-3" />
           {note ? (
             <p
               className={`mb-4 text-sm ${
@@ -239,14 +203,6 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
           ) : null}
 
           <div className="flex flex-col gap-2 pb-[env(safe-area-inset-bottom)] sm:flex-row sm:justify-end sm:pb-0">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void simulatePay()}
-              className="w-full rounded-full border border-cyan-400/40 px-6 py-3 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/10 disabled:opacity-60 sm:w-auto sm:py-2"
-            >
-              Recarga de prueba (sin Wompi)
-            </button>
             <button
               type="button"
               disabled={busy}

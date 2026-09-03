@@ -31,6 +31,7 @@ import {
 import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS } from './contentType';
 import { isStoryActive, isStoryPost, storyExpiresAtFromNow } from './storyLifecycle';
 import { updateStoredMediaVisibility, uploadUserMedia, type UserMediaStorageKind } from './storage';
+import { captureVideoPosterPortrait, readVideoIntrinsicSize } from './videoPoster';
 
 export type FriendshipStatus =
   | 'none'
@@ -102,6 +103,8 @@ export type FsPost = {
   type: 'photo' | 'video' | 'text';
   caption: string | null;
   mediaUrl: string | null;
+  /** Galería de fotos en publicaciones (primera = mediaUrl). */
+  mediaUrls?: string[];
   visibility: 'public' | 'friends' | 'private' | 'circle';
   storagePath: string | null;
   createdAt: string;
@@ -114,6 +117,10 @@ export type FsPost = {
   reelFeedUntilMs?: number;
   reelFriendsAtMs?: number;
   reelPrivateAtMs?: number;
+  /** Miniatura vertical generada al subir Boom Clip. */
+  thumbUrl?: string | null;
+  mediaWidth?: number;
+  mediaHeight?: number;
 };
 
 type MeProfile = {
@@ -1087,6 +1094,9 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     type: (data.type as FsPost['type']) || 'text',
     caption: (data.caption as string | null) ?? null,
     mediaUrl: (data.mediaUrl as string | null) ?? null,
+    mediaUrls: Array.isArray(data.mediaUrls)
+      ? (data.mediaUrls as string[]).filter((u) => typeof u === 'string' && u.length > 0)
+      : undefined,
     visibility: (data.visibility as FsPost['visibility']) || 'public',
     storagePath: (data.storagePath as string | null) ?? null,
     createdAt: asIso(data.createdAt),
@@ -1098,6 +1108,9 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     reelFeedUntilMs: Number(data.reelFeedUntilMs) || undefined,
     reelFriendsAtMs: Number(data.reelFriendsAtMs) || undefined,
     reelPrivateAtMs: Number(data.reelPrivateAtMs) || undefined,
+    thumbUrl: (data.thumbUrl as string | null) ?? null,
+    mediaWidth: Number(data.mediaWidth) || undefined,
+    mediaHeight: Number(data.mediaHeight) || undefined,
   };
 }
 
@@ -1695,6 +1708,7 @@ export async function createPost(input: {
   type: 'photo' | 'video' | 'text';
   caption: string;
   mediaFile?: File | Blob | null;
+  mediaFiles?: File[];
   mediaUrl?: string | null;
   visibility?: 'public' | 'friends' | 'private' | 'circle';
   postFormat?: 'story' | 'post';
@@ -1710,7 +1724,11 @@ export async function createPost(input: {
   postFormat?: 'story' | 'post';
 }> {
   let mediaUrl: string | null = null;
+  let mediaUrls: string[] | undefined;
   let storagePath: string | null = null;
+  let thumbUrl: string | null = null;
+  let mediaWidth = 0;
+  let mediaHeight = 0;
   const isStory = input.postFormat === 'story';
   // Boom Clip = solo video con postFormat post (nunca foto)
   const isBoomClip = input.postFormat === 'post' && input.type === 'video';
@@ -1735,7 +1753,27 @@ export async function createPost(input: {
       : isBoomClip
         ? 'boom_clip'
         : 'publication';
-    if (input.mediaFile) {
+
+    const multiPhotoFiles =
+      input.type === 'photo' && !isStory && !isBoomClip ? input.mediaFiles : undefined;
+
+    if (multiPhotoFiles && multiPhotoFiles.length > 1) {
+      const uploadedUrls: string[] = [];
+      for (const file of multiPhotoFiles) {
+        const fileName = file.name || `photo_${uploadedUrls.length + 1}.jpg`;
+        const uploaded = await uploadUserMedia(
+          input.authorUid,
+          file,
+          fileName,
+          visibility,
+          storageKind,
+        );
+        uploadedUrls.push(uploaded.url);
+        if (!storagePath) storagePath = uploaded.storagePath;
+      }
+      mediaUrls = uploadedUrls;
+      mediaUrl = uploadedUrls[0] ?? null;
+    } else if (input.mediaFile) {
       const fileName =
         input.mediaFile instanceof File && input.mediaFile.name
           ? input.mediaFile.name
@@ -1751,6 +1789,25 @@ export async function createPost(input: {
       );
       mediaUrl = uploaded.url;
       storagePath = uploaded.storagePath;
+
+      if (isBoomClip) {
+        try {
+          const metrics = await readVideoIntrinsicSize(input.mediaFile);
+          mediaWidth = metrics.width;
+          mediaHeight = metrics.height;
+          const poster = await captureVideoPosterPortrait(input.mediaFile);
+          const thumbUploaded = await uploadUserMedia(
+            input.authorUid,
+            poster,
+            'thumb.jpg',
+            visibility,
+            'boom_clip',
+          );
+          thumbUrl = thumbUploaded.url;
+        } catch {
+          // Miniatura opcional; el feed usa video con contain si falla.
+        }
+      }
     } else if (input.mediaUrl?.startsWith('data:')) {
       const blob = await (await fetch(input.mediaUrl)).blob();
       const uploaded = await uploadUserMedia(
@@ -1779,7 +1836,10 @@ export async function createPost(input: {
     visibility,
     likes: 0,
     createdAt: serverTimestamp(),
+    ...(mediaUrls?.length ? { mediaUrls } : {}),
     ...(postFormat ? { postFormat } : {}),
+    ...(thumbUrl ? { thumbUrl } : {}),
+    ...(mediaWidth > 0 && mediaHeight > 0 ? { mediaWidth, mediaHeight } : {}),
     ...(isStory
       ? {
           storyExpiresAtMs: storyExpiresAtFromNow(),

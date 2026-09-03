@@ -1,5 +1,7 @@
 /** Catálogo oficial Liveboom — precios en coins y niveles de animación. */
 
+import type { CallFilterId } from './deepar';
+
 export type GiftLevel = 1 | 2 | 3 | 4 | 5;
 
 export type LiveGift = {
@@ -14,6 +16,10 @@ export type LiveGift = {
   level: GiftLevel;
   /** Descripción corta de la animación (UI). */
   animation: string;
+  /** Solo aparece y se puede comprar en LIVE (no posts / clips / flash). */
+  liveOnly?: boolean;
+  /** Filtro DeepAR aplicado en la cámara del host. */
+  deeparFilter?: Exclude<CallFilterId, 'none'>;
 };
 
 export function giftLevelFromCoins(coins: number): GiftLevel {
@@ -51,11 +57,72 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
   // Nivel 2 — Populares (50–600)
   { id: 'cafe_colombiano', name: 'Café Colombiano', emoji: '☕', image: '/gifts/cafe_colombiano.png', coins: 50, level: 2, animation: 'Taza elegante y vapor de montaña' },
   { id: 'arepa_venezolana', name: 'Arepa Venezolana', emoji: '🫓', image: '/gifts/arepa_venezolana.png', coins: 75, level: 2, animation: 'Bandeja dorada y brillo cálido' },
+  // DeepAR — solo LIVE
+  {
+    id: 'ar_lentes',
+    name: 'Filtro Lentes',
+    emoji: '🕶️',
+    coins: 80,
+    level: 2,
+    animation: 'DeepAR: lentes en la cara del host',
+    liveOnly: true,
+    deeparFilter: 'aviators',
+  },
+  {
+    id: 'ar_blur',
+    name: 'Filtro Fondo Blur',
+    emoji: '🌫️',
+    coins: 100,
+    level: 2,
+    animation: 'DeepAR: difumina el fondo del LIVE',
+    liveOnly: true,
+    deeparFilter: 'blur',
+  },
   { id: 'sombrero_llanero', name: 'Sombrero Llanero', emoji: '👒', image: '/gifts/sombrero_llanero.png', coins: 100, level: 2, animation: 'Face Mesh: anclado a frente y sienes' },
+  {
+    id: 'ar_dalmata',
+    name: 'Filtro Dálmata',
+    emoji: '🐶',
+    coins: 120,
+    level: 2,
+    animation: 'DeepAR: máscara dálmata en el host',
+    liveOnly: true,
+    deeparFilter: 'dalmatian',
+  },
   { id: 'sombrero_vueltiao', name: 'Sombrero Vueltiao', emoji: '🎩', image: '/gifts/sombrero_vueltiao.png', coins: 150, level: 2, animation: 'Face Mesh: espiral anclada a la cabeza' },
+  {
+    id: 'ar_koala',
+    name: 'Filtro Koala',
+    emoji: '🐨',
+    coins: 150,
+    level: 2,
+    animation: 'DeepAR: máscara koala en el host',
+    liveOnly: true,
+    deeparFilter: 'koala',
+  },
+  {
+    id: 'ar_leon',
+    name: 'Filtro León',
+    emoji: '🦁',
+    coins: 200,
+    level: 2,
+    animation: 'DeepAR: máscara león en el host',
+    liveOnly: true,
+    deeparFilter: 'lion',
+  },
   { id: 'cuatro_venezolano', name: 'Cuatro Venezolano', emoji: '🎸', image: '/gifts/cuatro_venezolano.png', coins: 200, level: 2, animation: 'Notas y ondas sonoras' },
   { id: 'tucan_tropical', name: 'Tucán Tropical', emoji: '🦜', image: '/gifts/tucan_tropical.png', coins: 250, level: 2, animation: 'Face Mesh: posado sobre la cabeza' },
   { id: 'guacamaya', name: 'Guacamaya', emoji: '🦜', image: '/gifts/guacamaya.png', coins: 300, level: 2, animation: 'Face Mesh: plumas ancladas a la cabeza' },
+  {
+    id: 'ar_galaxia',
+    name: 'Filtro Galaxia',
+    emoji: '🌌',
+    coins: 350,
+    level: 2,
+    animation: 'DeepAR: fondo galaxia en el LIVE',
+    liveOnly: true,
+    deeparFilter: 'galaxy',
+  },
   { id: 'tambor_caribeno', name: 'Tambor Caribeño', emoji: '🥁', image: '/gifts/tambor_caribeno.png', coins: 400, level: 2, animation: 'Tres golpes con ondas' },
   { id: 'botas_llaneras', name: 'Botas Llaneras', emoji: '🥾', image: '/gifts/botas_llaneras.png', coins: 500, level: 2, animation: 'Zapateo con polvo brillante' },
   { id: 'caballo_criollo', name: 'Caballo Criollo', emoji: '🐴', image: '/gifts/caballo_criollo.png', coins: 600, level: 2, animation: 'Trote y polvo al centro' },
@@ -80,8 +147,17 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
   return LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
 }
 
-/** Catálogo completo ordenado por precio — mismo set en publicaciones, Flash, LIVE y Boom Clip. */
+export function isDeeparLiveGift(giftId: string | undefined | null): boolean {
+  return Boolean(findLiveGift(giftId)?.deeparFilter);
+}
+
+/** Catálogo para publicaciones / clips / flash — sin filtros DeepAR. */
 export function sortedLiveboomGiftCatalog(): LiveGift[] {
+  return LIVEBOOM_GIFTS.filter((gift) => !gift.liveOnly).sort((a, b) => a.coins - b.coins);
+}
+
+/** Catálogo completo del LIVE (incluye regalos DeepAR). */
+export function sortedLiveGiftCatalog(): LiveGift[] {
   return [...LIVEBOOM_GIFTS].sort((a, b) => a.coins - b.coins);
 }
 

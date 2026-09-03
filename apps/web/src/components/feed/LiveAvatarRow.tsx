@@ -13,14 +13,14 @@ const layoutTransition = { duration: 0.28, ease: 'easeInOut' as const };
 export function LiveAvatarRow({ streams }: Props) {
   if (streams.length === 0) {
     return (
-      <p className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-zinc-500">
+      <p className="lb-live-empty">
         No hay lives ahora. Pulsa <span className="text-cyan-300">Transmitir</span> para abrir el tuyo.
       </p>
     );
   }
 
   return (
-    <div className="gift-row -mx-1 flex gap-4 overflow-x-auto px-1 pb-2">
+    <div className="gift-row -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-2">
       {streams.map((stream) => {
           const name = stream.displayName || stream.username;
           const initial = name.slice(0, 1).toUpperCase();

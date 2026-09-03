@@ -1,10 +1,10 @@
 import * as deepar from 'deepar';
 import type { DeepAR } from 'deepar';
 
-/** Clave DeepAR: en el portal deben estar liveboomapp.com Y www.liveboomapp.com (y localhost). */
+/** Clave DeepAR: en el portal deben estar liveboomapp.com, www.liveboomapp.com y localhost. */
 export const DEEPAR_LICENSE_KEY =
   import.meta.env.VITE_DEEPAR_LICENSE_KEY ||
-  'd5d6cd0be12cdbe42077cea0ce920c964eb26f24125fa5c29f29a81f5b7fc63500d5955d851b94e5';
+  '2490968190a75ffc19d48a77a9a442eb0c852e24e319fe48eea22c0762dc82e267e3db20c72cd5e5';
 
 /** Misma versión que el paquete npm para wasm/modelos desde CDN. */
 export const DEEPAR_ROOT = 'https://cdn.jsdelivr.net/npm/deepar@5.6.20/';

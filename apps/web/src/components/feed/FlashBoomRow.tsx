@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { AutoplayMuteVideo } from './AutoplayMuteVideo';
+import { HorizontalScrollRail } from './HorizontalScrollRail';
 import { ReelFeedViewer, type ReelFeedItem } from './ReelFeedViewer';
 
 type StoryReel = ReelFeedItem & { createdAt: string; mediaType: 'photo' | 'video' };
@@ -47,7 +48,7 @@ function StoryThumb({
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-[4.75rem] shrink-0 flex-col items-center gap-1.5 sm:w-20"
+      className="flex w-[4.75rem] shrink-0 snap-start flex-col items-center gap-1.5 sm:w-20"
     >
       <span className="story-ring relative grid h-[4.5rem] w-[4.5rem] place-items-center rounded-full p-[2.5px] sm:h-[4.75rem] sm:w-[4.75rem]">
         <span
@@ -72,7 +73,7 @@ function StoryThumb({
           )}
         </span>
       </span>
-      <span className="line-clamp-2 w-full text-center text-[10px] font-semibold text-zinc-300">
+      <span className="w-full truncate text-center text-[10px] font-semibold text-zinc-200">
         {label}
       </span>
     </button>
@@ -343,14 +344,16 @@ export function FlashBoomRow() {
           </button>
         </div>
       ) : (
-        <div className="gift-row -mx-0.5 flex gap-3 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <PublishCard
-            avatarUrl={profile.avatarUrl ?? null}
-            handle={profile.handle}
-            hasOwnStory={ownStories.length > 0}
-            onOpenOwn={() => openAuthorStories(profile.firebaseUid)}
-            onPublish={() => setCreateMode('flashboom')}
-          />
+        <HorizontalScrollRail ariaLabel={FLASH_BOOM_LABEL}>
+          <div className="snap-start">
+            <PublishCard
+              avatarUrl={profile.avatarUrl ?? null}
+              handle={profile.handle}
+              hasOwnStory={ownStories.length > 0}
+              onOpenOwn={() => openAuthorStories(profile.firebaseUid)}
+              onPublish={() => setCreateMode('flashboom')}
+            />
+          </div>
 
           {networkWithStories.map((person) => {
             const reel = storiesByAuthor.get(person.uid)?.[0];
@@ -367,9 +370,11 @@ export function FlashBoomRow() {
           })}
 
           {friendsWithoutStories.map((friend) => (
-            <FriendIdleBubble key={friend.uid} friend={friend} />
+            <div key={friend.uid} className="snap-start">
+              <FriendIdleBubble friend={friend} />
+            </div>
           ))}
-        </div>
+        </HorizontalScrollRail>
       )}
 
       {viewerReels && viewerReels.length > 0 ? (

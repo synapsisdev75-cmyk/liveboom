@@ -19,16 +19,15 @@ router.post(
 );
 
 router.post(
-  '/complete-widget',
+  '/complete-redirect',
   requireAuth,
-  bind(() => require('../controllers/paymentsController'), 'completeWidget'),
+  bind(() => require('../controllers/paymentsController'), 'completeRedirect'),
 );
 
 router.post(
-  '/simulate-topup',
+  '/complete-widget',
   requireAuth,
-  requireDbUser,
-  bind(() => require('../controllers/paymentsController'), 'simulateTopup'),
+  bind(() => require('../controllers/paymentsController'), 'completeWidget'),
 );
 
 router.get(

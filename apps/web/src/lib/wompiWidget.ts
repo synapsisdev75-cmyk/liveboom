@@ -4,6 +4,10 @@ export type WompiOrder = {
   amountInCop: number;
   currency: string;
   integritySignature?: string | null;
+  expirationTime?: string | null;
+  checkoutUrl?: string | null;
+  preferCheckout?: boolean;
+  widgetAvailable?: boolean;
 };
 
 export function openWompiWidget(
@@ -20,6 +24,7 @@ export function openWompiWidget(
     reference: order.reference,
     publicKey: order.publicKey,
     redirectUrl: `${window.location.origin}/billetera`,
+    ...(order.expirationTime ? { expirationTime: order.expirationTime } : {}),
     ...(order.integritySignature
       ? { signature: { integrity: order.integritySignature } }
       : {}),

@@ -113,6 +113,19 @@ export function ExploreView() {
       : 'para_ti',
   );
   const [rawPosts, setRawPosts] = useState<FsPost[]>([]);
+  const [deviceLandscape, setDeviceLandscape] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    const sync = () => setDeviceLandscape(mq.matches && window.innerWidth < 1024);
+    sync();
+    mq.addEventListener('change', sync);
+    window.addEventListener('resize', sync);
+    return () => {
+      mq.removeEventListener('change', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!profile) {
@@ -176,24 +189,26 @@ export function ExploreView() {
 
   return (
     <div className="lb-explore-view relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-black">
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[max(0.5rem,var(--lb-safe-top))] lg:pt-3">
-        <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-black/55 px-1.5 py-1 backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => selectTab(item.id)}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-                tab === item.id
-                  ? 'bg-white text-zinc-950'
-                  : 'text-white/75 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+      {!deviceLandscape ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[max(0.5rem,var(--lb-safe-top))] lg:pt-3">
+          <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-black/55 px-1.5 py-1 backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => selectTab(item.id)}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
+                  tab === item.id
+                    ? 'bg-white text-zinc-950'
+                    : 'text-white/75 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {reels.length === 0 ? (
         <div className="grid h-full place-items-center px-6 text-center">

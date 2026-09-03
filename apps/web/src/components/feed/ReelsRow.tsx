@@ -12,6 +12,7 @@ import { useUiStore } from '../../store/uiStore';
 import { CreatePostModal } from '../social/CreatePostModal';
 import { UserAvatar } from '../profile/UserAvatar';
 import { AutoplayMuteVideo } from './AutoplayMuteVideo';
+import { HorizontalScrollRail } from './HorizontalScrollRail';
 import { ReelFeedViewer } from './ReelFeedViewer';
 
 export type { ReelItem };
@@ -30,6 +31,7 @@ function toReel(post: FsPost, avatarUrl?: string | null): ReelItem {
     durationSec: post.durationSec,
     authorAvatarUrl: avatarUrl ?? null,
     contentBadge: BOOM_CLIP_LABEL,
+    thumbUrl: post.thumbUrl ?? null,
   };
 }
 
@@ -105,12 +107,22 @@ function BoomClipGroupThumb({
     <button
       type="button"
       onClick={onOpen}
-      className="lb-card group relative aspect-[9/16] w-[7.25rem] shrink-0 overflow-hidden rounded-2xl bg-zinc-950 text-left ring-1 ring-fuchsia-400/25 transition duration-300 hover:ring-fuchsia-300/50 sm:w-[8rem]"
+      className="lb-card group relative aspect-[9/16] w-[7.25rem] shrink-0 snap-start overflow-hidden rounded-2xl bg-zinc-950 text-left ring-1 ring-fuchsia-400/25 transition duration-300 hover:ring-fuchsia-300/50 sm:w-[8rem]"
     >
-      <AutoplayMuteVideo
-        src={latest.mediaUrl}
-        className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
-      />
+      {latest.thumbUrl ? (
+        <img
+          src={latest.thumbUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-contain"
+        />
+      ) : (
+        <AutoplayMuteVideo
+          src={latest.mediaUrl}
+          className="h-full w-full object-contain"
+        />
+      )}
       <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-black/25" />
 
       <ClipSegmentBar count={group.clips.length} />
@@ -376,7 +388,7 @@ export function ReelsRow({
             </p>
           </div>
         ) : (
-          <div className="gift-row -mx-0.5 flex gap-3 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <HorizontalScrollRail ariaLabel={FLASH_BOOM_LABEL}>
             {reels.map((reel, index) => (
               <BoomClipGroupThumb
                 key={reel.id}
@@ -393,20 +405,22 @@ export function ReelsRow({
                 }}
               />
             ))}
-          </div>
+          </HorizontalScrollRail>
         )
       ) : (
-        <div className="gift-row -mx-0.5 flex gap-3 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <HorizontalScrollRail ariaLabel={BOOM_CLIP_LABEL}>
           {profile ? (
-            <OwnClipPublishCard
-              avatarUrl={profile.avatarUrl ?? null}
-              handle={profile.handle}
-              uid={profile.firebaseUid}
-              hasClips={Boolean(ownGroup?.clips.length)}
-              group={ownGroup}
-              onOpenOwn={() => openAuthorClips(profile.firebaseUid, true)}
-              onPublish={() => setCreateOpen(true)}
-            />
+            <div className="snap-start">
+              <OwnClipPublishCard
+                avatarUrl={profile.avatarUrl ?? null}
+                handle={profile.handle}
+                uid={profile.firebaseUid}
+                hasClips={Boolean(ownGroup?.clips.length)}
+                group={ownGroup}
+                onOpenOwn={() => openAuthorClips(profile.firebaseUid, true)}
+                onPublish={() => setCreateOpen(true)}
+              />
+            </div>
           ) : null}
 
           {otherGroups.map((group) => (
@@ -416,7 +430,7 @@ export function ReelsRow({
               onOpen={() => openAuthorClips(group.authorUid, true)}
             />
           ))}
-        </div>
+        </HorizontalScrollRail>
       )}
 
       {viewerReels && viewerReels.length > 0 ? (

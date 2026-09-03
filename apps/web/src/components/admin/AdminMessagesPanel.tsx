@@ -139,7 +139,7 @@ export function AdminMessagesPanel() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <ul className="lb-panel max-h-[70vh] space-y-1 overflow-y-auto rounded-2xl p-2">
+        <ul className="lb-panel max-h-[70dvh] space-y-1 overflow-y-auto rounded-2xl p-2">
           {loadingChats && chats.length === 0 ? (
             <li className="px-3 py-8 text-center text-sm text-zinc-500">Cargando chats…</li>
           ) : visibleChats.length === 0 ? (
@@ -171,7 +171,7 @@ export function AdminMessagesPanel() {
           )}
         </ul>
 
-        <div className="lb-panel flex max-h-[70vh] flex-col rounded-2xl">
+        <div className="lb-panel flex max-h-[70dvh] flex-col rounded-2xl">
           {!selected ? (
             <p className="grid flex-1 place-items-center p-8 text-sm text-zinc-500">
               Elige un chat para ver los mensajes

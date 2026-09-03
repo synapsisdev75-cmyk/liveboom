@@ -1,4 +1,5 @@
 {
+  "version": 2,
   "auth": {
     "providers": {
       "emailPassword": true,
@@ -9,7 +10,6 @@
           "http://localhost",
           "https://liveboom-app.firebaseapp.com",
           "https://liveboom-app.web.app",
-          "https://liveboom.vercel.app",
           "https://liveboomapp.com",
           "https://www.liveboomapp.com"
         ]
@@ -31,6 +31,20 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "functions": [
+    {
+      "source": "backend",
+      "codebase": "api",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local",
+        "nodemon.json"
+      ]
+    }
+  ],
   "hosting": {
     "public": "apps/web/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
@@ -58,11 +72,22 @@
           {
             "key": "Cross-Origin-Opener-Policy",
             "value": "same-origin-allow-popups"
+          },
+          {
+            "key": "Permissions-Policy",
+            "value": "camera=(self), microphone=(self), display-capture=(self)"
           }
         ]
       }
     ],
     "rewrites": [
+      {
+        "source": "/api/**",
+        "function": {
+          "functionId": "api",
+          "region": "us-central1"
+        }
+      },
       {
         "source": "**",
         "destination": "/index.html"

@@ -205,7 +205,7 @@ function GroupRailAvatar({ name, photoUrl }: { name: string; photoUrl?: string |
 
 function LiveRail({ host }: { host: string }) {
   return (
-    <aside className="hidden w-[min(22%,18rem)] min-w-[220px] shrink-0 flex-col border-l border-white/5 bg-zinc-950/80 backdrop-blur-xl md:flex lg:min-w-[240px]">
+    <aside className="hidden w-[min(22%,18rem)] min-w-[220px] shrink-0 flex-col border-l border-white/5 bg-zinc-950/80 backdrop-blur-xl lg:flex lg:min-w-[240px]">
       <section className="border-b border-white/5 p-4 lg:p-5">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
@@ -344,7 +344,7 @@ function SearchFriendsRail() {
   }
 
   return (
-    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:p-4">
+    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="overflow-hidden rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-700/40 via-[#1a1228] to-[#14151c] p-3.5">
         <div className="flex items-start gap-3">
           <img
@@ -609,7 +609,7 @@ function ActivityRail() {
     .slice(0, 4);
 
   return (
-    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:p-4">
+    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <p className="text-sm font-bold text-white">Rendimiento de tus LIVE</p>
         <div className="mt-3 overflow-hidden rounded-xl bg-zinc-950/60 p-2">
@@ -794,7 +794,7 @@ function TransmitRail() {
     : 'https://liveboomapp.com/registro';
 
   return (
-    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:p-4">
+    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <p className="text-sm font-bold text-white">Consejos para un gran live</p>
         <ul className="mt-3 space-y-3">
@@ -967,7 +967,7 @@ function MessagesRail() {
     .slice(0, 5);
 
   return (
-    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:p-4">
+    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-sm font-bold text-white">Personas que quizá conozcas</p>
@@ -1144,7 +1144,7 @@ function SettingsRail() {
   })();
 
     return (
-    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:p-4">
+    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <p className="text-sm font-bold text-white">Resumen de cuenta</p>
         <ul className="mt-3 space-y-3">
@@ -1360,7 +1360,7 @@ function DiscoveryRail() {
 
   return (
     <>
-      <aside className="chat-scroll hidden w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl md:flex lg:min-w-[250px] lg:max-w-[19rem] lg:p-4">
+      <aside className="chat-scroll hidden w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem] lg:p-4">
         {/* Arrow 1: Crear tu grupo — arriba de Publicidad */}
         {onGroups ? (
           <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
@@ -1612,31 +1612,7 @@ function DiscoveryRail() {
         </p>
       </aside>
 
-      <div className="fixed inset-x-0 bottom-[calc(var(--lb-bottom-nav-h)+var(--lb-safe-bottom))] z-30 pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] md:hidden">
-        <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-2 shadow-xl backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {profile ? (
-            <button
-              type="button"
-              onClick={() => setPromoteOpen(true)}
-              className="min-h-10 shrink-0 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-3 py-2 text-[11px] font-bold text-zinc-950"
-            >
-              Publicidad
-            </button>
-          ) : null}
-          <Link
-            to="/tendencias"
-            className="min-h-10 shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[11px] font-semibold text-fuchsia-200"
-          >
-            # Tendencias
-          </Link>
-          <Link
-            to="/grupos"
-            className="min-h-10 shrink-0 rounded-xl bg-zinc-900 px-3 py-2 text-[11px] font-semibold text-cyan-200"
-          >
-            Grupos
-          </Link>
-        </div>
-      </div>
+      {/* Barra móvil Publicidad/Tendencias… eliminada: redundante (menú + bottom nav). */}
 
       {promoteOpen ? (
         <PromoteAdsModal

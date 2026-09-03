@@ -6,6 +6,7 @@ const {
   assertIntegrityPair,
   cleanWompiSecret,
   createWidgetIntegritySignature,
+  createWompiReference,
 } = require('../lib/wompi');
 const { rememberOrder, takeOrder } = require('../lib/walletMemory');
 
@@ -134,14 +135,16 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
 
     const amount = promoAmountInCents(days);
     const packageId = pkg.id;
-    const reference = `ad_${String(req.dbUser.id).slice(0, 20)}_${randomUUID().replace(/-/g, '')}`;
+    const reference = createWompiReference('ad');
     const currency = 'COP';
     const integritySecret = assertIntegrityPair(publicKey, process.env.WOMPI_INTEGRITY_SECRET);
+    const expirationTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
     const integritySignature = createWidgetIntegritySignature(
       reference,
       amount,
       currency,
       integritySecret,
+      expirationTime,
     );
     if (!integritySignature) {
       res.status(500).json({ error: 'No se pudo firmar el pago de publicidad' });
@@ -188,6 +191,7 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       amountInCents: amount,
       currency,
       integritySignature,
+      expirationTime,
       days,
       hours: days * 24,
       totalCop: promoTotalCop(days),

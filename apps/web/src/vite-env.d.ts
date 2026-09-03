@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_API_URL?: string;
   readonly VITE_DEEPAR_LICENSE_KEY?: string;
+  readonly VITE_AGORA_APP_ID?: string;
 }
 
 interface ImportMeta {
@@ -34,6 +35,7 @@ interface Window {
     reference: string;
     publicKey: string;
     redirectUrl?: string;
+    expirationTime?: string;
     signature?: { integrity: string };
   }) => WompiWidgetCheckout;
 }

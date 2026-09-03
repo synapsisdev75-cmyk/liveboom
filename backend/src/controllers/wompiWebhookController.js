@@ -1,5 +1,11 @@
 const { prisma } = require('../lib/prisma');
-const { verifyWompiChecksum } = require('../lib/wompi');
+const { verifyWompiChecksum, cleanWompiSecret } = require('../lib/wompi');
+const {
+  firestoreConfigured,
+  completePaymentOrder,
+  completePaymentOrderByLinkId,
+} = require('../lib/firestoreAdmin');
+const { setBalance } = require('../lib/walletMemory');
 
 function mapWompiStatus(status) {
   if (status === 'APPROVED') return 'completed';
@@ -8,8 +14,7 @@ function mapWompiStatus(status) {
 }
 
 /**
- * Acredita coins una sola vez aunque Wompi reenvíe el webhook.
- * Compare-and-swap: solo el primer UPDATE de pending → completed incrementa el saldo.
+ * Acredita coins una sola vez aunque Wompi reenvíe el webhook (Prisma).
  */
 async function creditApprovedOrder(order, wompiTxnId) {
   return prisma.$transaction(async (tx) => {
@@ -40,7 +45,7 @@ async function creditApprovedOrder(order, wompiTxnId) {
 }
 
 async function handleWompiWebhook(req, res) {
-  const eventsSecret = process.env.WOMPI_EVENTS_SECRET;
+  const eventsSecret = cleanWompiSecret(process.env.WOMPI_EVENTS_SECRET);
   if (!eventsSecret) {
     console.error('[webhooks/wompi] falta WOMPI_EVENTS_SECRET');
     res.status(500).json({ error: 'Webhook no configurado' });
@@ -71,44 +76,89 @@ async function handleWompiWebhook(req, res) {
       return;
     }
 
-    const order = await prisma.transaction.findUnique({
-      where: { reference },
-    });
+    if (txn.status === 'APPROVED') {
+      const paidAmount = Number(txn.amount_in_cents);
+      const paymentLinkId = txn.payment_link_id ? String(txn.payment_link_id) : '';
 
-    if (!order) {
+      if (firestoreConfigured()) {
+        let result = null;
+        if (reference) {
+          result = await completePaymentOrder(reference, null, {
+            amountInCop: paidAmount,
+            wompiTxnId: txn.id,
+          });
+        }
+        if (!result?.ok && paymentLinkId) {
+          result = await completePaymentOrderByLinkId(paymentLinkId, {
+            amountInCop: paidAmount,
+            wompiTxnId: txn.id,
+          });
+        }
+        if (result?.ok) {
+          if (result.uid) {
+            setBalance(result.uid, result.coinsBalance);
+          }
+          res.status(200).json({ ok: true, duplicate: result.duplicate, source: 'firestore' });
+          return;
+        }
+        if (result?.error === 'amount_mismatch') {
+          console.error('[webhooks/wompi] monto distinto (firestore)', {
+            reference,
+            paymentLinkId,
+            received: paidAmount,
+          });
+          res.status(400).json({ error: 'El monto del evento no coincide con la orden' });
+          return;
+        }
+      }
+
+      if (prisma) {
+        const order = await prisma.transaction.findUnique({
+          where: { reference },
+        });
+
+        if (!order) {
+          res.status(200).json({ ok: true, unmatched: true });
+          return;
+        }
+
+        if (order.status === 'completed') {
+          res.status(200).json({ ok: true, duplicate: true });
+          return;
+        }
+
+        if (paidAmount !== order.amountInCop) {
+          console.error('[webhooks/wompi] monto distinto al de la orden', {
+            reference,
+            expected: order.amountInCop,
+            received: paidAmount,
+          });
+          res.status(400).json({ error: 'El monto del evento no coincide con la orden' });
+          return;
+        }
+
+        const result = await creditApprovedOrder(order, txn.id);
+        res.status(200).json({ ok: true, duplicate: result.duplicate, source: 'prisma' });
+        return;
+      }
+
       res.status(200).json({ ok: true, unmatched: true });
       return;
     }
 
-    if (order.status === 'completed') {
-      res.status(200).json({ ok: true, duplicate: true });
-      return;
-    }
-
-    if (txn.status === 'APPROVED') {
-      if (Number(txn.amount_in_cents) !== order.amountInCop) {
-        console.error('[webhooks/wompi] monto distinto al de la orden', {
-          reference,
-          expected: order.amountInCop,
-          received: txn.amount_in_cents,
-        });
-        res.status(400).json({ error: 'El monto del evento no coincide con la orden' });
-        return;
-      }
-
-      const result = await creditApprovedOrder(order, txn.id);
-      res.status(200).json({ ok: true, duplicate: result.duplicate });
-      return;
-    }
-
-    if (order.status === 'pending') {
-      await prisma.transaction.updateMany({
-        where: { id: order.id, status: 'pending' },
-        data: {
-          status: mapWompiStatus(txn.status),
-          wompiTxnId: txn.id,
-        },
+    if (prisma) {
+      const order = await prisma.transaction.findUnique({
+        where: { reference },
       });
+      if (order && order.status === 'pending') {
+        await prisma.transaction.updateMany({
+          where: { id: order.id, status: 'pending' },
+          data: {
+            status: mapWompiStatus(txn.status),
+            wompiTxnId: txn.id,
+          },
+        });
+      }
     }
 
     res.status(200).json({ ok: true, status: txn.status });

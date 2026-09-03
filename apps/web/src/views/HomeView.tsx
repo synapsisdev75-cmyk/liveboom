@@ -21,9 +21,15 @@ import { PostComments, PostVideoPlayer } from '../components/social/PostVideoPla
 import { ShareContentButton } from '../components/social/ShareContentButton';
 import { buildPostShareUrl } from '../lib/shareContent';
 import { PostPhotoViewer } from '../components/social/PostPhotoViewer';
+import { PostMediaCarousel } from '../components/social/PostMediaCarousel';
+import { postPhotoUrls } from '../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { EmojiText } from '../components/social/EmojiText';
-import { type SocialPost } from '../components/social/SocialPostCard';
+import {
+  TextNoteBody,
+  isTextOnlyPost,
+  type SocialPost,
+} from '../components/social/SocialPostCard';
 import { UserAvatar } from '../components/profile/UserAvatar';
 import { apiPublic } from '../lib/api';
 import { categoryLabel } from '../lib/categories';
@@ -58,6 +64,10 @@ function toSocial(post: FsPost): SocialPost {
     type: post.type,
     caption: post.caption,
     mediaUrl: post.mediaUrl,
+    mediaUrls: post.mediaUrls,
+    mediaWidth: post.mediaWidth,
+    mediaHeight: post.mediaHeight,
+    thumbUrl: post.thumbUrl ?? null,
     visibility: post.visibility,
     createdAt: post.createdAt,
     likes: post.likes,
@@ -88,9 +98,6 @@ function FeaturedFeedCard({
   live: ActiveLiveFeedItem | null;
 }) {
   const profile = useAuthStore((state) => state.profile);
-  const href = live
-    ? `/stream/${encodeURIComponent(live.username)}`
-    : `/u/${encodeURIComponent(post.authorUsername)}`;
   const [likes, setLikes] = useState(post.likes || 0);
   const [dislikes, setDislikes] = useState(0);
   const [viewerReaction, setViewerReaction] = useState<'like' | 'dislike' | null>(null);
@@ -186,7 +193,11 @@ function FeaturedFeedCard({
         ) : null}
       </div>
 
-      {post.mediaUrl && post.type === 'video' ? (
+      {isTextOnlyPost(post) ? (
+        <div className="mt-3">
+          <TextNoteBody caption={post.caption} />
+        </div>
+      ) : post.mediaUrl && post.type === 'video' ? (
         <div className="mt-3">
           <PostVideoPlayer
             src={post.mediaUrl}
@@ -201,6 +212,19 @@ function FeaturedFeedCard({
             dislikers={dislikers}
             busy={busy}
             onReact={(r) => void react(r)}
+            mediaWidth={post.mediaWidth}
+            mediaHeight={post.mediaHeight}
+            posterUrl={post.thumbUrl}
+          />
+        </div>
+      ) : postPhotoUrls(post).length > 1 ? (
+        <div className="mt-3">
+          <PostMediaCarousel
+            sources={postPhotoUrls(post)}
+            caption={post.caption}
+            postId={post.id}
+            authorUsername={post.authorUsername}
+            authorUid={post.authorUid}
           />
         </div>
       ) : post.mediaUrl && post.type === 'photo' ? (
@@ -211,18 +235,17 @@ function FeaturedFeedCard({
             postId={post.id}
             authorUsername={post.authorUsername}
             authorUid={post.authorUid}
-            aspect="video"
+            mediaWidth={post.mediaWidth}
+            mediaHeight={post.mediaHeight}
           />
         </div>
-      ) : (
-        <Link to={href} className="relative mt-3 block aspect-video overflow-hidden bg-zinc-950">
-          <div className="grid h-full place-items-center bg-gradient-to-br from-fuchsia-900/40 via-zinc-900 to-cyan-900/30">
-            <Play className="h-14 w-14 text-white/80" fill="currentColor" />
-          </div>
-        </Link>
-      )}
+      ) : post.caption ? (
+        <div className="mt-3">
+          <TextNoteBody caption={post.caption} />
+        </div>
+      ) : null}
 
-      {post.caption && post.type !== 'video' && post.type !== 'photo' ? (
+      {post.caption && post.type !== 'video' && post.type !== 'photo' && !isTextOnlyPost(post) ? (
         <p className="px-3.5 pt-3 text-sm leading-relaxed text-zinc-200 sm:px-4">
           <EmojiText text={post.caption} size={POST_EMOJI_SIZE} />
         </p>
@@ -478,7 +501,7 @@ export function HomeView() {
   ];
 
   return (
-    <div className="lb-page flex min-w-0 flex-col gap-4 sm:gap-5">
+    <div className="lb-page lb-home-center flex min-w-0 flex-col gap-4 sm:gap-5">
       {/* 1. Tabs + buscar + campana */}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <nav className="flex items-center gap-0.5 sm:gap-1">
@@ -509,7 +532,11 @@ export function HomeView() {
             <Search size={14} className="shrink-0" />
             <span className="truncate">Buscar...</span>
           </Link>
-          {profile ? <NotificationBell /> : null}
+          {profile ? (
+            <span className="hidden lg:contents">
+              <NotificationBell />
+            </span>
+          ) : null}
         </div>
       </header>
 
@@ -526,22 +553,26 @@ export function HomeView() {
       <CategoryChips value={category} onChange={setCategory} />
 
       <LayoutGroup id="home-live-ranking">
-        {/* Directos top — top 5 por espectadores, video preview */}
-        <TopLivesRail streams={topLives} />
+        {topLives.length > 0 || regularLives.length > 0 ? (
+          <>
+            {/* Directos top — top 5 por espectadores, video preview */}
+            <TopLivesRail streams={topLives} />
 
-        {/* Live en línea — resto de lives, avatar estático */}
-        <section>
-          <div className="mb-3 flex items-end justify-between gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">Live en línea</h2>
-            <Link
-              to="/explorar"
-              className="text-[11px] font-semibold text-cyan-400 hover:underline"
-            >
-              Ver todos los LIVE →
-            </Link>
-          </div>
-          <LiveAvatarRow streams={regularLives} />
-        </section>
+            {/* Live en línea — resto de lives, avatar estático */}
+            <section>
+              <div className="mb-3 flex items-end justify-between gap-2">
+                <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">Live en línea</h2>
+                <Link
+                  to="/explorar"
+                  className="text-[11px] font-semibold text-cyan-400 hover:underline"
+                >
+                  Ver todos los LIVE →
+                </Link>
+              </div>
+              <LiveAvatarRow streams={regularLives} />
+            </section>
+          </>
+        ) : null}
       </LayoutGroup>
 
       {/* Flash Boom — historias 24 h */}

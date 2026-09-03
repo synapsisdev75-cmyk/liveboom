@@ -9,7 +9,7 @@ export function LoginView() {
 
   if (!ready) {
     return (
-      <div className="grid min-h-screen place-items-center bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid min-h-[100dvh] place-items-center bg-zinc-950 text-sm text-zinc-400">
         Cargando sesión…
       </div>
     );

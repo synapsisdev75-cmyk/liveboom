@@ -1,4 +1,4 @@
-import { collection, getDocs, getDoc, doc, limit, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, limit, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import { profileHref, readLevelXpFields } from './profileFirestore';
 
@@ -86,4 +86,22 @@ export async function listAdminUsers(max = 200): Promise<AdminUserRow[]> {
   });
 
   return rows;
+}
+
+/** Saldo blast en Firestore — actualización en tiempo real para Super Admin. */
+export function subscribeAdminUserBalances(
+  callback: (balances: Record<string, number>) => void,
+): () => void {
+  const q = query(collection(db, 'users'), limit(500));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const balances: Record<string, number> = {};
+      for (const d of snap.docs) {
+        balances[d.id] = Number(d.data().coinsBalance ?? 0);
+      }
+      callback(balances);
+    },
+    (err) => console.warn('[admin] balances snapshot', err),
+  );
 }

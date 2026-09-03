@@ -134,7 +134,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
             >
               <option>Nequi</option>
               <option>Daviplata</option>
-              <option>Bancolombia</option>
+              <option>PayPal</option>
               <option>Davivienda</option>
               <option>Otro banco</option>
             </select>

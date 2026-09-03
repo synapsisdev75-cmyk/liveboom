@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
+import './responsive/mobile-tablet/landscape-explore.css';
 
 // Fuerza HTTPS en producción (evita “No es seguro” y Failed to fetch por mixed content).
 if (

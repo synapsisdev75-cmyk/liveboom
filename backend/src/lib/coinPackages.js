@@ -1,9 +1,12 @@
 /** Equivalente justo de retiro: 1 blast = $50 COP. */
 const COIN_TO_COP = 50;
 const MIN_WITHDRAW_COINS = 50;
+const MAX_PACK_COINS = 25_000;
 
-/** Precio final cliente (COP) para paquetes desde Popular en adelante. */
+/** Precio final cliente (COP) para paquetes con precio fijo. */
 const FIXED_PACK_PRICE_COP = {
+  125: 7_990,
+  150: 8_990,
   200: 10_900,
   350: 17_900,
   500: 24_900,
@@ -16,16 +19,7 @@ const FIXED_PACK_PRICE_COP = {
   25000: 1_154_900,
 };
 
-const ENTRY_PACK_MARKUP = 0.0265;
-const ENTRY_PACK_FEE_COP = 700;
-
-function entryPackAmountInCop(blast) {
-  const baseCop = blast * COIN_TO_COP;
-  return Math.round(baseCop * (1 + ENTRY_PACK_MARKUP) + ENTRY_PACK_FEE_COP) * 100;
-}
-
 function packAmountInCop(blast) {
-  if (blast === 125 || blast === 150) return entryPackAmountInCop(blast);
   const fixed = FIXED_PACK_PRICE_COP[blast];
   if (fixed !== undefined) return fixed * 100;
   let rate = 50;
@@ -70,10 +64,21 @@ function coinsToCop(coins) {
   return Math.max(0, Math.floor(Number(coins) || 0)) * COIN_TO_COP;
 }
 
+/** Blast del paquete — rechaza montos inflados o centavos Wompi por error. */
+function blastForPackage(packageId, coins) {
+  const pack = COIN_PACKAGES[packageId];
+  if (!pack) return null;
+  const blast = Math.max(0, Math.floor(Number(coins) || 0));
+  if (blast !== pack.coins) return null;
+  return blast;
+}
+
 module.exports = {
   COIN_PACKAGES,
   COIN_TO_COP,
   MIN_WITHDRAW_COINS,
+  MAX_PACK_COINS,
   resolveCoinPackage,
   coinsToCop,
+  blastForPackage,
 };

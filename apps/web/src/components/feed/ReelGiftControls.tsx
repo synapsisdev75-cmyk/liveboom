@@ -116,7 +116,7 @@ export function ReelGiftControls({ authorUsername, authorUid, postId, inline = f
           <Gift size={inline ? 16 : 20} />
         </button>
         {!inline ? (
-          <span className="text-[11px] font-bold text-white drop-shadow">Regalo</span>
+          <span className="text-[11px] font-bold text-white drop-shadow">Regalar</span>
         ) : null}
       </div>
 

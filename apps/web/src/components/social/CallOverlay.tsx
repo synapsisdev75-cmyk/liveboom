@@ -361,7 +361,7 @@ function CallStage({ video }: { video: boolean }) {
       {snapPreview ? (
         <div className="fixed inset-0 z-[90] grid place-items-center bg-black/80 p-4">
           <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/15 bg-zinc-950">
-            <img src={snapPreview} alt="Foto" className="max-h-[70vh] w-full object-contain" />
+            <img src={snapPreview} alt="Foto" className="max-h-[70dvh] w-full object-contain" />
             <div className="flex justify-between gap-2 p-3">
               <p className="text-xs text-zinc-400">Guardada en descargas</p>
               <button

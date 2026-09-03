@@ -4,12 +4,25 @@ export const LIVE_SCREEN_PIP_WIDTH_RATIO = 0.28;
 /** Relación ancho/alto del PiP de cámara (9:16 vertical). */
 export const LIVE_SCREEN_PIP_WH_RATIO = 9 / 16;
 export const LIVE_SCREEN_MARGIN_PX = 12;
+export const LIVE_FRAME_MIN_NW = 0.12;
+export const LIVE_FRAME_MAX_NW = 1;
+/** PiP en compartir pantalla: máximo ~45% del área LIVE. */
+export const LIVE_PIP_MAX_NW = 0.45;
+/** PiP en compartir pantalla: mínimo absoluto en px. */
+export const LIVE_PIP_MIN_WIDTH_PX = 100;
+export const LIVE_FRAME_SIZE_PRESETS = {
+  S: 0.18,
+  M: 0.28,
+  L: 0.42,
+  FULL: 1,
+} as const;
 export const LIVE_SCREEN_OUTPUT_WIDTH = 720;
 export const LIVE_SCREEN_OUTPUT_HEIGHT = 1280;
 export const LIVE_SCREEN_FPS = 24;
 export const SCREEN_ASPECT_THRESHOLD = 1.3;
 
-export type PipNormalizedPos = { nx: number; ny: number };
+export type PipNormalizedPos = { nx: number; ny: number; nw?: number };
+export type LiveFrameLayout = { nx: number; ny: number; nw: number };
 export type ScreenLayoutMode = 'horizontal' | 'vertical' | 'neutral';
 
 export type ScreenTrackDimensions = {
@@ -23,11 +36,32 @@ export type ScreenTrackDimensions = {
   displaySurface?: string;
 };
 
+function getDisplayMediaImpl(): ((
+  constraints?: DisplayMediaStreamOptions,
+) => Promise<MediaStream>) | null {
+  if (typeof navigator === 'undefined') return null;
+  const devices = navigator.mediaDevices;
+  if (devices && typeof devices.getDisplayMedia === 'function') {
+    return (constraints) => devices.getDisplayMedia(constraints);
+  }
+  const legacy = (
+    navigator as Navigator & {
+      getDisplayMedia?: MediaDevices['getDisplayMedia'];
+    }
+  ).getDisplayMedia;
+  if (typeof legacy === 'function') {
+    return (constraints) => legacy.call(navigator, constraints);
+  }
+  return null;
+}
+
 export function canUseDisplayMedia(): boolean {
-  return (
-    typeof navigator !== 'undefined' &&
-    typeof navigator.mediaDevices?.getDisplayMedia === 'function'
-  );
+  return getDisplayMediaImpl() != null;
+}
+
+function isMobileCaptureClient(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
 export function classifyScreenLayout(width: number, height: number): ScreenLayoutMode {
@@ -93,24 +127,41 @@ export function formatScreenShareSourceLabel(track: MediaStreamTrack): string | 
 }
 
 export async function requestScreenCaptureStream(): Promise<MediaStream> {
-  if (!canUseDisplayMedia()) {
-    throw new Error('getDisplayMedia no disponible');
+  const getDisplay = getDisplayMediaImpl();
+  if (!getDisplay) {
+    throw new Error(
+      'Este navegador no permite compartir pantalla. Abre LiveBoom en Chrome (Android) o Safari (iOS 16.4+).',
+    );
   }
-  try {
-    return await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: LIVE_SCREEN_FPS, max: 30 } },
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      } as MediaTrackConstraints,
-    });
-  } catch {
-    return await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    });
+
+  const attempts: DisplayMediaStreamOptions[] = isMobileCaptureClient()
+    ? [{ video: true, audio: true }, { video: true }]
+    : [
+        {
+          video: { frameRate: { ideal: LIVE_SCREEN_FPS, max: 30 } },
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          } as MediaTrackConstraints,
+        },
+        { video: true, audio: true },
+        { video: true },
+      ];
+
+  let lastError: unknown;
+  for (const constraints of attempts) {
+    try {
+      return await getDisplay(constraints);
+    } catch (err) {
+      lastError = err;
+      const name = (err as { name?: string })?.name;
+      if (name === 'AbortError' || name === 'NotAllowedError') throw err;
+    }
   }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('No se pudo capturar la pantalla');
 }
 
 export function screenShareAudioStatusMessage(hasAudio: boolean): string {
@@ -128,8 +179,132 @@ export function screenShareStatusMessage(track: MediaStreamTrack, dims?: ScreenT
   return 'Compartiendo pantalla en vivo';
 }
 
-export function pipHeightForWidth(pipW: number) {
-  return pipW / LIVE_SCREEN_PIP_WH_RATIO;
+export function frameAspectRatio(ratio: '16:9' | '9:16') {
+  return ratio === '16:9' ? 16 / 9 : 9 / 16;
+}
+
+/** Lee aspect ratio intrínseco de la cámara desde el MediaStreamTrack. */
+export function readCameraTrackAspect(
+  track: MediaStreamTrack | null | undefined,
+  fallback = 9 / 16,
+): number {
+  if (!track) return fallback;
+  const settings = track.getSettings?.() ?? {};
+  const w = Number(settings.width) || 0;
+  const h = Number(settings.height) || 0;
+  if (w > 0 && h > 0) return w / h;
+  return fallback;
+}
+
+export type PipRectOptions = {
+  /** Relación ancho/alto del PiP (cámara). Si no se pasa, usa el aspect del LIVE. */
+  pipAspect?: number;
+  maxNw?: number;
+  minWidthPx?: number;
+};
+
+export const SCREEN_SHARE_PIP_OPTS: PipRectOptions = {
+  maxNw: LIVE_PIP_MAX_NW,
+  minWidthPx: LIVE_PIP_MIN_WIDTH_PX,
+};
+
+export function normalizeFrameLayout(
+  layout: PipNormalizedPos,
+  fallbackNw = LIVE_SCREEN_PIP_WIDTH_RATIO,
+  maxNw = LIVE_FRAME_MAX_NW,
+): LiveFrameLayout {
+  const nw = layout.nw ?? fallbackNw;
+  return {
+    nx: Math.min(1, Math.max(0, layout.nx)),
+    ny: Math.min(1, Math.max(0, layout.ny)),
+    nw: Math.min(maxNw, Math.max(LIVE_FRAME_MIN_NW, nw)),
+  };
+}
+
+export function computeFrameRect(
+  containerW: number,
+  containerH: number,
+  layout: LiveFrameLayout,
+  frameAspect: '16:9' | '9:16',
+  options?: PipRectOptions,
+) {
+  const ar = options?.pipAspect ?? frameAspectRatio(frameAspect);
+  const maxNw = options?.maxNw ?? LIVE_FRAME_MAX_NW;
+  const minWidthPx = options?.minWidthPx ?? 0;
+  const nw = Math.min(maxNw, Math.max(LIVE_FRAME_MIN_NW, layout.nw));
+  const maxW = containerW * maxNw;
+
+  let pipW = Math.max(minWidthPx, containerW * nw);
+  if (pipW > maxW) pipW = maxW;
+  let pipH = pipW / ar;
+
+  if (nw >= 0.99 && maxNw >= 0.99) {
+    pipW = containerW;
+    pipH = pipW / ar;
+    if (pipH > containerH) {
+      pipH = containerH;
+      pipW = pipH * ar;
+    }
+    const x = (containerW - pipW) / 2;
+    const y = (containerH - pipH) / 2;
+    return {
+      x,
+      y,
+      width: pipW,
+      height: pipH,
+      maxX: Math.max(0, x),
+      maxY: Math.max(0, y),
+      nw: pipW / containerW,
+    };
+  }
+
+  if (pipH > containerH) {
+    pipH = containerH;
+    pipW = pipH * ar;
+    pipW = Math.max(minWidthPx, Math.min(maxW, pipW));
+    pipH = pipW / ar;
+  }
+
+  const maxX = Math.max(0, containerW - pipW);
+  const maxY = Math.max(0, containerH - pipH);
+  const x = maxX > 0 ? Math.min(maxX, Math.max(0, layout.nx * maxX)) : (containerW - pipW) / 2;
+  const y = maxY > 0 ? Math.min(maxY, Math.max(0, layout.ny * maxY)) : (containerH - pipH) / 2;
+
+  return {
+    x,
+    y,
+    width: pipW,
+    height: pipH,
+    maxX,
+    maxY,
+    nw: pipW / containerW,
+  };
+}
+
+export function layoutFromRect(
+  containerW: number,
+  containerH: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options?: Pick<PipRectOptions, 'maxNw' | 'minWidthPx'>,
+) {
+  const maxNw = options?.maxNw ?? LIVE_FRAME_MAX_NW;
+  const minWidthPx = options?.minWidthPx ?? 0;
+  const maxW = containerW * maxNw;
+  const clampedW = Math.min(maxW, Math.max(minWidthPx, width));
+  const maxX = Math.max(0, containerW - clampedW);
+  const maxY = Math.max(0, containerH - height);
+  return {
+    nx: maxX > 0 ? Math.min(1, Math.max(0, x / maxX)) : 0,
+    ny: maxY > 0 ? Math.min(1, Math.max(0, y / maxY)) : 0,
+    nw: Math.min(maxNw, Math.max(LIVE_FRAME_MIN_NW, clampedW / containerW)),
+  };
+}
+
+export function pipHeightForWidth(pipW: number, frameAspect: '16:9' | '9:16' = '9:16') {
+  return pipW / frameAspectRatio(frameAspect);
 }
 
 export function computePipRect(
@@ -138,30 +313,35 @@ export function computePipRect(
   nx: number,
   ny: number,
   pipWidthRatio = LIVE_SCREEN_PIP_WIDTH_RATIO,
+  frameAspect: '16:9' | '9:16' = '9:16',
 ) {
-  const pipW = containerW * pipWidthRatio;
-  const pipH = pipHeightForWidth(pipW);
-  const maxX = Math.max(0, containerW - pipW);
-  const maxY = Math.max(0, containerH - pipH);
-  const x = maxX > 0 ? Math.min(maxX, Math.max(0, nx * maxX)) : 0;
-  const y = maxY > 0 ? Math.min(maxY, Math.max(0, ny * maxY)) : 0;
-  return { x, y, width: pipW, height: pipH, maxX, maxY };
+  return computeFrameRect(
+    containerW,
+    containerH,
+    { nx, ny, nw: pipWidthRatio },
+    frameAspect,
+  );
 }
 
 export function defaultPipPosition(
   width: number,
   height: number,
   pipWidthRatio = LIVE_SCREEN_PIP_WIDTH_RATIO,
-): PipNormalizedPos {
-  const pipW = width * pipWidthRatio;
-  const pipH = pipHeightForWidth(pipW);
-  const maxX = Math.max(0, width - pipW);
-  const maxY = Math.max(0, height - pipH);
-  if (maxX <= 0 || maxY <= 0) return { nx: 0, ny: 0 };
+  frameAspect: '16:9' | '9:16' = '9:16',
+): LiveFrameLayout {
+  const rect = computeFrameRect(width, height, { nx: 0, ny: 0, nw: pipWidthRatio }, frameAspect);
+  const maxX = Math.max(0, width - rect.width);
+  const maxY = Math.max(0, height - rect.height);
+  if (maxX <= 0 || maxY <= 0) return { nx: 0, ny: 0, nw: pipWidthRatio };
   return {
     nx: Math.max(0, (maxX - LIVE_SCREEN_MARGIN_PX) / maxX),
     ny: Math.max(0, (maxY - LIVE_SCREEN_MARGIN_PX) / maxY),
+    nw: pipWidthRatio,
   };
+}
+
+export function defaultCameraFrameLayout(_frameAspect: '16:9' | '9:16'): LiveFrameLayout {
+  return { nx: 0, ny: 0, nw: LIVE_FRAME_SIZE_PRESETS.FULL };
 }
 
 function drawContain(

@@ -1,5 +1,7 @@
 import {
   addDoc,
+  arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -18,6 +20,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { LIVE_BOOM_ROUND_GOAL } from './liveBoomRound';
 import { roomKey } from './roomKey';
 
 export type LiveGiftEvent = {
@@ -63,8 +66,14 @@ export async function markLiveRoomActive(
       heartbeatAtMs: Date.now(),
       endedAtMs: null,
       coinsEarned: 0,
+      liveBoomCount: 0,
+      boomRoundCount: 0,
+      viewerBoomCounts: {},
+      lastBoomExplosionMilestone: 0,
       topGifters: [],
       gifters: {},
+      guestInvites: [],
+      guestBanned: [],
       updatedAt: serverTimestamp(),
     },
     { merge: true },
@@ -96,6 +105,8 @@ export async function markLiveRoomEnded(roomName: string) {
       heartbeatAtMs: 0,
       isPrivate: false,
       lockGiftId: null,
+      guestInvites: [],
+      guestBanned: [],
       updatedAt: serverTimestamp(),
     },
     { merge: true },
@@ -725,9 +736,142 @@ export async function notifyNetworkImLive(input: {
   return recipients.length;
 }
 
+function inviteKeys(...values: Array<string | null | undefined>) {
+  return [
+    ...new Set(
+      values
+        .map((value) =>
+          String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_]/g, '_'),
+        )
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/** Permite al invitado publicar cámara aunque el API en memoria se recicle. */
+export async function addLiveGuestInvites(
+  roomName: string,
+  identities: Array<string | null | undefined>,
+) {
+  const keys = inviteKeys(...identities);
+  if (!keys.length) return;
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    { guestInvites: arrayUnion(...keys), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
+
+export async function removeLiveGuestInvites(
+  roomName: string,
+  identities: Array<string | null | undefined>,
+) {
+  const keys = inviteKeys(...identities);
+  if (!keys.length) return;
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    { guestInvites: arrayRemove(...keys), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
+
+/** Expulsa de la Sala Boom de este live: no puede volver a entrar hasta que termine. */
+export async function banLiveSalaGuests(
+  roomName: string,
+  identities: Array<string | null | undefined>,
+) {
+  const keys = inviteKeys(...identities);
+  if (!keys.length) return;
+  await setDoc(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    {
+      guestBanned: arrayUnion(...keys),
+      guestInvites: arrayRemove(...keys),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+/** Invita a un usuario al LIVE: llega al baúl de notificaciones. */
+export async function notifyLiveInvite(input: {
+  hostUid: string;
+  hostUsername: string;
+  hostName: string;
+  guestUid: string;
+  guestHandle?: string;
+}) {
+  const guestUid = String(input.guestUid || '').trim();
+  if (!guestUid || guestUid === input.hostUid) return;
+  await addLiveGuestInvites(input.hostUsername, [guestUid, input.guestHandle]);
+  await addDoc(collection(db, 'users', guestUid, 'liveAlerts'), {
+    kind: 'invite',
+    hostUid: input.hostUid,
+    hostUsername: input.hostUsername,
+    hostName: input.hostName,
+    title: `@${input.hostUsername} te invitó a unirse a su Sala Boom`,
+    href: `/stream/${encodeURIComponent(input.hostUsername)}?join=1`,
+    createdAt: serverTimestamp(),
+    createdAtMs: Date.now(),
+  });
+}
+
+/** Persiste diseño Sala Boom para que todos reorganicen sin reiniciar. */
+export async function setLiveSalaLayout(
+  roomName: string,
+  layout: 'grid' | 'featured' | 'mosaic',
+  pin?: string | null,
+) {
+  const username = roomKey(roomName);
+  if (!username) return;
+  await setDoc(
+    doc(db, 'liveRooms', username),
+    {
+      salaLayout: layout,
+      salaPinnedId: pin ?? null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export function listenLiveSalaLayout(
+  roomName: string,
+  onChange: (state: { layout: 'grid' | 'featured' | 'mosaic'; pin: string | null }) => void,
+): Unsubscribe {
+  return onSnapshot(
+    doc(db, 'liveRooms', roomKey(roomName)),
+    (snap) => {
+      const data = snap.data();
+      const layout =
+        data?.salaLayout === 'featured' || data?.salaLayout === 'mosaic' || data?.salaLayout === 'grid'
+          ? data.salaLayout
+          : 'grid';
+      onChange({
+        layout,
+        pin: data?.salaPinnedId ? String(data.salaPinnedId) : null,
+      });
+    },
+    () => onChange({ layout: 'grid', pin: null }),
+  );
+}
+
 export function listenLiveAlerts(
   uid: string,
-  onChange: (alerts: Array<{ id: string; text: string; href: string; at: number }>) => void,
+  onChange: (
+    alerts: Array<{
+      id: string;
+      text: string;
+      href: string;
+      at: number;
+      kind: 'live' | 'invite' | 'battle';
+      hostUsername?: string;
+      battleId?: string;
+    }>,
+  ) => void,
 ): Unsubscribe {
   const col = collection(db, 'users', uid, 'liveAlerts');
   const q = query(col, orderBy('createdAtMs', 'desc'), limit(20));
@@ -737,11 +881,23 @@ export function listenLiveAlerts(
       onChange(
         snap.docs.map((item) => {
           const data = item.data();
+          const kind =
+            data.kind === 'invite' ? 'invite' : data.kind === 'battle' ? 'battle' : 'live';
           return {
             id: item.id,
-            text: String(data.title || 'Un amigo está en LIVE'),
+            text: String(
+              data.title ||
+                (kind === 'invite'
+                  ? 'Te invitaron a unirte a un LIVE'
+                  : kind === 'battle'
+                    ? 'Te retaron a una Batalla Boom'
+                    : 'Un amigo está en LIVE'),
+            ),
             href: String(data.href || '/'),
             at: Number(data.createdAtMs || Date.now()),
+            kind,
+            hostUsername: data.hostUsername ? String(data.hostUsername) : undefined,
+            battleId: data.battleId ? String(data.battleId) : undefined,
           };
         }),
       );
@@ -787,4 +943,152 @@ export function listenLiveWishlist(
     const list = Array.isArray(data?.wishlist) ? data.wishlist.map(String) : [];
     onChange(list);
   });
+}
+
+export type LiveBoomEvent = {
+  id: string;
+  /** Id del cliente (LiveKit) para deduplicar con animaciones en tiempo real */
+  clientId?: string;
+  uid: string;
+  senderName: string;
+  nx: number;
+  ny: number;
+  roundExplosion?: boolean;
+  atMs: number;
+};
+
+/** Registra un Boom en el LIVE (contador global + ronda + contador por viewer). */
+export async function sendLiveRoomBoom(
+  roomName: string,
+  uid: string,
+  senderName: string,
+  nx: number,
+  ny: number,
+  clientEventId?: string,
+): Promise<{
+  liveBoomCount: number;
+  viewerBoomCount: number;
+  boomRoundCount: number;
+  roundExplosion: boolean;
+  eventId: string;
+}> {
+  const username = roomKey(roomName);
+  const roomRef = doc(db, 'liveRooms', username);
+  const eventRef = doc(collection(db, 'liveRooms', username, 'boomEvents'));
+  const atMs = Date.now();
+
+  const result = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(roomRef);
+    const data = snap.data() || {};
+    const prevCount = Number(data.liveBoomCount ?? 0);
+    const nextCount = prevCount + 1;
+    const prevRound = Number(data.boomRoundCount ?? 0);
+    let nextRound = prevRound + 1;
+    let roundExplosion = false;
+    if (nextRound >= LIVE_BOOM_ROUND_GOAL) {
+      roundExplosion = true;
+      nextRound = 0;
+    }
+    const viewerCounts: Record<string, number> = {
+      ...(typeof data.viewerBoomCounts === 'object' && data.viewerBoomCounts
+        ? (data.viewerBoomCounts as Record<string, number>)
+        : {}),
+    };
+    viewerCounts[uid] = Number(viewerCounts[uid] ?? 0) + 1;
+
+    tx.set(
+      roomRef,
+      {
+        liveBoomCount: nextCount,
+        boomRoundCount: nextRound,
+        viewerBoomCounts: viewerCounts,
+        lastBoomExplosionMilestone: roundExplosion
+          ? nextCount
+          : Number(data.lastBoomExplosionMilestone ?? 0),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    tx.set(eventRef, {
+      uid,
+      senderName,
+      nx,
+      ny,
+      atMs,
+      clientId: clientEventId || null,
+      roundExplosion,
+    });
+
+    return {
+      liveBoomCount: nextCount,
+      viewerBoomCount: viewerCounts[uid],
+      boomRoundCount: nextRound,
+      roundExplosion,
+      eventId: eventRef.id,
+    };
+  });
+
+  return result;
+}
+
+export function listenLiveBoomStats(
+  roomName: string,
+  viewerUid: string | undefined,
+  onStats: (stats: {
+    liveBoomCount: number;
+    viewerBoomCount: number;
+    boomRoundCount: number;
+    hasRoundField: boolean;
+  }) => void,
+): Unsubscribe {
+  const username = roomKey(roomName);
+  return onSnapshot(
+    doc(db, 'liveRooms', username),
+    (snap) => {
+      const data = snap.data();
+      const liveBoomCount = Number(data?.liveBoomCount ?? 0);
+      const hasRoundField = data?.boomRoundCount != null;
+      const boomRoundCount = Number(data?.boomRoundCount ?? 0);
+      const viewerCounts = data?.viewerBoomCounts as Record<string, number> | undefined;
+      const viewerBoomCount = viewerUid ? Number(viewerCounts?.[viewerUid] ?? 0) : 0;
+      onStats({ liveBoomCount, viewerBoomCount, boomRoundCount, hasRoundField });
+    },
+    (err) => console.warn('[liveBoomStats]', err),
+  );
+}
+
+export function listenLiveBoomEvents(
+  roomName: string,
+  onEvent: (event: LiveBoomEvent) => void,
+): Unsubscribe {
+  const username = roomKey(roomName);
+  const col = collection(db, 'liveRooms', username, 'boomEvents');
+  const q = query(col, orderBy('atMs', 'desc'), limit(40));
+  let seeded = false;
+  return onSnapshot(
+    q,
+    (snap) => {
+      if (!seeded) {
+        seeded = true;
+        return;
+      }
+      snap.docChanges().forEach((change) => {
+        if (change.type !== 'added') return;
+        const d = change.doc.data();
+        const clientId = d.clientId ? String(d.clientId) : undefined;
+        onEvent({
+          id: change.doc.id,
+          clientId,
+          uid: String(d.uid || ''),
+          senderName: String(d.senderName || 'Liveboomer'),
+          nx: Number(d.nx ?? 0.5),
+          ny: Number(d.ny ?? 0.5),
+          roundExplosion: Boolean(d.roundExplosion),
+          atMs: Number(d.atMs ?? Date.now()),
+        });
+      });
+    },
+    (err) => console.warn('[liveBoomEvents]', err),
+  );
 }

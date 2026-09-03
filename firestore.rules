@@ -76,7 +76,7 @@ service cloud.firestore {
           isSuperAdmin()
           && request.resource.data.firebaseUid == resource.data.firebaseUid
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['levelXp', 'levelXpPinned', 'updatedAt'])
+            .hasOnly(['levelXp', 'levelXpPinned', 'coinsBalance', 'updatedAt'])
         );
       allow delete: if isSelf(userId);
 
@@ -479,6 +479,20 @@ service cloud.firestore {
           && request.resource.data.uid == viewerUid;
         allow delete: if signedIn() && request.auth.uid == viewerUid;
       }
+
+      match /boomEvents/{eventId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.nx is number
+          && request.resource.data.ny is number;
+      }
+    }
+
+    match /liveBattles/{battleId} {
+      allow read: if true;
+      allow create, update: if signedIn();
+      allow delete: if signedIn();
     }
 
     match /{document=**} {

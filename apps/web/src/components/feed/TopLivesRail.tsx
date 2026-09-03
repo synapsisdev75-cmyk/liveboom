@@ -20,7 +20,7 @@ export function TopLivesRail({ streams }: Props) {
         viewAllHref="/explorar"
       />
       {streams.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-zinc-500">
+        <p className="lb-live-empty">
           No hay directos ahora. Pulsa <span className="text-cyan-300">Transmitir</span> para abrir el
           tuyo.
         </p>

@@ -156,20 +156,43 @@ export async function compressImageToLimit(
   }
 }
 
-/** Prepara una foto: si pasa el máximo, la comprime automáticamente. */
+/** Normaliza orientación EXIF aplicando createImageBitmap y re-encode JPEG. */
+export async function normalizeImageOrientation(blob: Blob): Promise<Blob> {
+  const loaded = await loadImage(blob);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = loaded.width;
+    canvas.height = loaded.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return blob;
+    ctx.drawImage(loaded.source, 0, 0, loaded.width, loaded.height);
+    return await canvasToJpeg(canvas, 0.92);
+  } finally {
+    loaded.cleanup();
+  }
+}
+
+/** Prepara una foto: normaliza EXIF y comprime si supera el máximo. */
 export async function prepareImageForUpload(blob: Blob, label = 'La foto'): Promise<Blob> {
   const type = blob.type || '';
   if (!type.startsWith('image/')) {
     throw new Error(`${label}: solo se permiten imágenes.`);
   }
 
-  const mp = await imageMegapixels(blob).catch(() => 0);
-  const fitsSize = blob.size <= MAX_IMAGE_BYTES;
+  let normalized: Blob;
+  try {
+    normalized = await normalizeImageOrientation(blob);
+  } catch {
+    normalized = blob;
+  }
+
+  const mp = await imageMegapixels(normalized).catch(() => 0);
+  const fitsSize = normalized.size <= MAX_IMAGE_BYTES;
   const fitsMp = mp <= MAX_IMAGE_MEGAPIXELS + 0.05;
-  if (fitsSize && fitsMp) return blob;
+  if (fitsSize && fitsMp) return normalized;
 
   try {
-    return await compressImageToLimit(blob, MAX_IMAGE_BYTES, MAX_IMAGE_MEGAPIXELS);
+    return await compressImageToLimit(normalized, MAX_IMAGE_BYTES, MAX_IMAGE_MEGAPIXELS);
   } catch {
     throw new Error(`${label} no pudo optimizarse. Prueba con otra imagen.`);
   }

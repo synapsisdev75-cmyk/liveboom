@@ -2,6 +2,7 @@ import {
   Bell,
   Check,
   Radio,
+  Swords,
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -24,17 +25,20 @@ import {
   type FriendChip,
   type FriendRequest,
 } from '../../lib/socialFirestore';
-import { listenLiveAlerts, deleteLiveAlert, clearLiveAlerts } from '../../lib/liveGiftsFirestore';
+import { listenLiveAlerts, deleteLiveAlert, clearLiveAlerts, removeLiveGuestInvites } from '../../lib/liveGiftsFirestore';
+import { declineBattle } from '../../lib/battleFirestore';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 
 type NotiItem = {
   id: string;
-  kind: 'request' | 'live' | 'post' | 'message';
+  kind: 'request' | 'live' | 'live_invite' | 'live_battle' | 'post' | 'message';
   text: string;
   href: string;
   at: number;
   alertMeta?: PostAlertItem;
+  hostUsername?: string;
+  battleId?: string;
 };
 
 type ActiveStream = {
@@ -196,10 +200,16 @@ export function NotificationBell() {
         const without = current.filter((item) => !item.id.startsWith('alert-'));
         const notes = alerts.map((alert) => ({
           id: `alert-${alert.id}`,
-          kind: 'live' as const,
+          kind: (alert.kind === 'invite'
+            ? 'live_invite'
+            : alert.kind === 'battle'
+              ? 'live_battle'
+              : 'live') as NotiItem['kind'],
           text: alert.text,
           href: alert.href,
           at: alert.at,
+          hostUsername: alert.hostUsername,
+          battleId: alert.battleId,
         }));
         if (notes[0] && Date.now() - notes[0].at < 90_000) playLiveAlert();
         return [...notes, ...without].slice(0, 40);
@@ -264,7 +274,11 @@ export function NotificationBell() {
   }, [open]);
 
   const count = requests.length + items.filter((i) => i.kind !== 'request').length;
-  const otherItems = items.filter((i) => i.kind !== 'request');
+  const inviteItems = items.filter((i) => i.kind === 'live_invite');
+  const battleItems = items.filter((i) => i.kind === 'live_battle');
+  const otherItems = items.filter(
+    (i) => i.kind !== 'request' && i.kind !== 'live_invite' && i.kind !== 'live_battle',
+  );
 
   async function dismissItem(item: NotiItem) {
     setItems((current) => current.filter((i) => i.id !== item.id));
@@ -322,6 +336,44 @@ export function NotificationBell() {
       await acceptFriendRequest(profile.firebaseUid, req.uid || req.username);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo aceptar');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function declineInvite(item: NotiItem) {
+    if (!profile) return;
+    setBusy(item.id);
+    const roomName =
+      item.hostUsername ||
+      item.href.match(/\/stream\/([^/?]+)/)?.[1] ||
+      '';
+    try {
+      if (roomName) {
+        const decoded = decodeURIComponent(roomName);
+        await api('/api/stream/invite/decline', {
+          method: 'POST',
+          body: JSON.stringify({
+            roomName: decoded,
+            guestHandle: profile.handle,
+          }),
+        }).catch(() => undefined);
+        await removeLiveGuestInvites(decoded, [profile.handle, profile.firebaseUid]).catch(
+          () => undefined,
+        );
+      }
+      await dismissItem(item);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function declineBattleInvite(item: NotiItem) {
+    if (!profile) return;
+    setBusy(item.id);
+    try {
+      if (item.battleId) await declineBattle(item.battleId).catch(() => undefined);
+      await dismissItem(item);
     } finally {
       setBusy(null);
     }
@@ -459,8 +511,77 @@ export function NotificationBell() {
                 </div>
               ) : null}
 
+              {battleItems.length > 0 ? (
+                <div className="border-b border-white/10 px-3 py-2">
+                  <p className="mb-2 text-[10px] font-semibold uppercase text-fuchsia-300">
+                    Batallas Boom
+                  </p>
+                  <ul className="max-h-44 space-y-2 overflow-y-auto">
+                    {battleItems.map((item) => (
+                      <li key={item.id} className="rounded-xl bg-fuchsia-500/10 px-2 py-2">
+                        <p className="text-xs font-semibold text-white">{item.text}</p>
+                        <div className="mt-1.5 flex gap-1">
+                          <button
+                            type="button"
+                            disabled={busy === item.id}
+                            onClick={() => openNotification(item)}
+                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-fuchsia-500 py-1.5 text-[10px] font-bold text-zinc-950 disabled:opacity-50"
+                          >
+                            <Swords size={12} /> Aceptar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy === item.id}
+                            onClick={() => void declineBattleInvite(item)}
+                            className="flex-1 rounded-lg bg-white/5 py-1.5 text-[10px] font-bold text-zinc-400 disabled:opacity-50"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {inviteItems.length > 0 ? (
+                <div className="border-b border-white/10 px-3 py-2">
+                  <p className="mb-2 text-[10px] font-semibold uppercase text-fuchsia-300">
+                    Invitaciones LIVE
+                  </p>
+                  <ul className="max-h-44 space-y-2 overflow-y-auto">
+                    {inviteItems.map((item) => (
+                      <li key={item.id} className="rounded-xl bg-fuchsia-500/10 px-2 py-2">
+                        <p className="text-xs font-semibold text-white">{item.text}</p>
+                        <div className="mt-1.5 flex gap-1">
+                          <button
+                            type="button"
+                            disabled={busy === item.id}
+                            onClick={() => openNotification(item)}
+                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-cyan-500 py-1.5 text-[10px] font-bold text-zinc-950 disabled:opacity-50"
+                          >
+                            <Radio size={12} /> Aceptar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy === item.id}
+                            onClick={() => void declineInvite(item)}
+                            className="flex-1 rounded-lg bg-white/5 py-1.5 text-[10px] font-bold text-zinc-400 disabled:opacity-50"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-2">
-                {otherItems.length === 0 && requests.length === 0 ? (
+                {otherItems.length === 0 &&
+                requests.length === 0 &&
+                inviteItems.length === 0 &&
+                battleItems.length === 0 ? (
                   <li className="px-2 py-6 text-center text-xs text-zinc-500">Sin notificaciones nuevas.</li>
                 ) : (
                   otherItems.map((item) => (

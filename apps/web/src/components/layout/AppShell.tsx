@@ -20,7 +20,7 @@ export function AppShell() {
   }, [setGifts]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="flex h-[100dvh] overflow-hidden bg-zinc-950 text-zinc-100">
       <Sidebar />
       <main className="min-w-0 flex-[1.6] p-3 sm:p-4">
         {nav === 'wallet' ? <WalletView /> : null}

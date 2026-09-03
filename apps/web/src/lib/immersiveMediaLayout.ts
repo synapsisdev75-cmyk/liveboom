@@ -1,14 +1,15 @@
 import type { CSSProperties } from 'react';
+import { clampDisplayToIntrinsic } from './mediaPresentation';
 import { classifyVideoOrientation, type VideoOrientation } from './videoAspect';
 
-/** Explorar / Flash Boom: rail fijo al lado para horizontal y cuadrado (sin scroll interno). */
+/** Explorar / Flash Boom: rail fijo al lado derecho del media (PC/tablet aside). */
 export function usesImmersiveAsideRail(
   mediaWidth: number,
   mediaHeight: number,
   immersiveLandscapeLayout: boolean,
 ): boolean {
   if (!immersiveLandscapeLayout || mediaWidth <= 0 || mediaHeight <= 0) return false;
-  return classifyVideoOrientation(mediaWidth, mediaHeight) !== 'portrait';
+  return true;
 }
 
 export type ImmersiveLayoutInsets = {
@@ -34,7 +35,9 @@ const DEFAULT_INSETS: ImmersiveLayoutInsets = {
   actionRail: 56,
 };
 
-/** Calcula el tamaño óptimo del media en visor inmersivo según orientación real del archivo. */
+/** Calcula el tamaño óptimo del media en visor inmersivo según orientación real del archivo.
+ *  `fillCover`: teléfono en vertical → llena el marco (recorte tipo 9:16); al girar → contain original.
+ */
 export function computeImmersiveMediaBox(
   mediaWidth: number,
   mediaHeight: number,
@@ -43,28 +46,76 @@ export function computeImmersiveMediaBox(
   insets: Partial<ImmersiveLayoutInsets> = {},
   desktop = false,
   railAside = false,
+  fillCover = false,
+  /** Teléfono girado: prioriza ver el 16:9 completo (contain, sin recorte). */
+  deviceLandscape = false,
 ): ImmersiveMediaBox {
   const pad = { ...DEFAULT_INSETS, ...insets };
   const orientation = classifyVideoOrientation(mediaWidth, mediaHeight);
   const ratio = mediaWidth > 0 && mediaHeight > 0 ? mediaWidth / mediaHeight : 9 / 16;
 
   const railReserve =
-    railAside && orientation !== 'portrait' ? Math.max(56, pad.actionRail) + 8 : 0;
+    railAside && !deviceLandscape
+      ? Math.max(56, pad.actionRail) + 8
+      : 0;
   const availW = Math.max(160, viewportWidth - pad.left - pad.right - railReserve);
-  const availH = Math.max(200, viewportHeight - pad.top - pad.bottom);
+  const availH = Math.max(120, viewportHeight - pad.top - pad.bottom);
+
+  if (fillCover) {
+    return {
+      width: Math.round(availW),
+      height: Math.round(availH),
+      orientation,
+    };
+  }
 
   let width = availW;
   let height = width / ratio;
 
-  if (orientation === 'portrait') {
+  // Dispositivo en horizontal + video 16:9: llenar el marco (alto completo, contain).
+  if (deviceLandscape && orientation === 'landscape') {
     height = availH;
     width = height * ratio;
     if (width > availW) {
       width = availW;
       height = width / ratio;
     }
+    return {
+      width: Math.round(Math.max(160, width)),
+      height: Math.round(Math.max(90, height)),
+      orientation,
+    };
+  }
+
+  // Dispositivo en horizontal + video 9:16: maximizar alto (ocupa el marco como en portrait vertical).
+  if (deviceLandscape && orientation === 'portrait') {
+    height = availH;
+    width = height * ratio;
+    if (width > availW) {
+      width = availW;
+      height = width / ratio;
+    }
+    return {
+      width: Math.round(Math.max(90, width)),
+      height: Math.round(Math.max(160, height)),
+      orientation,
+    };
+  }
+
+  if (orientation === 'portrait') {
+    const targetHeight = availH * 0.9;
+    height = targetHeight;
+    width = height * ratio;
+    if (width > availW) {
+      width = availW;
+      height = width / ratio;
+    }
+    if (height > availH * 0.92) {
+      height = availH * 0.92;
+      width = height * ratio;
+    }
     if (desktop) {
-      const maxPortraitW = Math.min(480, availW * 0.42, 36 * 16);
+      const maxPortraitW = Math.min(availW * 0.55, availH * 0.92 * ratio, 520);
       if (width > maxPortraitW) {
         width = maxPortraitW;
         height = width / ratio;
@@ -110,9 +161,15 @@ export function computeImmersiveMediaBox(
     }
   }
 
+  const clamped =
+    // En landscape del dispositivo, no reducir el 16:9: debe verse completo y grande.
+    mediaWidth > 0 && mediaHeight > 0 && !deviceLandscape
+      ? clampDisplayToIntrinsic(width, height, mediaWidth, mediaHeight)
+      : { width, height };
+
   return {
-    width: Math.round(Math.max(120, width)),
-    height: Math.round(Math.max(120, height)),
+    width: Math.round(Math.max(120, clamped.width)),
+    height: Math.round(Math.max(120, clamped.height)),
     orientation,
   };
 }

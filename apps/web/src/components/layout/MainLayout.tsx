@@ -15,15 +15,18 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { sweepAuthorReelLifecycle } from '../../lib/socialFirestore';
 import { useUiStore } from '../../store/uiStore';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { CoinModal } from '../wallet/CoinModal';
 import { NotificationBell } from '../social/NotificationBell';
 import { MessageInboxBadge, useUnreadMessageCount } from '../social/MessageInboxBadge';
 import { SideRailPanel } from './SideRailPanel';
+import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { Logo } from '../brand/Logo';
 
 function SidebarUnreadHint() {
@@ -53,7 +56,6 @@ const mobileNavItems = [
   { label: 'Inicio', icon: Home, to: '/' as const },
   { label: 'Explorar', icon: Compass, to: '/explorar' as const },
   { label: 'Crear', icon: Plus, to: '/crear' as const, accent: true },
-  { label: 'LIVE', icon: Radio, to: '/transmitir' as const },
   { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
 ];
 
@@ -215,14 +217,40 @@ export function MainLayout() {
   const onMessages = location.pathname.startsWith('/mensajes');
   const onExplore = location.pathname.startsWith('/explorar');
   const immersiveMain = onMessages || onExplore;
+  const breakpoint = useBreakpoint();
+  const [deviceLandscape, setDeviceLandscape] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const reloadApp = useAppReload();
+  const pullToRefreshEnabled = breakpoint !== 'desktop' && !immersiveMain;
+  const { pullPx, refreshing, ready } = usePullToRefresh({
+    containerRef: mainRef,
+    onRefresh: reloadApp,
+    enabled: pullToRefreshEnabled,
+  });
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
     void sweepAuthorReelLifecycle(profile.firebaseUid).catch(() => undefined);
   }, [profile?.firebaseUid]);
 
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    const sync = () => setDeviceLandscape(mq.matches && window.innerWidth < 1024);
+    sync();
+    mq.addEventListener('change', sync);
+    window.addEventListener('resize', sync);
+    return () => {
+      mq.removeEventListener('change', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, []);
+
+  /** Explorar + teléfono girado: chrome minimal para maximizar el 9:16. */
+  const hideMobileChrome = onExplore && deviceLandscape;
+
   return (
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#0a0a0b] font-sans text-white lg:flex-row">
+      {!hideMobileChrome ? (
       <header className="flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 lg:hidden">
         <Link to="/" className="min-w-0 shrink">
           <Logo compact className="[&_img]:!h-14 [&_img]:!max-w-[12rem] sm:[&_img]:!h-16 sm:[&_img]:!max-w-[14rem]" />
@@ -258,20 +286,27 @@ export function MainLayout() {
           </button>
         </div>
       </header>
+      ) : null}
 
-      <aside className="hidden h-[100dvh] w-[22%] min-w-[248px] max-w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/[0.06] bg-[#0a0b10] px-3.5 py-3 lg:flex">
+      <aside className="hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/[0.06] bg-[#0a0b10] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex">
         <SidebarBody profile={profile} onRecharge={() => setRechargeOpen(true)} />
       </aside>
 
       <main
-        className={`min-h-0 min-w-0 flex-1 ${
+        ref={mainRef}
+        className={`relative min-h-0 min-w-0 flex-1 ${
           onExplore
-            ? 'overflow-hidden p-0 pb-[var(--lb-bottom-nav-h)] lg:w-[56%] lg:pb-0'
+            ? `overflow-hidden p-0 lg:w-[56%] lg:pb-0 ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)]'}`
             : onMessages
               ? 'overflow-hidden p-0 lg:w-[56%]'
-              : 'overflow-y-auto overflow-x-hidden pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4'
+              : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4'
         }`}
       >
+        <PullToRefreshIndicator
+          pullPx={pullPx}
+          refreshing={refreshing}
+          ready={ready}
+        />
         {profile && !profile.birthDate && !location.pathname.startsWith('/perfil/editar') && !immersiveMain ? (
           <Link
             to="/perfil/editar?completar=1"
@@ -293,8 +328,9 @@ export function MainLayout() {
 
       <SideRailPanel />
 
+      {!hideMobileChrome ? (
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/5 bg-zinc-950/95 pb-[var(--lb-safe-bottom)] pl-[var(--lb-safe-left)] pr-[var(--lb-safe-right)] backdrop-blur-xl lg:hidden">
-        <ul className="grid grid-cols-5 px-1 pt-1">
+        <ul className="grid grid-cols-4 px-1 pt-1 sm:px-2">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
             const accent = 'accent' in item && item.accent;
@@ -304,7 +340,7 @@ export function MainLayout() {
                   to={item.to}
                   end={item.to === '/'}
                   className={({ isActive }) =>
-                    `flex flex-col items-center gap-1 px-1 py-2 text-[10px] font-semibold ${
+                    `flex flex-col items-center gap-0.5 px-0.5 py-1.5 text-[9px] font-semibold sm:gap-1 sm:py-2 sm:text-[10px] ${
                       isActive ? 'text-cyan-400' : 'text-zinc-500'
                     }`
                   }
@@ -312,7 +348,7 @@ export function MainLayout() {
                   {({ isActive }) => (
                     <>
                       <span
-                        className={`grid h-9 w-9 place-items-center rounded-xl transition ${
+                        className={`grid h-9 w-9 min-h-[2.75rem] min-w-[2.75rem] place-items-center rounded-xl transition sm:h-9 sm:w-9 ${
                           accent
                             ? 'bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950 shadow-[0_0_16px_rgba(255,0,85,0.35)]'
                             : isActive
@@ -331,6 +367,7 @@ export function MainLayout() {
           })}
         </ul>
       </nav>
+      ) : null}
 
       {menuOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">

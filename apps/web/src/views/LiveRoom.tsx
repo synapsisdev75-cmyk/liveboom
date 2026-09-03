@@ -2,6 +2,7 @@ import '@livekit/components-styles';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
+  StartAudio,
   VideoTrack,
   useLocalParticipant,
   useRoomContext,
@@ -9,6 +10,7 @@ import {
   type TrackReference,
 } from '@livekit/components-react';
 import {
+  ConnectionState,
   LocalAudioTrack,
   LocalVideoTrack,
   Room,
@@ -27,10 +29,7 @@ import {
   Share2,
   SwitchCamera,
   FlipHorizontal,
-  Unlock,
-  UserPlus,
   Users,
-  User,
   Video,
   X,
   Megaphone,
@@ -38,13 +37,40 @@ import {
   MicOff,
   MonitorUp,
   MessageCircle,
+  Settings,
+  Volume2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { GiftBoxStrip } from '../components/live/GiftBoxStrip';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
-import { ScreenShareHostOverlay } from '../components/live/ScreenShareHostOverlay';
+import { LiveFramedVideo } from '../components/live/LiveFramedVideo';
+import { LiveFrameEditor } from '../components/live/LiveFrameEditor';
+import { BoomCollectiveMeter } from '../components/live/studio/BoomCollectiveMeter';
+import { BoomReactionLayer } from '../components/live/studio/BoomReactionLayer';
+import { BoomRoundExplosionOverlay } from '../components/live/studio/BoomRoundExplosionOverlay';
+import { EndLiveModal } from '../components/live/studio/EndLiveModal';
+import { BatallaBoomModal, SalaBoomModal } from '../components/live/studio/LiveMultipartyModals';
+import { SalaBoomStage } from '../components/live/studio/SalaBoomStage';
+import { BattleStage } from '../components/live/studio/BattleStage';
+import { useAgoraBattle } from '../components/live/studio/useAgoraBattle';
+import { useHostLiveDeepAr } from '../components/live/studio/useHostLiveDeepAr';
+import { LiveHostMobileToolbar } from '../components/live/studio/LiveHostMobileToolbar';
+import { HostVideoToolbar } from '../components/live/studio/HostVideoToolbar';
+import { VsBattleIcon } from '../components/live/studio/VsBattleIcon';
+import {
+  HostLiveFooterBar,
+  HostLiveLeftRail,
+  ViewerLiveInfoBar,
+  formatLiveCompact,
+  formatLiveElapsed,
+  type RecentLiveGiftRow,
+} from '../components/live/studio/LiveRoomMockupChrome';
+import { useBoomGesture } from '../components/live/studio/useBoomGesture';
+import { useLiveBoomBursts } from '../components/live/studio/useLiveBoomBursts';
+import type { ConnectionQuality } from '../components/live/studio/liveStudioTypes';
+import { followUser, isFollowing, unfollowUser } from '../lib/socialFirestore';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, apiPublic, ApiError } from '../lib/api';
@@ -69,24 +95,40 @@ import {
   notifyNetworkImLive,
   setLiveWishlist,
   listenLiveWishlist,
+  sendLiveRoomBoom,
+  listenLiveBoomStats,
+  listenLiveBoomEvents,
+  notifyLiveInvite,
+  addLiveGuestInvites,
+  removeLiveGuestInvites,
+  banLiveSalaGuests,
+  listenActiveLiveRooms,
+  setLiveSalaLayout,
+  listenLiveSalaLayout,
 } from '../lib/liveGiftsFirestore';
+import { LIVE_BOOM_ROUND_GOAL, resolveBoomRoundCount } from '../lib/liveBoomRound';
 import { useLivePresence } from '../hooks/useLivePresence';
 import { useLiveViewport } from '../hooks/useLiveViewport';
+import { parseSalaBoomLayout, type SalaBoomLayout, type SalaCameraAction } from '../lib/salaBoomLayout';
 import { chatAuthorClass } from '../lib/chatAuthorStyle';
 import { downloadReelBlob, savePendingReel } from '../lib/pendingReelStore';
-import { addFirestoreCoins, addLevelXp, fetchLevelXp, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
+import { addFirestoreCoins, addLevelXp, fetchLevelXp, fetchPublicUserByUsername, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
 import { shareContent } from '../lib/shareContent';
 import { listFollowers, listFriends } from '../lib/socialFirestore';
 import { sendLiveboomGift } from '../lib/giftsFirestore';
 import {
-  canUseDisplayMedia,
   defaultPipPosition,
+  frameAspectRatio,
   LiveScreenComposer,
+  readCameraTrackAspect,
   readScreenTrackDimensions,
   requestScreenCaptureStream,
+  SCREEN_SHARE_PIP_OPTS,
   screenShareAudioStatusMessage,
   screenShareStatusMessage,
-  type PipNormalizedPos,
+  defaultCameraFrameLayout,
+  normalizeFrameLayout,
+  type LiveFrameLayout,
 } from '../lib/liveScreenComposer';
 import {
   DEFAULT_LIVE_ASPECT_RATIO,
@@ -101,7 +143,12 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { levelFromXp } from '../lib/userLevels';
-import { GIFT_LEVEL_FX, findLiveGift, sortedLiveboomGiftCatalog } from '../lib/liveboomGifts';
+import {
+  GIFT_LEVEL_FX,
+  findLiveGift,
+  isDeeparLiveGift,
+  sortedLiveGiftCatalog,
+} from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 
@@ -197,7 +244,26 @@ type RoomPayload =
       name: string;
       level: number;
       badge: string;
-    };
+    }
+  | { type: 'boom'; id: string; nx: number; ny: number; uid?: string }
+  | { type: 'pip_sync'; nx: number; ny: number; nw?: number; visible: boolean }
+  | { type: 'sala_layout'; layout: SalaBoomLayout; pin?: string | null }
+  | { type: 'sala_control'; action: SalaCameraAction; identity: string };
+
+function publishFrameSync(
+  room: ReturnType<typeof useRoomContext>,
+  layout: LiveFrameLayout,
+  visible: boolean,
+) {
+  const normalized = normalizeFrameLayout(layout);
+  return publishRoomData(room, {
+    type: 'pip_sync',
+    nx: normalized.nx,
+    ny: normalized.ny,
+    nw: normalized.nw,
+    visible,
+  });
+}
 
 function publishRoomData(room: ReturnType<typeof useRoomContext>, payload: RoomPayload) {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -230,6 +296,7 @@ export function LiveRoom() {
   const ready = useAuthStore((state) => state.ready);
   const firebaseUid = useAuthStore((state) => state.profile?.firebaseUid);
   const handle = useAuthStore((state) => state.profile?.handle);
+  const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
   const canonicalRoom = username ? roomKey(username) : '';
   const activeRoomRef = useRef(canonicalRoom);
@@ -242,6 +309,7 @@ export function LiveRoom() {
     roomName: string;
     hostUid?: string | null;
   } | null>(null);
+  const [battleActive, setBattleActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveStarted, setLiveStarted] = useState(false);
   const [isPrivate, setIsPrivate] = useState(Boolean(launch.isPrivate));
@@ -398,6 +466,15 @@ export function LiveRoom() {
       cancelled = true;
     };
   }, [firebaseUid, username, needsLaunchConfirm, handle]);
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('join') !== '1') return;
+    if (!username || !handle || needsLaunchConfirm) return;
+    if (!session || session.canPublish) return;
+    void fetchToken();
+    // Solo si el invitado ya estaba en la sala como espectador y abre ?join=1.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- no reintentar en cada session
+  }, [location.search]);
 
   useEffect(() => {
     if (!gateLock || !username || !handle) return;
@@ -595,9 +672,25 @@ export function LiveRoom() {
         connect
         video={false}
         audio={false}
-        className="relative flex h-full w-full min-h-0 flex-col lg:flex-row lg:gap-3"
+        className={`relative flex h-full w-full min-h-0 ${
+          session.isHost || isOwnRoom
+            ? 'flex-col gap-2 lg:gap-3'
+            : 'flex-col lg:flex-row lg:gap-3'
+        }`}
       >
-        {viewerPaused ? null : <RoomAudioRenderer />}
+        {viewerPaused || battleActive ? null : (
+          <>
+            <StartAudio label="Toca para activar el audio del LIVE" />
+            <RoomAudioRenderer />
+          </>
+        )}
+        <div
+          className={
+            session.isHost || isOwnRoom
+              ? 'flex min-h-0 flex-1 flex-col lg:flex-row lg:gap-3'
+              : 'contents'
+          }
+        >
         <CreatorStage
           username={username!}
           hostUid={session.hostUid || undefined}
@@ -607,8 +700,22 @@ export function LiveRoom() {
           aspectRatio={aspectRatio}
           onPrivacyChange={setIsPrivate}
           onViewerPaused={handleViewerPaused}
+          onBattleActive={setBattleActive}
           goalCoins={Number(launch.goalCoins) || 0}
           goalLabel={launch.goalLabel || ''}
+          liveTitle={launch.title || `Live de ${username}`}
+          liveCategory={launch.category || 'otro'}
+          hostAvatarUrl={profile?.avatarUrl || null}
+          onAcceptSalaInvite={() => void fetchToken()}
+          onDeclineSalaInvite={() => {
+            void api('/api/stream/invite/decline', {
+              method: 'POST',
+              body: JSON.stringify({ roomName: username, guestHandle: handle }),
+            }).catch(() => undefined);
+            if (username && handle) {
+              void removeLiveGuestInvites(username, [handle, firebaseUid]).catch(() => undefined);
+            }
+          }}
           onLeaveLive={async () => {
             if (isOwnRoom) {
               clearLiveChatCache(username);
@@ -628,8 +735,19 @@ export function LiveRoom() {
           roomName={username}
           canPublish={session.canPublish}
           isHostRoom={isOwnRoom}
+          uiRole={session.isHost || isOwnRoom ? 'host' : 'viewer'}
           onAcceptInvite={() => void fetchToken()}
+          onDeclineInvite={() => {
+            void api('/api/stream/invite/decline', {
+              method: 'POST',
+              body: JSON.stringify({ roomName: username, guestHandle: handle }),
+            }).catch(() => undefined);
+            if (username && handle) {
+              void removeLiveGuestInvites(username, [handle, firebaseUid]).catch(() => undefined);
+            }
+          }}
         />
+        </div>
       </LiveKitRoom>
     </div>
   );
@@ -640,13 +758,19 @@ function CreatorStage({
   hostUid,
   canPublish,
   isHost,
-  isPrivate,
+  isPrivate: _isPrivate,
   aspectRatio,
   onPrivacyChange,
   onViewerPaused,
   goalCoins,
   goalLabel,
+  liveTitle,
+  liveCategory,
+  hostAvatarUrl,
   onLeaveLive,
+  onBattleActive,
+  onAcceptSalaInvite,
+  onDeclineSalaInvite,
 }: {
   username: string;
   hostUid?: string;
@@ -658,7 +782,13 @@ function CreatorStage({
   onViewerPaused?: (paused: boolean, lock: LockInfo | null) => void;
   goalCoins: number;
   goalLabel: string;
+  liveTitle?: string;
+  liveCategory?: string;
+  hostAvatarUrl?: string | null;
   onLeaveLive?: () => Promise<void>;
+  onBattleActive?: (active: boolean) => void;
+  onAcceptSalaInvite?: () => void;
+  onDeclineSalaInvite?: () => void;
 }) {
   const navigate = useNavigate();
   const room = useRoomContext();
@@ -666,6 +796,7 @@ function CreatorStage({
   const { isMicrophoneEnabled } = useLocalParticipant();
   const handle = useAuthStore((state) => state.profile?.handle);
   const displayName = useAuthStore((state) => state.profile?.displayName);
+  const walletCoins = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
   const firebaseUid = useAuthStore((state) => state.profile?.firebaseUid);
   const setCoins = useAuthStore((state) => state.setCoins);
   const { viewers } = useViewerCount(username);
@@ -691,6 +822,137 @@ function CreatorStage({
   const onViewerPausedRef = useRef(onViewerPaused);
   onViewerPausedRef.current = onViewerPaused;
   const isSpectator = !isHost && !canPublish;
+
+  // Desbloquea audio LiveKit (Sala Boom / invitados) tras gesto o al publicar.
+  useEffect(() => {
+    const unlock = () => {
+      void room.startAudio().catch(() => undefined);
+    };
+    unlock();
+    room.on(RoomEvent.TrackSubscribed, unlock);
+    window.addEventListener('pointerdown', unlock);
+    return () => {
+      room.off(RoomEvent.TrackSubscribed, unlock);
+      window.removeEventListener('pointerdown', unlock);
+    };
+  }, [room, canPublish]);
+
+  // Invitados con canPublish: mic siempre arriba para que el host los oiga.
+  useEffect(() => {
+    if (!canPublish) return;
+    if (room.localParticipant.isMicrophoneEnabled) return;
+    void room.localParticipant.setMicrophoneEnabled(true).catch(() => undefined);
+  }, [canPublish, room]);
+
+  const [liveEnded, setLiveEnded] = useState(false);
+  const seenBoomIds = useRef(new Set<string>());
+  const liveBoomCountRef = useRef(0);
+  const serverBoomCountRef = useRef(0);
+  const [liveBoomCount, setLiveBoomCount] = useState(0);
+  const [boomRoundCount, setBoomRoundCount] = useState(0);
+  const [roundExplosionActive, setRoundExplosionActive] = useState(false);
+  const roundExplosionTimerRef = useRef<number | null>(null);
+  const [viewerBoomCount, setViewerBoomCount] = useState(0);
+  const { bursts: boomBursts, spawnBoom } = useLiveBoomBursts();
+
+  const triggerRoundExplosion = useCallback(() => {
+    setRoundExplosionActive(true);
+    if (roundExplosionTimerRef.current != null) {
+      window.clearTimeout(roundExplosionTimerRef.current);
+    }
+    roundExplosionTimerRef.current = window.setTimeout(() => {
+      setRoundExplosionActive(false);
+      roundExplosionTimerRef.current = null;
+    }, 2800);
+  }, []);
+
+  const bumpBoomRound = useCallback(() => {
+    setBoomRoundCount((prev) => {
+      const next = prev + 1;
+      if (next >= LIVE_BOOM_ROUND_GOAL) {
+        triggerRoundExplosion();
+        return 0;
+      }
+      return next;
+    });
+  }, [triggerRoundExplosion]);
+
+  const registerBoom = useCallback(
+    (eventKey: string) => {
+      if (!eventKey || seenBoomIds.current.has(eventKey)) return false;
+      seenBoomIds.current.add(eventKey);
+      spawnBoom(stageVideoRef.current);
+      liveBoomCountRef.current += 1;
+      setLiveBoomCount(liveBoomCountRef.current);
+      bumpBoomRound();
+      return true;
+    },
+    [spawnBoom, bumpBoomRound],
+  );
+
+  const showBoomAt = useCallback(
+    (_nx: number, _ny: number, boomId?: string) => {
+      if (!boomId) return;
+      registerBoom(boomId);
+    },
+    [registerBoom],
+  );
+  const fireBoomAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const box = stageVideoRef.current;
+      if (!box || box.clientWidth <= 0 || box.clientHeight <= 0) return;
+      const boomId = `boom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const rect = box.getBoundingClientRect();
+      const nx = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      const ny = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+
+      registerBoom(boomId);
+
+      void publishRoomData(room, { type: 'boom', id: boomId, nx, ny, uid: firebaseUid }).catch(
+        () => undefined,
+      );
+
+      if (firebaseUid && (isSpectator || isHost)) {
+        void sendLiveRoomBoom(
+          username,
+          firebaseUid,
+          displayName || handle || 'Liveboomer',
+          nx,
+          ny,
+          boomId,
+        )
+          .then((result) => {
+            seenBoomIds.current.add(result.eventId);
+            serverBoomCountRef.current = Math.max(serverBoomCountRef.current, result.liveBoomCount);
+            if (result.liveBoomCount >= liveBoomCountRef.current) {
+              liveBoomCountRef.current = result.liveBoomCount;
+              setLiveBoomCount(result.liveBoomCount);
+              setBoomRoundCount(result.boomRoundCount);
+            }
+            setViewerBoomCount(result.viewerBoomCount);
+            if (result.roundExplosion) triggerRoundExplosion();
+          })
+          .catch(() => undefined);
+      }
+    },
+    [
+      room,
+      isSpectator,
+      isHost,
+      firebaseUid,
+      username,
+      displayName,
+      handle,
+      registerBoom,
+      triggerRoundExplosion,
+    ],
+  );
+  const { boomGestureProps } = useBoomGesture({
+    onBoom: fireBoomAt,
+    disabled: (!isSpectator && !isHost) || liveEnded,
+    singleTap: true,
+  });
+  const [connectionQuality, setConnectionQuality] = useState<ConnectionQuality>('excellent');
   const presenceUser = useMemo(
     () =>
       firebaseUid
@@ -705,6 +967,62 @@ function CreatorStage({
   useLivePresence(username, room, presenceUser, isSpectator);
 
   useEffect(() => {
+    return listenLiveBoomStats(username, firebaseUid, (stats) => {
+      const official = stats.liveBoomCount;
+      serverBoomCountRef.current = official;
+      if (official > liveBoomCountRef.current) {
+        liveBoomCountRef.current = official;
+        setLiveBoomCount(official);
+        setBoomRoundCount(
+          resolveBoomRoundCount(official, stats.boomRoundCount, stats.hasRoundField),
+        );
+      } else if (official === liveBoomCountRef.current) {
+        setBoomRoundCount(
+          resolveBoomRoundCount(official, stats.boomRoundCount, stats.hasRoundField),
+        );
+      }
+      setViewerBoomCount(stats.viewerBoomCount);
+    });
+  }, [username, firebaseUid]);
+
+  useEffect(() => {
+    return listenLiveBoomEvents(username, (event) => {
+      const eventKey = event.clientId || event.id;
+      registerBoom(eventKey);
+      if (event.roundExplosion) triggerRoundExplosion();
+    });
+  }, [username, registerBoom, triggerRoundExplosion]);
+
+  useEffect(() => {
+    if (!canPublish) return;
+    void navigator.mediaDevices
+      ?.enumerateDevices()
+      .then((devices) => setVideoInputs(devices.filter((d) => d.kind === 'videoinput')))
+      .catch(() => undefined);
+  }, [canPublish]);
+
+  const switchCameraDevice = useCallback(
+    async (deviceId: string) => {
+      if (!canPublish || !deviceId) return;
+      const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
+        (item) => item.source === Track.Source.Camera,
+      );
+      const track = (pub?.track || cameraTrackRef.current) as LocalVideoTrack | null;
+      if (!track) return;
+      try {
+        await track.restartTrack({ deviceId: { exact: deviceId } });
+        cameraTrackRef.current = track;
+        setCameraDeviceId(deviceId);
+        setCameraPickerOpen(false);
+      } catch (error) {
+        console.error('[live] switch camera device', error);
+        setInviteNote('No se pudo cambiar a esa cámara.');
+      }
+    },
+    [canPublish, room],
+  );
+
+  useEffect(() => {
     try {
       localStorage.setItem(LIVE_MIRROR_KEY, mirrorMode ? '1' : '0');
     } catch {
@@ -713,29 +1031,119 @@ function CreatorStage({
   }, [mirrorMode]);
 
   const [inviteHandle, setInviteHandle] = useState('');
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteNote, setInviteNote] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [reelNote, setReelNote] = useState<string | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
   const [pipVisible, setPipVisible] = useState(true);
-  const [pipPos, setPipPos] = useState<PipNormalizedPos>(() => {
-    const dims = liveCanvasDimensions(aspectRatio);
-    return defaultPipPosition(dims.width, dims.height);
-  });
+  const [pipCameraAspect, setPipCameraAspect] = useState(() => frameAspectRatio(aspectRatio));
+  const [frameLayout, setFrameLayout] = useState<LiveFrameLayout>(() =>
+    defaultCameraFrameLayout(aspectRatio),
+  );
   const screenComposerRef = useRef<LiveScreenComposer | null>(null);
   const rawCameraTrackRef = useRef<LocalVideoTrack | null>(null);
   const compositeTrackRef = useRef<LocalVideoTrack | null>(null);
+  const screenVideoLiveTrackRef = useRef<LocalVideoTrack | null>(null);
   const screenMediaTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenAudioLiveTrackRef = useRef<LocalAudioTrack | null>(null);
   const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
   const stoppingScreenRef = useRef(false);
   const [lock, setLock] = useState<LockInfo | null>(null);
+  const [remoteFrameLayout, setRemoteFrameLayout] = useState<LiveFrameLayout>(() =>
+    defaultCameraFrameLayout(aspectRatio),
+  );
+  const [remotePipVisible, setRemotePipVisible] = useState(true);
+  const [salaBoomOpen, setSalaBoomOpen] = useState(false);
+  const [salaLayout, setSalaLayout] = useState<SalaBoomLayout>('grid');
+  const [remoteSalaLayout, setRemoteSalaLayout] = useState<SalaBoomLayout>('grid');
+  const [salaPinnedId, setSalaPinnedId] = useState<string | null>(null);
+  const [remoteSalaPinnedId, setRemoteSalaPinnedId] = useState<string | null>(null);
+  /** Host apagó cámara: perfil + audio (siguen en la sala). */
+  const [salaCamOffIds, setSalaCamOffIds] = useState<string[]>([]);
+  /** Invitación Sala Boom visible dentro del video para el espectador invitado. */
+  const [salaInviteHost, setSalaInviteHost] = useState<string | null>(null);
 
   useEffect(() => {
-    screenComposerRef.current?.setPipMirrored(mirrorMode);
-  }, [mirrorMode, screenSharing]);
+    if (canPublish) setSalaInviteHost(null);
+  }, [canPublish]);
+
+  const applySalaLayout = useCallback(
+    (next: SalaBoomLayout, pin: string | null = salaPinnedId) => {
+      setSalaLayout(next);
+      setRemoteSalaLayout(next);
+      void publishRoomData(room, {
+        type: 'sala_layout',
+        layout: next,
+        pin,
+      }).catch(() => undefined);
+      void setLiveSalaLayout(username, next, pin).catch(() => undefined);
+    },
+    [room, salaPinnedId, username],
+  );
+
+  useEffect(() => {
+    return listenLiveSalaLayout(username, ({ layout, pin }) => {
+      if (!isHost) {
+        setRemoteSalaLayout(layout);
+        setRemoteSalaPinnedId(pin);
+      } else if (layout) {
+        // Sync from durable store if another tab/host tool wrote it
+        setSalaLayout((current) => (current === layout ? current : layout));
+      }
+    });
+  }, [username, isHost]);
+  const [batallaOpen, setBatallaOpen] = useState(false);
+  const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
+  const [cameraDeviceId, setCameraDeviceId] = useState('');
+  const [cameraPickerOpen, setCameraPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isHost) return;
+    const syncLayout = () => {
+      void publishFrameSync(room, frameLayout, screenSharing ? pipVisible : true).catch(
+        () => undefined,
+      );
+      void publishRoomData(room, {
+        type: 'sala_layout',
+        layout: salaLayout,
+        pin: salaPinnedId,
+      }).catch(() => undefined);
+    };
+    const onParticipantConnected = () => syncLayout();
+    room.on(RoomEvent.Connected, syncLayout);
+    room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
+    if (room.state === ConnectionState.Connected) syncLayout();
+    return () => {
+      room.off(RoomEvent.Connected, syncLayout);
+      room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
+    };
+  }, [isHost, room, frameLayout, pipVisible, screenSharing, salaLayout, salaPinnedId]);
+
+  useEffect(() => {
+    const onBoomButton = () => {
+      const box = stageVideoRef.current;
+      if (!box) return;
+      const rect = box.getBoundingClientRect();
+      fireBoomAt(rect.left + rect.width * 0.5, rect.top + rect.height * 0.45);
+    };
+    window.addEventListener('liveboom:live-boom-tap', onBoomButton);
+    return () => window.removeEventListener('liveboom:live-boom-tap', onBoomButton);
+  }, [fireBoomAt]);
+
+  useEffect(() => {
+    const mapState = () => {
+      if (room.state === ConnectionState.Reconnecting) setConnectionQuality('reconnecting');
+      else if (room.state === ConnectionState.Disconnected) setConnectionQuality('disconnected');
+      else if (room.state === ConnectionState.Connected) setConnectionQuality('excellent');
+      else setConnectionQuality('stable');
+    };
+    mapState();
+    room.on(RoomEvent.ConnectionStateChanged, mapState);
+    return () => {
+      room.off(RoomEvent.ConnectionStateChanged, mapState);
+    };
+  }, [room]);
 
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
@@ -753,8 +1161,24 @@ function CreatorStage({
       : null,
   );
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [liveEnded, setLiveEnded] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedLive[]>([]);
+  const [recentGifts, setRecentGifts] = useState<RecentLiveGiftRow[]>([]);
+  const [giftsCount, setGiftsCount] = useState(0);
+  const [dashNow, setDashNow] = useState(Date.now());
+  const [hostMoreOpen, setHostMoreOpen] = useState(false);
+  const [followingHost, setFollowingHost] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [roomMeta, setRoomMeta] = useState<{
+    title: string;
+    category: string;
+    avatarUrl: string | null;
+    displayName: string;
+  }>({
+    title: liveTitle || `Live de ${username}`,
+    category: liveCategory || 'otro',
+    avatarUrl: hostAvatarUrl || null,
+    displayName: username,
+  });
   const hadHostCamera = useRef(false);
   const cameraTrackRef = useRef<LocalVideoTrack | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -768,6 +1192,64 @@ function CreatorStage({
       cameraTrackRef.current = pub as LocalVideoTrack;
     }
   }, [localCamera]);
+
+  const location = useLocation();
+  const [liveHosts, setLiveHosts] = useState<Array<{ username: string; displayName: string }>>([]);
+  const battle = useAgoraBattle({
+    roomName: username,
+    isHost,
+    firebaseUid: firebaseUid || '',
+    displayName: displayName || handle || username,
+    handle: handle || username,
+    room,
+    cameraTrackRef,
+    onActiveChange: onBattleActive,
+  });
+  const hostDeepAr = useHostLiveDeepAr({
+    enabled: isHost && canPublish && !battle.liveBattle,
+    room,
+    cameraTrackRef,
+    facing,
+    onFacingChange: setFacing,
+  });
+  const acceptedBattleRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return listenActiveLiveRooms((streams) => {
+      setLiveHosts(
+        streams
+          .filter((item) => roomKey(item.username) !== roomKey(username))
+          .map((item) => ({ username: item.username, displayName: item.displayName })),
+      );
+    });
+  }, [username]);
+
+  useEffect(() => {
+    if (battle.incoming) setBatallaOpen(true);
+  }, [battle.incoming?.battleId]);
+
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get('battleAccept');
+    if (!id || !isHost || !firebaseUid) return;
+    if (acceptedBattleRef.current === id) return;
+    acceptedBattleRef.current = id;
+    void battle.accept(id);
+  }, [location.search, isHost, firebaseUid]);
+
+  useEffect(() => {
+    if (!screenSharing) return;
+    const syncAspect = () => {
+      setPipCameraAspect(
+        readCameraTrackAspect(
+          cameraTrackRef.current?.mediaStreamTrack,
+          frameAspectRatio(aspectRatio),
+        ),
+      );
+    };
+    syncAspect();
+    const timer = window.setInterval(syncAspect, 500);
+    return () => window.clearInterval(timer);
+  }, [screenSharing, aspectRatio]);
 
   useEffect(() => {
     if (!isHost) return;
@@ -850,6 +1332,30 @@ function CreatorStage({
   }, [username, goalCoins, goalLabel]);
 
   useEffect(() => {
+    if (!isHost) return;
+    const timer = window.setInterval(() => setDashNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isHost]);
+
+  useEffect(() => {
+    return onSnapshot(doc(db, 'liveRooms', roomKey(username)), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      setRoomMeta({
+        title: String(data.title || liveTitle || `Live de ${username}`),
+        category: String(data.category || liveCategory || 'otro'),
+        avatarUrl: (data.avatarUrl as string | null) || hostAvatarUrl || null,
+        displayName: String(data.displayName || username),
+      });
+    });
+  }, [username, liveTitle, liveCategory, hostAvatarUrl]);
+
+  useEffect(() => {
+    if (isHost || !firebaseUid || !hostUid) return;
+    void isFollowing(firebaseUid, username, hostUid).then(setFollowingHost).catch(() => undefined);
+  }, [isHost, firebaseUid, hostUid, username]);
+
+  useEffect(() => {
     const applyGift = (giftId: string, id: string, senderName?: string, multiplier?: number) => {
       if (!giftId || !id) return;
       const catalogGift = findLiveGift(giftId);
@@ -901,6 +1407,14 @@ function CreatorStage({
           endsAt: Date.now() + seconds * 1000,
         });
       }
+      if (isHost && isDeeparLiveGift(giftId) && !battle.liveBattle) {
+        const gift = findLiveGift(giftId);
+        const filter = gift?.deeparFilter;
+        if (filter) {
+          const seconds = gift ? GIFT_LEVEL_FX[gift.level].duration : 4;
+          void hostDeepAr.applyFilter(filter, seconds);
+        }
+      }
     };
 
     const unsubGifts = listenLiveGifts(username, (gift) => {
@@ -925,6 +1439,69 @@ function CreatorStage({
       }
       if (data.type === 'live_ended' && isSpectator) {
         setLiveEnded(true);
+      }
+      if (data.type === 'boom') {
+        showBoomAt(data.nx, data.ny, data.id);
+      }
+      if (data.type === 'pip_sync' && !canPublish) {
+        setRemoteFrameLayout(
+          normalizeFrameLayout({
+            nx: data.nx,
+            ny: data.ny,
+            nw: data.nw,
+          }),
+        );
+        setRemotePipVisible(data.visible);
+      }
+      if (data.type === 'sala_layout') {
+        setRemoteSalaLayout(parseSalaBoomLayout(data.layout));
+        setRemoteSalaPinnedId(data.pin ? String(data.pin) : null);
+      }
+      if (data.type === 'invite' && isSpectator) {
+        const myHandle = (handle || '').replace(/^@/, '').toLowerCase();
+        const guest = String(data.guestHandle || '')
+          .replace(/^@/, '')
+          .toLowerCase();
+        if (myHandle && guest && myHandle === guest) {
+          setSalaInviteHost(String(data.hostName || 'host'));
+        }
+      }
+      if (data.type === 'sala_control') {
+        if (data.action === 'mute_cam') {
+          setSalaCamOffIds((prev) =>
+            prev.includes(data.identity) ? prev : [...prev, data.identity],
+          );
+        }
+        if (data.action === 'unmute_cam' || data.action === 'restore') {
+          setSalaCamOffIds((prev) => prev.filter((id) => id !== data.identity));
+        }
+        if (data.action === 'kick') {
+          setSalaCamOffIds((prev) => prev.filter((id) => id !== data.identity));
+          if (data.identity === firebaseUid) {
+            void removeLiveGuestInvites(username, [handle, firebaseUid]).catch(() => undefined);
+            void room.disconnect();
+            window.location.assign(`/stream/${encodeURIComponent(username)}`);
+            return;
+          }
+        }
+        if (data.identity === firebaseUid) {
+          if (data.action === 'mute_cam') {
+            void room.localParticipant.setCameraEnabled(false);
+            // Audio sigue activo.
+            if (!room.localParticipant.isMicrophoneEnabled) {
+              void room.localParticipant.setMicrophoneEnabled(true);
+            }
+          }
+          if (data.action === 'unmute_cam' || data.action === 'restore') {
+            void room.localParticipant.setCameraEnabled(true);
+          }
+          if (data.action === 'mute_mic') {
+            void room.localParticipant.setMicrophoneEnabled(false);
+          }
+          if (data.action === 'unmute_mic') {
+            void room.localParticipant.setMicrophoneEnabled(true);
+          }
+        }
       }
     };
     const onLocalGift = (event: Event) => {
@@ -969,7 +1546,7 @@ function CreatorStage({
         })
         .catch(() => undefined);
     };
-  }, [room, username, isHost, canPublish, isSpectator]);
+  }, [room, username, isHost, canPublish, isSpectator, showBoomAt, firebaseUid, navigate, handle]);
 
   useEffect(() => {
     if (!faceGift) return;
@@ -1153,8 +1730,12 @@ function CreatorStage({
   const flipCamera = useCallback(async () => {
     if (!canPublish || flipping) return;
     setFlipping(true);
-    const nextFacing = facing === 'user' ? 'environment' : 'user';
     try {
+      if (hostDeepAr.activeFilter) {
+        const ok = await hostDeepAr.flipFacing();
+        if (ok) return;
+      }
+      const nextFacing = facing === 'user' ? 'environment' : 'user';
       const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
         (item) => item.source === Track.Source.Camera,
       );
@@ -1174,7 +1755,7 @@ function CreatorStage({
     } finally {
       setFlipping(false);
     }
-  }, [canPublish, flipping, facing, room]);
+  }, [canPublish, flipping, facing, room, hostDeepAr]);
 
   const toggleMic = useCallback(async () => {
     if (!canPublish) return;
@@ -1288,6 +1869,22 @@ function CreatorStage({
             .slice(0, 5),
         };
       });
+      setGiftsCount((n) => n + 1);
+      setRecentGifts((rows) =>
+        [
+          {
+            id: gift.id,
+            senderName: gift.senderName || 'Liveboomer',
+            giftId: gift.giftId,
+            giftName: gift.giftName || gift.giftId,
+            coins: gift.coins,
+            atLabel: 'Ahora',
+          },
+          ...rows.map((row) =>
+            row.atLabel === 'Ahora' ? { ...row, atLabel: 'Hace 1m' } : row,
+          ),
+        ].slice(0, 12),
+      );
       void addFirestoreCoins(firebaseUid, gift.coins)
         .then((next) => {
           if (typeof next === 'number') setCoins(next);
@@ -1297,6 +1894,7 @@ function CreatorStage({
           setCoins(current + gift.coins);
         });
       void addLevelXp(firebaseUid, Math.max(1, Math.floor(gift.coins / 2))).catch(() => undefined);
+      battle.creditGift(gift.coins);
     });
   }, [isHost, firebaseUid, username, goalCoins, goalLabel, setCoins]);
 
@@ -1311,11 +1909,12 @@ function CreatorStage({
     };
   }, []);
 
-  async function confirmLeave() {
+  async function confirmLeave(dest: '/' | '/transmitir' = '/') {
     if (leaving) return;
     setLeaving(true);
     try {
       if (isHost) {
+        await battle.stop();
         await publishRoomData(room, {
           type: 'live_ended',
           hostName: displayName || handle || username,
@@ -1345,8 +1944,16 @@ function CreatorStage({
         setSummaryOpen(true);
         return;
       }
+      if (canPublish && handle) {
+        await api('/api/stream/invite/decline', {
+          method: 'POST',
+          body: JSON.stringify({ roomName: username, guestHandle: handle }),
+        }).catch(() => undefined);
+        await removeLiveGuestInvites(username, [handle, firebaseUid]).catch(() => undefined);
+      }
+      await room.disconnect().catch(() => undefined);
       await onLeaveLive?.();
-      navigate('/', { replace: true });
+      navigate(dest, { replace: true });
     } finally {
       setLeaving(false);
       setLeaveOpen(false);
@@ -1383,6 +1990,7 @@ function CreatorStage({
     );
     window.setTimeout(() => setShareNote(null), 2500);
   }
+  void shareHostProfile;
 
   function goToNeighborLive(direction: 1 | -1) {
     if (isHost || canPublish || liveNeighbors.length === 0) return;
@@ -1396,12 +2004,12 @@ function CreatorStage({
     navigate(`/stream/${encodeURIComponent(next.username)}`, { replace: true });
   }
 
-  async function inviteGuest() {
-    const guestHandle = inviteHandle.trim().replace(/^@/, '');
+  async function inviteGuest(fromHandle?: string) {
+    const guestHandle = (fromHandle ?? inviteHandle).trim().replace(/^@/, '');
     if (!guestHandle) return;
     setInviteNote(null);
     try {
-      await api('/api/stream/invite', {
+      const result = await api<{ invite?: { uid?: string | null } }>('/api/stream/invite', {
         method: 'POST',
         body: JSON.stringify({ roomName: username, guestHandle, handle }),
       });
@@ -1410,9 +2018,25 @@ function CreatorStage({
         guestHandle,
         hostName: displayName || handle || username,
       });
+      let guestUid = result.invite?.uid || null;
+      if (!guestUid) {
+        const guest = await fetchPublicUserByUsername(guestHandle).catch(() => null);
+        guestUid = guest?.firebaseUid || null;
+      }
+      if (guestUid && firebaseUid) {
+        await notifyLiveInvite({
+          hostUid: firebaseUid,
+          hostUsername: username,
+          hostName: displayName || handle || username,
+          guestUid,
+          guestHandle,
+        }).catch(() => undefined);
+      } else {
+        await addLiveGuestInvites(username, [guestHandle, guestUid]).catch(() => undefined);
+      }
       setInviteNote(`Invitación enviada a @${guestHandle}`);
       setInviteHandle('');
-      setInviteOpen(false);
+      setSalaBoomOpen(false);
     } catch (err) {
       setInviteNote(err instanceof Error ? err.message : 'No se pudo invitar');
     }
@@ -1421,6 +2045,7 @@ function CreatorStage({
   const stopScreenCapture = useCallback(async () => {
     if (stoppingScreenRef.current) return;
     if (
+      !screenVideoLiveTrackRef.current &&
       !screenComposerRef.current &&
       !compositeTrackRef.current &&
       !screenMediaTrackRef.current &&
@@ -1432,7 +2057,7 @@ function CreatorStage({
     try {
       const composer = screenComposerRef.current;
       const composite = compositeTrackRef.current;
-      const rawCamera = rawCameraTrackRef.current;
+      const screenLive = screenVideoLiveTrackRef.current;
       const screenMedia = screenMediaTrackRef.current;
       const screenAudio = screenAudioTrackRef.current;
       const screenAudioLive = screenAudioLiveTrackRef.current;
@@ -1440,6 +2065,7 @@ function CreatorStage({
 
       screenComposerRef.current = null;
       compositeTrackRef.current = null;
+      screenVideoLiveTrackRef.current = null;
       rawCameraTrackRef.current = null;
       screenMediaTrackRef.current = null;
       screenAudioTrackRef.current = null;
@@ -1451,6 +2077,14 @@ function CreatorStage({
       if (screenAudioLive) {
         try {
           await room.localParticipant.unpublishTrack(screenAudioLive, true);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (screenLive) {
+        try {
+          await room.localParticipant.unpublishTrack(screenLive, true);
         } catch {
           /* ignore */
         }
@@ -1472,28 +2106,13 @@ function CreatorStage({
         screenAudio.stop();
       }
 
-      if (pipInput && pipInput !== rawCamera?.mediaStreamTrack) {
+      if (pipInput) {
         pipInput.stop();
-      }
-
-      if (rawCamera?.mediaStreamTrack?.readyState === 'live') {
-        try {
-          await room.localParticipant.publishTrack(rawCamera, {
-            source: Track.Source.Camera,
-            name: 'camera',
-          });
-          cameraTrackRef.current = rawCamera;
-        } catch {
-          await room.localParticipant.setCameraEnabled(true);
-        }
-      } else {
-        await room.localParticipant.setCameraEnabled(true);
       }
 
       setScreenSharing(false);
       setPipVisible(true);
-      const stopDims = liveCanvasDimensions(aspectRatio);
-      setPipPos(defaultPipPosition(stopDims.width, stopDims.height));
+      setFrameLayout(defaultCameraFrameLayout(aspectRatio));
     } finally {
       stoppingScreenRef.current = false;
     }
@@ -1512,21 +2131,10 @@ function CreatorStage({
       setReelNote('Captura de pantalla detenida');
       return;
     }
-    if (!canUseDisplayMedia()) {
-      setReelNote(
-        'Este navegador no permite compartir pantalla. Usa un dispositivo o navegador compatible.',
-      );
-      return;
-    }
     try {
-      await waitConnected(room);
-      const cameraTrack = cameraTrackRef.current;
-      if (!cameraTrack?.mediaStreamTrack || cameraTrack.mediaStreamTrack.readyState !== 'live') {
-        setReelNote('Espera a que la cámara esté lista');
-        return;
-      }
-
+      // getDisplayMedia debe ir en el mismo toque (gesto) o el móvil lo bloquea.
       const display = await requestScreenCaptureStream();
+      await waitConnected(room);
       const screenMedia = display.getVideoTracks()[0];
       const screenAudio = display.getAudioTracks()[0];
       if (!screenMedia) {
@@ -1534,53 +2142,24 @@ function CreatorStage({
         throw new Error('Sin pista de pantalla');
       }
 
-      rawCameraTrackRef.current = cameraTrack;
       screenMediaTrackRef.current = screenMedia;
       if (screenAudio) {
         screenAudioTrackRef.current = screenAudio;
       }
 
-      let pipInput = cameraTrack.mediaStreamTrack;
-      if (typeof pipInput.clone === 'function') {
-        const cloned = pipInput.clone();
-        pipInputTrackRef.current = cloned;
-        pipInput = cloned;
-      }
+      const dims = liveCanvasDimensions(aspectRatio);
+      const initialPip = defaultPipPosition(dims.width, dims.height, undefined, aspectRatio);
+      setFrameLayout(initialPip);
+      setPipVisible(true);
 
       try {
-        await room.localParticipant.unpublishTrack(cameraTrack, false);
+        const screenLive = new LocalVideoTrack(screenMedia);
+        screenVideoLiveTrackRef.current = screenLive;
 
-        if (pipInput.readyState !== 'live' && cameraTrack.mediaStreamTrack.readyState === 'live') {
-          pipInput = cameraTrack.mediaStreamTrack;
-          pipInputTrackRef.current = null;
-        }
-
-        const dims = liveCanvasDimensions(aspectRatio);
-        const composer = new LiveScreenComposer({
-          width: dims.width,
-          height: dims.height,
-        });
-        screenComposerRef.current = composer;
-        const initialPip = defaultPipPosition(dims.width, dims.height);
-        composer.setPipPosition(initialPip.nx, initialPip.ny);
-        composer.setPipVisible(true);
-        composer.setPipMirrored(mirrorMode);
-        setPipPos(initialPip);
-        setPipVisible(true);
-
-        const composite = await composer.start(screenMedia, pipInput, {
-          onDimensionsChange: (dims) => {
-            const track = screenMediaTrackRef.current;
-            if (track) setReelNote(screenShareStatusMessage(track, dims));
-          },
-        });
-        compositeTrackRef.current = composite;
-        cameraTrackRef.current = composite;
-
-        await room.localParticipant.publishTrack(composite, {
-          source: Track.Source.Camera,
-          name: 'camera',
-          simulcast: false,
+        await room.localParticipant.publishTrack(screenLive, {
+          source: Track.Source.ScreenShare,
+          name: 'screen',
+          simulcast: true,
         });
 
         if (screenAudio) {
@@ -1600,6 +2179,8 @@ function CreatorStage({
             : `${baseMsg} · ${screenShareAudioStatusMessage(false)}`,
         );
 
+        void publishFrameSync(room, initialPip, true).catch(() => undefined);
+
         screenMedia.onended = () => {
           void stopScreenCapture().then(() => setReelNote(null));
         };
@@ -1608,6 +2189,14 @@ function CreatorStage({
         screenAudio?.stop();
         screenMediaTrackRef.current = null;
         screenAudioTrackRef.current = null;
+        if (screenVideoLiveTrackRef.current) {
+          try {
+            await room.localParticipant.unpublishTrack(screenVideoLiveTrackRef.current, true);
+          } catch {
+            /* ignore */
+          }
+          screenVideoLiveTrackRef.current = null;
+        }
         if (screenAudioLiveTrackRef.current) {
           try {
             await room.localParticipant.unpublishTrack(screenAudioLiveTrackRef.current, true);
@@ -1616,23 +2205,6 @@ function CreatorStage({
           }
           screenAudioLiveTrackRef.current = null;
         }
-        pipInputTrackRef.current?.stop();
-        pipInputTrackRef.current = null;
-        screenComposerRef.current?.stop();
-        screenComposerRef.current = null;
-        compositeTrackRef.current = null;
-        if (rawCameraTrackRef.current) {
-          try {
-            await room.localParticipant.publishTrack(rawCameraTrackRef.current, {
-              source: Track.Source.Camera,
-              name: 'camera',
-            });
-            cameraTrackRef.current = rawCameraTrackRef.current;
-          } catch {
-            await room.localParticipant.setCameraEnabled(true);
-          }
-        }
-        rawCameraTrackRef.current = null;
         throw inner;
       }
     } catch (err) {
@@ -1644,9 +2216,11 @@ function CreatorStage({
       setReelNote(
         e?.name === 'NotAllowedError' || /permission|denied|NotAllowed/i.test(String(e?.message || ''))
           ? 'Permiso denegado. Autoriza capturar pantalla en el navegador.'
-          : e instanceof Error
-            ? e.message
-            : 'No se pudo capturar la pantalla',
+          : /getDisplayMedia|no permite compartir/i.test(String(e?.message || ''))
+            ? 'Abre LiveBoom en Chrome (Android) o Safari (iOS 16.4+) para compartir pantalla.'
+            : e instanceof Error
+              ? e.message
+              : 'No se pudo capturar la pantalla',
       );
     }
   }
@@ -1711,30 +2285,111 @@ function CreatorStage({
   }
 
   const toggleMirror = useCallback(() => {
-    setMirrorMode((current) => {
-      const next = !current;
-      screenComposerRef.current?.setPipMirrored(next);
-      return next;
-    });
+    setMirrorMode((current) => !current);
   }, []);
 
-  const showLocalMirror = canPublish && mirrorMode && !screenSharing;
+  const showLocalMirror = false;
+  const effectiveFrameLayout =
+    canPublish || isHost ? frameLayout : remoteFrameLayout;
+  const effectivePipVisible = canPublish || isHost ? pipVisible : remotePipVisible;
+
+  const effectiveSalaLayout = canPublish || isHost ? salaLayout : remoteSalaLayout;
+  const effectiveSalaPin = canPublish || isHost ? salaPinnedId : remoteSalaPinnedId;
+
+  const handleSalaControl = useCallback(
+    (action: SalaCameraAction, identity: string) => {
+      if (!isHost) return;
+      if (action === 'pin') {
+        const next = identity === salaPinnedId ? null : identity;
+        setSalaPinnedId(next);
+        void publishRoomData(room, {
+          type: 'sala_layout',
+          layout: salaLayout,
+          pin: next,
+        }).catch(() => undefined);
+        void setLiveSalaLayout(username, salaLayout, next).catch(() => undefined);
+        return;
+      }
+      if (action === 'mute_cam') {
+        setSalaCamOffIds((prev) => (prev.includes(identity) ? prev : [...prev, identity]));
+      }
+      if (action === 'unmute_cam' || action === 'restore') {
+        setSalaCamOffIds((prev) => prev.filter((id) => id !== identity));
+      }
+      if (action === 'kick') {
+        setSalaCamOffIds((prev) => prev.filter((id) => id !== identity));
+        void publishRoomData(room, { type: 'sala_control', action, identity }).catch(
+          () => undefined,
+        );
+        void api('/api/stream/invite/kick', {
+          method: 'POST',
+          body: JSON.stringify({
+            roomName: username,
+            guestUid: identity,
+            handle,
+          }),
+        }).catch(() => undefined);
+        void banLiveSalaGuests(username, [identity]).catch(() => undefined);
+        void removeLiveGuestInvites(username, [identity]).catch(() => undefined);
+        return;
+      }
+      void publishRoomData(room, { type: 'sala_control', action, identity }).catch(() => undefined);
+    },
+    [room, salaLayout, salaPinnedId, username, isHost, handle],
+  );
+
+  const publishHostFrame = useCallback(
+    (layout: LiveFrameLayout, visible: boolean) => {
+      setFrameLayout(layout);
+      void publishFrameSync(room, layout, visible).catch(() => undefined);
+    },
+    [room],
+  );
 
   return (
-    <section className={liveStageSectionClass()}>
+    <div
+      className={
+        isHost
+          ? 'lb-host-stage-wrap flex min-h-0 w-full flex-1 flex-col gap-2 lg:w-[72%] lg:min-w-0'
+          : 'lb-viewer-stage-wrap flex min-h-0 w-full flex-1 flex-col lg:w-[70%]'
+      }
+    >
+      <div className={`flex min-h-0 flex-1 ${isHost ? 'gap-3' : ''}`}>
+        {isHost ? (
+          <HostLiveLeftRail
+            stats={{
+              startedAt: liveStats?.startedAt,
+              viewers,
+              likes: liveBoomCount,
+              giftsCount,
+              coinsEarned: liveStats?.coinsEarned || 0,
+              goalCoins: liveStats?.goalCoins || goalCoins || 20,
+              goalLabel: liveStats?.goalLabel || goalLabel,
+              topGifters: liveStats?.topGifters || [],
+            }}
+            recentGifts={recentGifts}
+            nowMs={dashNow}
+            onOpenWishlist={() => {
+              setLockPicker(false);
+              setWishlistOpen(true);
+            }}
+          />
+        ) : null}
+        <section className={liveStageSectionClass({ hostDashboard: isHost })}>
       <div className="relative h-full w-full max-w-full lg:max-h-full">
         <div className={liveStageOuterClass(aspectRatio, liveViewport)}>
           <div
             ref={stageVideoRef}
             className={`${liveStageInnerClass(aspectRatio)}${showLocalMirror ? ' lb-live-mirror-on' : ''}`}
+            {...(isSpectator || isHost ? boomGestureProps : {})}
             onTouchStart={(event) => {
-              if (isHost || canPublish) return;
+              if (!isSpectator && !isHost) return;
               const touch = event.changedTouches[0];
               if (!touch) return;
               (stageVideoRef.current as HTMLDivElement & { __swipeY?: number }).__swipeY = touch.clientY;
             }}
             onTouchEnd={(event) => {
-              if (isHost || canPublish) return;
+              if (!isSpectator && !isHost) return;
               const touch = event.changedTouches[0];
               const startY = (stageVideoRef.current as HTMLDivElement & { __swipeY?: number })?.__swipeY;
               if (!touch || startY == null) return;
@@ -1743,25 +2398,96 @@ function CreatorStage({
               goToNeighborLive(delta < 0 ? 1 : -1);
             }}
           >
+            <BoomReactionLayer bursts={boomBursts} />
+            <BoomCollectiveMeter
+              count={boomRoundCount}
+              full={boomRoundCount >= LIVE_BOOM_ROUND_GOAL - 1}
+              charging={roundExplosionActive}
+            />
+            <BoomRoundExplosionOverlay active={roundExplosionActive} />
             <CreatorVideo
               canPublish={canPublish}
               hostUid={hostUid}
               facing={facing}
               cameraTrackRef={cameraTrackRef}
+              frameLayout={effectiveFrameLayout}
+              frameAspect={aspectRatio}
+              pipVisible={effectivePipVisible}
+              mirrorCamera={mirrorMode}
+              pipAspectRatio={screenSharing ? pipCameraAspect : undefined}
+              pipRectOptions={screenSharing ? SCREEN_SHARE_PIP_OPTS : undefined}
+              salaLayout={effectiveSalaLayout}
+              salaFrameAspect={aspectRatio}
+              salaIsHost={isHost}
+              salaLocalIdentity={firebaseUid}
+              salaPinnedIdentity={effectiveSalaPin}
+              salaCamOffIdentities={salaCamOffIds}
+              onSalaControl={isHost ? handleSalaControl : undefined}
+              onSalaLayoutChange={isHost ? applySalaLayout : undefined}
+              onSalaLeaveSelf={
+                !isHost && canPublish
+                  ? () => setLeaveOpen(true)
+                  : undefined
+              }
             />
+            {salaInviteHost && isSpectator ? (
+              <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]">
+                <div className="w-full max-w-sm rounded-2xl border border-cyan-400/40 bg-zinc-950/95 p-4 text-center shadow-2xl">
+                  <p className="text-sm font-bold text-white">Invitación a Sala Boom</p>
+                  <p className="mt-2 text-xs text-zinc-300">
+                    @{salaInviteHost} te invita a unirte con cámara a este LIVE
+                  </p>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      className="flex-1 rounded-xl bg-cyan-400 py-2.5 text-xs font-bold text-zinc-950"
+                      onClick={() => {
+                        setSalaInviteHost(null);
+                        onAcceptSalaInvite?.();
+                      }}
+                    >
+                      Aceptar
+                    </button>
+                    <button
+                      type="button"
+                      className="flex-1 rounded-xl bg-white/10 py-2.5 text-xs font-bold text-zinc-200"
+                      onClick={() => {
+                        setSalaInviteHost(null);
+                        onDeclineSalaInvite?.();
+                      }}
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {battle.liveBattle && firebaseUid ? (
+              <BattleStage
+                battle={battle.liveBattle}
+                remotes={battle.remotes}
+                localVideo={battle.localVideo}
+                localUid={firebaseUid}
+                aspectRatio={aspectRatio}
+                isHost={isHost}
+                remainingMs={Math.max(0, battle.liveBattle.endsAtMs - Date.now())}
+                onEnd={() => void battle.stop()}
+              />
+            ) : null}
             {isHost && screenSharing ? (
-              <ScreenShareHostOverlay
-                pipVisible={pipVisible}
-                pipPos={pipPos}
-                onPipPosChange={(pos) => {
-                  setPipPos(pos);
-                  screenComposerRef.current?.setPipPosition(pos.nx, pos.ny);
-                }}
-                onTogglePip={() => {
+              <LiveFrameEditor
+                layout={frameLayout}
+                frameAspect={aspectRatio}
+                visible={pipVisible}
+                pipAspectRatio={pipCameraAspect}
+                rectOptions={SCREEN_SHARE_PIP_OPTS}
+                onLayoutChange={(layout) => publishHostFrame(layout, pipVisible)}
+                onToggleVisible={() => {
                   const next = !pipVisible;
                   setPipVisible(next);
-                  screenComposerRef.current?.setPipVisible(next);
+                  void publishFrameSync(room, frameLayout, next).catch(() => undefined);
                 }}
+                toggleLabel={{ show: 'Mostrar cámara', hide: 'Ocultar cámara' }}
               />
             ) : null}
             <FaceMeshGiftOverlay active={faceGift} onDone={() => setFaceGift(null)} />
@@ -1827,200 +2553,242 @@ function CreatorStage({
           </div>
         </div>
       </div>
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/70 to-transparent px-3 pb-10 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="pointer-events-auto flex max-w-[78%] flex-wrap items-center gap-1.5 sm:gap-2">
-            <span className="live-dot rounded-md bg-fuchsia-600 px-2 py-1 text-[11px] font-bold text-white">
-              <Radio className="mr-1 inline" size={11} /> EN VIVO
-            </span>
-            {isHost ? (
-              <>
-                <button
-                  type="button"
-                  disabled={notifyBusy}
-                  onClick={() => void notifyFollowers()}
-                  className="inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-[11px] font-semibold text-fuchsia-200 backdrop-blur hover:text-white disabled:opacity-60"
-                >
-                  <Megaphone size={11} />
-                  {notifyBusy ? 'Avisando…' : 'Avisar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLockPicker(false);
-                    setWishlistOpen((v) => !v);
-                  }}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold backdrop-blur ${
-                    wishlist.length
-                      ? 'bg-cyan-500/25 text-cyan-100 ring-1 ring-cyan-400/40'
-                      : 'bg-black/50 text-zinc-200 hover:text-white'
-                  }`}
-                >
-                  <Gift size={11} />
-                  Deseos {wishlist.length ? `(${wishlist.length})` : ''}
-                </button>
-              <button
-                type="button"
-                disabled={lockBusy}
-                  onClick={() => {
-                    setWishlistOpen(false);
-                    setLockPicker((v) => !v);
-                  }}
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold backdrop-blur ${
-                  lock
-                    ? 'bg-amber-500/30 text-amber-200 ring-1 ring-amber-400/50'
-                    : 'bg-black/50 text-zinc-200 hover:text-white'
-                }`}
-              >
-                <Lock size={11} />
-                  {lock ? `${lock.emoji} Privado` : 'Privado'}
-              </button>
-                {lock ? (
-                  <button
-                    type="button"
-                    disabled={lockBusy}
-                    onClick={() => void setLiveLock(null)}
-                    className="inline-flex items-center gap-1 rounded-full bg-emerald-500/25 px-2 py-1 text-[11px] font-semibold text-emerald-200 ring-1 ring-emerald-400/40 backdrop-blur"
-                  >
-                    <Unlock size={11} />
-                    Reabrir al público
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setWithdrawOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-[11px] font-semibold text-cyan-200 backdrop-blur hover:text-white"
-                >
-                  <Coins size={11} />
-                  Retirar {(liveStats?.coinsEarned || 0).toLocaleString('es-CO')}
-                </button>
-              </>
-            ) : null}
-            {isPrivate || lock ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/25 px-2 py-1 text-[11px] text-amber-200 backdrop-blur">
-                <Lock size={11} />{' '}
-                {lock ? `Privado · ${lock.emoji} ${lock.giftName}` : 'Privado'}
+      <div
+        data-boom-ignore
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/70 to-transparent px-3 pb-6 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 lg:pb-10"
+      >
+        {isHost ? (
+          <div className="pointer-events-auto flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="live-dot inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                <Radio size={11} /> EN VIVO
               </span>
-            ) : null}
-            <Link
-              to={profileHref(username, hostUid)}
-              className="truncate rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur hover:bg-black/70 hover:text-cyan-200"
-              title="Ver perfil"
-            >
-              @{username}
-            </Link>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={() => setViewersOpen((value) => !value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') setViewersOpen((value) => !value);
-              }}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-cyan-300 backdrop-blur hover:bg-black/70"
-            >
-              <Eye size={12} />
-              {viewers} viendo
-            </span>
-          </div>
-          <div className="pointer-events-auto flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void shareHostProfile()}
-              className="grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 sm:h-9 sm:w-9"
-              aria-label="Compartir perfil"
-              title="Compartir perfil"
-            >
-              <User size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => void shareLive()}
-              className="grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 sm:h-9 sm:w-9"
-              aria-label="Compartir live"
-              title="Compartir LIVE"
-            >
-              <Share2 size={16} />
-            </button>
-            {canPublish || isHost ? (
-              <>
-                {canPublish ? (
-                <>
-                <button
-                  type="button"
-                  onClick={() => void toggleMic()}
-                  className={`grid h-10 w-10 place-items-center rounded-full backdrop-blur sm:h-9 sm:w-9 ${
-                    isMicrophoneEnabled
-                      ? 'bg-black/55 text-white hover:bg-black/75'
-                      : 'bg-fuchsia-500/35 text-fuchsia-100 ring-1 ring-fuchsia-400/50 hover:bg-fuchsia-500/45'
-                  }`}
-                  aria-label={isMicrophoneEnabled ? 'Silenciar micrófono' : 'Activar micrófono'}
-                  title={isMicrophoneEnabled ? 'Silenciar mic' : 'Activar mic'}
-                >
-                  {isMicrophoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
-                </button>
+              <span className="hidden tabular-nums text-xs font-semibold text-zinc-200 sm:inline">
+                {formatLiveElapsed(liveStats?.startedAt)}
+              </span>
               <button
                 type="button"
-                onClick={() => void flipCamera()}
-                disabled={flipping}
-                  className="grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 disabled:opacity-60 sm:h-9 sm:w-9"
-                  aria-label={facing === 'user' ? 'Cambiar a cámara trasera' : 'Cambiar a cámara frontal'}
-                  title={facing === 'user' ? 'Cámara trasera' : 'Cámara frontal'}
+                onClick={() => setViewersOpen((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur"
               >
-                  <SwitchCamera size={18} className={flipping ? 'animate-spin' : ''} />
+                <Eye size={12} /> {formatLiveCompact(viewers)} viendo
               </button>
-                </>
-                ) : null}
+            </div>
+            <div className="hidden min-w-0 flex-1 items-center justify-center gap-2 lg:flex">
+              <VsBattleIcon size={36} className="shrink-0 drop-shadow-[0_0_10px_rgba(236,72,153,0.45)]" />
+              <p className="max-w-[14rem] truncate text-[11px] text-zinc-300 xl:max-w-none">
+                Invita a otro creador · ¡Compete en tiempo real!
+              </p>
               <button
                 type="button"
-                onClick={toggleMirror}
-                className={`grid h-10 w-10 place-items-center rounded-full backdrop-blur sm:h-9 sm:w-9 ${
-                  mirrorMode
-                    ? 'bg-cyan-500/35 text-cyan-100 ring-1 ring-cyan-400/50 hover:bg-cyan-500/45'
-                    : 'bg-black/55 text-white hover:bg-black/75'
-                }`}
-                aria-label={mirrorMode ? 'Desactivar modo espejo' : 'Activar modo espejo'}
-                title={
-                  screenSharing
-                    ? mirrorMode
-                      ? 'Espejo PiP activo'
-                      : 'Espejo PiP desactivado'
-                    : mirrorMode
-                      ? 'Modo espejo activo'
-                      : 'Modo espejo desactivado'
-                }
+                onClick={() => {
+                  setSalaBoomOpen(false);
+                  setBatallaOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-violet-500"
               >
-                <FlipHorizontal size={18} />
+                <VsBattleIcon size={18} /> Crear VS
+              </button>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => void shareLive()}
+                className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75"
+                aria-label="Compartir"
+              >
+                <Share2 size={15} />
               </button>
               <button
                 type="button"
                 onClick={() => void toggleScreenCapture()}
-                className={`grid h-10 w-10 place-items-center rounded-full backdrop-blur sm:h-9 sm:w-9 ${
+                className={`hidden h-9 place-items-center gap-1 rounded-full px-2.5 text-[10px] font-semibold backdrop-blur lg:inline-flex ${
                   screenSharing
-                    ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400/50 hover:bg-emerald-500/45'
+                    ? 'bg-violet-600 text-white'
                     : 'bg-black/55 text-white hover:bg-black/75'
                 }`}
-                aria-label={screenSharing ? 'Detener pantalla compartida' : 'Compartir pantalla'}
-                title={screenSharing ? 'Detener pantalla' : 'Compartir pantalla'}
               >
-                <MonitorUp size={18} />
+                <MonitorUp size={14} /> Pantalla
               </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setLeaveOpen(true)}
-              className="rounded-full bg-black/55 px-3 py-2 text-xs text-zinc-200 backdrop-blur hover:text-white"
-            >
-              Salir
+              <button
+                type="button"
+                onClick={() => void toggleMic()}
+                className="hidden h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 lg:grid"
+                aria-label={isMicrophoneEnabled ? 'Silenciar' : 'Activar mic'}
+              >
+                {isMicrophoneEnabled ? <Volume2 size={15} /> : <MicOff size={15} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setHostMoreOpen((v) => !v)}
+                className="hidden h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75 lg:grid"
+                aria-label="Ajustes"
+              >
+                <Settings size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeaveOpen(true)}
+                className="rounded-full bg-red-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-red-500"
+              >
+                Finalizar live
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="pointer-events-auto flex items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="live-dot inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                <Radio size={11} /> EN VIVO
+              </span>
+              {roomMeta.avatarUrl ? (
+                <img
+                  src={roomMeta.avatarUrl}
+                  alt=""
+                  className="h-8 w-8 rounded-full object-cover ring-1 ring-white/20"
+                />
+              ) : (
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-violet-600/40 text-[11px] font-bold text-white">
+                  {(roomMeta.displayName || username).slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <div className="min-w-0">
+                <Link
+                  to={profileHref(username, hostUid)}
+                  className="block truncate text-xs font-bold text-white hover:text-violet-200"
+                >
+                  @{username}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setViewersOpen((v) => !v)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-300"
+                >
+                  <Eye size={11} /> {formatLiveCompact(viewers)} viendo
+                </button>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 text-[11px] font-bold text-amber-200 backdrop-blur">
+                <img src="/reactions/boom-on.png" alt="" className="h-3.5 w-3.5 object-contain" draggable={false} />
+                {liveBoomCount}
+              </span>
+              {isSpectator ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-2 py-1 text-[10px] font-semibold text-zinc-300 backdrop-blur">
+                  Mis {viewerBoomCount}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void shareLive()}
+                className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
+                aria-label="Compartir"
+              >
+                <Share2 size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeaveOpen(true)}
+                className="rounded-full bg-black/55 px-3 py-2 text-xs font-semibold text-white backdrop-blur"
+              >
+                Salir
+              </button>
+              {(liveStats?.goalCoins || 0) > 0 || (liveStats?.coinsEarned || 0) > 0 ? (
+                <span className="hidden items-center gap-1 rounded-xl border border-violet-400/40 bg-black/55 px-2 py-1.5 text-[10px] font-bold text-violet-100 backdrop-blur sm:inline-flex">
+                  <Gift size={12} />
+                  {Math.min(liveStats?.coinsEarned || 0, liveStats?.goalCoins || 20)}/
+                  {liveStats?.goalCoins || 20}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
+        {hostMoreOpen && isHost ? (
+          <div className="pointer-events-auto mt-2 flex flex-wrap gap-2 rounded-xl border border-white/10 bg-zinc-950/90 p-2 backdrop-blur">
+            <button type="button" disabled={notifyBusy} onClick={() => void notifyFollowers()} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-fuchsia-200">
+              <Megaphone size={11} className="mr-1 inline" /> {notifyBusy ? 'Avisando…' : 'Avisar'}
+            </button>
+            <button type="button" onClick={() => { setHostMoreOpen(false); setWishlistOpen(true); }} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-200">
+              <Gift size={11} className="mr-1 inline" /> Deseos
+            </button>
+            <button type="button" onClick={() => { setHostMoreOpen(false); setLockPicker(true); }} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-amber-200">
+              <Lock size={11} className="mr-1 inline" /> Privado
+            </button>
+            <button type="button" onClick={() => { setHostMoreOpen(false); setWithdrawOpen(true); }} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-200">
+              <Coins size={11} className="mr-1 inline" /> Retirar
+            </button>
+            <button type="button" onClick={toggleMirror} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white">
+              <FlipHorizontal size={11} className="mr-1 inline" /> Espejo
+            </button>
+            <button type="button" onClick={() => void flipCamera()} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white">
+              <SwitchCamera size={11} className="mr-1 inline" /> Cámara
             </button>
           </div>
-        </div>
+        ) : null}
         {shareNote ? (
           <p className="pointer-events-none mt-2 text-[11px] font-semibold text-cyan-200">{shareNote}</p>
         ) : null}
+        {connectionQuality === 'reconnecting' ? (
+          <p className="pointer-events-none mt-2 text-[11px] font-semibold text-amber-200">
+            Reconectando transmisión…
+          </p>
+        ) : null}
       </div>
-      {liveStats && (liveStats.goalCoins > 0 || liveStats.coinsEarned > 0) ? (
-        <div className="pointer-events-none absolute left-3 right-3 z-10 max-w-sm sm:left-4 top-[max(6.75rem,calc(env(safe-area-inset-top)+5.5rem))]">
+      {isHost ? (
+        <HostVideoToolbar
+          micOn={isMicrophoneEnabled}
+          screenSharing={screenSharing}
+          onInvite={() => {
+            setBatallaOpen(false);
+            setSalaBoomOpen(true);
+          }}
+          onReel={() => void recordReel()}
+          onScreen={() => void toggleScreenCapture()}
+          onMic={() => void toggleMic()}
+          onCamera={() => setCameraPickerOpen((v) => !v)}
+          onMore={() => setHostMoreOpen((v) => !v)}
+        />
+      ) : null}
+      {isHost ? (
+        <LiveHostMobileToolbar
+          notifyBusy={notifyBusy}
+          wishlistCount={wishlist.length}
+          lock={lock}
+          lockBusy={lockBusy}
+          coinsEarned={liveStats?.coinsEarned || 0}
+          screenSharing={screenSharing}
+          recording={recording}
+          canPublish={canPublish}
+          videoInputs={videoInputs}
+          cameraDeviceId={cameraDeviceId}
+          cameraPickerOpen={cameraPickerOpen}
+          onNotify={() => void notifyFollowers()}
+          onWishlist={() => {
+            setLockPicker(false);
+            setWishlistOpen((v) => !v);
+          }}
+          onLockToggle={() => {
+            setWishlistOpen(false);
+            setLockPicker((v) => !v);
+          }}
+          onUnlock={() => void setLiveLock(null)}
+          onWithdraw={() => setWithdrawOpen(true)}
+          onSalaBoom={() => {
+            setBatallaOpen(false);
+            setSalaBoomOpen((v) => !v);
+          }}
+          onBatalla={() => {
+            setSalaBoomOpen(false);
+            setBatallaOpen((v) => !v);
+          }}
+          onCameraPickerToggle={() => setCameraPickerOpen((v) => !v)}
+          onSelectCamera={(id) => void switchCameraDevice(id)}
+          onRecordReel={() => void recordReel()}
+          onScreenShare={() => void toggleScreenCapture()}
+        />
+      ) : null}
+      {liveStats && (liveStats.goalCoins > 0 || liveStats.coinsEarned > 0) && !isHost ? (
+        <div className="pointer-events-none absolute left-3 right-3 z-10 max-w-sm sm:left-4 top-[max(6.75rem,calc(env(safe-area-inset-top)+5.5rem))] max-lg:top-[calc(max(0.75rem,env(safe-area-inset-top))+5.75rem)]">
           <p className="text-[10px] font-semibold text-white drop-shadow">
             {liveStats.goalLabel || 'Recaudado en esta sala'}
           </p>
@@ -2058,7 +2826,7 @@ function CreatorStage({
         </div>
       ) : null}
       {wishlistOpen && isHost ? (
-        <div className="pointer-events-auto absolute left-2 right-2 top-[4.8rem] z-20 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:w-[min(100%,18rem)]">
+        <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-20 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-cyan-300">
               Lista de deseos (máx. 5)
@@ -2068,7 +2836,7 @@ function CreatorStage({
             </button>
           </div>
           <div className="space-y-1">
-            {sortedLiveboomGiftCatalog().map((gift) => {
+            {sortedLiveGiftCatalog().map((gift) => {
               const active = wishlist.includes(gift.id);
               return (
                 <button
@@ -2104,7 +2872,7 @@ function CreatorStage({
         </div>
       ) : null}
       {lockPicker && isHost ? (
-        <div className="pointer-events-auto absolute left-2 right-2 top-[4.8rem] z-20 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:w-[min(100%,18rem)]">
+        <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-20 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-amber-300">
               Modo privado (regalo)
@@ -2118,7 +2886,7 @@ function CreatorStage({
             entran quienes paguen. Puedes reabrir al público cuando quieras.
           </p>
           <div className="space-y-1">
-            {sortedLiveboomGiftCatalog().map((gift) => (
+            {sortedLiveGiftCatalog().map((gift) => (
               <button
                 key={gift.id}
                 type="button"
@@ -2147,63 +2915,67 @@ function CreatorStage({
         </div>
       ) : null}
       {isHost ? (
-        <div className="pointer-events-auto absolute left-3 right-3 top-[4.5rem] z-10 flex flex-wrap items-center gap-2 sm:left-4 sm:right-auto">
+        <div className="pointer-events-auto absolute left-3 right-3 top-[4.5rem] z-10 hidden flex-wrap items-center gap-2 sm:left-4 sm:right-auto">
           {!lockPicker ? (
             <>
-              {inviteOpen ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-black/55 p-2 backdrop-blur sm:max-w-xs">
-            <UserPlus size={16} className="shrink-0 text-cyan-300" />
-            <input
-              value={inviteHandle}
-              onChange={(event) => setInviteHandle(event.target.value)}
-                    placeholder="@usuario a invitar"
-                    autoFocus
-              className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none"
-              list="live-viewers"
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') void inviteGuest();
-                      if (event.key === 'Escape') setInviteOpen(false);
-                    }}
-            />
-            <datalist id="live-viewers">
-              {viewersList.map((viewer) => (
-                <option key={viewer.identity} value={viewer.name} />
-              ))}
-            </datalist>
-            <button
-              type="button"
-              onClick={() => void inviteGuest()}
-              className="shrink-0 rounded-lg bg-cyan-500/20 px-2 py-1 text-[10px] font-bold text-cyan-300"
-            >
-              Unir
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBatallaOpen(false);
+                  setSalaBoomOpen((v) => !v);
+                }}
+                className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-cyan-200 backdrop-blur"
+              >
+                <Users size={14} /> Sala Boom
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSalaBoomOpen(false);
+                  setBatallaOpen((v) => !v);
+                }}
+                className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-fuchsia-200 backdrop-blur"
+              >
+                <VsBattleIcon size={16} /> Batalla
+              </button>
+              {canPublish && videoInputs.length > 1 ? (
+                <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setInviteOpen(false)}
-                    className="shrink-0 text-zinc-400"
-                    aria-label="Cerrar"
+                    onClick={() => setCameraPickerOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-white backdrop-blur"
                   >
-                    <X size={14} />
+                    <Video size={14} /> Cámara
                   </button>
-          </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setInviteOpen(true)}
-                  className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-white backdrop-blur"
-                >
-                  <UserPlus size={14} /> Invitar
-                </button>
-              )}
-          <button
-            type="button"
-            disabled={recording}
-            onClick={() => void recordReel()}
-            className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-white backdrop-blur disabled:opacity-60"
-          >
-            {recording ? <Circle className="animate-pulse text-red-400" size={12} /> : <Video size={14} />}
-            {recording ? 'Grabando…' : 'Reel 15s'}
-          </button>
+                  {cameraPickerOpen ? (
+                    <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] rounded-xl border border-white/10 bg-zinc-950/95 p-2 shadow-xl">
+                      {videoInputs.map((device, index) => (
+                        <button
+                          key={device.deviceId || `cam-${index}`}
+                          type="button"
+                          onClick={() => void switchCameraDevice(device.deviceId)}
+                          className={`block w-full rounded-lg px-2 py-1.5 text-left text-[11px] ${
+                            cameraDeviceId === device.deviceId
+                              ? 'bg-cyan-500/20 text-cyan-200'
+                              : 'text-zinc-200 hover:bg-white/5'
+                          }`}
+                        >
+                          {device.label || `Cámara ${index + 1}`}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                disabled={recording}
+                onClick={() => void recordReel()}
+                className="inline-flex items-center gap-1 rounded-xl bg-black/55 px-3 py-2 text-xs font-semibold text-white backdrop-blur disabled:opacity-60"
+              >
+                {recording ? <Circle className="animate-pulse text-red-400" size={12} /> : <Video size={14} />}
+                {recording ? 'Grabando…' : 'Reel 15s'}
+              </button>
               <button
                 type="button"
                 onClick={() => void toggleScreenCapture()}
@@ -2220,9 +2992,46 @@ function CreatorStage({
           ) : null}
         </div>
       ) : null}
-      {(inviteNote || reelNote) && isHost ? (
-        <p className="pointer-events-none absolute left-3 right-3 top-[8.5rem] z-10 text-[11px] text-cyan-200 sm:left-4 sm:max-w-md">
-          {inviteNote || reelNote}
+      <SalaBoomModal
+        open={isHost && salaBoomOpen}
+        onClose={() => setSalaBoomOpen(false)}
+        inviteHandle={inviteHandle}
+        onInviteHandleChange={setInviteHandle}
+        onInvite={(handle) => void inviteGuest(handle)}
+        viewersList={viewersList}
+        layout={salaLayout}
+        onLayoutChange={applySalaLayout}
+      />
+      <BatallaBoomModal
+        open={isHost && batallaOpen}
+        onClose={() => setBatallaOpen(false)}
+        inviteHandle={inviteHandle}
+        onInviteHandleChange={setInviteHandle}
+        onInvite={(handle) => void battle.invite(handle || inviteHandle)}
+        liveHosts={liveHosts}
+        incoming={battle.incoming}
+        waitingName={
+          battle.battle?.status === 'pending' && roomKey(battle.battle.hostAUsername) === roomKey(username)
+            ? battle.battle.hostBUsername
+            : null
+        }
+        busy={battle.busy}
+        note={battle.note}
+        onAccept={() => {
+          void battle.accept();
+          setBatallaOpen(false);
+        }}
+        onDecline={() => {
+          void battle.decline();
+          setBatallaOpen(false);
+        }}
+      />
+      {(inviteNote || reelNote || hostDeepAr.note || hostDeepAr.activeFilter) && isHost ? (
+        <p className="pointer-events-none absolute left-3 right-3 top-[8.5rem] z-10 text-[11px] text-cyan-200 max-lg:top-[calc(max(0.75rem,env(safe-area-inset-top))+6.5rem)] sm:left-4 sm:max-w-md">
+          {inviteNote ||
+            reelNote ||
+            hostDeepAr.note ||
+            (hostDeepAr.activeFilter ? `Filtro AR activo: ${hostDeepAr.activeFilter}` : null)}
         </p>
       ) : null}
       {withdrawOpen ? (
@@ -2233,7 +3042,7 @@ function CreatorStage({
       ) : null}
       {canPublish || isHost ? (
         <div
-          className={`pointer-events-auto absolute right-3 z-30 flex flex-col gap-2 lg:right-6 ${liveHostControlsBottomClass(liveViewport)}`}
+          className={`pointer-events-auto absolute right-3 z-30 flex flex-col gap-2 lg:hidden ${liveHostControlsBottomClass(liveViewport)}`}
         >
           {canPublish ? (
           <>
@@ -2331,33 +3140,45 @@ function CreatorStage({
           ) : null}
         </div>
       ) : null}
-      {leaveOpen ? (
+      {leaveOpen && isHost ? (
+        <EndLiveModal
+          open={leaveOpen}
+          busy={leaving}
+          onCancel={() => setLeaveOpen(false)}
+          onConfirm={() => void confirmLeave()}
+        />
+      ) : null}
+      {leaveOpen && !isHost ? (
         <div className="pointer-events-auto absolute inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-zinc-950 p-5 shadow-xl">
-            <p className="text-base font-bold text-white">
-              {isHost ? '¿Salir y terminar el live?' : '¿Salir del live?'}
-            </p>
+            <p className="text-base font-bold text-white">¿Salir del LIVE?</p>
             <p className="mt-2 text-sm text-zinc-400">
-              {isHost
-                ? 'Al confirmar se cierra la transmisión y verás el resumen de la sesión.'
-                : 'Puedes volver a entrar cuando quieras.'}
+              Sales por completo. Puedes seguir en la app o transmitir el tuyo.
             </p>
-            <div className="mt-5 flex gap-2">
+            <div className="mt-5 flex flex-col gap-2">
               <button
                 type="button"
                 disabled={leaving}
-                onClick={() => setLeaveOpen(false)}
-                className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-white/5 disabled:opacity-60"
+                onClick={() => void confirmLeave('/')}
+                className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 py-2.5 text-sm font-bold text-zinc-950 disabled:opacity-60"
               >
-                Cancelar
+                {leaving ? 'Saliendo…' : 'Ir al inicio'}
               </button>
               <button
                 type="button"
                 disabled={leaving}
-                onClick={() => void confirmLeave()}
-                className="flex-1 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 py-2.5 text-sm font-bold text-zinc-950 disabled:opacity-60"
+                onClick={() => void confirmLeave('/transmitir')}
+                className="rounded-xl border border-cyan-400/40 py-2.5 text-sm font-semibold text-cyan-200 disabled:opacity-60"
               >
-                {leaving ? 'Saliendo…' : 'Confirmar'}
+                Transmitir el mío
+              </button>
+              <button
+                type="button"
+                disabled={leaving}
+                onClick={() => setLeaveOpen(false)}
+                className="rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                Cancelar
               </button>
             </div>
           </div>
@@ -2457,6 +3278,64 @@ function CreatorStage({
         </div>
       ) : null}
     </section>
+      </div>
+      {isHost ? (
+        <HostLiveFooterBar
+          stats={{
+            startedAt: liveStats?.startedAt,
+            viewers,
+            likes: liveBoomCount,
+            giftsCount,
+            coinsEarned: liveStats?.coinsEarned || 0,
+            goalCoins: liveStats?.goalCoins || goalCoins || 20,
+            goalLabel: liveStats?.goalLabel || goalLabel,
+            topGifters: liveStats?.topGifters || [],
+          }}
+          onCrearVs={() => {
+            setSalaBoomOpen(false);
+            setBatallaOpen(true);
+          }}
+        />
+      ) : (
+        <ViewerLiveInfoBar
+          username={username}
+          displayName={roomMeta.displayName}
+          avatarUrl={roomMeta.avatarUrl}
+          title={roomMeta.title}
+          subtitle="¡Únete al chat y envía regalos!"
+          category={roomMeta.category}
+          following={followingHost}
+          followBusy={followBusy}
+          isSelf={Boolean(firebaseUid && hostUid && firebaseUid === hostUid)}
+          coins={walletCoins}
+          onFollow={() => {
+            const me = useAuthStore.getState().profile;
+            if (!me?.firebaseUid || !hostUid) return;
+            setFollowBusy(true);
+            void (async () => {
+              try {
+                if (followingHost) {
+                  await unfollowUser(me.firebaseUid, username, hostUid);
+                  setFollowingHost(false);
+                } else {
+                  await followUser(me, username, hostUid, {
+                    displayName: roomMeta.displayName,
+                    avatarUrl: roomMeta.avatarUrl,
+                  });
+                  setFollowingHost(true);
+                }
+              } catch {
+                // ignore
+              } finally {
+                setFollowBusy(false);
+              }
+            })();
+          }}
+          onGift={() => window.dispatchEvent(new CustomEvent('liveboom:open-gifts'))}
+          onRecharge={() => window.dispatchEvent(new CustomEvent('liveboom:open-recharge'))}
+        />
+      )}
+    </div>
   );
 }
 
@@ -2494,37 +3373,108 @@ function CreatorVideo({
   hostUid,
   facing,
   cameraTrackRef,
+  frameLayout,
+  frameAspect,
+  pipVisible = true,
+  mirrorCamera = false,
+  pipAspectRatio,
+  pipRectOptions,
+  salaLayout = 'grid',
+  salaFrameAspect = '9:16',
+  salaIsHost = false,
+  salaLocalIdentity,
+  salaPinnedIdentity,
+  salaCamOffIdentities = [],
+  onSalaControl,
+  onSalaLeaveSelf,
+  onSalaLayoutChange,
 }: {
   canPublish: boolean;
   hostUid?: string;
   facing: 'user' | 'environment';
   cameraTrackRef: React.MutableRefObject<LocalVideoTrack | null>;
+  frameLayout: LiveFrameLayout;
+  frameAspect: LiveAspectRatio;
+  pipVisible?: boolean;
+  mirrorCamera?: boolean;
+  pipAspectRatio?: number;
+  pipRectOptions?: import('../lib/liveScreenComposer').PipRectOptions;
+  salaLayout?: SalaBoomLayout;
+  salaFrameAspect?: LiveAspectRatio;
+  salaIsHost?: boolean;
+  salaLocalIdentity?: string;
+  salaPinnedIdentity?: string | null;
+  salaCamOffIdentities?: string[];
+  onSalaControl?: (action: SalaCameraAction, identity: string) => void;
+  onSalaLeaveSelf?: () => void;
+  onSalaLayoutChange?: (layout: SalaBoomLayout) => void;
 }) {
   const room = useRoomContext();
-  const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }]);
+  const tracks = useTracks([
+    { source: Track.Source.Camera, withPlaceholder: true },
+    { source: Track.Source.ScreenShare, withPlaceholder: false },
+  ]);
   const [camError, setCamError] = useState<string | null>(null);
   const [camBusy, setCamBusy] = useState(false);
   const [retry, setRetry] = useState(0);
   const [trackEpoch, setTrackEpoch] = useState(0);
 
-  const cameras = tracks
+  const targetIdentity = canPublish
+    ? room.localParticipant.identity
+    : hostUid || room.remoteParticipants.values().next().value?.identity;
+
+  const pickParticipantTracks = (identity: string | undefined) => {
+    if (!identity) return { camera: null as TrackReference | null, screen: null as TrackReference | null };
+    const mine = tracks.filter(
+      (track): track is TrackReference =>
+        Boolean(track.publication) && track.participant.identity === identity,
+    );
+    const cameraRef = mine.find((track) => track.publication?.source === Track.Source.Camera);
+    const screenRef = mine.find((track) => track.publication?.source === Track.Source.ScreenShare);
+    return {
+      camera: cameraRef && trackIsRenderable(cameraRef) ? cameraRef : null,
+      screen: screenRef && trackIsRenderable(screenRef) ? screenRef : null,
+    };
+  };
+
+  /** Identidad del anfitrión de la sala (no del co-host local). */
+  const roomHostIdentity =
+    hostUid ||
+    (salaIsHost ? room.localParticipant.identity : undefined) ||
+    (!canPublish ? targetIdentity : undefined);
+
+  const hostTracks = pickParticipantTracks(roomHostIdentity || targetIdentity);
+  const localTracksPick = pickParticipantTracks(room.localParticipant.identity);
+  const mainIsScreen = Boolean(hostTracks.screen);
+  const main = hostTracks.screen;
+  const framedCamera = hostTracks.camera || (salaIsHost ? localTracksPick.camera : null);
+  const showFramedCamera = framedCamera && (mainIsScreen ? pipVisible : true);
+  const framedPipAspect =
+    mainIsScreen && framedCamera
+      ? readCameraTrackAspect(
+          framedCamera.publication?.track &&
+            'mediaStreamTrack' in framedCamera.publication.track
+            ? framedCamera.publication.track.mediaStreamTrack
+            : null,
+          pipAspectRatio ?? frameAspectRatio(frameAspect),
+        )
+      : pipAspectRatio;
+  const framedRectOptions = mainIsScreen ? pipRectOptions : undefined;
+
+  const hostIdentityKey = roomHostIdentity || hostTracks.camera?.participant.identity || '';
+  const localCamOff = Boolean(
+    salaLocalIdentity && salaCamOffIdentities.includes(salaLocalIdentity),
+  );
+  // Incluye cámaras muteadas: host apagó cam → tile con perfil + audio.
+  const guestCameras = tracks
     .filter((track): track is TrackReference => Boolean(track.publication))
-    .sort((a, b) => Number(a.participant.joinedAt) - Number(b.participant.joinedAt));
-  const local = cameras.find((track) => track.participant.isLocal) || null;
-  const remotes = cameras.filter((track) => !track.participant.isLocal);
-  const liveLocal = local && trackIsRenderable(local) ? local : null;
-  const liveRemote = (() => {
-    if (canPublish) return remotes.find((track) => trackIsRenderable(track)) || null;
-    if (hostUid) {
-      const hostTrack = remotes.find(
-        (track) => track.participant.identity === hostUid && trackIsRenderable(track),
-      );
-      if (hostTrack) return hostTrack;
-    }
-    return remotes.find((track) => trackIsRenderable(track)) || null;
-  })();
-  const main = liveLocal || liveRemote || local || remotes[0] || null;
-  const guests = local ? remotes : remotes.slice(1);
+    .filter((track) => track.publication?.source === Track.Source.Camera)
+    .filter((track) => track.participant.identity !== hostIdentityKey)
+    .filter((track) => {
+      if (trackIsRenderable(track)) return true;
+      return salaCamOffIdentities.includes(track.participant.identity);
+    });
+
   const lastMainRef = useRef<{ room: string; track: TrackReference | null }>({
     room: '',
     track: null,
@@ -2538,9 +3488,19 @@ function CreatorVideo({
   if (main && trackIsRenderable(main)) {
     lastMainRef.current = { room: room.name, track: main };
   }
+  if (!mainIsScreen && framedCamera && trackIsRenderable(framedCamera)) {
+    lastMainRef.current = { room: room.name, track: framedCamera };
+  }
   const cached =
     lastMainRef.current.room === room.name ? lastMainRef.current.track : null;
-  const shown = trackIsRenderable(main) ? main : trackIsRenderable(cached) ? cached : main;
+  const shownScreen = mainIsScreen && main && trackIsRenderable(main) ? main : null;
+  const renderableCamera =
+    framedCamera && trackIsRenderable(framedCamera)
+      ? framedCamera
+      : !mainIsScreen && cached && trackIsRenderable(cached)
+        ? cached
+        : null;
+  const shownCamera = renderableCamera;
 
   useEffect(() => {
     let timer = 0;
@@ -2586,10 +3546,16 @@ function CreatorVideo({
         await waitConnected(room);
         if (cancelled) return;
 
+        if (localCamOff) {
+          await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
+          if (!room.localParticipant.isMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(true).catch(() => undefined);
+          }
+          await attachCameraRef();
+          return;
+        }
+
         const alreadyOn = room.localParticipant.isCameraEnabled;
-        // Si la cámara ya está al aire, no la vuelvas a pedir: al enviar un regalo
-        // el saldo cambia y un republish dejaba la transmisión en negro.
-        // El volteo de cámara lo hace flipCamera con restartTrack (sin tocar facing aquí).
         if (alreadyOn && retry === 0) {
           if (!room.localParticipant.isMicrophoneEnabled) {
             await room.localParticipant.setMicrophoneEnabled(true);
@@ -2602,10 +3568,13 @@ function CreatorVideo({
         setCamError(null);
         await room.localParticipant.setCameraEnabled(true, {
           facingMode: facing,
-          // Sin resolución fija: evita zoom digital en móviles al iniciar.
         });
         await room.localParticipant.setMicrophoneEnabled(true);
         await attachCameraRef();
+        // Refuerza mic por si el navegador lo dejó muted al aceptar invitación
+        if (!room.localParticipant.isMicrophoneEnabled) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+        }
         if (!cancelled) setCamError(null);
       } catch (err) {
         console.error('[live] publish camera', err);
@@ -2626,9 +3595,9 @@ function CreatorVideo({
     return () => {
       cancelled = true;
     };
-  }, [canPublish, retry, room, cameraTrackRef, facing]);
+  }, [canPublish, retry, room, cameraTrackRef, facing, localCamOff]);
 
-  if (!shown) {
+  if (!shownScreen && !shownCamera) {
     return (
       <div className="grid h-full w-full place-items-center gap-3 px-6 text-center text-sm text-zinc-400">
         <p>
@@ -2638,7 +3607,7 @@ function CreatorVideo({
               : camError || 'Preparando transmisión…'
             : trackEpoch > 0
               ? 'Reconectando cámara…'
-            : 'Esperando la cámara del creador…'}
+              : 'Esperando la cámara del creador…'}
         </p>
         {canPublish && camError ? (
           <button
@@ -2655,24 +3624,54 @@ function CreatorVideo({
 
   return (
     <>
-      {shown ? (
+      {shownScreen ? (
         <VideoTrack
-          key={`${trackRenderKey(shown)}-${trackEpoch}`}
-          trackRef={shown}
+          key={`${trackRenderKey(shownScreen)}-${trackEpoch}`}
+          trackRef={shownScreen}
           className="absolute inset-0 h-full w-full bg-black [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
         />
       ) : null}
-      {guests.map((guest) => (
-        <div
-          key={guest.participant.identity}
-          className="absolute right-2 top-24 z-10 h-36 w-24 overflow-hidden rounded-xl border border-cyan-400/50 shadow-lg sm:h-44 sm:w-28"
-        >
-          <VideoTrack trackRef={guest} className="h-full w-full object-cover [&_video]:!transform-none" />
-          <p className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-center text-[9px] font-semibold text-cyan-100">
-            {guest.participant.name || 'Invitado'}
-          </p>
-        </div>
-      ))}
+      {showFramedCamera && shownCamera && shownScreen ? (
+        <LiveFramedVideo
+          trackRef={shownCamera}
+          layout={frameLayout}
+          frameAspect={frameAspect}
+          visible={pipVisible}
+          mirrored={mirrorCamera}
+          pipAspectRatio={framedPipAspect}
+          rectOptions={framedRectOptions}
+        />
+      ) : null}
+      {/* Sala Boom: aplicar diseño ya con 1 panel; invitados se suman sin huecos. */}
+      {shownCamera && !shownScreen ? (
+        <SalaBoomStage
+          hostRef={shownCamera}
+          guests={guestCameras}
+          layout={salaLayout}
+          frameAspect={salaFrameAspect}
+          mirrorHost={mirrorCamera}
+          isHost={salaIsHost}
+          localIdentity={salaLocalIdentity}
+          pinnedIdentity={salaPinnedIdentity}
+          camOffIdentities={salaCamOffIdentities}
+          onControl={onSalaControl}
+          onLeaveSelf={onSalaLeaveSelf}
+          onLayoutChange={onSalaLayoutChange}
+        />
+      ) : null}
+      {shownScreen
+        ? guestCameras.map((guest) => (
+            <div
+              key={guest.participant.identity}
+              className="absolute right-2 top-24 z-10 h-36 w-24 overflow-hidden rounded-xl border border-cyan-400/50 shadow-lg sm:h-44 sm:w-28"
+            >
+              <VideoTrack trackRef={guest} className="h-full w-full object-cover [&_video]:!transform-none" />
+              <p className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-center text-[9px] font-semibold text-cyan-100">
+                {guest.participant.name || 'Invitado'}
+              </p>
+            </div>
+          ))
+        : null}
       {canPublish && camError ? (
         <div className="absolute inset-x-0 bottom-24 z-20 flex justify-center px-3">
           <button
@@ -2692,12 +3691,16 @@ function ChatPanel({
   roomName,
   canPublish,
   isHostRoom = false,
+  uiRole = 'viewer',
   onAcceptInvite,
+  onDeclineInvite,
 }: {
   roomName: string;
   canPublish: boolean;
   isHostRoom?: boolean;
+  uiRole?: 'host' | 'viewer';
   onAcceptInvite?: () => void;
+  onDeclineInvite?: () => void;
 }) {
   const room = useRoomContext();
   const profile = useAuthStore((state) => state.profile);
@@ -2706,6 +3709,7 @@ function ChatPanel({
   const [messages, setMessages] = useState<ChatMessage[]>(() => liveChatCache.get(roomName) ?? []);
   const [text, setText] = useState('');
   const [openGifts, setOpenGifts] = useState(false);
+  const [sideTab, setSideTab] = useState<'chat' | 'gifts'>('chat');
   const [pendingGiftId, setPendingGiftId] = useState<string | null>(null);
   const [giftMultiplier, setGiftMultiplier] = useState<1 | 2 | 4 | 8>(1);
   const [giftError, setGiftError] = useState<string | null>(null);
@@ -2720,7 +3724,23 @@ function ChatPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const seen = useRef(new Set<string>((liveChatCache.get(roomName) ?? []).map((msg) => msg.id)));
   const levelXpRef = useRef(0);
-  const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
+  const giftCatalog = useMemo(() => sortedLiveGiftCatalog(), []);
+  const popularGifts = useMemo(() => giftCatalog.slice(0, 8), [giftCatalog]);
+
+  useEffect(() => {
+    const openGiftsEv = () => {
+      setChatHidden(false);
+      setOpenGifts(true);
+      setSideTab('gifts');
+    };
+    const openRechargeEv = () => setRechargeOpen(true);
+    window.addEventListener('liveboom:open-gifts', openGiftsEv);
+    window.addEventListener('liveboom:open-recharge', openRechargeEv);
+    return () => {
+      window.removeEventListener('liveboom:open-gifts', openGiftsEv);
+      window.removeEventListener('liveboom:open-recharge', openRechargeEv);
+    };
+  }, []);
 
   useEffect(() => {
     return listenLiveRoomEarnings(roomName, (stats) => {
@@ -2840,7 +3860,7 @@ function ChatPanel({
       if (data.type === 'invite') {
         const myHandle = profile?.handle?.toLowerCase();
         if (myHandle && data.guestHandle.toLowerCase() === myHandle) {
-          setInviteBanner(`${data.hostName} te invitó a unirte con cámara.`);
+          setInviteBanner(`@${data.hostName || 'host'} te invitó a unirse a su Sala Boom`);
         }
       }
     };
@@ -3007,7 +4027,17 @@ function ChatPanel({
               onClick={() => (onAcceptInvite ? onAcceptInvite() : window.location.reload())}
               className="rounded-md bg-cyan-400 px-2 py-0.5 text-[10px] font-bold text-zinc-950"
             >
-              Unirme ahora
+              Aceptar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDeclineInvite?.();
+                setInviteBanner(null);
+              }}
+              className="ml-1 rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-200"
+            >
+              Rechazar
             </button>
           </div>
         ) : null}
@@ -3039,59 +4069,81 @@ function ChatPanel({
 
   return (
     <aside
-      className={`z-20 flex min-h-0 min-w-0 flex-col overflow-hidden border-white/10 lg:static lg:h-full lg:min-h-0 lg:max-h-full lg:w-[30%] lg:min-w-[260px] lg:rounded-2xl lg:border ${
-        canPublish
-          ? `pointer-events-none absolute inset-x-0 bottom-0 border-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent lg:pointer-events-auto lg:relative lg:inset-auto lg:h-full lg:max-h-full lg:bg-black/10 lg:backdrop-blur-[2px] ${
+      data-boom-ignore
+      className={`z-20 flex min-h-0 min-w-0 flex-col overflow-hidden border-white/10 lg:static lg:h-full lg:min-h-0 lg:max-h-full lg:w-[28%] lg:min-w-[260px] lg:max-w-[340px] lg:rounded-2xl lg:border ${
+        canPublish || uiRole === 'host'
+          ? `pointer-events-none absolute inset-x-0 bottom-0 border-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent lg:pointer-events-auto lg:relative lg:inset-auto lg:h-full lg:max-h-full lg:bg-zinc-950/90 lg:backdrop-blur-md ${
               openGifts
                 ? 'h-[min(62dvh,28rem)] max-h-[68dvh]'
                 : 'h-[min(48dvh,22rem)] max-h-[52dvh] sm:h-[44dvh]'
             }`
-          : `relative border-t bg-zinc-900/95 lg:h-full lg:max-h-full lg:border-t-0 lg:bg-zinc-800/45 lg:backdrop-blur-xl ${
+          : `relative border-t bg-zinc-900/95 lg:h-full lg:max-h-full lg:border-t-0 lg:bg-zinc-950/90 lg:backdrop-blur-md ${
               openGifts
                 ? 'h-[min(58dvh,26rem)] max-h-[64dvh]'
                 : 'h-[min(42dvh,20rem)] max-h-[48dvh] sm:h-[40dvh]'
             }`
       }`}
     >
-      <div className={`pointer-events-auto shrink-0 px-4 py-2 ${canPublish ? 'bg-transparent' : 'border-b border-white/10'}`}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <p className={`text-[11px] ${canPublish ? 'text-zinc-200 drop-shadow' : 'text-zinc-400'}`}>
-              Saldo: {coins.toLocaleString('es-CO')} coins
-            </p>
-            {!isHostRoom ? (
-              <button
-                type="button"
-                onClick={() => setRechargeOpen(true)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-2.5 py-1 text-[10px] font-bold text-zinc-950 shadow-[0_0_12px_rgba(255,0,85,0.35)]"
-              >
-                <Coins size={11} />
-                Recargar
-              </button>
-            ) : null}
-          </div>
-          {isSpectator ? (
+      <div className="pointer-events-auto shrink-0 border-b border-white/10 px-3 py-2.5">
+        {uiRole === 'host' ? (
+          <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={() => {
-                setChatHidden(true);
+                setSideTab('chat');
                 setOpenGifts(false);
               }}
-              className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-zinc-200"
+              className={`pb-1 text-sm font-bold ${
+                sideTab === 'chat' ? 'border-b-2 border-violet-500 text-white' : 'text-zinc-500'
+              }`}
             >
-              Ocultar
+              Chat
             </button>
-          ) : null}
-        </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSideTab('gifts');
+                setOpenGifts(true);
+              }}
+              className={`pb-1 text-sm font-bold ${
+                sideTab === 'gifts' ? 'border-b-2 border-violet-500 text-white' : 'text-zinc-500'
+              }`}
+            >
+              Regalos
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-bold text-white">Chat en vivo</p>
+            <div className="flex items-center gap-1 text-[10px] font-semibold text-zinc-400">
+              <Users size={12} /> Top en línea
+            </div>
+          </div>
+        )}
+        {uiRole === 'viewer' && !isHostRoom ? (
+          <div className="mt-2 flex items-center gap-2 rounded-xl bg-violet-600/25 px-2.5 py-2 text-[11px] font-semibold text-violet-100">
+            <Gift size={14} /> Envía un regalo y destaca tu mensaje
+          </div>
+        ) : null}
         {inviteBanner ? (
-          <div className="mt-1 flex items-center gap-2 rounded-lg bg-cyan-500/20 px-2 py-1.5 text-[11px] text-cyan-100 backdrop-blur">
+          <div className="mt-2 flex items-center gap-2 rounded-lg bg-cyan-500/20 px-2 py-1.5 text-[11px] text-cyan-100 backdrop-blur">
             <span className="flex-1">{inviteBanner}</span>
             <button
               type="button"
               onClick={() => (onAcceptInvite ? onAcceptInvite() : window.location.reload())}
               className="shrink-0 rounded-md bg-cyan-400 px-2 py-0.5 text-[10px] font-bold text-zinc-950"
             >
-              Unirme ahora
+              Aceptar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDeclineInvite?.();
+                setInviteBanner(null);
+              }}
+              className="shrink-0 rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-200"
+            >
+              Rechazar
             </button>
           </div>
         ) : null}
@@ -3102,17 +4154,47 @@ function ChatPanel({
           onScroll={onChatScroll}
           className="chat-scroll min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-3"
         >
-          {messages.length === 0 ? (
+          {uiRole === 'host' && sideTab === 'gifts' ? (
+            messages.filter((m) => m.gift).length === 0 ? (
+              <p className="text-xs text-zinc-500">Los regalos de la sala aparecerán aquí.</p>
+            ) : (
+              messages
+                .filter((m) => m.gift)
+                .slice()
+                .reverse()
+                .map((message) => (
+                  <div
+                    key={message.id}
+                    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                  >
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-violet-500/30 text-[10px] font-bold text-violet-100">
+                      {message.author.slice(0, 1).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-white">@{message.author.replace(/^@/, '')}</p>
+                      <p className="truncate text-[10px] text-zinc-400">{message.gift?.name}</p>
+                    </div>
+                    {message.gift ? <GiftIcon giftId={message.gift.giftId} size={22} /> : null}
+                  </div>
+                ))
+            )
+          ) : messages.length === 0 ? (
             <p className={`text-xs ${canPublish ? 'text-zinc-300 drop-shadow' : 'text-zinc-500'}`}>
               Sé el primero en saludar.
             </p>
           ) : (
             <p className={`text-[10px] ${canPublish ? 'text-zinc-400 drop-shadow' : 'text-zinc-600'}`}>
-              Historial · {messages.length} mensajes · desplázate hacia arriba
+              Historial · {messages.length} mensajes
             </p>
           )}
-          {messages.map((message) => {
+          {!(uiRole === 'host' && sideTab === 'gifts') &&
+          messages.map((message) => {
             const nameClass = `font-semibold hover:underline ${chatAuthorClass(message.author, giftCoinsByName)}`;
+            const isHostMsg =
+              isHostRoom &&
+              profile?.handle &&
+              message.author.toLowerCase().replace(/^@/, '') ===
+                profile.handle.toLowerCase().replace(/^@/, '');
             return message.gift ? (
               <div
                 key={message.id}
@@ -3136,16 +4218,32 @@ function ChatPanel({
                 </p>
               </div>
             ) : (
-              <p key={message.id} className="text-sm text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
-                {message.authorUid ? (
-                  <Link to={profileHref(message.author, message.authorUid)} className={nameClass}>
-                    {message.author}:{' '}
-                  </Link>
-                ) : (
-                  <span className={nameClass}>{message.author}: </span>
-                )}
-                {message.text}
-              </p>
+              <div
+                key={message.id}
+                className={`flex gap-2 rounded-xl px-2 py-1.5 ${
+                  isHostMsg ? 'border border-violet-400/40 bg-violet-500/15' : ''
+                }`}
+              >
+                <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-bold text-zinc-200">
+                  {message.author.slice(0, 1).toUpperCase()}
+                </span>
+                <p className="text-sm text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                  {message.authorUid ? (
+                    <Link to={profileHref(message.author, message.authorUid)} className={nameClass}>
+                      {message.author}
+                    </Link>
+                  ) : (
+                    <span className={nameClass}>{message.author}</span>
+                  )}
+                  {isHostMsg ? (
+                    <span className="ml-1 rounded bg-violet-500 px-1 py-0.5 text-[9px] font-black text-white">
+                      HOST
+                    </span>
+                  ) : null}
+                  {': '}
+                  {message.text}
+                </p>
+              </div>
             );
           })}
         </div>
@@ -3273,12 +4371,51 @@ function ChatPanel({
         {sendingGift ? (
           <p className="mb-2 text-[11px] font-semibold text-cyan-300">Enviando regalo…</p>
         ) : null}
+        {uiRole === 'viewer' && !isHostRoom && !openGifts ? (
+          <div className="mb-2 hidden border-t border-white/10 pt-2 lg:block">
+            <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+              Regalos populares ›
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {popularGifts.map((gift) => (
+                <button
+                  key={gift.id}
+                  type="button"
+                  onClick={() => {
+                    setGiftError(null);
+                    setGiftMultiplier(1);
+                    setPendingGiftId(gift.id);
+                    setOpenGifts(true);
+                    setSideTab('gifts');
+                  }}
+                  className="flex w-14 shrink-0 flex-col items-center gap-0.5"
+                >
+                  <GiftIcon giftId={gift.id} size={28} />
+                  <span className="w-full truncate text-center text-[9px] text-zinc-400">{gift.name}</span>
+                  <span className="text-[9px] font-bold text-amber-300">{gift.coins}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {uiRole === 'host' && sideTab === 'gifts' ? (
+          <button
+            type="button"
+            onClick={() => setOpenGifts(true)}
+            className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-2.5 text-xs font-bold text-white"
+          >
+            <Gift size={14} /> Ver todos los regalos
+          </button>
+        ) : null}
         <div className="flex gap-2">
           {!isHostRoom ? (
           <button
             type="button"
-            onClick={() => setOpenGifts((value) => !value)}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950 shadow-[0_0_18px_rgba(255,0,85,0.35)]"
+            onClick={() => {
+              setOpenGifts((value) => !value);
+              setSideTab('gifts');
+            }}
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-violet-600 text-white shadow-[0_0_18px_rgba(139,92,246,0.35)]"
             aria-label="Caja de regalos"
           >
             <Gift size={18} />
@@ -3291,13 +4428,13 @@ function ChatPanel({
             onKeyDown={(event) => {
               if (event.key === 'Enter') void sendMessage();
             }}
-            placeholder="Escribe un mensaje"
-            className="h-11 flex-1 rounded-xl bg-zinc-900 px-3 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-300"
+            placeholder="Escribe un mensaje..."
+            className="h-11 flex-1 rounded-xl bg-zinc-900 px-3 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-400"
           />
           <button
             type="button"
             onClick={() => void sendMessage()}
-            className="grid h-11 w-11 place-items-center rounded-xl bg-zinc-800/80 text-cyan-400 backdrop-blur"
+            className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-teal-500 text-zinc-950"
             aria-label="Enviar"
           >
             <Send size={16} />

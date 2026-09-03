@@ -49,7 +49,7 @@ export function HorizontalScrollRail({ children, className = '', ariaLabel }: Pr
           type="button"
           onClick={() => scrollByPage(-1)}
           aria-label="Anterior"
-          className="absolute left-0 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-zinc-950/90 text-white shadow-lg backdrop-blur-sm transition hover:border-cyan-400/40 hover:text-cyan-200 md:grid"
+          className="absolute left-0 top-1/2 z-10 hidden min-h-11 min-w-11 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg backdrop-blur-md transition hover:border-cyan-400/40 hover:text-cyan-200 md:grid"
         >
           <ChevronLeft size={18} />
         </button>
@@ -59,7 +59,7 @@ export function HorizontalScrollRail({ children, className = '', ariaLabel }: Pr
           type="button"
           onClick={() => scrollByPage(1)}
           aria-label="Siguiente"
-          className="absolute right-0 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-zinc-950/90 text-white shadow-lg backdrop-blur-sm transition hover:border-cyan-400/40 hover:text-cyan-200 md:grid"
+          className="absolute right-0 top-1/2 z-10 hidden min-h-11 min-w-11 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg backdrop-blur-md transition hover:border-cyan-400/40 hover:text-cyan-200 md:grid"
         >
           <ChevronRight size={18} />
         </button>

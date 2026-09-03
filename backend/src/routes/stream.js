@@ -85,6 +85,13 @@ function canGuestPublish(decoded, roomName) {
   return invites.hasInvite(roomName, identitiesFromToken(decoded));
 }
 
+async function canGuestPublishAsync(decoded, roomName) {
+  const ids = identitiesFromToken(decoded);
+  if (await invites.isBanned(roomName, ids)) return false;
+  if (invites.hasInvite(roomName, ids)) return true;
+  return invites.hasInvitePersisted(roomName, ids);
+}
+
 router.get('/live', async (req, res) => {
   const lk = livekit();
   const listActiveLiveRooms = lk.listActiveLiveRooms || lk.default?.listActiveLiveRooms;
@@ -135,6 +142,10 @@ router.post('/live/start', requireAuth, (req, res) => {
   } catch {
     // optional
   }
+  // Nueva sesión: limpia invitaciones y expulsiones de la sala anterior.
+  invites.clearInvites(username);
+  invites.clearBans(username);
+  void invites.persistClear(username);
   const entry = upsertLive({
     username,
     uid: req.user.uid,
@@ -160,6 +171,8 @@ router.post('/live/stop', requireAuth, (req, res) => {
       : normalize(req.user.email ? req.user.email.split('@')[0] : req.user.uid);
   removeLive(username);
   invites.clearInvites(username);
+  invites.clearBans(username);
+  void invites.persistClear(username);
   liveLocks.clearLock(username);
   try {
     require('../lib/liveChat').clearRoom(username);
@@ -169,7 +182,7 @@ router.post('/live/stop', requireAuth, (req, res) => {
   res.json({ ok: true, username });
 });
 
-router.post('/invite', requireAuth, (req, res) => {
+router.post('/invite', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
   const guestHandle =
@@ -183,17 +196,91 @@ router.post('/invite', requireAuth, (req, res) => {
     return;
   }
   const guestProfile = findByUsername(guestHandle);
+  const banKeys = [
+    guestHandle,
+    guestProfile?.firebaseUid,
+    guestProfile?.username,
+    guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
+  ].filter(Boolean);
+  if (await invites.isBanned(roomName, banKeys)) {
+    res.status(403).json({
+      error: 'Este usuario fue expulsado de la sala de este live y no puede volver a entrar',
+      code: 'SALA_BANNED',
+    });
+    return;
+  }
   invites.addInvite(roomName, guestHandle);
   if (guestProfile?.firebaseUid) invites.addInvite(roomName, guestProfile.firebaseUid);
   if (guestProfile?.username) invites.addInvite(roomName, guestProfile.username);
   if (guestProfile?.email) {
     invites.addInvite(roomName, String(guestProfile.email).split('@')[0]);
   }
+  void Promise.all([
+    invites.persistAdd(roomName, guestHandle),
+    guestProfile?.firebaseUid ? invites.persistAdd(roomName, guestProfile.firebaseUid) : null,
+    guestProfile?.username ? invites.persistAdd(roomName, guestProfile.username) : null,
+  ]);
   res.status(201).json({
     ok: true,
     invite: { room: roomName, guest: guestHandle, uid: guestProfile?.firebaseUid || null },
     pending: invites.listInvites(roomName),
   });
+});
+
+router.post('/invite/decline', requireAuth, (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const guestHandle =
+    typeof req.body?.guestHandle === 'string'
+      ? normalize(req.body.guestHandle)
+      : normalize(req.user.email ? String(req.user.email).split('@')[0] : req.user.uid);
+  if (!roomName) {
+    res.status(400).json({ error: 'roomName es obligatorio' });
+    return;
+  }
+  invites.removeInvite(roomName, guestHandle);
+  invites.removeInvite(roomName, req.user.uid);
+  void Promise.all([
+    invites.persistRemove(roomName, guestHandle),
+    invites.persistRemove(roomName, req.user.uid),
+  ]);
+  res.json({ ok: true, room: roomName });
+});
+
+router.post('/invite/kick', requireAuth, (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const guestHandle =
+    typeof req.body?.guestHandle === 'string' ? normalize(req.body.guestHandle) : '';
+  const guestUid = typeof req.body?.guestUid === 'string' ? String(req.body.guestUid).trim() : '';
+  if (!roomName || (!guestHandle && !guestUid)) {
+    res.status(400).json({ error: 'roomName y guestHandle son obligatorios' });
+    return;
+  }
+  if (!isRoomHost(req.user, roomName, req.body?.handle)) {
+    res.status(403).json({ error: 'Solo el anfitrión puede sacar a un invitado' });
+    return;
+  }
+  const guestProfile = guestUid
+    ? getProfile(guestUid)
+    : guestHandle
+      ? findByUsername(guestHandle)
+      : null;
+  const banKeys = [
+    guestHandle,
+    guestUid,
+    guestProfile?.firebaseUid,
+    guestProfile?.username,
+    guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
+  ].filter(Boolean);
+
+  for (const key of banKeys) {
+    invites.addBan(roomName, key);
+    invites.removeInvite(roomName, key);
+  }
+  void Promise.all(banKeys.map((key) => invites.persistBanAdd(roomName, key)));
+
+  res.json({ ok: true, room: roomName, banned: invites.listBans(roomName) });
 });
 
 /** Candado en vivo: el host elige el regalo que desbloquea la entrada. */
@@ -393,7 +480,7 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     const claimedHandle =
       typeof req.query.handle === 'string' ? req.query.handle : req.body?.handle;
     const host = isRoomHost(req.user, roomName, claimedHandle);
-    const guest = canGuestPublish(req.user, roomName);
+    const guest = await canGuestPublishAsync(req.user, roomName);
     const isDirectCall = /^dm[_-]/.test(roomName);
 
     if (!host && !isDirectCall && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {

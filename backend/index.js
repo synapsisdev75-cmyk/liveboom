@@ -1,8 +1,9 @@
+// Wompi sandbox — env cargado desde backend/.env en Firebase deploy
 const path = require('path');
 const envPaths = [
   path.join(__dirname, '.env'),
+  path.join(__dirname, '.env.local'),
   path.join(__dirname, '../.env'),
-  path.join(__dirname, '../packages/backend/.env'),
 ];
 for (const envPath of envPaths) {
   require('dotenv').config({ path: envPath, override: false });
@@ -32,7 +33,7 @@ app.get('/api/health', async (_req, res) => {
     status: 'ok',
     message: 'Liveboom Backend Running',
     db: prisma ? 'connected-or-ready' : 'disconnected',
-    api: 'https://liveboom.vercel.app',
+    api: 'https://liveboomapp.com',
     auth: 'firebase-jwt-crypto',
   });
 });
@@ -61,6 +62,7 @@ mount('/api/payments', () => require('./src/routes/payments'));
 mount('/api/webhooks', () => require('./src/routes/webhooks'));
 mount('/api/livekit', () => require('./src/routes/livekit'));
 mount('/api/stream', () => require('./src/routes/stream'));
+mount('/api/battle', () => require('./src/routes/battle'));
 mount('/api/gifts', () => require('./src/routes/gifts'));
 mount('/api/users', () => require('./src/routes/users'));
 mount('/api/social', () => require('./src/routes/social'));
@@ -122,9 +124,14 @@ app.use((error, _req, res, _next) => {
   });
 });
 
-const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const isServerless = Boolean(
+  process.env.FUNCTION_TARGET ||
+  process.env.K_SERVICE ||
+  process.env.FIREBASE_CONFIG ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME,
+);
 
-if (!isServerless) {
+if (!isServerless && require.main === module) {
   try {
     const { initSocket } = require('./src/lib/socket');
     initSocket(httpServer);
@@ -145,3 +152,17 @@ if (!isServerless) {
 
 module.exports = app;
 module.exports.default = app;
+
+try {
+  const { onRequest } = require('firebase-functions/v2/https');
+  module.exports.api = onRequest(
+    {
+      region: 'us-central1',
+      memory: '512MiB',
+      timeoutSeconds: 120,
+    },
+    app,
+  );
+} catch (error) {
+  console.warn('[liveboom] firebase-functions no disponible (solo dev local):', error.message);
+}

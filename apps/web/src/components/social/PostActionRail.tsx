@@ -30,7 +30,7 @@ export function OverlayIconButton({
         event.stopPropagation();
         onClick();
       }}
-      className={`grid h-10 w-10 place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-50 sm:h-12 sm:w-12 ${
+      className={`lb-action-rail__btn grid place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-50 ${
         active ? activeClass : 'bg-black/55 text-white'
       }`}
     >
@@ -103,25 +103,28 @@ export function PostActionRail({
     authorUsername || authorUid ? profileHref(authorUsername || 'user', authorUid) : null;
   const isAsideRail = layout === 'aside';
   const isCornerRail = layout === 'corner' && anchor === 'media';
+  const isMediaRail = anchor === 'media' || isCornerRail || isAsideRail;
 
   return (
     <div
       className={`pointer-events-auto z-20 flex flex-col items-center ${
+        isMediaRail ? 'lb-action-rail--fit' : ''
+      } ${
         isAsideRail
-          ? 'lb-action-rail--aside relative max-h-full overflow-visible'
-          : `absolute overflow-y-auto overscroll-contain ${
+          ? 'lb-action-rail--aside relative'
+          : `absolute overflow-visible ${
               isCornerRail
-                ? `lb-action-rail--media lb-action-rail--corner gap-1.5 sm:gap-2 ${
+                ? `lb-action-rail--media lb-action-rail--corner ${
                     commentsPanelOpen ? 'lb-action-rail--comments-open' : ''
                   }`
-                : `${anchor === 'media' ? 'lb-action-rail--media pr-0' : 'pr-1'} gap-2 sm:gap-3 ${
-                    commentsPanelOpen
-                      ? anchor === 'media'
-                        ? 'top-1/2 max-h-[min(55%,calc(100%-2rem))] -translate-y-1/2'
-                        : 'bottom-[min(46dvh,calc(100dvh-8rem))] max-h-[min(40dvh,calc(100dvh-12rem))]'
-                      : anchor === 'media'
-                        ? 'top-1/2 max-h-[min(72%,calc(100%-1rem))] -translate-y-1/2'
-                        : 'bottom-[max(1rem,env(safe-area-inset-bottom,0px))] max-h-[min(72dvh,calc(100dvh-6rem))] sm:bottom-4 sm:max-h-none'
+                : `${anchor === 'media' ? 'lb-action-rail--media' : 'pr-1'} ${
+                    commentsPanelOpen ? 'lb-action-rail--comments-open' : ''
+                  } ${
+                    anchor === 'media'
+                      ? 'top-1/2 -translate-y-1/2'
+                      : commentsPanelOpen
+                        ? 'bottom-[min(46dvh,calc(100dvh-8rem))]'
+                        : 'bottom-[max(1rem,env(safe-area-inset-bottom,0px))] sm:bottom-4'
                   }`
             }`
       }`}
@@ -137,7 +140,7 @@ export function PostActionRail({
         <Link
           to={profilePath}
           onClick={(e) => e.stopPropagation()}
-          className="mb-0.5"
+          className="lb-action-rail__avatar-wrap mb-0.5"
           aria-label={authorUsername ? `Perfil @${authorUsername}` : 'Ver perfil'}
           title={authorUsername ? `@${authorUsername}` : 'Perfil'}
         >
@@ -151,14 +154,8 @@ export function PostActionRail({
         </Link>
       ) : null}
 
-      <div className={`relative flex flex-col items-center ${isAsideRail ? 'gap-0.5' : 'gap-1'}`}>
-        <div
-          className={`grid place-items-center rounded-full bg-black/55 shadow-lg backdrop-blur-sm ${
-            isAsideRail
-              ? 'h-[clamp(2rem,5.2vh,2.45rem)] w-[clamp(2rem,5.2vh,2.45rem)]'
-              : 'h-10 w-10 sm:h-12 sm:w-12'
-          }`}
-        >
+      <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.25rem)]">
+        <div className="lb-action-rail__boom grid place-items-center rounded-full bg-black/55 shadow-lg backdrop-blur-sm">
           <BoomLikeButton
             active={viewerReaction === 'like'}
             busy={busy}
@@ -176,7 +173,7 @@ export function PostActionRail({
             setShowDislikers(false);
             setShowLikers((v) => !v);
           }}
-          className="text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
+          className="lb-action-rail__count text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
         >
           {likes}
         </button>
@@ -188,21 +185,23 @@ export function PostActionRail({
       </div>
 
       {showGifts && authorUsername ? (
-        <ReelGiftControls
-          authorUsername={authorUsername}
-          authorUid={authorUid}
-          postId={postId}
-        />
+        <div className="lb-action-rail__gift">
+          <ReelGiftControls
+            authorUsername={authorUsername}
+            authorUid={authorUid}
+            postId={postId}
+          />
+        </div>
       ) : null}
 
-      <div className="relative flex flex-col items-center gap-0.5">
+      <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.2rem)]">
         <OverlayIconButton
           active={viewerReaction === 'dislike'}
           activeClass="bg-fuchsia-500 text-zinc-950"
           onClick={() => onReact('dislike')}
           disabled={busy}
         >
-          <ThumbsDown size={isAsideRail ? 18 : 20} />
+          <ThumbsDown className="lb-action-rail__icon" size={20} />
         </OverlayIconButton>
         <button
           type="button"
@@ -212,7 +211,7 @@ export function PostActionRail({
             setShowLikers(false);
             setShowDislikers((v) => !v);
           }}
-          className="text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
+          className="lb-action-rail__count text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
         >
           {dislikes}
         </button>
@@ -223,19 +222,15 @@ export function PostActionRail({
         ) : null}
       </div>
 
-      <div className={`relative flex flex-col items-center ${isAsideRail ? 'gap-0.5' : 'gap-0.5'}`}>
+      <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.2rem)]">
         <OverlayIconButton
           active={commentsOpen}
           activeClass="bg-cyan-500 text-zinc-950"
           onClick={onToggleComments}
         >
-          <MessageCircle size={isAsideRail ? 18 : 20} />
+          <MessageCircle className="lb-action-rail__icon" size={20} />
         </OverlayIconButton>
-        <span
-          className={`min-h-[14px] font-bold text-white drop-shadow ${
-            isAsideRail ? 'text-[clamp(0.55rem,1.4vw,0.625rem)]' : 'text-[10px]'
-          }`}
-        >
+        <span className="lb-action-rail__label min-h-[14px] font-bold text-white drop-shadow">
           {commentCount > 0 ? commentCount : 'Comentar'}
         </span>
       </div>
@@ -248,6 +243,7 @@ export function PostActionRail({
           mediaUrl={mediaUrl}
           mediaType={mediaType}
           iconOnly
+          className="lb-action-rail-share"
         />
       ) : null}
     </div>

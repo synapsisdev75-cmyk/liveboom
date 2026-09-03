@@ -2,7 +2,22 @@
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    screens: {
+      sm: '640px',
+      md: '768px',
+      lg: '1024px',
+      xl: '1280px',
+      '2xl': '1536px',
+    },
     extend: {
+      minHeight: {
+        dvh: '100dvh',
+        'screen-dvh': '100dvh',
+      },
+      height: {
+        dvh: '100dvh',
+        'screen-dvh': '100dvh',
+      },
       colors: {
         boom: {
           bg: '#0A0A0B',

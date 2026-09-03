@@ -18,6 +18,7 @@ function toSocial(post: FsPost): SocialPost {
     type: post.type,
     caption: post.caption,
     mediaUrl: post.mediaUrl,
+    mediaUrls: post.mediaUrls,
     visibility: post.visibility,
     createdAt: post.createdAt,
     likes: post.likes,

@@ -1,4 +1,12 @@
 const crypto = require('crypto');
+const { randomUUID } = require('crypto');
+
+/** Referencia única ≤36 caracteres (límite Wompi en sku / links de pago). */
+function createWompiReference(prefix = 'lb') {
+  const head = String(prefix || 'lb').replace(/[^a-zA-Z0-9_]/g, '').slice(0, 4);
+  const tail = randomUUID().replace(/-/g, '').slice(0, 32);
+  return `${head}_${tail}`.slice(0, 36);
+}
 
 function sha256Hex(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -83,7 +91,7 @@ function verifyWompiChecksum(payload, eventsSecret, req) {
 }
 
 /**
- * Limpia secretos de Wompi: quita espacios y comillas que a veces se pegan en Vercel/.env.
+ * Limpia secretos de Wompi: quita espacios y comillas que a veces se pegan en .env.
  */
 function cleanWompiSecret(value) {
   return String(value || '')
@@ -96,7 +104,7 @@ function assertIntegrityPair(publicKey, integritySecret) {
   const secret = cleanWompiSecret(integritySecret);
   if (!secret) {
     throw new Error(
-      'Falta WOMPI_INTEGRITY_SECRET en el API (Vercel). En el dashboard de Wompi → Desarrolladores → Secretos para integración técnica.',
+      'Falta WOMPI_INTEGRITY_SECRET en el API. En el dashboard de Wompi → Desarrolladores → Secretos para integración técnica.',
     );
   }
   if (secret.startsWith('test_events_') || secret.startsWith('prod_events_')) {
@@ -120,7 +128,7 @@ function assertIntegrityPair(publicKey, integritySecret) {
  * Firma del Widget: SHA256(reference + amountInCents + currency + integritySecret)
  * amountInCents debe ser entero (p. ej. $9.500 COP → 950000).
  */
-function createWidgetIntegritySignature(reference, amountInCents, currency, integritySecret) {
+function createWidgetIntegritySignature(reference, amountInCents, currency, integritySecret, expirationTime) {
   const secret = cleanWompiSecret(integritySecret);
   if (!secret) {
     return null;
@@ -129,7 +137,100 @@ function createWidgetIntegritySignature(reference, amountInCents, currency, inte
   if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount <= 0) {
     throw new Error('amountInCents inválido para la firma de Wompi');
   }
-  return sha256Hex(`${String(reference)}${amount}${String(currency)}${secret}`);
+  const expiration = expirationTime ? String(expirationTime).trim() : '';
+  const payload = `${String(reference)}${amount}${String(currency)}${expiration}${secret}`;
+  return sha256Hex(payload);
+}
+
+function wompiBaseUrl() {
+  const raw = String(process.env.WOMPI_BASE_URL || 'https://sandbox.wompi.co/v1').trim();
+  return raw.replace(/\/$/, '');
+}
+
+function wompiRedirectUrl() {
+  const fromEnv = String(process.env.WOMPI_REDIRECT_URL || '').trim();
+  if (fromEnv) return fromEnv;
+  return 'https://liveboomapp.com/billetera';
+}
+
+/** GET público: valida que la llave pública exista en Wompi (widget/checkout). */
+async function getWompiMerchant(publicKey) {
+  const key = cleanWompiSecret(publicKey);
+  if (!key) return null;
+  const baseUrl = wompiBaseUrl();
+  const response = await fetch(`${baseUrl}/merchants/${encodeURIComponent(key)}`);
+  if (!response.ok) return null;
+  const json = await response.json();
+  return json?.data ?? null;
+}
+
+async function isWompiMerchantActive(publicKey) {
+  const merchant = await getWompiMerchant(publicKey);
+  return Boolean(merchant?.active);
+}
+
+/** Checkout hospedado Wompi (no requiere firma de integridad en el cliente). */
+async function wompiPrivateGet(path) {
+  const privateKey = cleanWompiSecret(process.env.WOMPI_PRIVATE_KEY);
+  if (!privateKey) {
+    throw new Error('WOMPI_PRIVATE_KEY no configurada');
+  }
+  const baseUrl = wompiBaseUrl();
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: { Authorization: `Bearer ${privateKey}` },
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Wompi API ${path}: ${response.status} ${body}`);
+  }
+  const json = await response.json();
+  return json?.data ?? null;
+}
+
+/** Consulta transacción por id (redirect ?id=… o verificación servidor). */
+async function getWompiTransaction(transactionId) {
+  const id = String(transactionId || '').trim();
+  if (!id) return null;
+  return wompiPrivateGet(`/transactions/${encodeURIComponent(id)}`);
+}
+
+async function createPaymentLink(input) {
+  const privateKey = cleanWompiSecret(process.env.WOMPI_PRIVATE_KEY);
+  if (!privateKey) {
+    throw new Error('WOMPI_PRIVATE_KEY no configurada');
+  }
+  const sku = String(input.reference || '').trim().slice(0, 36);
+  const baseUrl = wompiBaseUrl();
+  const response = await fetch(`${baseUrl}/payment_links`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${privateKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: input.name,
+      description: input.description || `Recarga LiveBoom — ${input.name}`,
+      single_use: true,
+      collect_shipping: false,
+      currency: 'COP',
+      amount_in_cents: input.amountInCents,
+      redirect_url: wompiRedirectUrl(),
+      sku: sku || undefined,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Wompi payment link failed: ${response.status} ${body}`);
+  }
+  const json = await response.json();
+  const id = json?.data?.id;
+  if (!id) {
+    throw new Error('Wompi no devolvió id del link de pago');
+  }
+  const checkoutBase = baseUrl.includes('sandbox')
+    ? 'https://checkout.wompi.co/l'
+    : 'https://checkout.wompi.co/l';
+  return { id: String(id), url: `${checkoutBase}/${id}` };
 }
 
 module.exports = {
@@ -137,6 +238,13 @@ module.exports = {
   computeOfficialEventChecksum,
   verifyWompiChecksum,
   createWidgetIntegritySignature,
+  createWompiReference,
   cleanWompiSecret,
   assertIntegrityPair,
+  createPaymentLink,
+  getWompiTransaction,
+  getWompiMerchant,
+  isWompiMerchantActive,
+  wompiBaseUrl,
+  wompiRedirectUrl,
 };

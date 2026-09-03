@@ -193,6 +193,9 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
   if (!catalog) {
     throw new Error('Regalo no válido');
   }
+  if (catalog.liveOnly && !input.roomName) {
+    throw new Error('Este filtro AR solo se puede usar en LIVE');
+  }
 
   const mult = [1, 2, 4, 8].includes(input.multiplier ?? 1) ? (input.multiplier as 1 | 2 | 4 | 8) : 1;
   const totalCoins = catalog.coins * mult;

@@ -16,6 +16,8 @@ import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { PostPhotoViewer } from './PostPhotoViewer';
+import { PostMediaCarousel } from './PostMediaCarousel';
+import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 import { PostReactionButtons } from './PostReactionButtons';
@@ -191,6 +193,10 @@ export type SocialPost = {
   type: 'photo' | 'video' | 'text';
   caption: string | null;
   mediaUrl: string | null;
+  mediaUrls?: string[];
+  mediaWidth?: number;
+  mediaHeight?: number;
+  thumbUrl?: string | null;
   visibility?: 'public' | 'friends' | 'private' | 'circle';
   createdAt: string;
   likes: number;
@@ -200,6 +206,60 @@ export type SocialPost = {
   durationSec?: number | null;
   reelFeedUntilMs?: number | null;
 };
+
+/** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
+export function TextNoteBody({
+  caption,
+  className = '',
+}: {
+  caption?: string | null;
+  className?: string;
+}) {
+  const text = String(caption || '').trim();
+  const [expanded, setExpanded] = useState(false);
+  const long = text.length > 160 || text.split('\n').length > 4;
+
+  if (!text) {
+    return (
+      <div className={`px-3.5 py-5 text-sm text-zinc-500 sm:px-4 ${className}`}>
+        Sin texto
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 px-3.5 py-4 sm:px-5 sm:py-5 ${className}`}
+    >
+      <div
+        className={`text-sm leading-relaxed text-white sm:text-[15px] ${
+          expanded || !long ? '' : 'line-clamp-5'
+        }`}
+      >
+        <EmojiText text={text} size={POST_EMOJI_SIZE} />
+      </div>
+      {long ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-3 inline-flex min-h-10 items-center rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-cyan-200 hover:bg-white/15"
+        >
+          {expanded ? 'Ver menos' : 'Desplegar'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function isTextOnlyPost(post: {
+  type?: string | null;
+  mediaUrl?: string | null;
+  mediaUrls?: string[] | null;
+}): boolean {
+  if (post.type === 'text') return true;
+  if (post.type === 'photo' || post.type === 'video') return false;
+  return !post.mediaUrl && !(post.mediaUrls && post.mediaUrls.length > 0);
+}
 
 export function PostCard({
   post,
@@ -295,7 +355,19 @@ export function PostCard({
               : 'Privado'}
         </p>
       ) : null}
-      {post.type === 'photo' && post.mediaUrl ? (
+      {post.type === 'photo' && postPhotoUrls(post).length > 1 ? (
+        <PostMediaCarousel
+          sources={postPhotoUrls(post)}
+          caption={post.caption}
+          postId={post.id}
+          authorUsername={post.authorUsername}
+          authorUid={post.authorUid}
+          startExpanded={startPhotoExpanded}
+          onCloseExpand={onClosePhotoExpand}
+          onExpandChange={setMediaExpanded}
+        />
+      ) : null}
+      {post.type === 'photo' && post.mediaUrl && postPhotoUrls(post).length <= 1 ? (
         <PostPhotoViewer
           src={post.mediaUrl}
           caption={post.caption}
@@ -332,10 +404,8 @@ export function PostCard({
           onExpandChange={setMediaExpanded}
         />
       ) : null}
-      {post.type === 'text' ? (
-        <div className="min-h-[120px] bg-gradient-to-br from-zinc-900 to-zinc-950 p-4">
-          <EmojiText text={post.caption || ''} className="text-sm text-white" size={POST_EMOJI_SIZE} />
-        </div>
+      {post.type === 'text' || isTextOnlyPost(post) ? (
+        <TextNoteBody caption={post.caption} />
       ) : post.caption && post.type !== 'photo' && post.type !== 'video' ? (
         <p className="border-t border-white/5 px-3 py-2 text-sm text-zinc-300">
           <EmojiText text={post.caption} size={POST_EMOJI_SIZE} />

@@ -19,7 +19,9 @@ import {
   type CoinPackageId,
 } from '../lib/coinPackages';
 import { api } from '../lib/api';
+import { setFirestoreCoins } from '../lib/profileFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
+import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { useAuthStore } from '../store/authStore';
 
@@ -77,6 +79,45 @@ export function WalletView() {
 
   useEffect(() => {
     if (profile) void refreshWithdrawals();
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const transactionId = params.get('id');
+    if (!transactionId || !profile) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const paid = await api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-redirect', {
+          method: 'POST',
+          body: JSON.stringify({ transactionId }),
+        });
+        if (cancelled) return;
+        const store = useAuthStore.getState();
+        const fromApi = Number(paid.coinsBalance);
+        if (Number.isFinite(fromApi)) {
+          store.setCoins(fromApi);
+          const uid = store.profile?.firebaseUid;
+          if (uid) {
+            void setFirestoreCoins(uid, fromApi).catch(() => undefined);
+          }
+        }
+        await store.syncProfile();
+      } catch {
+        /* webhook puede acreditar después */
+      } finally {
+        if (!cancelled) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('id');
+          window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [profile?.firebaseUid]);
 
   const balance = profile?.coinsBalance ?? 0;
@@ -278,26 +319,7 @@ export function WalletView() {
             <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">
               Métodos de pago aceptados
             </h2>
-            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#14151c] px-4 py-3.5">
-              {(
-                [
-                  { label: 'VISA', className: 'font-black tracking-widest text-white' },
-                  { label: 'Mastercard', className: 'font-bold text-orange-400' },
-                  { label: 'Nequi', className: 'font-bold text-violet-300' },
-                  { label: 'Daviplata', className: 'font-bold text-red-400' },
-                  { label: 'Mercado Pago', className: 'font-bold text-sky-400' },
-                  { label: 'PayPal', className: 'font-bold text-blue-300' },
-                ] as const
-              ).map((m) => (
-                <span
-                  key={m.label}
-                  className={`rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] ${m.className}`}
-                >
-                  {m.label}
-                </span>
-              ))}
-              <span className="text-[11px] text-zinc-500">… y más</span>
-            </div>
+            <PaymentMethodsStrip />
             <p className="mt-2 text-[11px] text-zinc-600">
               Pagos procesados de forma segura con Wompi (PSE, tarjetas y billeteras).
             </p>
