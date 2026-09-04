@@ -1503,3 +1503,145 @@ body {
   height: 1.35rem;
 }
 
+/* Inicio → Publicaciones: único CTA destacado de crear. */
+.lb-new-post-btn {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  min-height: 2.75rem;
+  max-width: min(100%, 16rem);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  padding: 0.4rem 0.95rem;
+  background:
+    linear-gradient(#0c0c12, #0c0c12) padding-box,
+    linear-gradient(90deg, #ec4899 0%, #8b5cf6 48%, #22d3ee 100%) border-box;
+  color: #fff;
+  font-size: clamp(0.68rem, 2.4vw, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow:
+    0 0 10px rgba(236, 72, 153, 0.28),
+    0 0 16px rgba(139, 92, 246, 0.18),
+    0 0 14px rgba(34, 211, 238, 0.16);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.lb-new-post-btn__shine {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.lb-new-post-btn__shine::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  left: -55%;
+  width: 42%;
+  height: 180%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 42%,
+    rgba(255, 255, 255, 0.38) 50%,
+    rgba(255, 255, 255, 0.08) 58%,
+    transparent 100%
+  );
+  transform: translateX(0) rotate(12deg);
+  animation: lb-new-post-shine 4.8s ease-in-out infinite;
+}
+
+.lb-new-post-btn::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  right: 12%;
+  bottom: 8%;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0%, rgba(34, 211, 238, 0.35) 55%, transparent 70%);
+  filter: blur(0.3px);
+  opacity: 0.7;
+  animation: lb-new-post-spark 3.6s ease-in-out infinite;
+}
+
+.lb-new-post-btn > svg,
+.lb-new-post-btn > span:not(.lb-new-post-btn__shine) {
+  position: relative;
+  z-index: 1;
+}
+
+.lb-new-post-btn:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lb-new-post-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+    box-shadow:
+      0 0 14px rgba(236, 72, 153, 0.4),
+      0 0 22px rgba(139, 92, 246, 0.26),
+      0 0 18px rgba(34, 211, 238, 0.22);
+  }
+
+  .lb-new-post-btn:focus-visible {
+    outline: 2px solid rgba(34, 211, 238, 0.7);
+    outline-offset: 2px;
+  }
+}
+
+@keyframes lb-new-post-shine {
+  0% {
+    transform: translateX(0) rotate(12deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  38% {
+    transform: translateX(420%) rotate(12deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(420%) rotate(12deg);
+    opacity: 0;
+  }
+}
+
+@keyframes lb-new-post-spark {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-new-post-btn,
+  .lb-new-post-btn__shine::before,
+  .lb-new-post-btn::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+

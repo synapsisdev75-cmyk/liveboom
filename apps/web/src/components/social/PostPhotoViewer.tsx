@@ -19,6 +19,8 @@ import { PostComments } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
 import { PublicationCaptionOverlay } from './PublicationCaption';
 import { StorySegmentBar } from './StorySegmentBar';
+import { MediaOverlayLayer } from './MediaOverlayLayer';
+import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 import { STORY_PHOTO_DURATION_SEC } from '../../lib/storyLifecycle';
 import {
   classifyStoryGesture,
@@ -63,6 +65,7 @@ type Props = {
   repostByUsername?: string | null;
   originalUsername?: string | null;
   originalHref?: string | null;
+  overlays?: MediaOverlayItem[];
 };
 
 /**
@@ -91,6 +94,7 @@ export function PostPhotoViewer({
   repostByUsername = null,
   originalUsername = null,
   originalHref = null,
+  overlays = [],
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const isDesktop = useIsDesktop();
@@ -323,7 +327,9 @@ export function PostPhotoViewer({
               : undefined
           }
           mediaOverlay={
-            storyMode && navigation && !commentsOpen ? (
+            <>
+              <MediaOverlayLayer overlays={overlays} />
+              {storyMode && navigation && !commentsOpen ? (
               <>
                 <button
                   type="button"
@@ -346,7 +352,8 @@ export function PostPhotoViewer({
                   }}
                 />
               </>
-            ) : null
+            ) : null}
+            </>
           }
           sideChrome={
             postId ? (
@@ -525,19 +532,22 @@ export function PostPhotoViewer({
               </>
             }
           >
-            <img
-              src={src}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="lb-post-media__img h-full w-full object-contain"
-              onLoad={(event) => {
-                const img = event.currentTarget;
-                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                  setMediaSize({ width: img.naturalWidth, height: img.naturalHeight });
-                }
-              }}
-            />
+            <div className="relative h-full w-full">
+              <img
+                src={src}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="lb-post-media__img h-full w-full object-contain"
+                onLoad={(event) => {
+                  const img = event.currentTarget;
+                  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    setMediaSize({ width: img.naturalWidth, height: img.naturalHeight });
+                  }
+                }}
+              />
+              <MediaOverlayLayer overlays={overlays} />
+            </div>
           </PublicationMedia>
         </button>
       ) : null}

@@ -37,6 +37,11 @@ import {
   type UserMediaStorageKind,
 } from './storage';
 import { readVideoSizeAndPortraitPoster } from './videoPoster';
+import {
+  parseMediaOverlays,
+  serializeMediaOverlays,
+  type MediaOverlayItem,
+} from './mediaOverlays';
 
 export type FriendshipStatus =
   | 'none'
@@ -130,6 +135,8 @@ export type FsPost = {
   sharedFromPostId?: string;
   sharedFromAuthorUid?: string;
   sharedFromUsername?: string;
+  /** Stickers/GIF sobre la foto o el video (Publicación, Boom Clip, Flash Boom). */
+  overlays?: MediaOverlayItem[];
 };
 
 type MeProfile = {
@@ -1096,6 +1103,7 @@ export async function sendChatMessage(
 }
 
 function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
+  const overlays = parseMediaOverlays(data.overlays);
   return {
     id,
     authorUid: String(data.authorUid || ''),
@@ -1123,6 +1131,7 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     sharedFromPostId: String(data.sharedFromPostId || '').trim() || undefined,
     sharedFromAuthorUid: String(data.sharedFromAuthorUid || '').trim() || undefined,
     sharedFromUsername: String(data.sharedFromUsername || '').trim() || undefined,
+    ...(overlays.length ? { overlays } : {}),
   };
 }
 
@@ -1834,6 +1843,7 @@ export async function createPost(input: {
   notifyFriends?: boolean;
   musicTrackId?: string;
   musicStartSec?: number;
+  overlays?: MediaOverlayItem[];
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -1942,6 +1952,7 @@ export async function createPost(input: {
     }
   }
 
+  const overlayPayload = serializeMediaOverlays(input.overlays || []);
   const ref = await addDoc(collection(db, 'posts'), {
     authorUid: input.authorUid,
     username: input.username.toLowerCase(),
@@ -1979,6 +1990,7 @@ export async function createPost(input: {
           ...(input.musicStartSec != null ? { musicStartSec: input.musicStartSec } : {}),
         }
       : {}),
+    ...(overlayPayload.length ? { overlays: overlayPayload } : {}),
   });
   if (visibility === 'public' && input.caption.trim()) {
     void import('./trendsFirestore')

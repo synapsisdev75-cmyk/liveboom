@@ -212,6 +212,7 @@ function OriginalPostEmbed({
               mediaHeight={origin.mediaHeight}
               posterUrl={origin.thumbUrl}
               publicationCaption
+              overlays={origin.overlays}
             />
           ) : postPhotoUrls(origin).length > 1 ? (
             <PostMediaCarousel
@@ -220,6 +221,7 @@ function OriginalPostEmbed({
               postId={origin.id}
               authorUsername={origin.username}
               authorUid={origin.authorUid}
+              overlays={origin.overlays}
             />
           ) : origin.mediaUrl && origin.type === 'photo' ? (
             <PostPhotoViewer
@@ -231,6 +233,7 @@ function OriginalPostEmbed({
               mediaWidth={origin.mediaWidth}
               mediaHeight={origin.mediaHeight}
               publicationCaption
+              overlays={origin.overlays}
             />
           ) : origin.caption ? (
             <Link to={href || '#'} className="block px-3 pb-2 text-sm leading-relaxed text-zinc-200">

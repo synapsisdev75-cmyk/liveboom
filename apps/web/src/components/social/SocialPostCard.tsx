@@ -18,6 +18,7 @@ import { ShareContentButton } from './ShareContentButton';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { PostPhotoViewer } from './PostPhotoViewer';
 import { PostMediaCarousel } from './PostMediaCarousel';
+import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
@@ -213,6 +214,7 @@ export type SocialPost = {
   sharedFromPostId?: string;
   sharedFromAuthorUid?: string;
   sharedFromUsername?: string;
+  overlays?: MediaOverlayItem[];
 };
 
 /** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
@@ -464,6 +466,7 @@ function StandardPostCard({
           startExpanded={startPhotoExpanded}
           onCloseExpand={onClosePhotoExpand}
           onExpandChange={setMediaExpanded}
+          overlays={post.overlays}
         />
       ) : null}
       {post.type === 'photo' && post.mediaUrl && postPhotoUrls(post).length <= 1 ? (
@@ -477,6 +480,7 @@ function StandardPostCard({
           onCloseExpand={onClosePhotoExpand}
           onExpandChange={setMediaExpanded}
           publicationCaption
+          overlays={post.overlays}
         />
       ) : null}
       {post.type === 'video' && post.mediaUrl ? (
@@ -503,6 +507,7 @@ function StandardPostCard({
           onCloseExpand={onCloseVideoExpand}
           onExpandChange={setMediaExpanded}
           publicationCaption
+          overlays={post.overlays}
         />
       ) : null}
       {post.type === 'text' || isTextOnlyPost(post) ? (

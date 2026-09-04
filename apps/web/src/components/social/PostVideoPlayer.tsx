@@ -50,6 +50,8 @@ import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { MediaOverlayLayer } from './MediaOverlayLayer';
+import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 
 type Visibility = 'public' | 'friends' | 'private' | 'circle';
 
@@ -121,6 +123,7 @@ type Props = {
   repostByUsername?: string | null;
   originalUsername?: string | null;
   originalHref?: string | null;
+  overlays?: MediaOverlayItem[];
 };
 
 const SEEK_STEP_SEC = 10;
@@ -167,6 +170,7 @@ export function PostVideoPlayer({
   repostByUsername = null,
   originalUsername = null,
   originalHref = null,
+  overlays = [],
 }: Props) {
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
@@ -658,7 +662,9 @@ export function PostVideoPlayer({
           onSwipeEnd={handleSwipeEnd}
           onWheel={reelNavigation ? handleWheelNavigate : undefined}
           mediaOverlay={
-            itemSideNav && reelNavigation && !storyHeld ? (
+            <>
+              <MediaOverlayLayer overlays={overlays} />
+              {itemSideNav && reelNavigation && !storyHeld ? (
               <>
                 <button
                   type="button"
@@ -771,7 +777,8 @@ export function PostVideoPlayer({
                   </>
                 ) : null}
               </>
-            )
+            )}
+            </>
           }
           sideChrome={
             <PostActionRail
@@ -1056,7 +1063,10 @@ export function PostVideoPlayer({
                   </>
                 }
               >
-                {videoNode}
+                <div className="relative h-full w-full">
+                  {videoNode}
+                  <MediaOverlayLayer overlays={overlays} />
+                </div>
               </PublicationMedia>
             ) : null}
           </div>

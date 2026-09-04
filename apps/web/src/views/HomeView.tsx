@@ -6,12 +6,14 @@ import {
   MapPin,
   MessageCircle,
   Play,
+  Plus,
   Search,
 } from 'lucide-react';
 import { FlashBoomRow } from '../components/feed/FlashBoomRow';
+import { CreatePostModal } from '../components/social/CreatePostModal';
 import { LiveAvatarRow } from '../components/feed/LiveAvatarRow';
 import { TopLivesRail } from '../components/feed/TopLivesRail';
-import { ReelFeedViewer } from '../components/feed/ReelFeedViewer';
+import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { ReelsRow } from '../components/feed/ReelsRow';
 import { CategoryChips } from '../components/search/CategoryChips';
 import { BoomLikeButton } from '../components/social/BoomButtons';
@@ -91,6 +93,7 @@ function toSocial(post: FsPost): SocialPost {
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
+    overlays: post.overlays,
   };
 }
 
@@ -255,6 +258,7 @@ function HomePublicationCard({
             mediaHeight={post.mediaHeight}
             posterUrl={post.thumbUrl}
             publicationCaption
+            overlays={post.overlays}
           />
         </div>
       ) : postPhotoUrls(post).length > 1 ? (
@@ -265,6 +269,7 @@ function HomePublicationCard({
             postId={post.id}
             authorUsername={post.authorUsername}
             authorUid={post.authorUid}
+            overlays={post.overlays}
           />
         </div>
       ) : post.mediaUrl && post.type === 'photo' ? (
@@ -278,6 +283,7 @@ function HomePublicationCard({
             mediaWidth={post.mediaWidth}
             mediaHeight={post.mediaHeight}
             publicationCaption
+            overlays={post.overlays}
           />
         </div>
       ) : post.caption ? (
@@ -387,15 +393,9 @@ export function HomeView() {
   const [tab, setTab] = useState<FeedTab>('para_ti');
   const [regionLabel, setRegionLabel] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [createPublicationOpen, setCreatePublicationOpen] = useState(false);
   const [flashViewer, setFlashViewer] = useState<{
-    reels: Array<{
-      id: string;
-      username: string;
-      authorUid: string;
-      caption: string;
-      mediaUrl: string;
-      mediaType?: 'photo' | 'video';
-    }>;
+    reels: ReelFeedItem[];
     index: number;
     storyMode: boolean;
   } | null>(null);
@@ -412,6 +412,7 @@ export function HomeView() {
       sharedFromPostId: post.sharedFromPostId,
       sharedFromAuthorUid: post.sharedFromAuthorUid,
       sharedFromUsername: post.sharedFromUsername,
+      overlays: post.overlays,
     };
   }
 
@@ -780,11 +781,24 @@ export function HomeView() {
 
       {/* 5. Publicaciones — feed (no Boom Clip) */}
       <section className="space-y-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">Publicaciones</h2>
-          <p className="mt-0.5 text-[10px] text-zinc-500">
-            Fotos, texto y videos largos · feed social
-          </p>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">Publicaciones</h2>
+            <p className="mt-0.5 text-[10px] text-zinc-500">
+              Fotos, texto y videos largos · feed social
+            </p>
+          </div>
+          {profile ? (
+            <button
+              type="button"
+              onClick={() => setCreatePublicationOpen(true)}
+              className="lb-new-post-btn"
+            >
+              <span className="lb-new-post-btn__shine" aria-hidden />
+              <Plus size={14} strokeWidth={2.75} />
+              <span>Nueva publicación</span>
+            </button>
+          ) : null}
         </div>
         <div className="min-w-0">
           {!profile ? (
@@ -845,6 +859,21 @@ export function HomeView() {
           immersiveLandscapeLayout={flashViewer.storyMode}
           collapsibleCaption
           onClose={() => setFlashViewer(null)}
+        />
+      ) : null}
+
+      {createPublicationOpen && profile ? (
+        <CreatePostModal
+          username={profile.handle}
+          autoOpen
+          hideTrigger
+          onClose={() => setCreatePublicationOpen(false)}
+          onCreated={(post) => {
+            setCreatePublicationOpen(false);
+            if (!isPublicationPost(post)) return;
+            setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+            setVisibleIds((prev) => [post.id, ...prev.filter((id) => id !== post.id)]);
+          }}
         />
       ) : null}
     </div>

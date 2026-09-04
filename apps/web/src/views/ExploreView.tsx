@@ -70,6 +70,7 @@ function toReelItem(post: FsPost): ReelFeedItem {
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
+    overlays: post.overlays,
   };
 }
 

@@ -35,6 +35,7 @@ function toReel(post: FsPost, avatarUrl?: string | null): ReelItem {
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
+    overlays: post.overlays,
   };
 }
 
@@ -250,7 +251,6 @@ export function ReelsRow({
   const [viewerIndex, setViewerIndex] = useState(0);
   const [viewerStoryMode, setViewerStoryMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const showUpload = mode === 'reels' && Boolean(profile);
 
   useEffect(() => {
     if (!profile) {
@@ -331,33 +331,13 @@ export function ReelsRow({
     setViewerStoryMode(true);
   }
 
-  const hasAnyClips = clipGroups.length > 0;
   const legacyFlat = mode === 'stories';
 
   return (
     <section className="w-full">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">{sectionTitle}</h2>
-          {sectionSubtitle ? <p className="mt-0.5 text-[10px] text-zinc-500">{sectionSubtitle}</p> : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {showUpload ? (
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="shrink-0 text-[11px] font-semibold text-cyan-400 hover:underline"
-            >
-              + Clip
-            </button>
-          ) : null}
-          <Link
-            to={mode === 'reels' ? '/explorar?tipo=boom_clip' : '/explorar'}
-            className="text-[12px] font-semibold text-[#22d3ee] transition hover:text-cyan-200"
-          >
-            Ver todos &gt;
-          </Link>
-        </div>
+      <div className="mb-3">
+        <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">{sectionTitle}</h2>
+        {sectionSubtitle ? <p className="mt-0.5 text-[10px] text-zinc-500">{sectionSubtitle}</p> : null}
       </div>
 
       {!profile ? (
@@ -367,21 +347,6 @@ export function ReelsRow({
           </Link>{' '}
           para ver {mode === 'stories' ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}.
         </p>
-      ) : !hasAnyClips && !legacyFlat ? (
-        <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center">
-          <p className="text-sm text-zinc-500">
-            Aún no hay {BOOM_CLIP_LABEL}. Sé el primero en publicar uno.
-          </p>
-          {showUpload ? (
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="mt-4 text-sm font-semibold text-cyan-400 hover:underline"
-            >
-              + Clip
-            </button>
-          ) : null}
-        </div>
       ) : legacyFlat ? (
         reels.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center">

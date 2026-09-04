@@ -16,6 +16,7 @@ import {
 import { PostPhotoViewer } from '../social/PostPhotoViewer';
 import { PostVideoPlayer } from '../social/PostVideoPlayer';
 import { originalPostPath } from '../social/RepostPostCard';
+import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 
 export type ReelFeedItem = {
   id: string;
@@ -33,6 +34,7 @@ export type ReelFeedItem = {
   sharedFromPostId?: string | null;
   sharedFromAuthorUid?: string | null;
   sharedFromUsername?: string | null;
+  overlays?: MediaOverlayItem[];
 };
 
 type Props = {
@@ -263,6 +265,7 @@ export function ReelFeedViewer({
           repostByUsername={isRepost ? reel.username : null}
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
+          overlays={reel.overlays}
         />
       ) : (
         <PostVideoPlayer
@@ -298,6 +301,7 @@ export function ReelFeedViewer({
           repostByUsername={isRepost ? reel.username : null}
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
+          overlays={reel.overlays}
         />
       )}
       {storyMode && !embedded ? (

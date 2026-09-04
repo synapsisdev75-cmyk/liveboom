@@ -8,6 +8,8 @@ import { PostActionRail } from './PostActionRail';
 import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
+import { MediaOverlayLayer } from './MediaOverlayLayer';
+import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 import { ShareContentButton } from './ShareContentButton';
 import { PublicationCaptionOverlay } from './PublicationCaption';
 import { buildPostShareUrl } from '../../lib/shareContent';
@@ -29,6 +31,7 @@ type Props = {
   startExpanded?: boolean;
   onCloseExpand?: () => void;
   onExpandChange?: (expanded: boolean) => void;
+  overlays?: MediaOverlayItem[];
 };
 
 function loadImageSize(src: string): Promise<{ width: number; height: number }> {
@@ -60,6 +63,7 @@ export function PostMediaCarousel({
   startExpanded = false,
   onCloseExpand,
   onExpandChange,
+  overlays = [],
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const isDesktop = useIsDesktop();
@@ -273,6 +277,7 @@ export function PostMediaCarousel({
             }`}
           />
         ))}
+        <MediaOverlayLayer overlays={overlays.filter((item) => (item.mediaIndex ?? 0) === index)} />
       </div>
     </PublicationMedia>
   );
@@ -338,7 +343,9 @@ export function PostMediaCarousel({
                 ) : null
               }
               mediaOverlay={
-                total > 1 ? (
+                <>
+                  <MediaOverlayLayer overlays={overlays.filter((item) => (item.mediaIndex ?? 0) === index)} />
+                  {total > 1 ? (
                   <>
                     {index > 0 ? (
                       <button
@@ -367,7 +374,8 @@ export function PostMediaCarousel({
                       </button>
                     ) : null}
                   </>
-                ) : null
+                ) : null}
+                </>
               }
             >
               <div className="relative h-full w-full">

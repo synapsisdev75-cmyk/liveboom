@@ -1,4 +1,4 @@
-import { Bell, Camera, Globe, Image, Lock, Music2, Paperclip, PenLine, Users, Video, X, Zap } from 'lucide-react';
+import { Bell, Camera, ChevronLeft, ChevronRight, Globe, Image, Lock, Music2, Paperclip, PenLine, Smile, Users, Video, Wand2, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
@@ -8,7 +8,6 @@ import { storyLifecycleHint, STORY_MAX_DURATION_SEC } from '../../lib/storyLifec
 import { readVideoDurationSec } from '../../lib/videoDuration';
 import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
 import { BOOM_CLIP_MAX_DURATION_SEC } from '../../lib/videoTrim';
-import { useVideoAspect } from '../../lib/videoAspect';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { isVideoFile, mediaKindFromFile } from '../../lib/mediaFile';
 import { useAuthStore } from '../../store/authStore';
@@ -17,9 +16,19 @@ import { EmojiInput } from './EmojiInput';
 import { VideoTrimEditor } from './VideoTrimEditor';
 import { MusicPickerModal } from './MusicPickerModal';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
-import { findMusicTrack, type SelectedMusicClip } from '../../lib/musicLibrary';
+import type { SelectedMusicClip } from '../../lib/musicLibrary';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import type { SocialPost } from './SocialPostCard';
+import { MediaOverlayLayer } from './MediaOverlayLayer';
+import { GifPickerSheet } from './GifPickerSheet';
+import { StickerPickerSheet } from './StickerPickerSheet';
+import {
+  canAddOverlay,
+  newOverlayId,
+  type MediaOverlayItem,
+} from '../../lib/mediaOverlays';
+import type { ComposerGif } from '../../lib/composerGifs';
+import type { ComposerSticker } from '../../lib/composerStickers';
 
 type Props = {
   username: string;
@@ -74,6 +83,9 @@ export function CreatePostModal({
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [albumUrls, setAlbumUrls] = useState<string[]>([]);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [editMenuOpen, setEditMenuOpen] = useState(false);
   const videoDurationSecRef = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,23 +100,28 @@ export function CreatePostModal({
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [selectedMusic, setSelectedMusic] = useState<SelectedMusicClip | null>(null);
+  const [overlays, setOverlays] = useState<MediaOverlayItem[]>([]);
+  const [gifAttach, setGifAttach] = useState<ComposerGif | null>(null);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
   const galleryPhotoRef = useRef<HTMLInputElement>(null);
   const galleryVideoRef = useRef<HTMLInputElement>(null);
-  const cameraPhotoRef = useRef<HTMLInputElement>(null);
-  const cameraVideoRef = useRef<HTMLInputElement>(null);
+  const galleryMixedRef = useRef<HTMLInputElement>(null);
   const mediaMenuRef = useRef<HTMLDivElement>(null);
-  const previewAspect = useVideoAspect(kind === 'video' ? previewUrl : null);
 
   function closeModal() {
     if (!isInline) setOpen(false);
     onClose?.();
   }
 
+  const albumUrlsRef = useRef<string[]>([]);
+  albumUrlsRef.current = albumUrls;
+
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      for (const url of albumUrlsRef.current) URL.revokeObjectURL(url);
     };
-  }, [previewUrl]);
+  }, []);
 
   useEffect(() => {
     if (autoOpen) setOpen(true);
@@ -141,9 +158,16 @@ export function CreatePostModal({
 
   function reset() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    for (const url of albumUrls) {
+      if (url !== previewUrl) URL.revokeObjectURL(url);
+    }
     setCaption('');
     setMediaFile(null);
+    setMediaFiles([]);
     setPreviewUrl(null);
+    setAlbumUrls([]);
+    setPreviewIndex(0);
+    setEditMenuOpen(false);
     videoDurationSecRef.current = 0;
     setError(null);
     setVisibility('public');
@@ -154,6 +178,10 @@ export function CreatePostModal({
     setTrimDraft(null);
     setSelectedMusic(null);
     setMusicPickerOpen(false);
+    setOverlays([]);
+    setGifAttach(null);
+    setGifPickerOpen(false);
+    setStickerPickerOpen(false);
   }
 
   function switchTab(tab: ComposeTab) {
@@ -170,14 +198,26 @@ export function CreatePostModal({
       // Boom Clip = solo video; si había foto, limpiar
       if (mediaFile && mediaKindFromFile(mediaFile) === 'photo') {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
+        for (const url of albumUrls) {
+          if (url !== previewUrl) URL.revokeObjectURL(url);
+        }
         setMediaFile(null);
+        setMediaFiles([]);
+        setAlbumUrls([]);
+        setPreviewIndex(0);
         setPreviewUrl(null);
         videoDurationSecRef.current = 0;
       }
     } else if (tab === 'publication') {
       if (kind === 'video') {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
+        for (const url of albumUrls) {
+          if (url !== previewUrl) URL.revokeObjectURL(url);
+        }
         setMediaFile(null);
+        setMediaFiles([]);
+        setAlbumUrls([]);
+        setPreviewIndex(0);
         setPreviewUrl(null);
         videoDurationSecRef.current = 0;
         setKind('text');
@@ -187,9 +227,36 @@ export function CreatePostModal({
 
   function applyMediaFile(file: File, forcedKind?: PostKind, durationSec = 0) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    for (const url of albumUrls) {
+      if (url !== previewUrl) URL.revokeObjectURL(url);
+    }
+    if (gifAttach) {
+      const attached = gifAttach;
+      setOverlays((current) =>
+        canAddOverlay(current)
+          ? [
+              ...current,
+              {
+                id: newOverlayId(),
+                kind: 'gif',
+                src: attached.url,
+                x: 0.5,
+                y: 0.5,
+                scale: 1,
+                rotation: 0,
+              },
+            ]
+          : current,
+      );
+      setGifAttach(null);
+    }
     setMediaFiles([]);
     setMediaFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    const nextUrl = URL.createObjectURL(file);
+    setAlbumUrls([nextUrl]);
+    setPreviewIndex(0);
+    setPreviewUrl(nextUrl);
+    setEditMenuOpen(false);
     videoDurationSecRef.current = durationSec > 0 ? durationSec : 0;
 
     const detected = mediaKindFromFile(file);
@@ -274,11 +341,38 @@ export function CreatePostModal({
       return;
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    for (const url of albumUrls) {
+      if (url !== previewUrl) URL.revokeObjectURL(url);
+    }
     const first = picked[0];
     if (!first) return;
+    if (gifAttach) {
+      const attached = gifAttach;
+      setOverlays((current) =>
+        canAddOverlay(current)
+          ? [
+              ...current,
+              {
+                id: newOverlayId(),
+                kind: 'gif',
+                src: attached.url,
+                x: 0.5,
+                y: 0.5,
+                scale: 1,
+                rotation: 0,
+              },
+            ]
+          : current,
+      );
+      setGifAttach(null);
+    }
     setMediaFiles(picked);
     setMediaFile(first);
-    setPreviewUrl(URL.createObjectURL(first));
+    const urls = picked.map((file) => URL.createObjectURL(file));
+    setAlbumUrls(urls);
+    setPreviewIndex(0);
+    setPreviewUrl(urls[0] ?? null);
+    setEditMenuOpen(false);
     setKind('photo');
     videoDurationSecRef.current = 0;
     if (composeTab === 'boomclip' || composeTab === 'flashboom') {
@@ -295,6 +389,15 @@ export function CreatePostModal({
     void onFileChange(files[0] || null, 'photo');
   }
 
+  function onGalleryMediaChange(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (composeTab === 'publication' && files.length > 1) {
+      void onMultiPhotoChange(files);
+      return;
+    }
+    void onFileChange(files[0] || null);
+  }
+
   function cancelTrim() {
     if (trimDraft?.url) URL.revokeObjectURL(trimDraft.url);
     setTrimDraft(null);
@@ -306,9 +409,16 @@ export function CreatePostModal({
     applyMediaFile(file);
   }
 
-  function openGallery(mode: 'photo' | 'video') {
+  function openGallery(mode: 'photo' | 'video' | 'any' = 'any') {
     setError(null);
     setMediaMenuOpen(false);
+    if (mode === 'any') {
+      const target = galleryMixedRef.current;
+      if (!target) return;
+      target.value = '';
+      target.click();
+      return;
+    }
     if (mode === 'video') {
       setKind('video');
     } else {
@@ -326,35 +436,122 @@ export function CreatePostModal({
     target.click();
   }
 
-  function openCamera(mode: 'photo' | 'video') {
+  function openCamera() {
     setError(null);
     setMediaMenuOpen(false);
-    if (mode === 'video') {
-      setKind('video');
-      if (composeTab === 'flashboom') {
-        setCameraCaptureOpen(true);
-        return;
-      }
-    } else {
-      setKind('photo');
-      if (composeTab === 'boomclip') {
-        setComposeTab('publication');
-        setError('Las fotos van como Publicación. Boom Clip es solo video (máx. 90 s).');
-      } else if (composeTab !== 'flashboom') {
-        setComposeTab('publication');
-      }
-    }
-    const target = mode === 'video' ? cameraVideoRef.current : cameraPhotoRef.current;
-    if (!target) {
-      setError('No se pudo abrir la cámara en este dispositivo.');
-      return;
-    }
-    target.value = '';
-    target.click();
+    setCameraCaptureOpen(true);
   }
 
   async function onCameraCapture(file: File, durationSec?: number) {
-    await onFileChange(file, 'video', durationSec);
+    const detected = mediaKindFromFile(file) || 'video';
+    await onFileChange(file, detected, durationSec);
+  }
+
+  const previewSrc = albumUrls[previewIndex] || previewUrl || gifAttach?.url || null;
+  const hasMediaCanvas = Boolean(previewSrc);
+  const slideCount = Math.max(albumUrls.length, previewSrc ? 1 : 0);
+  const slideOverlays = overlays.filter((item) => (item.mediaIndex ?? 0) === previewIndex);
+  const previewIsVideo = kind === 'video' && Boolean(previewUrl);
+
+  function addOverlay(item: Omit<MediaOverlayItem, 'id' | 'x' | 'y' | 'scale' | 'rotation'> & Partial<MediaOverlayItem>) {
+    if (!canAddOverlay(overlays)) {
+      setError('Máximo 8 stickers o GIF sobre el contenido.');
+      return;
+    }
+    setOverlays((current) => [
+      ...current,
+      {
+        id: newOverlayId(),
+        kind: item.kind,
+        src: item.src,
+        text: item.text,
+        x: item.x ?? 0.5,
+        y: item.y ?? 0.42 + current.length * 0.06,
+        scale: item.scale ?? 1,
+        rotation: item.rotation ?? 0,
+        mediaIndex: previewIndex,
+      },
+    ]);
+  }
+
+  function setSlideOverlays(next: MediaOverlayItem[]) {
+    setOverlays((current) => [
+      ...current.filter((item) => (item.mediaIndex ?? 0) !== previewIndex),
+      ...next.map((item) => ({ ...item, mediaIndex: previewIndex })),
+    ]);
+  }
+
+  function showSlide(index: number) {
+    const urls = albumUrls.length ? albumUrls : previewUrl ? [previewUrl] : [];
+    if (!urls.length) return;
+    const next = Math.max(0, Math.min(index, urls.length - 1));
+    setPreviewIndex(next);
+    setPreviewUrl(urls[next] ?? null);
+    const file = mediaFiles[next] || mediaFile;
+    if (file) {
+      setMediaFile(file);
+      const detected = mediaKindFromFile(file);
+      if (detected) setKind(detected);
+    }
+    setEditMenuOpen(false);
+  }
+
+  function startVideoTrim() {
+    if (!mediaFile || mediaKindFromFile(mediaFile) !== 'video') return;
+    setEditMenuOpen(false);
+    const maxSec =
+      composeTab === 'flashboom'
+        ? STORY_MAX_DURATION_SEC
+        : composeTab === 'boomclip'
+          ? MAX_CLIP_DURATION_SECONDS
+          : BOOM_CLIP_MAX_DURATION_SEC;
+    void readVideoDurationSec(mediaFile, maxSec)
+      .then((durationSec) => {
+        setTrimDraft({
+          file: mediaFile,
+          url: previewUrl || URL.createObjectURL(mediaFile),
+          durationSec: Math.max(1, durationSec),
+          maxDurationSec: maxSec,
+        });
+      })
+      .catch(() => {
+        setTrimDraft({
+          file: mediaFile,
+          url: previewUrl || URL.createObjectURL(mediaFile),
+          durationSec: 0,
+          maxDurationSec: maxSec,
+        });
+      });
+  }
+
+  function pickGif(gif: ComposerGif) {
+    setGifPickerOpen(false);
+    setError(null);
+    if (hasMediaCanvas) {
+      addOverlay({ kind: 'gif', src: gif.url });
+      return;
+    }
+    if (isMediaTab) {
+      setError(
+        `Adjunta un video para ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}. El GIF se puede poner encima.`,
+      );
+      return;
+    }
+    setGifAttach(gif);
+    setKind('photo');
+  }
+
+  function pickSticker(sticker: ComposerSticker) {
+    setStickerPickerOpen(false);
+    if (!hasMediaCanvas) {
+      setError('Adjunta una foto o video para colocar stickers.');
+      return;
+    }
+    addOverlay({
+      kind: sticker.kind === 'text' ? 'text' : 'sticker',
+      src: sticker.src,
+      text: sticker.text,
+    });
   }
 
   async function publish() {
@@ -367,7 +564,7 @@ export function CreatePostModal({
         setError(`Elige una foto o video para tu ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}.`);
         return;
       }
-    } else if (kind === 'photo' && !mediaFile && mediaFiles.length === 0) {
+    } else if (kind === 'photo' && !mediaFile && mediaFiles.length === 0 && !gifAttach) {
       setError('Elige una foto, un video o escribe un post de texto.');
       return;
     }
@@ -429,7 +626,7 @@ export function CreatePostModal({
         authorUid: profile.firebaseUid,
         username: profile.handle || username,
         authorDisplayName: profile.displayName,
-        type: publishKind,
+        type: publishKind === 'text' && gifAttach && !uploadFile ? 'photo' : publishKind,
         caption,
         mediaFile:
           publishKind === 'text' || (publishKind === 'photo' && mediaFiles.length > 1)
@@ -437,19 +634,21 @@ export function CreatePostModal({
             : uploadFile,
         mediaFiles:
           publishKind === 'photo' && mediaFiles.length > 1 ? mediaFiles : undefined,
+        mediaUrl: !uploadFile && gifAttach ? gifAttach.url : undefined,
         visibility: publishPostFormat === 'story' ? 'circle' : visibility,
         postFormat: publishPostFormat,
         durationSec,
         notifyFriends: visibility !== 'private' && notifyFriends && publishPostFormat !== 'story',
         musicTrackId: selectedMusic?.trackId,
         musicStartSec: selectedMusic?.startSec,
+        overlays,
       });
 
       onCreated({
         id: created.id,
         authorUid: profile.firebaseUid,
         authorUsername: profile.handle || username,
-        type: publishKind,
+        type: created.mediaUrl && publishKind === 'text' ? 'photo' : publishKind,
         caption: caption.trim().slice(0, captionMax ?? 2000) || null,
         mediaUrl: created.mediaUrl,
         visibility: created.visibility,
@@ -459,6 +658,7 @@ export function CreatePostModal({
         viewerReaction: null,
         postFormat: publishPostFormat || null,
         durationSec: durationSec || null,
+        overlays,
       });
       reset();
       closeModal();
@@ -500,20 +700,12 @@ export function CreatePostModal({
         onChange={(event) => void onFileChange(event.target.files?.[0] || null, 'video')}
       />
       <input
-        ref={cameraPhotoRef}
+        ref={galleryMixedRef}
         type="file"
-        accept="image/*"
-        capture="environment"
+        accept="image/*,video/*"
+        multiple={composeTab === 'publication'}
         className="hidden"
-        onChange={(event) => void onFileChange(event.target.files?.[0] || null, 'photo')}
-      />
-      <input
-        ref={cameraVideoRef}
-        type="file"
-        accept="video/*"
-        capture="user"
-        className="hidden"
-        onChange={(event) => void onFileChange(event.target.files?.[0] || null, 'video')}
+        onChange={(event) => onGalleryMediaChange(event.target.files)}
       />
 
       {trimDraft && !isModalOpen ? (
@@ -596,6 +788,149 @@ export function CreatePostModal({
                 </span>
               ) : null}
             </div>
+
+            {previewSrc ? (
+              <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-950">
+                <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+                  <img
+                    src={previewSrc}
+                    alt=""
+                    className="h-full w-full scale-125 object-cover opacity-35 blur-2xl"
+                  />
+                </div>
+                <div className="relative z-[1] flex min-h-[12rem] w-full items-center justify-center">
+                  <div className="relative w-full">
+                    {previewIsVideo ? (
+                      <video
+                        src={previewSrc}
+                        className="mx-auto max-h-[min(52dvh,24rem)] w-full object-contain"
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                      />
+                    ) : (
+                      <img
+                        src={previewSrc}
+                        alt=""
+                        className="mx-auto max-h-[min(52dvh,24rem)] w-full object-contain"
+                      />
+                    )}
+                    <MediaOverlayLayer
+                      overlays={slideOverlays}
+                      editable
+                      onChange={setSlideOverlays}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditMenuOpen((value) => !value)}
+                  className="absolute left-2 top-2 z-[6] inline-flex min-h-9 items-center gap-1 rounded-full border border-white/15 bg-black/55 px-2.5 text-[11px] font-semibold text-white backdrop-blur-sm"
+                >
+                  <Wand2 size={13} />
+                  Editar
+                </button>
+                {gifAttach && !mediaFile ? (
+                  <button
+                    type="button"
+                    onClick={() => setGifAttach(null)}
+                    className="absolute right-2 top-2 z-[6] grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/55 text-white backdrop-blur-sm"
+                    aria-label="Quitar GIF"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : null}
+                {editMenuOpen ? (
+                  <div className="absolute left-2 top-12 z-[8] min-w-[10.5rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-xl backdrop-blur-md">
+                    {previewIsVideo ? (
+                      <button
+                        type="button"
+                        className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
+                        onClick={startVideoTrim}
+                      >
+                        Recortar
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
+                      onClick={() => {
+                        setEditMenuOpen(false);
+                        setStickerPickerOpen(true);
+                      }}
+                    >
+                      Stickers
+                    </button>
+                    {previewIsVideo ? (
+                      <button
+                        type="button"
+                        className="flex min-h-11 w-full items-center gap-1.5 px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
+                        onClick={() => {
+                          setEditMenuOpen(false);
+                          setMusicPickerOpen(true);
+                        }}
+                      >
+                        <Music2 size={12} />
+                        {selectedMusic ? 'Cambiar música' : 'Añadir música'}
+                      </button>
+                    ) : null}
+                    {selectedMusic ? (
+                      <button
+                        type="button"
+                        className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-zinc-400 hover:bg-white/5"
+                        onClick={() => {
+                          setSelectedMusic(null);
+                          setEditMenuOpen(false);
+                        }}
+                      >
+                        Quitar música
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {slideCount > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      className={`absolute left-1 top-1/2 z-[6] grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white ${
+                        previewIndex <= 0 ? 'opacity-30' : ''
+                      }`}
+                      aria-label="Anterior"
+                      onClick={() => showSlide(previewIndex - 1)}
+                      disabled={previewIndex <= 0}
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`absolute right-1 top-1/2 z-[6] grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white ${
+                        previewIndex >= slideCount - 1 ? 'opacity-30' : ''
+                      }`}
+                      aria-label="Siguiente"
+                      onClick={() => showSlide(previewIndex + 1)}
+                      disabled={previewIndex >= slideCount - 1}
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                    <div className="absolute inset-x-0 bottom-2 z-[6] flex justify-center gap-1.5">
+                      {Array.from({ length: slideCount }).map((_, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          aria-label={`Foto ${index + 1}`}
+                          onClick={() => showSlide(index)}
+                          className={`h-1.5 rounded-full ${
+                            index === previewIndex ? 'w-4 bg-fuchsia-400' : 'w-1.5 bg-white/40'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
             <div ref={mediaMenuRef} className="relative flex min-w-0 flex-wrap items-center gap-1.5">
               <EmojiPickerButton
                 placement="above"
@@ -621,41 +956,55 @@ export function CreatePostModal({
                 <Paperclip size={16} />
               </button>
               {mediaMenuOpen ? (
-                <div className="absolute bottom-full left-0 z-10 mb-1.5 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-xl">
-                  <button
-                    type="button"
-                    onClick={() => openGallery('photo')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                  >
-                    <Image size={14} className="text-cyan-300" />
-                    Fotos · galería
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openCamera('photo')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                  >
-                    <Camera size={14} className="text-cyan-300" />
-                    Fotos · cámara
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openGallery('video')}
-                    className="flex w-full items-center gap-2 border-t border-white/10 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                  >
-                    <Video size={14} className="text-fuchsia-300" />
-                    Videos · galería
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openCamera('video')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                  >
-                    <Camera size={14} className="text-fuchsia-300" />
-                    Videos · cámara
-                  </button>
+                <div className="absolute bottom-full left-0 z-20 mb-1.5 w-[min(18.5rem,calc(100vw-2.5rem))] rounded-2xl bg-gradient-to-br from-cyan-400/80 to-violet-500/80 p-px shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
+                  <div className="overflow-hidden rounded-[15px] bg-zinc-900">
+                    <button
+                      type="button"
+                      onClick={() => openGallery('any')}
+                      className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2.5 text-left transition hover:bg-white/5 active:bg-white/10"
+                    >
+                      <Image size={18} className="shrink-0 text-cyan-300" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold text-white">Galería</span>
+                        <span className="block text-[11px] leading-snug text-zinc-500">
+                          Elige fotos o videos
+                        </span>
+                      </span>
+                    </button>
+                    <div className="mx-3 h-px bg-white/10" />
+                    <button
+                      type="button"
+                      onClick={() => openCamera()}
+                      className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2.5 text-left transition hover:bg-white/5 active:bg-white/10"
+                    >
+                      <Camera size={18} className="shrink-0 text-zinc-100" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold text-white">Cámara</span>
+                        <span className="block text-[11px] leading-snug text-zinc-500">
+                          Captura una foto o video
+                        </span>
+                      </span>
+                    </button>
+                  </div>
                 </div>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setGifPickerOpen(true)}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-violet-400/70 px-2.5 text-[11px] font-bold text-violet-200"
+                aria-label="GIF"
+              >
+                GIF
+              </button>
+              <button
+                type="button"
+                onClick={() => setStickerPickerOpen(true)}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-lg bg-fuchsia-500 px-2.5 text-[11px] font-bold text-white"
+                aria-label="Sticker"
+              >
+                <Smile size={14} />
+                Sticker
+              </button>
               {showVisibility ? (
                 <div
                   className="ml-auto flex min-h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-black/35 p-0.5"
@@ -694,78 +1043,6 @@ export function CreatePostModal({
             </div>
           </div>
 
-          {mediaFile || mediaFiles.length > 0 ? (
-            <div className="mt-3 rounded-xl border border-white/15 p-2.5">
-              <p className="text-xs text-cyan-300">
-                {mediaFiles.length > 1
-                  ? `${mediaFiles.length} fotos listas`
-                  : `Archivo listo ✓ ${mediaFile?.name ?? ''}`}
-              </p>
-              {previewUrl && kind === 'photo' ? (
-                <img src={previewUrl} alt="" className="mx-auto mt-2 max-h-28 rounded-lg object-contain" />
-              ) : null}
-              {previewUrl && kind === 'video' ? (
-                <video
-                  src={previewUrl}
-                  className={`mx-auto mt-2 max-h-28 w-full rounded-lg object-contain ${previewAspect.maxWidthClass}`}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                />
-              ) : null}
-              {kind === 'video' ? (
-                <div className="mt-2 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-fuchsia-300"
-                    onClick={() => {
-                      if (!mediaFile) return;
-                      void readVideoDurationSec(mediaFile, BOOM_CLIP_MAX_DURATION_SEC)
-                        .then((durationSec) => {
-                          setTrimDraft({
-                            file: mediaFile,
-                            url: previewUrl || URL.createObjectURL(mediaFile),
-                            durationSec: Math.max(1, durationSec),
-                            maxDurationSec: BOOM_CLIP_MAX_DURATION_SEC,
-                          });
-                        })
-                        .catch(() => {
-                          setTrimDraft({
-                            file: mediaFile,
-                            url: previewUrl || URL.createObjectURL(mediaFile),
-                            durationSec: 0,
-                            maxDurationSec: BOOM_CLIP_MAX_DURATION_SEC,
-                          });
-                        });
-                    }}
-                  >
-                    Editar recorte
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-300"
-                    onClick={() => setMusicPickerOpen(true)}
-                  >
-                    <Music2 size={12} />
-                    {selectedMusic
-                      ? `Música: ${findMusicTrack(selectedMusic.trackId)?.title ?? 'Elegida'}`
-                      : 'Añadir música'}
-                  </button>
-                  {selectedMusic ? (
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-zinc-500"
-                      onClick={() => setSelectedMusic(null)}
-                    >
-                      Quitar música
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
           {!isInline && composeTab === 'boomclip' ? (
             <p className="mt-2 text-[10px] leading-snug text-zinc-500">{reelLifecycleHint()}</p>
           ) : null}
@@ -791,7 +1068,7 @@ export function CreatePostModal({
               </button>
               <button
                 type="button"
-                onClick={() => setCameraCaptureOpen(true)}
+                onClick={() => openCamera()}
                 className="rounded-xl border border-fuchsia-400/40 bg-fuchsia-500/10 py-2.5 text-[11px] font-semibold text-fuchsia-200"
               >
                 Cámara
@@ -962,7 +1239,17 @@ export function CreatePostModal({
       <FlashBoomCameraCapture
         open={cameraCaptureOpen}
         onClose={() => setCameraCaptureOpen(false)}
-        onCapture={(file) => void onCameraCapture(file)}
+        onCapture={(file, durationSec) => void onCameraCapture(file, durationSec)}
+        title="Cámara"
+        allowPhoto={composeTab !== 'boomclip'}
+        defaultMode={composeTab === 'boomclip' ? 'video' : 'photo'}
+        maxDurationSec={
+          composeTab === 'flashboom'
+            ? STORY_MAX_DURATION_SEC
+            : composeTab === 'boomclip'
+              ? MAX_CLIP_DURATION_SECONDS
+              : 180
+        }
       />
       {musicPickerOpen ? (
         <MusicPickerModal
@@ -974,6 +1261,12 @@ export function CreatePostModal({
           }}
         />
       ) : null}
+      <GifPickerSheet open={gifPickerOpen} onClose={() => setGifPickerOpen(false)} onPick={pickGif} />
+      <StickerPickerSheet
+        open={stickerPickerOpen}
+        onClose={() => setStickerPickerOpen(false)}
+        onPick={pickSticker}
+      />
     </>
   );
 }

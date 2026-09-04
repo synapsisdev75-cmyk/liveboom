@@ -85,6 +85,7 @@ function postToReel(post: SocialPost): ReelFeedItem {
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
+    overlays: post.overlays,
   };
 }
 
@@ -321,6 +322,7 @@ export function UserProfileView() {
             sharedFromPostId: item.sharedFromPostId,
             sharedFromAuthorUid: item.sharedFromAuthorUid,
             sharedFromUsername: item.sharedFromUsername,
+            overlays: item.overlays,
           })),
         );
       },

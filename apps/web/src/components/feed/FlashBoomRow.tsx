@@ -32,6 +32,7 @@ function toStoryReel(post: FsPost): StoryReel {
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
+    overlays: post.overlays,
   };
 }
 
@@ -169,7 +170,7 @@ export function FlashBoomRow() {
   const [stories, setStories] = useState<StoryReel[]>([]);
   const [viewerReels, setViewerReels] = useState<StoryReel[] | null>(null);
   const [viewerIndex, setViewerIndex] = useState(0);
-  const [createMode, setCreateMode] = useState<'publication' | 'flashboom' | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     if (!profile?.firebaseUid) {
@@ -299,20 +300,11 @@ export function FlashBoomRow() {
 
   return (
     <section className="w-full">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">{FLASH_BOOM_LABEL}</h2>
-          <p className="mt-0.5 text-[10px] text-zinc-500">
-            24 h · amigos y seguidores · {networkPeople.length} en tu red
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setCreateMode('publication')}
-          className="shrink-0 text-[11px] font-semibold text-cyan-400 hover:underline"
-        >
-          + Nueva publicación
-        </button>
+      <div className="mb-3">
+        <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">{FLASH_BOOM_LABEL}</h2>
+        <p className="mt-0.5 text-[10px] text-zinc-500">
+          24 h · amigos y seguidores · {networkPeople.length} en tu red
+        </p>
       </div>
 
       {networkPeople.length === 0 && visibleStories.length === 0 ? (
@@ -325,7 +317,7 @@ export function FlashBoomRow() {
           </p>
           <button
             type="button"
-            onClick={() => setCreateMode('flashboom')}
+            onClick={() => setCreateOpen(true)}
             className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-5 text-sm font-bold text-white"
           >
             <Plus size={16} />
@@ -340,7 +332,7 @@ export function FlashBoomRow() {
               handle={profile.handle}
               hasOwnStory={ownStories.length > 0}
               onOpenOwn={() => openRingFromAuthor(profile.firebaseUid)}
-              onPublish={() => setCreateMode('flashboom')}
+              onPublish={() => setCreateOpen(true)}
             />
           </div>
 
@@ -377,14 +369,14 @@ export function FlashBoomRow() {
         />
       ) : null}
 
-      {createMode ? (
+      {createOpen ? (
         <CreatePostModal
           username={profile.handle}
           autoOpen
           hideTrigger
-          defaultVideoMode={createMode === 'flashboom' ? 'story' : undefined}
-          onClose={() => setCreateMode(null)}
-          onCreated={() => setCreateMode(null)}
+          defaultVideoMode="story"
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => setCreateOpen(false)}
         />
       ) : null}
     </section>
