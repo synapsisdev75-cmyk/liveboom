@@ -29,14 +29,20 @@ import { SideRailPanel } from './SideRailPanel';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { Logo } from '../brand/Logo';
 
-function SidebarUnreadHint() {
+function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
   if (unread <= 0) return null;
   return (
-    <span className="ml-auto grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[#A855F7] px-1 text-[10px] font-black leading-none text-white">
+    <span
+      className={`grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[#A855F7] px-1 text-[10px] font-black leading-none text-white ${className}`}
+    >
       {unread > 9 ? '9+' : unread}
     </span>
   );
+}
+
+function SidebarUnreadHint() {
+  return <UnreadCountBadge className="ml-auto" />;
 }
 
 /** Orden exacto del mockup de barra lateral. */
@@ -56,6 +62,7 @@ const mobileNavItems = [
   { label: 'Inicio', icon: Home, to: '/' as const },
   { label: 'Explorar', icon: Compass, to: '/explorar' as const },
   { label: 'Crear', icon: Plus, to: '/crear' as const, accent: true },
+  { label: 'Mensajes', icon: MessageCircle, to: '/mensajes' as const },
   { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
 ];
 
@@ -330,10 +337,11 @@ export function MainLayout() {
 
       {!hideMobileChrome ? (
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/5 bg-zinc-950/95 pb-[var(--lb-safe-bottom)] pl-[var(--lb-safe-left)] pr-[var(--lb-safe-right)] backdrop-blur-xl lg:hidden">
-        <ul className="grid grid-cols-4 px-1 pt-1 sm:px-2">
+        <ul className="grid grid-cols-5 px-1 pt-1 sm:px-2">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
             const accent = 'accent' in item && item.accent;
+            const messages = item.to === '/mensajes';
             return (
               <li key={item.label}>
                 <NavLink
@@ -348,7 +356,7 @@ export function MainLayout() {
                   {({ isActive }) => (
                     <>
                       <span
-                        className={`grid h-9 w-9 min-h-[2.75rem] min-w-[2.75rem] place-items-center rounded-xl transition sm:h-9 sm:w-9 ${
+                        className={`relative grid h-9 w-9 min-h-[2.75rem] min-w-[2.75rem] place-items-center rounded-xl transition sm:h-9 sm:w-9 ${
                           accent
                             ? 'bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950 shadow-[0_0_16px_rgba(255,0,85,0.35)]'
                             : isActive
@@ -357,8 +365,9 @@ export function MainLayout() {
                         }`}
                       >
                         <Icon size={18} strokeWidth={isActive || accent ? 2.4 : 1.8} />
+                        {messages ? <UnreadCountBadge className="absolute -right-0.5 -top-0.5" /> : null}
                       </span>
-                      {item.label}
+                      <span className="max-w-full truncate">{item.label}</span>
                     </>
                   )}
                 </NavLink>

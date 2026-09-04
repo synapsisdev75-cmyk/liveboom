@@ -12,7 +12,7 @@ import {
   X,
   Users,
 } from 'lucide-react';
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
@@ -885,7 +885,7 @@ export function PostVideoPlayer({
 
           {commentsPanelOpen ? (
             <div
-              className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex max-h-[min(44dvh,calc(100dvh-5rem))] flex-col rounded-t-2xl border border-white/15 bg-zinc-950/95 backdrop-blur-md pb-[max(0px,var(--lb-safe-bottom))]"
+              className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex max-h-[min(44dvh,calc(100dvh-5rem))] min-w-0 flex-col overflow-x-hidden rounded-t-2xl border border-white/15 bg-zinc-950/95 backdrop-blur-md pb-[max(0px,var(--lb-safe-bottom))]"
               onTouchStart={stopCommentTouch}
               onTouchMove={stopCommentTouch}
               onWheel={stopCommentTouch}
@@ -1069,6 +1069,32 @@ export function PostVideoPlayer({
   );
 }
 
+type CommentReplyTarget = {
+  parentId: string;
+  username: string;
+  uid: string;
+};
+
+function buildCommentThreads(comments: PostComment[]) {
+  const ids = new Set(comments.map((item) => item.id));
+  const replies = new Map<string, PostComment[]>();
+  const roots: PostComment[] = [];
+  for (const comment of comments) {
+    const parentId = comment.parentId && ids.has(comment.parentId) ? comment.parentId : '';
+    if (!parentId) {
+      roots.push(comment);
+      continue;
+    }
+    const bucket = replies.get(parentId) || [];
+    bucket.push(comment);
+    replies.set(parentId, bucket);
+  }
+  for (const list of replies.values()) {
+    list.sort((a, b) => (a.createdAt > b.createdAt ? 1 : -1));
+  }
+  return roots.map((root) => ({ root, replies: replies.get(root.id) || [] }));
+}
+
 export function PostComments({
   postId,
   authorUid,
@@ -1095,8 +1121,11 @@ export function PostComments({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(defaultOpen);
+  const [replyTo, setReplyTo] = useState<CommentReplyTarget | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const inputRef = useRef<EmojiInputHandle>(null);
+
+  const threads = useMemo(() => buildCommentThreads(comments), [comments]);
 
   useEffect(() => {
     return listenPostComments(postId, (list) => {
@@ -1114,7 +1143,18 @@ export function PostComments({
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     window.setTimeout(() => inputRef.current?.focus(), 50);
-  }, [comments.length, expanded]);
+  }, [comments.length, expanded, replyTo?.parentId]);
+
+  function startReply(rootId: string, comment: PostComment) {
+    setReplyTo({
+      parentId: rootId,
+      username: comment.username,
+      uid: comment.authorUid,
+    });
+    setExpanded(true);
+    setError(null);
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+  }
 
   async function submit() {
     if (!profile) {
@@ -1135,8 +1175,16 @@ export function PostComments({
           avatarUrl: profile.avatarUrl,
         },
         body,
+        replyTo
+          ? {
+              parentId: replyTo.parentId,
+              replyToUid: replyTo.uid,
+              replyToUsername: replyTo.username,
+            }
+          : null,
       );
       setText('');
+      setReplyTo(null);
       setExpanded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo publicar el comentario');
@@ -1149,32 +1197,83 @@ export function PostComments({
     setError(null);
     try {
       await deletePostComment(postId, commentId);
+      if (replyTo?.parentId === commentId) setReplyTo(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo eliminar el comentario');
     }
   }
 
   const overlay = variant === 'overlay';
-  const preview = comments.slice(-2);
-  const visible = expanded ? comments : preview;
-  const listClass = scrollable && overlay
-    ? 'min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]'
-    : `space-y-2 overflow-y-auto ${overlay ? 'max-h-[36dvh]' : 'max-h-64'}`;
+  const preview = threads.slice(-2);
+  const visibleThreads = expanded ? threads : preview;
+  const listClass =
+    scrollable && overlay
+      ? 'min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]'
+      : `space-y-2 overflow-y-auto overflow-x-hidden ${overlay ? 'max-h-[36dvh]' : 'max-h-64'}`;
+  const mute = overlay ? 'text-white/40 hover:text-rose-300' : 'text-zinc-600 hover:text-rose-400';
+  const nameClass = overlay ? 'text-cyan-300' : 'text-cyan-400';
+  const bodyClass = overlay ? 'text-white/90' : 'text-zinc-200';
+  const cardClass = overlay ? 'rounded-xl bg-white/10 px-2.5 py-2' : 'rounded-xl bg-zinc-900/80 px-2.5 py-2';
+
+  function renderComment(comment: PostComment, rootId: string, isReply: boolean) {
+    const canRemove =
+      Boolean(profile) &&
+      (profile!.firebaseUid === comment.authorUid ||
+        (authorUid && profile!.firebaseUid === authorUid));
+    return (
+      <div className={`min-w-0 max-w-full ${cardClass} ${isReply ? 'rounded-lg' : ''}`}>
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <Link
+            to={profileHref(comment.username, comment.authorUid)}
+            className={`min-w-0 truncate text-[11px] font-semibold ${nameClass}`}
+          >
+            @{comment.username}
+          </Link>
+          {canRemove ? (
+            <button
+              type="button"
+              onClick={() => void remove(comment.id)}
+              className={`shrink-0 text-[10px] ${mute}`}
+            >
+              Eliminar
+            </button>
+          ) : null}
+        </div>
+        {isReply && comment.replyToUsername ? (
+          <p className={`mt-0.5 truncate text-[10px] ${overlay ? 'text-white/45' : 'text-zinc-500'}`}>
+            Respondió a @{comment.replyToUsername}
+          </p>
+        ) : null}
+        <p className={`mt-0.5 min-w-0 break-words text-xs ${bodyClass}`}>
+          <EmojiText text={comment.text} size={COMMENT_EMOJI_SIZE} />
+        </p>
+        <button
+          type="button"
+          onClick={() => startReply(rootId, comment)}
+          className={`mt-0.5 inline-flex min-h-11 items-center text-[11px] font-semibold ${
+            overlay ? 'text-white/70 hover:text-white' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          Responder
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
       className={
         overlay
           ? scrollable
-            ? `flex min-h-0 flex-1 flex-col ${embedded ? 'px-3 pb-3' : 'px-3 py-2.5'}`
+            ? `flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${embedded ? 'px-3 pb-3' : 'px-3 py-2.5'}`
             : embedded
-              ? 'px-3 pb-3'
-              : 'px-3 py-2.5'
-          : 'border-t border-white/5 px-3 py-3'
+              ? 'min-w-0 overflow-x-hidden px-3 pb-3'
+              : 'min-w-0 overflow-x-hidden px-3 py-2.5'
+          : 'min-w-0 overflow-x-hidden border-t border-white/5 px-3 py-3'
       }
     >
       {!embedded ? (
-      <div className="mb-2 flex w-full items-center justify-between gap-2">
+      <div className="mb-2 flex w-full min-w-0 items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
@@ -1187,7 +1286,7 @@ export function PostComments({
           {comments.length > 0 ? (
             <span className={overlay ? 'text-white/50' : 'text-zinc-400'}>{comments.length}</span>
           ) : null}
-          {comments.length > 2 ? (
+          {threads.length > 2 ? (
             <span className={`normal-case ${overlay ? 'text-cyan-300' : 'text-cyan-400'}`}>
               {expanded ? '· ocultar' : '· ver todos'}
             </span>
@@ -1205,18 +1304,18 @@ export function PostComments({
       </div>
       ) : null}
 
-      {!embedded && !expanded && comments.length > 0 ? (
-        <ul className={`space-y-1.5 ${comments.length > 2 ? 'opacity-70' : ''}`}>
-          {preview.map((comment) => (
+      {!embedded && !expanded && threads.length > 0 ? (
+        <ul className={`min-w-0 space-y-1.5 ${threads.length > 2 ? 'opacity-70' : ''}`}>
+          {preview.map(({ root }) => (
             <li
-              key={comment.id}
+              key={root.id}
               className={overlay ? 'rounded-lg bg-white/10 px-2 py-1.5' : 'rounded-lg bg-zinc-900/60 px-2 py-1.5'}
             >
-              <p className={`text-[11px] ${overlay ? 'text-white/90' : 'text-zinc-300'}`}>
+              <p className={`min-w-0 break-words text-[11px] ${overlay ? 'text-white/90' : 'text-zinc-300'}`}>
                 <span className={overlay ? 'font-semibold text-cyan-300' : 'font-semibold text-cyan-400'}>
-                  @{comment.username}
+                  @{root.username}
                 </span>{' '}
-                <EmojiText text={comment.text} size={COMMENT_EMOJI_SIZE_COMPACT} className={overlay ? 'text-white/90' : 'text-zinc-300'} />
+                <EmojiText text={root.text} size={COMMENT_EMOJI_SIZE_COMPACT} className={overlay ? 'text-white/90' : 'text-zinc-300'} />
               </p>
             </li>
           ))}
@@ -1224,86 +1323,90 @@ export function PostComments({
       ) : null}
 
       {embedded || expanded ? (
-        <div className={scrollable && overlay ? 'flex min-h-0 flex-1 flex-col' : undefined}>
+        <div className={scrollable && overlay ? 'flex min-h-0 min-w-0 flex-1 flex-col' : 'min-w-0'}>
           <ul ref={listRef} className={listClass}>
             {comments.length === 0 ? (
               <li className={`text-[11px] ${overlay ? 'text-white/45' : 'text-zinc-600'}`}>
                 Sé el primero en comentar.
               </li>
             ) : (
-              visible.map((comment) => {
-                const canRemove =
-                  Boolean(profile) &&
-                  (profile!.firebaseUid === comment.authorUid ||
-                    (authorUid && profile!.firebaseUid === authorUid));
-                return (
-                  <li
-                    key={comment.id}
-                    className={
-                      overlay ? 'rounded-xl bg-white/10 px-2.5 py-2' : 'rounded-xl bg-zinc-900/80 px-2.5 py-2'
-                    }
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <Link
-                        to={profileHref(comment.username, comment.authorUid)}
-                        className={`text-[11px] font-semibold ${
-                          overlay ? 'text-cyan-300' : 'text-cyan-400'
-                        }`}
-                      >
-                        @{comment.username}
-                      </Link>
-                      {canRemove ? (
-                        <button
-                          type="button"
-                          onClick={() => void remove(comment.id)}
-                          className={`text-[10px] ${overlay ? 'text-white/40 hover:text-rose-300' : 'text-zinc-600 hover:text-rose-400'}`}
-                        >
-                          Eliminar
-                        </button>
-                      ) : null}
-                    </div>
-                    <p className={`mt-0.5 text-xs ${overlay ? 'text-white/90' : 'text-zinc-200'}`}>
-                      <EmojiText text={comment.text} size={COMMENT_EMOJI_SIZE} />
-                    </p>
-                  </li>
-                );
-              })
+              visibleThreads.map(({ root, replies }) => (
+                <li key={root.id} className="min-w-0 max-w-full">
+                  {renderComment(root, root.id, false)}
+                  {replies.length > 0 ? (
+                    <ul className="mt-2 min-w-0 space-y-2 border-l border-white/10 pl-3 sm:pl-4">
+                      {replies.map((reply) => (
+                        <li key={reply.id} className="min-w-0 max-w-full">
+                          {renderComment(reply, root.id, true)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              ))
             )}
           </ul>
           <form
-            className={`mt-2 flex shrink-0 items-end gap-2 ${scrollable && overlay ? 'pt-2' : ''}`}
+            className={`mt-2 flex min-w-0 shrink-0 flex-col gap-1.5 ${scrollable && overlay ? 'pt-2' : ''}`}
             onSubmit={(event) => {
               event.preventDefault();
               void submit();
             }}
           >
-            <EmojiInput
-              ref={inputRef}
-              value={text}
-              onChange={setText}
-              placeholder={profile ? 'Escribe un comentario…' : 'Inicia sesión para comentar'}
-              disabled={!profile || busy}
-              maxLength={280}
-              emojiSize={COMMENT_EMOJI_SIZE}
-              mirrorTextClassName={overlay ? 'text-white/90' : 'text-zinc-200'}
-              fieldClassName={`min-h-10 rounded-xl ${
-                overlay
-                  ? 'border border-white/20 bg-black/40'
-                  : 'border border-white/10 bg-zinc-900'
-              }`}
-              placeholderClassName={overlay ? 'text-white/40' : 'text-zinc-600'}
-            />
-            <EmojiPickerButton
-              placement="above"
-              onPick={(id) => setText((t) => insertEmojiToken(t, id))}
-            />
-            <button
-              type="submit"
-              disabled={!profile || busy || !text.trim()}
-              className="min-h-10 shrink-0 rounded-xl bg-cyan-500 px-3 text-xs font-bold text-zinc-950 disabled:opacity-50"
-            >
-              Enviar
-            </button>
+            {replyTo ? (
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className={`min-w-0 truncate rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    overlay ? 'bg-cyan-400/20 text-cyan-200' : 'bg-cyan-500/15 text-cyan-300'
+                  }`}
+                >
+                  Respondiendo a @{replyTo.username}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReplyTo(null)}
+                  className={`shrink-0 text-[11px] font-semibold ${overlay ? 'text-white/55 hover:text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : null}
+            <div className="flex min-w-0 items-end gap-2">
+              <EmojiInput
+                ref={inputRef}
+                value={text}
+                onChange={setText}
+                placeholder={
+                  !profile
+                    ? 'Inicia sesión para comentar'
+                    : replyTo
+                      ? `Responde a @${replyTo.username}…`
+                      : 'Escribe un comentario…'
+                }
+                disabled={!profile || busy}
+                maxLength={280}
+                emojiSize={COMMENT_EMOJI_SIZE}
+                className="min-w-0 flex-1"
+                mirrorTextClassName={overlay ? 'text-white/90' : 'text-zinc-200'}
+                fieldClassName={`min-h-10 min-w-0 rounded-xl ${
+                  overlay
+                    ? 'border border-white/20 bg-black/40'
+                    : 'border border-white/10 bg-zinc-900'
+                }`}
+                placeholderClassName={overlay ? 'text-white/40' : 'text-zinc-600'}
+              />
+              <EmojiPickerButton
+                placement="above"
+                onPick={(id) => setText((t) => insertEmojiToken(t, id))}
+              />
+              <button
+                type="submit"
+                disabled={!profile || busy || !text.trim()}
+                className="min-h-10 shrink-0 rounded-xl bg-cyan-500 px-3 text-xs font-bold text-zinc-950 disabled:opacity-50"
+              >
+                Enviar
+              </button>
+            </div>
           </form>
         </div>
       ) : null}

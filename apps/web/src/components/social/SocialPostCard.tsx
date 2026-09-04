@@ -1,9 +1,10 @@
-import { Globe, Lock, UserMinus, UserPlus, Users } from 'lucide-react';
+import { Globe, Lock, MessageCircle, UserMinus, UserPlus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   followUser,
   isFollowing,
+  listenPostComments,
   listenPostReactions,
   setPostReaction,
   type FriendChip,
@@ -377,6 +378,8 @@ function StandardPostCard({
   const [mediaExpanded, setMediaExpanded] = useState(
     Boolean(startVideoExpanded || startPhotoExpanded),
   );
+  const [showComments, setShowComments] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
   const shareUrl = buildPostShareUrl(post.authorUsername, post.id, post.authorUid);
   const shareText =
     post.caption?.trim() ||
@@ -391,6 +394,10 @@ function StandardPostCard({
       setDislikers(stats.dislikers);
     });
   }, [post.id, profile?.firebaseUid]);
+
+  useEffect(() => {
+    return listenPostComments(post.id, (list) => setCommentCount(list.length));
+  }, [post.id]);
 
   useEffect(() => {
     if (startVideoExpanded && onVideoExpand) {
@@ -544,16 +551,28 @@ function StandardPostCard({
           ) : null}
         </div>
       ) : null}
-      <div className="flex items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
-        <PostReactionButtons
-          likes={likes}
-          dislikes={dislikes}
-          viewerReaction={viewerReaction}
-          likers={likers}
-          dislikers={dislikers}
-          busy={busy}
-          onReact={(reaction) => void react(reaction)}
-        />
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <PostReactionButtons
+            likes={likes}
+            dislikes={dislikes}
+            viewerReaction={viewerReaction}
+            likers={likers}
+            dislikers={dislikers}
+            busy={busy}
+            onReact={(reaction) => void react(reaction)}
+          />
+          <button
+            type="button"
+            onClick={() => setShowComments((value) => !value)}
+            className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold hover:bg-white/5 ${
+              showComments ? 'bg-white/10 text-white' : 'text-zinc-300'
+            }`}
+          >
+            <MessageCircle size={15} className="text-cyan-300" />
+            {commentCount > 0 ? commentCount : 'Comentar'}
+          </button>
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           {post.authorUsername ? (
             <ReelGiftControls
@@ -588,8 +607,8 @@ function StandardPostCard({
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
       {showFeedCaption ? <PublicationCaption key={post.id} caption={post.caption || ''} /> : null}
-      {!(post.type === 'video' && mediaExpanded) ? (
-        <PostComments postId={post.id} authorUid={post.authorUid} />
+      {!(post.type === 'video' && mediaExpanded) && showComments ? (
+        <PostComments postId={post.id} authorUid={post.authorUid} defaultOpen />
       ) : null}
     </article>
   );

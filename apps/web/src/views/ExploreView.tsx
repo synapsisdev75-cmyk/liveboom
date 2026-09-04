@@ -1,24 +1,35 @@
 import { Link, useSearchParams } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { BOOM_CLIP_LABEL } from '../lib/brand';
-import {
-  flattenBoomClipGroups,
-  groupBoomClipsByAuthor,
-  type ReelItem,
-} from '../lib/boomClipGroups';
 import {
   contentTypeLabel,
   isBoomClipPost,
   isPublicationPost,
   resolveContentType,
 } from '../lib/contentType';
-import { diversifyReelFeed } from '../lib/reelLifecycle';
+import {
+  markExploreSessionSeen,
+  readExploreHistory,
+  readExploreSessionSeen,
+  recordExploreWatch,
+  type ExploreHistory,
+} from '../lib/exploreHistory';
+import {
+  exploreWatchTags,
+  mergeExploreQueue,
+  preferUnseenFirst,
+  rankExploreForYou,
+  rankExploreRecent,
+  rankExploreViral,
+  skipSameAsCurrent,
+  type ExploreTabId,
+} from '../lib/exploreRanking';
 import { isStoryPost } from '../lib/storyLifecycle';
-import { listenRecentPosts, type FsPost } from '../lib/socialFirestore';
+import { listenExploreVideoPool, listenFollowing, type FsPost } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
 
-type ExploreTab = 'para_ti' | 'virales' | 'recientes';
+type ExploreTab = ExploreTabId;
 
 const TABS: { id: ExploreTab; label: string }[] = [
   { id: 'para_ti', label: 'Para ti' },
@@ -26,20 +37,22 @@ const TABS: { id: ExploreTab; label: string }[] = [
   { id: 'recientes', label: 'Recientes' },
 ];
 
+const EMPTY_QUEUES: Record<ExploreTab, string[]> = {
+  para_ti: [],
+  virales: [],
+  recientes: [],
+};
+
+const EMPTY_INDICES: Record<ExploreTab, number> = {
+  para_ti: 0,
+  virales: 0,
+  recientes: 0,
+};
+
 function isExploreVideo(post: FsPost): boolean {
   if (post.type !== 'video' || !post.mediaUrl) return false;
   if (isStoryPost(post)) return false;
   return isBoomClipPost(post) || isPublicationPost(post);
-}
-
-function viralScore(post: FsPost): number {
-  const likes = Number(post.likes) || 0;
-  const ageHours = Math.max(
-    1,
-    (Date.now() - Date.parse(post.createdAt || '')) / (1000 * 60 * 60) || 24,
-  );
-  // Engagement disponible en front (likes) + ligera recencia
-  return likes * 10 + 24 / ageHours;
 }
 
 function toReelItem(post: FsPost): ReelFeedItem {
@@ -52,71 +65,56 @@ function toReelItem(post: FsPost): ReelFeedItem {
     mediaUrl: post.mediaUrl || '',
     mediaType: 'video',
     contentBadge: type === 'boom_clip' ? BOOM_CLIP_LABEL : contentTypeLabel(type),
+    durationSec: post.durationSec,
+    thumbUrl: post.thumbUrl,
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
   };
 }
 
-function toGroupedBoomClipReels(posts: FsPost[], ownUid?: string | null): ReelFeedItem[] {
-  const boomPosts = posts.filter(isBoomClipPost);
-  const reelItems: ReelItem[] = boomPosts.map((post) => ({
-    ...toReelItem(post),
-    shared: true,
-    createdAt: post.createdAt,
-    durationSec: post.durationSec,
-  }));
-  const groups = groupBoomClipsByAuthor(reelItems, ownUid);
-  return flattenBoomClipGroups(groups);
-}
-
-function dedupeById(posts: FsPost[]): FsPost[] {
-  const map = new Map<string, FsPost>();
-  for (const post of posts) map.set(post.id, post);
-  return [...map.values()];
-}
-
-function sortForTab(posts: FsPost[], tab: ExploreTab): FsPost[] {
-  const list = dedupeById(posts.filter(isExploreVideo));
-  if (tab === 'virales') {
-    return [...list].sort((a, b) => viralScore(b) - viralScore(a));
-  }
-  if (tab === 'recientes') {
-    return [...list].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  }
-  // Para ti: mezcla diversificada por autor (descubrimiento)
-  const recent = [...list].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  const viral = [...list].sort((a, b) => viralScore(b) - viralScore(a));
-  const mixed: FsPost[] = [];
-  const seen = new Set<string>();
-  const push = (post: FsPost | undefined) => {
-    if (!post || seen.has(post.id)) return;
-    seen.add(post.id);
-    mixed.push(post);
-  };
-  for (let i = 0; i < Math.max(recent.length, viral.length); i += 1) {
-    push(viral[i]);
-    push(recent[i]);
-  }
-  return diversifyReelFeed(mixed, 2, 80);
+function parseTab(value: string | null): ExploreTab {
+  if (value === 'virales' || value === 'recientes' || value === 'para_ti') return value;
+  return 'para_ti';
 }
 
 export function ExploreView() {
   const profile = useAuthStore((state) => state.profile);
   const ready = useAuthStore((state) => state.ready);
+  const uid = profile?.firebaseUid || '';
   const [searchParams, setSearchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab') as ExploreTab | null;
+  const tab = parseTab(searchParams.get('tab'));
   const videoParam = searchParams.get('v');
   const tipoParam = searchParams.get('tipo');
   const boomClipOnly = tipoParam === 'boom_clip';
 
-  const [tab, setTab] = useState<ExploreTab>(
-    tabParam === 'virales' || tabParam === 'recientes' || tabParam === 'para_ti'
-      ? tabParam
-      : 'para_ti',
-  );
   const [rawPosts, setRawPosts] = useState<FsPost[]>([]);
+  const [poolReady, setPoolReady] = useState(false);
+  const [followingUids, setFollowingUids] = useState<Set<string>>(new Set());
+  const [queues, setQueues] = useState<Record<ExploreTab, string[]>>(EMPTY_QUEUES);
+  const [indices, setIndices] = useState<Record<ExploreTab, number>>(EMPTY_INDICES);
+  const [history, setHistory] = useState<ExploreHistory>({});
+  const [sessionSeen, setSessionSeen] = useState<Set<string>>(new Set());
   const [deviceLandscape, setDeviceLandscape] = useState(false);
+
+  const saltRef = useRef(Date.now());
+  const queuesRef = useRef(queues);
+  const indicesRef = useRef(indices);
+  const historyRef = useRef(history);
+  const sessionSeenRef = useRef(sessionSeen);
+  const dwellRef = useRef<{ id: string; at: number } | null>(null);
+  const postsByIdRef = useRef<Map<string, FsPost>>(new Map());
+  const appliedStartRef = useRef(false);
+  const visitedRef = useRef<Record<ExploreTab, boolean>>({
+    para_ti: false,
+    virales: false,
+    recientes: false,
+  });
+
+  queuesRef.current = queues;
+  indicesRef.current = indices;
+  historyRef.current = history;
+  sessionSeenRef.current = sessionSeen;
 
   useEffect(() => {
     const mq = window.matchMedia('(orientation: landscape)');
@@ -131,43 +129,188 @@ export function ExploreView() {
   }, []);
 
   useEffect(() => {
-    if (!profile) {
+    if (!uid) {
       setRawPosts([]);
+      setPoolReady(false);
+      setFollowingUids(new Set());
+      setQueues(EMPTY_QUEUES);
+      setIndices(EMPTY_INDICES);
+      setHistory({});
+      setSessionSeen(new Set());
+      appliedStartRef.current = false;
+      visitedRef.current = { para_ti: false, virales: false, recientes: false };
       return;
     }
-    return listenRecentPosts(setRawPosts);
-  }, [profile?.firebaseUid]);
+    setHistory(readExploreHistory(uid));
+    setSessionSeen(readExploreSessionSeen(uid));
+    appliedStartRef.current = false;
+    visitedRef.current = { para_ti: false, virales: false, recientes: false };
+    const stopPool = listenExploreVideoPool((posts) => {
+      setRawPosts(posts);
+      setPoolReady(true);
+    });
+    const stopFollowing = listenFollowing(uid, (users) => {
+      setFollowingUids(new Set(users.map((user) => user.uid).filter(Boolean)));
+    });
+    return () => {
+      stopPool();
+      stopFollowing();
+    };
+  }, [uid]);
+
+  const eligible = useMemo(() => {
+    const videos = rawPosts.filter(isExploreVideo);
+    if (!boomClipOnly) return videos;
+    const clips = videos.filter(isBoomClipPost);
+    return clips.length > 0 ? clips : videos;
+  }, [rawPosts, boomClipOnly]);
+
+  const postsById = useMemo(() => {
+    const map = new Map<string, FsPost>();
+    for (const post of eligible) map.set(post.id, post);
+    postsByIdRef.current = map;
+    return map;
+  }, [eligible]);
+
+  const rankedIds = useMemo(() => {
+    const viewer = { uid, followingUids };
+    const salt = saltRef.current;
+    const forYou = preferUnseenFirst(
+      rankExploreForYou(eligible, viewer, history, salt),
+      sessionSeen,
+    ).map((post) => post.id);
+    const viral = preferUnseenFirst(rankExploreViral(eligible), sessionSeen).map((post) => post.id);
+    const recent = rankExploreRecent(eligible).map((post) => post.id);
+    const fallback = eligible
+      .slice()
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .map((post) => post.id);
+    return {
+      para_ti: forYou.length ? forYou : fallback,
+      virales: viral.length ? viral : fallback,
+      recientes: recent.length ? recent : fallback,
+    };
+  }, [eligible, uid, followingUids, history, sessionSeen]);
+
+  useEffect(() => {
+    const prevQueues = queuesRef.current;
+    const prevIndices = indicesRef.current;
+    const viewingId = prevQueues[tab][prevIndices[tab]] || null;
+    const startId =
+      !appliedStartRef.current && videoParam && rankedIds[tab].includes(videoParam) ? videoParam : null;
+    if (startId) appliedStartRef.current = true;
+
+    const nextQueues: Record<ExploreTab, string[]> = { ...prevQueues };
+    const nextIndices: Record<ExploreTab, number> = { ...prevIndices };
+
+    (Object.keys(rankedIds) as ExploreTab[]).forEach((id) => {
+      const ranked = rankedIds[id];
+      if (!visitedRef.current[id]) {
+        const seed = id === tab && startId ? startId : null;
+        const seedIndex = seed ? Math.max(0, ranked.indexOf(seed)) : 0;
+        const avoid = id === tab ? null : viewingId;
+        nextQueues[id] = ranked;
+        nextIndices[id] = skipSameAsCurrent(ranked, seedIndex, avoid);
+        return;
+      }
+      const currentId = (id === tab && startId) || prevQueues[id][prevIndices[id]] || null;
+      const merged = mergeExploreQueue(
+        prevQueues[id],
+        ranked,
+        currentId,
+        id === 'recientes' ? 'recientes' : 'append',
+      );
+      nextQueues[id] = merged.ids;
+      nextIndices[id] = merged.index;
+    });
+
+    const queuesChanged = (Object.keys(rankedIds) as ExploreTab[]).some(
+      (id) => nextQueues[id].join(' ') !== prevQueues[id].join(' '),
+    );
+    const indicesChanged = (Object.keys(rankedIds) as ExploreTab[]).some(
+      (id) => nextIndices[id] !== prevIndices[id],
+    );
+    if (!queuesChanged && !indicesChanged) return;
+    queuesRef.current = nextQueues;
+    indicesRef.current = nextIndices;
+    if (queuesChanged) setQueues(nextQueues);
+    if (indicesChanged) setIndices(nextIndices);
+  }, [rankedIds, tab, videoParam]);
+
+  const activeId = queues[tab][indices[tab]] || null;
 
   const reels = useMemo(() => {
-    if (boomClipOnly) {
-      return toGroupedBoomClipReels(rawPosts, profile?.firebaseUid);
+    const ids = queues[tab];
+    const items: ReelFeedItem[] = [];
+    for (const id of ids) {
+      const post = postsById.get(id);
+      if (post) items.push(toReelItem(post));
     }
-    return sortForTab(rawPosts, tab).map(toReelItem);
-  }, [rawPosts, tab, boomClipOnly, profile?.firebaseUid]);
+    return items;
+  }, [queues, tab, postsById]);
 
-  const startIndex = useMemo(() => {
-    if (!videoParam || reels.length === 0) return 0;
-    const idx = reels.findIndex((r) => r.id === videoParam);
-    return idx >= 0 ? idx : 0;
-  }, [videoParam, reels]);
+  const flushDwell = useCallback(
+    (postId: string | null, at = Date.now()) => {
+      if (!uid || !postId || !dwellRef.current || dwellRef.current.id !== postId) return;
+      const dwellMs = at - dwellRef.current.at;
+      const post = postsByIdRef.current.get(postId);
+      const nextHistory = recordExploreWatch(
+        uid,
+        postId,
+        {
+          dwellMs,
+          durationSec: post?.durationSec,
+          authorUid: post?.authorUid || '',
+          tags: exploreWatchTags(post?.caption),
+        },
+        historyRef.current,
+      );
+      historyRef.current = nextHistory;
+      setHistory(nextHistory);
+      dwellRef.current = null;
+    },
+    [uid],
+  );
 
   const onIndexChange = useCallback(
     (index: number) => {
-      const reel = reels[index];
-      if (!reel) return;
+      const currentTab = parseTab(searchParams.get('tab'));
+      const id = queuesRef.current[currentTab][index];
+      if (!id) return;
+
+      const prev = dwellRef.current;
+      if (prev && prev.id && prev.id !== id) flushDwell(prev.id);
+
+      dwellRef.current = { id, at: Date.now() };
+      visitedRef.current[currentTab] = true;
+      indicesRef.current = { ...indicesRef.current, [currentTab]: index };
+      setIndices((state) => (state[currentTab] === index ? state : { ...state, [currentTab]: index }));
+
+      const nextSeen = markExploreSessionSeen(uid, id, sessionSeenRef.current);
+      sessionSeenRef.current = nextSeen;
+      setSessionSeen(nextSeen);
+
       const next = new URLSearchParams(searchParams);
-      next.set('tab', tab);
-      next.set('v', reel.id);
+      next.set('tab', currentTab);
+      next.set('v', id);
       setSearchParams(next, { replace: true });
     },
-    [reels, searchParams, setSearchParams, tab],
+    [flushDwell, searchParams, setSearchParams, uid],
   );
 
   function selectTab(next: ExploreTab) {
-    setTab(next);
+    if (next === tab) return;
+    const avoidId = queuesRef.current[tab][indicesRef.current[tab]] || activeId;
+    flushDwell(avoidId);
+    visitedRef.current[next] = true;
+    const nextIndex = skipSameAsCurrent(queuesRef.current[next], indicesRef.current[next], avoidId);
+    indicesRef.current = { ...indicesRef.current, [next]: nextIndex };
+    setIndices((state) => ({ ...state, [next]: nextIndex }));
+    const nextId = queuesRef.current[next][nextIndex];
     const params = new URLSearchParams(searchParams);
     params.set('tab', next);
-    params.delete('v');
+    if (nextId) params.set('v', nextId);
+    else params.delete('v');
     setSearchParams(params, { replace: true });
   }
 
@@ -189,6 +332,9 @@ export function ExploreView() {
       </div>
     );
   }
+
+  const showEmpty = poolReady && eligible.length === 0;
+  const showLoading = !poolReady || (!showEmpty && reels.length === 0);
 
   return (
     <div className="lb-explore-view relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-black">
@@ -213,7 +359,7 @@ export function ExploreView() {
         </div>
       ) : null}
 
-      {reels.length === 0 ? (
+      {showEmpty ? (
         <div className="grid h-full place-items-center px-6 text-center">
           <div>
             <p className="text-sm text-zinc-400">Aún no hay videos públicos para descubrir.</p>
@@ -225,11 +371,14 @@ export function ExploreView() {
             </Link>
           </div>
         </div>
+      ) : showLoading ? (
+        <div className="grid h-full place-items-center bg-black text-sm text-zinc-500">Cargando…</div>
       ) : (
         <ReelFeedViewer
           key={tab}
           reels={reels}
-          initialIndex={startIndex}
+          initialIndex={Math.min(indices[tab], Math.max(reels.length - 1, 0))}
+          activeId={activeId}
           embedded
           immersiveLandscapeLayout
           onIndexChange={onIndexChange}

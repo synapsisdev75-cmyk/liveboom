@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   listenPostReactions,
@@ -48,6 +48,8 @@ type Props = {
   /** Explorar / Boom Clip / Flash: cover en móvil. El rail aside en PC es independiente. */
   immersiveLandscapeLayout?: boolean;
   onIndexChange?: (index: number) => void;
+  /** Explorar: mantiene el video actual si la cola se reordena o crece. */
+  activeId?: string | null;
 };
 
 export function ReelFeedViewer({
@@ -59,6 +61,7 @@ export function ReelFeedViewer({
   immersiveLandscapeLayout = true,
   collapsibleCaption = false,
   onIndexChange,
+  activeId,
 }: Props) {
   useBodyScrollLock(!embedded);
   const profile = useAuthStore((state) => state.profile);
@@ -83,13 +86,25 @@ export function ReelFeedViewer({
       ? originalPostPath(reel.sharedFromUsername, reel.sharedFromPostId, reel.sharedFromAuthorUid)
       : null;
 
+  const onIndexChangeRef = useRef(onIndexChange);
+  onIndexChangeRef.current = onIndexChange;
+
   useEffect(() => {
     setIndex((current) => Math.min(Math.max(current, 0), Math.max(reels.length - 1, 0)));
   }, [reels.length]);
 
+  const reelIdsKey = useMemo(() => reels.map((item) => item.id).join('\n'), [reels]);
+
   useEffect(() => {
-    onIndexChange?.(index);
-  }, [index, onIndexChange]);
+    if (!activeId) return;
+    const next = reelIdsKey ? reelIdsKey.split('\n').indexOf(activeId) : -1;
+    if (next < 0) return;
+    setIndex((current) => (current === next ? current : next));
+  }, [activeId, reelIdsKey]);
+
+  useEffect(() => {
+    onIndexChangeRef.current?.(index);
+  }, [index]);
 
   useEffect(() => {
     if (!toast) return;
@@ -108,17 +123,24 @@ export function ReelFeedViewer({
     });
   }, [originId, profile?.firebaseUid]);
 
-  // Precarga URL del siguiente video
+  // Precarga los siguientes videos de ESTA cola (evita pantalla vacía al deslizar).
   useEffect(() => {
-    const next = reels[index + 1];
-    if (!next?.mediaUrl || next.mediaType === 'photo') return;
-    const el = document.createElement('video');
-    el.preload = 'auto';
-    el.muted = true;
-    el.src = next.mediaUrl;
+    const upcoming = [reels[index + 1], reels[index + 2], reels[index + 3]].filter(
+      (item): item is ReelFeedItem => Boolean(item?.mediaUrl && item.mediaType !== 'photo'),
+    );
+    if (upcoming.length === 0) return;
+    const els = upcoming.map((item) => {
+      const el = document.createElement('video');
+      el.preload = 'auto';
+      el.muted = true;
+      el.src = item.mediaUrl;
+      return el;
+    });
     return () => {
-      el.removeAttribute('src');
-      el.load();
+      for (const el of els) {
+        el.removeAttribute('src');
+        el.load();
+      }
     };
   }, [index, reels]);
 

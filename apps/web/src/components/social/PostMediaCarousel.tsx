@@ -114,6 +114,10 @@ export function PostMediaCarousel({
   }, [expanded, postId, profile?.firebaseUid]);
 
   useEffect(() => {
+    setCommentsOpen(false);
+  }, [postId]);
+
+  useEffect(() => {
     if (!expanded || !postId) return;
     return listenPostComments(postId, (list) => setCommentCount(list.length));
   }, [expanded, postId]);
@@ -404,7 +408,7 @@ export function PostMediaCarousel({
 
             {commentsOpen && postId ? (
               <div
-                className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex max-h-[min(44dvh,calc(100dvh-5rem))] flex-col rounded-t-2xl border border-white/15 bg-zinc-950/95 backdrop-blur-md"
+                className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex max-h-[min(44dvh,calc(100dvh-5rem))] min-w-0 flex-col overflow-x-hidden rounded-t-2xl border border-white/15 bg-zinc-950/95 backdrop-blur-md"
                 style={{ paddingBottom: 'max(0px, env(safe-area-inset-bottom, 0px))' }}
               >
                 <PostComments

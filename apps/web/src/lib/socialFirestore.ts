@@ -1222,6 +1222,36 @@ export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscr
   );
 }
 
+/** Pool de videos públicos para Explorar. No altera listenRecentPosts (Inicio/Actividad). */
+export function listenExploreVideoPool(onChange: (posts: FsPost[]) => void): Unsubscribe {
+  if (!auth.currentUser) {
+    onChange([]);
+    return () => undefined;
+  }
+  const q = query(
+    collection(db, 'posts'),
+    where('visibility', '==', 'public'),
+    orderBy('createdAt', 'desc'),
+    limit(320),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        snap.docs
+          .map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))
+          .filter((post) => {
+            if (isStoryPost(post)) return false;
+            if (post.type !== 'video' || !post.mediaUrl) return false;
+            if (isBoomClipPost(post)) return isReelInPublicFeed(post);
+            return isPublicationPost(post);
+          }),
+      );
+    },
+    () => onChange([]),
+  );
+}
+
 /** Pool de Publicaciones públicas para ranking de Inicio. Nunca borra ni mueve docs. */
 function listenPublicPublicationPool(onChange: (posts: FsPost[]) => void): Unsubscribe {
   if (!auth.currentUser) {
@@ -2230,6 +2260,16 @@ export type PostComment = {
   avatarUrl: string | null;
   text: string;
   createdAt: string;
+  /** Respuesta: id del comentario raíz. Ausente = comentario de primer nivel. */
+  parentId?: string | null;
+  replyToUid?: string | null;
+  replyToUsername?: string | null;
+};
+
+export type PostCommentReply = {
+  parentId: string;
+  replyToUid?: string | null;
+  replyToUsername?: string | null;
 };
 
 function commentsFromSnap(snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): PostComment[] {
@@ -2243,6 +2283,9 @@ function commentsFromSnap(snap: { docs: Array<{ id: string; data: () => Record<s
       avatarUrl: (data.avatarUrl as string | null) ?? null,
       text: String(data.text || ''),
       createdAt: asIso(data.createdAt),
+      parentId: String(data.parentId || '').trim() || null,
+      replyToUid: String(data.replyToUid || '').trim() || null,
+      replyToUsername: String(data.replyToUsername || '').trim() || null,
     };
   });
 }
@@ -2252,7 +2295,7 @@ export function listenPostComments(
   onChange: (comments: PostComment[]) => void,
 ): Unsubscribe {
   const col = collection(db, 'posts', postId, 'comments');
-  const q = query(col, orderBy('createdAt', 'asc'), limit(80));
+  const q = query(col, orderBy('createdAt', 'asc'), limit(200));
   let fallback: Unsubscribe | null = null;
   const primary = onSnapshot(
     q,
@@ -2262,7 +2305,7 @@ export function listenPostComments(
         onChange(
           commentsFromSnap(snap)
             .sort((a, b) => (a.createdAt > b.createdAt ? 1 : -1))
-            .slice(0, 80),
+            .slice(0, 200),
         );
       });
     },
@@ -2277,17 +2320,27 @@ export async function addPostComment(
   postId: string,
   author: MeProfile,
   text: string,
+  reply?: PostCommentReply | null,
 ) {
   const body = text.trim().slice(0, 500);
   if (!body) throw new Error('Escribe un comentario');
-  await addDoc(collection(db, 'posts', postId, 'comments'), {
+  const parentId = String(reply?.parentId || '').trim();
+  const payload: Record<string, unknown> = {
     authorUid: author.firebaseUid,
     username: author.handle.toLowerCase(),
     displayName: author.displayName || author.handle,
     avatarUrl: author.avatarUrl,
     text: body,
     createdAt: serverTimestamp(),
-  });
+  };
+  if (parentId) {
+    payload.parentId = parentId;
+    payload.replyToUid = String(reply?.replyToUid || '').trim() || null;
+    payload.replyToUsername = String(reply?.replyToUsername || '')
+      .trim()
+      .toLowerCase() || null;
+  }
+  await addDoc(collection(db, 'posts', postId, 'comments'), payload);
 }
 
 export async function deletePostComment(postId: string, commentId: string) {

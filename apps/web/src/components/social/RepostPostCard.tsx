@@ -264,7 +264,9 @@ function OriginalPostEmbed({
                 onInteracted?.();
                 setShowComments((v) => !v);
               }}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-white/5"
+              className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold hover:bg-white/5 ${
+                showComments ? 'bg-white/10 text-white' : 'text-zinc-300'
+              }`}
             >
               <MessageCircle size={15} className="text-cyan-300" />
               {commentCount > 0 ? commentCount : 'Comentar'}
@@ -292,11 +294,11 @@ function OriginalPostEmbed({
               />
             </span>
           </div>
-          {showComments || commentCount > 0 ? (
+          {showComments ? (
             <PostComments
               postId={origin.id}
               authorUid={origin.authorUid}
-              defaultOpen={showComments}
+              defaultOpen
             />
           ) : null}
         </>
