@@ -6,7 +6,7 @@ import { createPost } from '../../lib/socialFirestore';
 import { reelLifecycleHint } from '../../lib/reelLifecycle';
 import { storyLifecycleHint, STORY_MAX_DURATION_SEC } from '../../lib/storyLifecycle';
 import { readVideoDurationSec } from '../../lib/videoDuration';
-import { MAX_CLIP_DURATION_SECONDS } from '../../lib/contentType';
+import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
 import { BOOM_CLIP_MAX_DURATION_SEC } from '../../lib/videoTrim';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
@@ -74,6 +74,7 @@ export function CreatePostModal({
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const videoDurationSecRef = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false);
@@ -143,6 +144,7 @@ export function CreatePostModal({
     setCaption('');
     setMediaFile(null);
     setPreviewUrl(null);
+    videoDurationSecRef.current = 0;
     setError(null);
     setVisibility('public');
     setNotifyFriends(false);
@@ -158,6 +160,11 @@ export function CreatePostModal({
     setComposeTab(tab);
     setError(null);
     setMediaMenuOpen(false);
+    const nextMax =
+      tab === 'flashboom' ? FLASH_BOOM_CAPTION_MAX : tab === 'boomclip' ? BOOM_CLIP_CAPTION_MAX : null;
+    if (nextMax != null) {
+      setCaption((current) => (current.length > nextMax ? current.slice(0, nextMax) : current));
+    }
     if (tab === 'boomclip') {
       setKind('video');
       // Boom Clip = solo video; si había foto, limpiar
@@ -165,22 +172,25 @@ export function CreatePostModal({
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         setMediaFile(null);
         setPreviewUrl(null);
+        videoDurationSecRef.current = 0;
       }
     } else if (tab === 'publication') {
       if (kind === 'video') {
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         setMediaFile(null);
         setPreviewUrl(null);
+        videoDurationSecRef.current = 0;
         setKind('text');
       }
     }
   }
 
-  function applyMediaFile(file: File, forcedKind?: PostKind) {
+  function applyMediaFile(file: File, forcedKind?: PostKind, durationSec = 0) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setMediaFiles([]);
     setMediaFile(file);
     setPreviewUrl(URL.createObjectURL(file));
+    videoDurationSecRef.current = durationSec > 0 ? durationSec : 0;
 
     const detected = mediaKindFromFile(file);
     if (detected === 'video' || forcedKind === 'video') {
@@ -241,7 +251,7 @@ export function CreatePostModal({
           return;
         }
 
-        applyMediaFile(file, 'video');
+        applyMediaFile(file, 'video', durationSec);
       } catch (err) {
         if (isVideoFile(file) && file.size > 800) {
           applyMediaFile(file, 'video');
@@ -270,6 +280,7 @@ export function CreatePostModal({
     setMediaFile(first);
     setPreviewUrl(URL.createObjectURL(first));
     setKind('photo');
+    videoDurationSecRef.current = 0;
     if (composeTab === 'boomclip' || composeTab === 'flashboom') {
       setComposeTab('publication');
     }
@@ -374,7 +385,10 @@ export function CreatePostModal({
 
       if (publishKind === 'video' && mediaFile) {
         try {
-          durationSec = await readVideoDurationSec(mediaFile);
+          durationSec =
+            videoDurationSecRef.current > 0
+              ? videoDurationSecRef.current
+              : await readVideoDurationSec(mediaFile);
         } catch {
           if (mediaFile.size > 800) durationSec = 1;
           else throw new Error('No se pudo leer la duración del video');
@@ -436,7 +450,7 @@ export function CreatePostModal({
         authorUid: profile.firebaseUid,
         authorUsername: profile.handle || username,
         type: publishKind,
-        caption: caption.trim() || null,
+        caption: caption.trim().slice(0, captionMax ?? 2000) || null,
         mediaUrl: created.mediaUrl,
         visibility: created.visibility,
         createdAt: new Date().toISOString(),
@@ -462,7 +476,7 @@ export function CreatePostModal({
   const modalTitle =
     isFlashBoom ? FLASH_BOOM_LABEL : isBoomClip ? BOOM_CLIP_LABEL : 'Nueva publicación';
   const composeRows = isInline ? 2 : isFlashBoom ? 2 : 3;
-  const composeHeight = isInline ? 'h-20' : isFlashBoom ? 'h-16' : 'h-24';
+  const captionMax = isFlashBoom ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : undefined;
 
   const panelBody = showPanel ? (
     <>
@@ -518,14 +532,12 @@ export function CreatePostModal({
         />
       ) : trimDraft && isModalOpen ? null : (
         <>
-          <div className={`grid grid-cols-3 gap-1.5 ${isInline || isModalOpen ? 'mt-0' : 'mt-4'} sm:gap-2`}>
+          <div className={`composer-kind-tabs grid grid-cols-3 gap-1.5 ${isInline || isModalOpen ? 'mt-0' : 'mt-4'} sm:gap-2`}>
             <button
               type="button"
               onClick={() => switchTab('publication')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
-                composeTab === 'publication'
-                  ? 'border-cyan-400 bg-cyan-400/10 text-cyan-300'
-                  : 'border-white/10 text-zinc-400'
+              className={`composer-kind-tab composer-kind-tab--publication flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
+                composeTab === 'publication' ? 'is-active' : ''
               }`}
             >
               <PenLine size={14} />
@@ -534,10 +546,8 @@ export function CreatePostModal({
             <button
               type="button"
               onClick={() => switchTab('boomclip')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
-                composeTab === 'boomclip'
-                  ? 'border-cyan-400 bg-cyan-400/10 text-cyan-300'
-                  : 'border-white/10 text-zinc-400'
+              className={`composer-kind-tab composer-kind-tab--boomclip flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
+                composeTab === 'boomclip' ? 'is-active' : ''
               }`}
             >
               <Video size={14} />
@@ -546,10 +556,8 @@ export function CreatePostModal({
             <button
               type="button"
               onClick={() => switchTab('flashboom')}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
-                composeTab === 'flashboom'
-                  ? 'border-fuchsia-400 bg-fuchsia-500/10 text-fuchsia-200'
-                  : 'border-white/10 text-zinc-400'
+              className={`composer-kind-tab composer-kind-tab--flashboom flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
+                composeTab === 'flashboom' ? 'is-active' : ''
               }`}
             >
               <Zap size={14} />
@@ -558,35 +566,51 @@ export function CreatePostModal({
           </div>
 
           <div className="mt-3 space-y-2">
-            <EmojiInput
-              multiline
-              rows={composeRows}
-              value={caption}
-              onChange={setCaption}
-              placeholder={
-                isFlashBoom
-                  ? `Descripción (opcional)`
-                  : composeTab === 'boomclip'
-                    ? `Descripción ${BOOM_CLIP_LABEL} (opcional)`
-                    : '¿Qué quieres compartir?'
-              }
-              emojiSize={POST_EMOJI_SIZE}
-              growToMaxScroll={composeTab === 'publication'}
-              fieldClassName={`${
-                composeTab === 'publication' ? 'publication-composer-field min-h-[4.5rem]' : composeHeight
-              } w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/40`}
-              padClassName="px-3 py-2"
-              mirrorTextClassName="text-white"
-            />
-            <div ref={mediaMenuRef} className="relative flex items-center gap-1">
+            <div className="relative min-w-0">
+              <EmojiInput
+                multiline
+                rows={composeRows}
+                value={caption}
+                onChange={setCaption}
+                maxLength={captionMax}
+                placeholder={
+                  isFlashBoom
+                    ? `Descripción (opcional)`
+                    : composeTab === 'boomclip'
+                      ? `Descripción ${BOOM_CLIP_LABEL} (opcional)`
+                      : '¿Qué quieres compartir?'
+                }
+                emojiSize={POST_EMOJI_SIZE}
+                growToMaxScroll
+                fieldClassName="publication-composer-field min-h-[4.5rem] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/40"
+                padClassName={captionMax != null ? 'px-3 pb-7 pt-2' : 'px-3 py-2'}
+                mirrorTextClassName="text-white"
+              />
+              {captionMax != null ? (
+                <span
+                  className={`pointer-events-none absolute bottom-2 right-2 text-[10px] font-semibold tabular-nums ${
+                    caption.length >= captionMax ? 'text-fuchsia-300' : 'text-zinc-500'
+                  }`}
+                >
+                  {caption.length}/{captionMax}
+                </span>
+              ) : null}
+            </div>
+            <div ref={mediaMenuRef} className="relative flex min-w-0 flex-wrap items-center gap-1.5">
               <EmojiPickerButton
                 placement="above"
-                onPick={(id) => setCaption((c) => insertEmojiToken(c, id))}
+                showUnicode
+                onPick={(id) =>
+                  setCaption((current) => {
+                    const next = insertEmojiToken(current, id);
+                    return captionMax != null && next.length > captionMax ? current : next;
+                  })
+                }
               />
               <button
                 type="button"
                 onClick={() => setMediaMenuOpen((value) => !value)}
-                className={`grid h-9 w-9 place-items-center rounded-lg border transition ${
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition ${
                   mediaMenuOpen
                     ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
                     : 'border-white/15 bg-zinc-900/80 text-zinc-300 hover:border-cyan-400/40'
@@ -598,32 +622,26 @@ export function CreatePostModal({
               </button>
               {mediaMenuOpen ? (
                 <div className="absolute bottom-full left-0 z-10 mb-1.5 min-w-[12rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-xl">
-                  {!isBoomClip ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => openGallery('photo')}
-                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                      >
-                        <Image size={14} className="text-cyan-300" />
-                        Fotos · galería
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openCamera('photo')}
-                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
-                      >
-                        <Camera size={14} className="text-cyan-300" />
-                        Fotos · cámara
-                      </button>
-                    </>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => openGallery('photo')}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
+                  >
+                    <Image size={14} className="text-cyan-300" />
+                    Fotos · galería
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openCamera('photo')}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
+                  >
+                    <Camera size={14} className="text-cyan-300" />
+                    Fotos · cámara
+                  </button>
                   <button
                     type="button"
                     onClick={() => openGallery('video')}
-                    className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5 ${
-                      isBoomClip ? '' : 'border-t border-white/10'
-                    }`}
+                    className="flex w-full items-center gap-2 border-t border-white/10 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
                   >
                     <Video size={14} className="text-fuchsia-300" />
                     Videos · galería
@@ -636,6 +654,41 @@ export function CreatePostModal({
                     <Camera size={14} className="text-fuchsia-300" />
                     Videos · cámara
                   </button>
+                </div>
+              ) : null}
+              {showVisibility ? (
+                <div
+                  className="ml-auto flex min-h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-black/35 p-0.5"
+                  role="group"
+                  aria-label="Quién puede verlo"
+                >
+                  {(
+                    [
+                      ['public', Globe, 'Público'],
+                      ['friends', Users, 'Amigos'],
+                      ['private', Lock, 'Privado'],
+                    ] as const
+                  ).map(([value, Icon, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setVisibility(value);
+                        if (value === 'friends') setNotifyFriends(true);
+                        if (value === 'private') setNotifyFriends(false);
+                      }}
+                      className={`inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${
+                        visibility === value
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                      aria-pressed={visibility === value}
+                      title={label}
+                    >
+                      <Icon size={12} className="shrink-0" />
+                      <span className="truncate">{label}</span>
+                    </button>
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -748,49 +801,17 @@ export function CreatePostModal({
         </>
       )}
 
-      {showVisibility ? (
-        <>
-          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-zinc-500">Quién puede verlo</p>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {(
-              [
-                ['public', Globe, 'Público'],
-                ['friends', Users, 'Amigos'],
-                ['private', Lock, 'Privado'],
-              ] as const
-            ).map(([value, Icon, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => {
-                  setVisibility(value);
-                  if (value === 'friends') setNotifyFriends(true);
-                  if (value === 'private') setNotifyFriends(false);
-                }}
-                className={`rounded-xl border px-2 py-2 text-[11px] font-semibold ${
-                  visibility === value
-                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                    : 'border-white/10 text-zinc-400'
-                }`}
-              >
-                <Icon size={14} className="mx-auto mb-1" />
-                {label}
-              </button>
-            ))}
-          </div>
-          {visibility !== 'private' ? (
-            <button
-              type="button"
-              onClick={() => setNotifyFriends((value) => !value)}
-              className={`mt-3 flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs ${
-                notifyFriends ? 'border-rose-500/60 bg-rose-500/10 text-rose-200' : 'border-white/10 text-zinc-400'
-              }`}
-            >
-              <Bell size={14} />
-              Notificar amigos
-            </button>
-          ) : null}
-        </>
+      {showVisibility && visibility !== 'private' ? (
+        <button
+          type="button"
+          onClick={() => setNotifyFriends((value) => !value)}
+          className={`mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold ${
+            notifyFriends ? 'border-rose-500/60 bg-rose-500/10 text-rose-200' : 'border-white/10 text-zinc-400'
+          }`}
+        >
+          <Bell size={13} />
+          Notificar amigos
+        </button>
       ) : null}
 
       {error && !isModalOpen ? (

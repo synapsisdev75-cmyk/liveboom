@@ -24,6 +24,9 @@ function toSocial(post: FsPost): SocialPost {
     likes: post.likes,
     dislikes: 0,
     viewerReaction: null,
+    sharedFromPostId: post.sharedFromPostId,
+    sharedFromAuthorUid: post.sharedFromAuthorUid,
+    sharedFromUsername: post.sharedFromUsername,
   };
 }
 

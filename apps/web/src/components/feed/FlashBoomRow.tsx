@@ -28,6 +28,10 @@ function toStoryReel(post: FsPost): StoryReel {
     mediaUrl: post.mediaUrl || '',
     mediaType: post.type === 'photo' ? 'photo' : 'video',
     createdAt: post.createdAt,
+    durationSec: post.durationSec ?? null,
+    sharedFromPostId: post.sharedFromPostId,
+    sharedFromAuthorUid: post.sharedFromAuthorUid,
+    sharedFromUsername: post.sharedFromUsername,
   };
 }
 
@@ -247,36 +251,21 @@ export function FlashBoomRow() {
     );
   }, [stories, profile, networkSet]);
 
-  function openAuthorStories(authorUid: string) {
-    const authorStories = storiesByAuthor.get(authorUid);
-    if (!authorStories?.length) return;
-    const avatar =
-      authorUid === profile?.firebaseUid
-        ? profile.avatarUrl
-        : networkPeople.find((p) => p.uid === authorUid)?.avatarUrl;
-    setViewerReels(
-      authorStories.map((story) => ({
-        ...story,
-        authorAvatarUrl: avatar ?? story.authorAvatarUrl ?? null,
-      })),
-    );
-    setViewerIndex(0);
-  }
-
-  function openAllFriendsStories(startUid: string) {
+  function openRingFromAuthor(authorUid: string) {
+    if (!profile) return;
     const ordered: StoryReel[] = [];
     const uids = [
-      ...(ownStories.length ? [profile!.firebaseUid] : []),
-      ...networkWithStories.map((f) => f.uid),
-    ].filter((uid, i, arr) => arr.indexOf(uid) === i);
+      ...(ownStories.length ? [profile.firebaseUid] : []),
+      ...networkWithStories.map((person) => person.uid),
+    ].filter((uid, index, list) => list.indexOf(uid) === index);
 
     for (const uid of uids) {
       const list = storiesByAuthor.get(uid);
       if (!list?.length) continue;
       const avatar =
-        uid === profile?.firebaseUid
+        uid === profile.firebaseUid
           ? profile.avatarUrl
-          : networkPeople.find((p) => p.uid === uid)?.avatarUrl;
+          : networkPeople.find((person) => person.uid === uid)?.avatarUrl;
       ordered.push(
         ...list.map((story) => ({
           ...story,
@@ -285,8 +274,8 @@ export function FlashBoomRow() {
       );
     }
     if (!ordered.length) return;
-    const startId = storiesByAuthor.get(startUid)?.[0]?.id;
-    const idx = startId ? ordered.findIndex((s) => s.id === startId) : 0;
+    const startId = storiesByAuthor.get(authorUid)?.[0]?.id;
+    const idx = startId ? ordered.findIndex((story) => story.id === startId) : 0;
     setViewerReels(ordered);
     setViewerIndex(Math.max(0, idx));
   }
@@ -350,7 +339,7 @@ export function FlashBoomRow() {
               avatarUrl={profile.avatarUrl ?? null}
               handle={profile.handle}
               hasOwnStory={ownStories.length > 0}
-              onOpenOwn={() => openAuthorStories(profile.firebaseUid)}
+              onOpenOwn={() => openRingFromAuthor(profile.firebaseUid)}
               onPublish={() => setCreateMode('flashboom')}
             />
           </div>
@@ -364,7 +353,7 @@ export function FlashBoomRow() {
                 reel={reel}
                 avatarUrl={person.avatarUrl}
                 label={person.displayName?.split(' ')[0] || person.username}
-                onOpen={() => openAllFriendsStories(person.uid)}
+                onOpen={() => openRingFromAuthor(person.uid)}
               />
             );
           })}
@@ -383,6 +372,7 @@ export function FlashBoomRow() {
           initialIndex={viewerIndex}
           storyMode
           immersiveLandscapeLayout
+          collapsibleCaption
           onClose={() => setViewerReels(null)}
         />
       ) : null}

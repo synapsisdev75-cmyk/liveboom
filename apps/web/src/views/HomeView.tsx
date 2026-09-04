@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGroup } from 'framer-motion';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -19,6 +19,7 @@ import { NotificationBell } from '../components/social/NotificationBell';
 import { ReactionList } from '../components/social/PostReactionButtons';
 import { PostComments, PostVideoPlayer } from '../components/social/PostVideoPlayer';
 import { ShareContentButton } from '../components/social/ShareContentButton';
+import { ReelGiftControls } from '../components/feed/ReelGiftControls';
 import { buildPostShareUrl } from '../lib/shareContent';
 import { PostPhotoViewer } from '../components/social/PostPhotoViewer';
 import { PostMediaCarousel } from '../components/social/PostMediaCarousel';
@@ -31,6 +32,8 @@ import {
   isTextOnlyPost,
   type SocialPost,
 } from '../components/social/SocialPostCard';
+import { RepostPostCard } from '../components/social/RepostPostCard';
+import { isRepostPost } from '../lib/socialFirestore';
 import { UserAvatar } from '../components/profile/UserAvatar';
 import { apiPublic } from '../lib/api';
 import { categoryLabel } from '../lib/categories';
@@ -49,8 +52,16 @@ import {
   getPostById,
   setPostReaction,
   type FsPost,
+  type HomeFeedMeta,
   type PostReactionUser,
 } from '../lib/socialFirestore';
+import { markHomeFeedInteracted, markHomeFeedSeen, readHomeFeedHistory } from '../lib/homeFeedHistory';
+import {
+  HOME_FEED_PAGE_SIZE,
+  nextHomeFeedPage,
+  rankHomePublications,
+} from '../lib/homeFeedRanking';
+import { isPublicationPost } from '../lib/contentType';
 import { fetchPrivateLocation } from '../lib/userLocation';
 import { isStoryActive, isStoryPost } from '../lib/storyLifecycle';
 import { useAuthStore } from '../store/authStore';
@@ -77,6 +88,9 @@ function toSocial(post: FsPost): SocialPost {
     postFormat: post.postFormat,
     durationSec: post.durationSec,
     reelFeedUntilMs: post.reelFeedUntilMs,
+    sharedFromPostId: post.sharedFromPostId,
+    sharedFromAuthorUid: post.sharedFromAuthorUid,
+    sharedFromUsername: post.sharedFromUsername,
   };
 }
 
@@ -92,6 +106,28 @@ function timeAgo(iso: string) {
 
 /** Post destacado: video con autoplay + comentarios directos. */
 function FeaturedFeedCard({
+  post,
+  live,
+}: {
+  post: SocialPost;
+  live: ActiveLiveFeedItem | null;
+}) {
+  const profile = useAuthStore((state) => state.profile);
+  if (isRepostPost(post)) {
+    return (
+      <RepostPostCard
+        post={post}
+        live={live}
+        onInteracted={() => {
+          if (profile) markHomeFeedInteracted(profile.firebaseUid, post.id);
+        }}
+      />
+    );
+  }
+  return <HomePublicationCard post={post} live={live} />;
+}
+
+function HomePublicationCard({
   post,
   live,
 }: {
@@ -127,6 +163,7 @@ function FeaturedFeedCard({
     if (!profile) return;
     setBusy(true);
     try {
+      markHomeFeedInteracted(profile.firebaseUid, post.id);
       await setPostReaction(
         post.id,
         profile.firebaseUid,
@@ -146,6 +183,7 @@ function FeaturedFeedCard({
     if (!profile) return;
     setBusy(true);
     try {
+      markHomeFeedInteracted(profile.firebaseUid, post.id);
       await setPostReaction(
         post.id,
         profile.firebaseUid,
@@ -272,27 +310,46 @@ function FeaturedFeedCard({
         </span>
         <button
           type="button"
-          onClick={() => setShowComments((v) => !v)}
+          onClick={() => {
+            if (profile) markHomeFeedInteracted(profile.firebaseUid, post.id);
+            setShowComments((v) => !v);
+          }}
           className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-white/5"
         >
           <MessageCircle size={15} className="text-cyan-300" />
           {commentCount > 0 ? commentCount : 'Comentar'}
         </button>
-        <Link
-          to={live ? `/stream/${encodeURIComponent(live.username)}` : '/billetera'}
-          className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-amber-200 hover:bg-white/5"
-        >
-          <Gift size={15} />
-          Regalar
-        </Link>
-        <ShareContentButton
-          url={buildPostShareUrl(post.authorUsername, post.id, post.authorUid)}
-          title={`@${post.authorUsername} en LiveBoom`}
-          text={post.caption || `Mira esta publicación de @${post.authorUsername} en LiveBoom`}
-          mediaUrl={post.mediaUrl}
-          mediaType={post.type === 'video' ? 'video' : post.type === 'photo' ? 'photo' : 'text'}
+        {post.authorUsername ? (
+          <span
+            onClick={() => {
+              if (profile) markHomeFeedInteracted(profile.firebaseUid, post.id);
+            }}
+          >
+            <ReelGiftControls
+              authorUsername={post.authorUsername}
+              authorUid={post.authorUid}
+              postId={post.id}
+              inline
+            />
+          </span>
+        ) : null}
+        <span
           className="ml-auto"
-        />
+          onClick={() => {
+            if (profile) markHomeFeedInteracted(profile.firebaseUid, post.id);
+          }}
+        >
+          <ShareContentButton
+            url={buildPostShareUrl(post.authorUsername, post.id, post.authorUid)}
+            title={`@${post.authorUsername} en LiveBoom`}
+            text={post.caption || `Mira esta publicación de @${post.authorUsername} en LiveBoom`}
+            mediaUrl={post.mediaUrl}
+            mediaType={post.type === 'video' ? 'video' : post.type === 'photo' ? 'photo' : 'text'}
+            postId={post.id}
+            authorUid={post.authorUid}
+            authorUsername={post.authorUsername}
+          />
+        </span>
       </div>
 
       {!isTextOnlyPost(post) &&
@@ -317,6 +374,13 @@ export function HomeView() {
   const navigate = useNavigate();
   const [streams, setStreams] = useState<ActiveLiveFeedItem[]>([]);
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [feedMeta, setFeedMeta] = useState<HomeFeedMeta>({ friendUids: [], followingUids: [] });
+  const [visibleIds, setVisibleIds] = useState<string[]>([]);
+  const [feedEpoch, setFeedEpoch] = useState(() => Date.now());
+  const [historySnap, setHistorySnap] = useState(() =>
+    profile?.firebaseUid ? readHomeFeedHistory(profile.firebaseUid) : {},
+  );
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const [category, setCategory] = useState('');
   const [tab, setTab] = useState<FeedTab>('para_ti');
   const [regionLabel, setRegionLabel] = useState<string | null>(null);
@@ -342,6 +406,10 @@ export function HomeView() {
       caption: post.caption || (isStoryPost(post) ? 'Flash Boom' : 'Boom Clip'),
       mediaUrl: post.mediaUrl || '',
       mediaType: post.type === 'photo' ? ('photo' as const) : ('video' as const),
+      durationSec: post.durationSec ?? null,
+      sharedFromPostId: post.sharedFromPostId,
+      sharedFromAuthorUid: post.sharedFromAuthorUid,
+      sharedFromUsername: post.sharedFromUsername,
     };
   }
 
@@ -363,7 +431,11 @@ export function HomeView() {
   }
 
   function openFlashViewer(posts: FsPost[], postId: string) {
-    const reels = flashReelsFromPosts(posts);
+    const target = posts.find((post) => post.id === postId);
+    const authorUid = target?.authorUid;
+    const reels = flashReelsFromPosts(posts).filter((reel) =>
+      authorUid ? reel.authorUid === authorUid : reel.id === postId,
+    );
     const index = reels.findIndex((reel) => reel.id === postId);
     if (index < 0) return false;
     setFlashViewer({ reels, index, storyMode: true });
@@ -407,15 +479,104 @@ export function HomeView() {
   }, []);
 
   useEffect(() => {
+    setVisibleIds([]);
+    setFeedEpoch(Date.now());
+    if (profile?.firebaseUid) setHistorySnap(readHomeFeedHistory(profile.firebaseUid));
     if (!profile) {
       setPosts([]);
+      setFeedMeta({ friendUids: [], followingUids: [] });
       return;
     }
+    setPosts([]);
     if (tab === 'cerca') {
-      return listenRecentPosts((list) => setPosts(list.map(toSocial)));
+      return listenRecentPosts((list) =>
+        setPosts(list.filter((item) => isPublicationPost(item)).map(toSocial)),
+      );
     }
-    return listenHomeFeed(profile.firebaseUid, tab, (list) => setPosts(list.map(toSocial)));
+    return listenHomeFeed(profile.firebaseUid, tab, (list, meta) => {
+      setPosts(list.map(toSocial));
+      setFeedMeta(meta);
+    });
   }, [profile?.firebaseUid, tab]);
+
+  const rankedPosts = useMemo(() => {
+    if (tab !== 'para_ti' || !profile?.firebaseUid) return posts;
+    return rankHomePublications(
+      posts,
+      {
+        uid: profile.firebaseUid,
+        friendUids: new Set(feedMeta.friendUids),
+        followingUids: new Set(feedMeta.followingUids),
+      },
+      historySnap,
+      feedEpoch,
+    );
+  }, [tab, posts, profile?.firebaseUid, feedMeta, historySnap, feedEpoch]);
+
+  const feedById = useMemo(() => {
+    const map = new Map(rankedPosts.map((post) => [post.id, post]));
+    return map;
+  }, [rankedPosts]);
+
+  useEffect(() => {
+    const eligible = new Set(rankedPosts.map((post) => post.id));
+    setVisibleIds((prev) => {
+      const kept = prev.filter((id) => eligible.has(id));
+      if (kept.length > 0) {
+        if (kept.length === prev.length && kept.every((id, index) => id === prev[index])) return prev;
+        return kept;
+      }
+      const next = rankedPosts.slice(0, HOME_FEED_PAGE_SIZE).map((post) => post.id);
+      if (next.length === prev.length && next.every((id, index) => id === prev[index])) return prev;
+      return next;
+    });
+  }, [rankedPosts]);
+
+  const visiblePosts = useMemo(
+    () => visibleIds.map((id) => feedById.get(id)).filter((post): post is SocialPost => Boolean(post)),
+    [visibleIds, feedById],
+  );
+
+  const canLoadMore = rankedPosts.some((post) => !visibleIds.includes(post.id));
+  const rankedRef = useRef(rankedPosts);
+  rankedRef.current = rankedPosts;
+
+  const loadMoreHomeFeed = useCallback(() => {
+    setVisibleIds((prev) => {
+      const extra = nextHomeFeedPage(rankedRef.current, prev, HOME_FEED_PAGE_SIZE);
+      if (extra.length === 0) return prev;
+      return [...prev, ...extra.map((post) => post.id)];
+    });
+  }, []);
+
+  useEffect(() => {
+    const uid = profile?.firebaseUid;
+    if (!uid) return;
+    for (const id of visibleIds) markHomeFeedSeen(uid, id);
+  }, [visibleIds, profile?.firebaseUid]);
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !canLoadMore) return;
+    let armed = false;
+    const armTimer = window.setTimeout(() => {
+      armed = true;
+    }, 700);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!armed) return;
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        armed = false;
+        loadMoreHomeFeed();
+      },
+      { rootMargin: '220px 0px' },
+    );
+    observer.observe(node);
+    return () => {
+      window.clearTimeout(armTimer);
+      observer.disconnect();
+    };
+  }, [canLoadMore, visibleIds.length, loadMoreHomeFeed]);
 
   useEffect(() => {
     if (!profile) {
@@ -493,7 +654,7 @@ export function HomeView() {
     [streams, category],
   );
 
-  const featured = posts[0] ?? null;
+  const featured = visiblePosts[0] ?? null;
   const liveForFeatured = useMemo(() => {
     if (!featured) return streams[0] ?? null;
     return (
@@ -513,15 +674,25 @@ export function HomeView() {
     <div className="lb-page lb-home-center flex min-w-0 flex-col gap-4 sm:gap-5">
       {/* 1. Tabs + buscar + campana */}
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <nav className="flex items-center gap-0.5 sm:gap-1">
+        <nav className="flex min-w-0 max-w-full items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden">
           {tabs.map((item) => {
             const active = tab === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setTab(item.id)}
-                className={`relative px-2.5 py-2 text-sm font-semibold transition sm:px-3 ${
+                onClick={() => {
+                  if (item.id === tab) {
+                    setFeedEpoch(Date.now());
+                    setVisibleIds([]);
+                    if (profile?.firebaseUid) {
+                      setHistorySnap(readHomeFeedHistory(profile.firebaseUid));
+                    }
+                    return;
+                  }
+                  setTab(item.id);
+                }}
+                className={`relative min-h-11 shrink-0 px-2.5 py-2 text-sm font-semibold transition sm:px-3 ${
                   active ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
@@ -639,14 +810,28 @@ export function HomeView() {
       </section>
 
       {/* Más posts del feed */}
-      {profile && posts.length > 1 ? (
+      {profile && visiblePosts.length > 0 ? (
         <section className="space-y-3">
-          {posts.slice(1, 6).map((post) => {
+          {visiblePosts.slice(1).map((post) => {
             const live = streams.find(
               (s) => s.username.toLowerCase() === post.authorUsername.toLowerCase(),
             );
             return <FeaturedFeedCard key={post.id} post={post} live={live ?? null} />;
           })}
+          <div ref={loadMoreRef} className="h-4" />
+          {canLoadMore ? (
+            <button
+              type="button"
+              onClick={loadMoreHomeFeed}
+              className="flex min-h-11 w-full items-center justify-center rounded-2xl border border-white/10 bg-zinc-950/80 text-sm font-semibold text-cyan-300 hover:bg-white/5"
+            >
+              Ver más publicaciones
+            </button>
+          ) : (
+            <p className="pb-2 text-center text-[11px] text-zinc-500">
+              Sigues viendo contenido público activo. Toca Para ti para recalcular el ranking.
+            </p>
+          )}
         </section>
       ) : null}
 
@@ -656,6 +841,7 @@ export function HomeView() {
           initialIndex={flashViewer.index}
           storyMode={flashViewer.storyMode}
           immersiveLandscapeLayout={flashViewer.storyMode}
+          collapsibleCaption
           onClose={() => setFlashViewer(null)}
         />
       ) : null}

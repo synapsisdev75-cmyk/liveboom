@@ -3,6 +3,8 @@ import type { FsPost } from './socialFirestore';
 
 /** Máxima duración de una historia (segundos). */
 export const STORY_MAX_DURATION_SEC = 90;
+/** Foto en Flash Boom / Boom Clip: tiempo fijo de visión. */
+export const STORY_PHOTO_DURATION_SEC = 5;
 /** Las historias desaparecen tras 24 horas. */
 export const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 

@@ -27,19 +27,77 @@ export function userMediaStorageFolder(uid: string, kind: UserMediaStorageKind) 
   return `${userStorageFolder(uid)}/${USER_MEDIA_FOLDERS[kind]}`;
 }
 
+const ensuredUserFolders = new Set<string>();
+const ensuringUserFolders = new Map<string, Promise<void>>();
+
 export async function ensureUserStorageFolder(uid: string): Promise<void> {
+  if (!uid || ensuredUserFolders.has(uid)) return;
+  const pending = ensuringUserFolders.get(uid);
+  if (pending) return pending;
+
   const base = userStorageFolder(uid);
   const paths = [
     `${base}/.keep`,
     ...Object.values(USER_MEDIA_FOLDERS).map((folder) => `${base}/${folder}/.keep`),
   ];
-  await Promise.all(
+  const task = Promise.all(
     paths.map((path) =>
       uploadBytes(ref(storage, path), new Blob(['liveboom'], { type: 'text/plain' }), {
         contentType: 'text/plain',
       }).catch(() => undefined),
     ),
-  );
+  )
+    .then(() => {
+      ensuredUserFolders.add(uid);
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      ensuringUserFolders.delete(uid);
+    });
+  ensuringUserFolders.set(uid, task);
+  return task;
+}
+
+type ImageUploadBudget = {
+  maxEdge: number;
+  quality: number;
+  maxBytes: number;
+};
+
+/** Calidad/peso según red: archivos más livianos = subida más corta. */
+function imageUploadBudget(): ImageUploadBudget {
+  try {
+    const connection = (
+      navigator as Navigator & {
+        connection?: { effectiveType?: string; saveData?: boolean; downlink?: number };
+      }
+    ).connection;
+    if (connection?.saveData) {
+      return { maxEdge: 1080, quality: 0.7, maxBytes: 550_000 };
+    }
+    const type = connection?.effectiveType;
+    const downlink = connection?.downlink;
+    if (type === 'slow-2g' || type === '2g') {
+      return { maxEdge: 1080, quality: 0.7, maxBytes: 550_000 };
+    }
+    if (type === '3g' || (typeof downlink === 'number' && downlink > 0 && downlink < 1.5)) {
+      return { maxEdge: 1440, quality: 0.76, maxBytes: 900_000 };
+    }
+  } catch {
+    /* Network Information API no está en todos los navegadores. */
+  }
+  return { maxEdge: 1920, quality: 0.82, maxBytes: 1_500_000 };
+}
+
+function canSkipImageReencode(
+  blob: Blob,
+  width: number,
+  height: number,
+  budget: ImageUploadBudget,
+): boolean {
+  const type = (blob.type || '').toLowerCase();
+  if (type !== 'image/jpeg' && type !== 'image/jpg' && type !== 'image/webp') return false;
+  return blob.size <= budget.maxBytes && Math.max(width, height) <= budget.maxEdge + 16;
 }
 
 type LoadedImage = {
@@ -51,7 +109,9 @@ type LoadedImage = {
 
 async function loadImage(blob: Blob): Promise<LoadedImage> {
   if (typeof createImageBitmap === 'function') {
-    const bitmap = await createImageBitmap(blob);
+    const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' }).catch(() =>
+      createImageBitmap(blob),
+    );
     return {
       source: bitmap,
       width: bitmap.width,
@@ -77,17 +137,6 @@ async function loadImage(blob: Blob): Promise<LoadedImage> {
     };
     image.src = objectUrl;
   });
-}
-
-async function imageMegapixels(blob: Blob): Promise<number> {
-  if (typeof createImageBitmap !== 'function') return 0;
-  let bitmap: ImageBitmap | null = null;
-  try {
-    bitmap = await createImageBitmap(blob);
-    return (bitmap.width * bitmap.height) / 1_000_000;
-  } finally {
-    bitmap?.close();
-  }
 }
 
 function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
@@ -172,35 +221,75 @@ export async function normalizeImageOrientation(blob: Blob): Promise<Blob> {
   }
 }
 
-/** Prepara una foto: normaliza EXIF y comprime si supera el máximo. */
+/** Prepara una foto: un solo pase a resolución de feed (o se omite si ya es liviana). */
 export async function prepareImageForUpload(blob: Blob, label = 'La foto'): Promise<Blob> {
   const type = blob.type || '';
   if (!type.startsWith('image/')) {
     throw new Error(`${label}: solo se permiten imágenes.`);
   }
-
-  let normalized: Blob;
-  try {
-    normalized = await normalizeImageOrientation(blob);
-  } catch {
-    normalized = blob;
+  if (blob.size > MAX_IMAGE_BYTES * 3) {
+    throw new Error(`${label} pesa demasiado. Prueba con otra imagen.`);
   }
 
-  const mp = await imageMegapixels(normalized).catch(() => 0);
-  const fitsSize = normalized.size <= MAX_IMAGE_BYTES;
-  const fitsMp = mp <= MAX_IMAGE_MEGAPIXELS + 0.05;
-  if (fitsSize && fitsMp) return normalized;
+  const budget = imageUploadBudget();
+  let loaded: LoadedImage;
+  try {
+    loaded = await loadImage(blob);
+  } catch {
+    if (blob.size <= MAX_IMAGE_BYTES) return blob;
+    throw new Error(`${label} no pudo optimizarse. Prueba con otra imagen.`);
+  }
 
   try {
-    return await compressImageToLimit(normalized, MAX_IMAGE_BYTES, MAX_IMAGE_MEGAPIXELS);
-  } catch {
+    if (canSkipImageReencode(blob, loaded.width, loaded.height, budget)) {
+      return blob;
+    }
+
+    const longEdge = Math.max(loaded.width, loaded.height);
+    const edgeScale = longEdge > budget.maxEdge ? budget.maxEdge / longEdge : 1;
+    const fitted = fitMegapixels(
+      Math.max(1, Math.round(loaded.width * edgeScale)),
+      Math.max(1, Math.round(loaded.height * edgeScale)),
+      MAX_IMAGE_MEGAPIXELS,
+    );
+
+    let quality = budget.quality;
+    let width = fitted.width;
+    let height = fitted.height;
+    let best: Blob | null = null;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No se pudo procesar la imagen');
+      ctx.drawImage(loaded.source, 0, 0, width, height);
+      const out = await canvasToJpeg(canvas, quality);
+      best = out;
+      if (out.size <= budget.maxBytes) return out;
+      if (quality > 0.62) {
+        quality = Math.max(0.62, quality - 0.1);
+        continue;
+      }
+      width = Math.max(1, Math.floor(width * 0.85));
+      height = Math.max(1, Math.floor(height * 0.85));
+      quality = budget.quality;
+    }
+
+    if (best && best.size <= MAX_IMAGE_BYTES) return best;
+    if (blob.size <= MAX_IMAGE_BYTES && (type === 'image/jpeg' || type === 'image/webp')) {
+      return blob;
+    }
     throw new Error(`${label} no pudo optimizarse. Prueba con otra imagen.`);
+  } finally {
+    loaded.cleanup();
   }
 }
 
 export async function uploadUserAvatar(uid: string, blob: Blob, ext = 'jpg'): Promise<string> {
   const prepared = await prepareImageForUpload(blob, 'La foto de perfil');
-  await ensureUserStorageFolder(uid).catch(() => undefined);
+  void ensureUserStorageFolder(uid);
   const safeExt = ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'jpg';
   const objectRef = ref(storage, `${userStorageFolder(uid)}/avatar/profile.${safeExt}`);
   await uploadBytes(objectRef, prepared, {
@@ -230,7 +319,7 @@ export async function uploadUserMedia(
     throw new Error('El video debe pesar menos de 50 MB.');
   }
 
-  await ensureUserStorageFolder(uid).catch(() => undefined);
+  void ensureUserStorageFolder(uid);
   const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || (isVideo ? 'clip.mp4' : 'photo.jpg');
   const storagePath = `${userMediaStorageFolder(uid, kind)}/${Date.now()}_${safeName}`;
   const objectRef = ref(storage, storagePath);
@@ -241,6 +330,43 @@ export async function uploadUserMedia(
   });
   const url = await getDownloadURL(objectRef);
   return { url, storagePath };
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      const item = items[index];
+      if (item === undefined) return;
+      results[index] = await mapper(item, index);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, () => worker()),
+  );
+  return results;
+}
+
+/** Varias fotos en paralelo (máx. 2 a la vez para no saturar CPU/RAM del teléfono). */
+export async function uploadUserMediaMany(
+  uid: string,
+  files: File[],
+  visibility: MediaVisibility = 'private',
+  kind: UserMediaStorageKind = 'publication',
+  concurrency = 2,
+): Promise<Array<{ url: string; storagePath: string }>> {
+  return mapWithConcurrency(files, concurrency, (file, index) =>
+    uploadUserMedia(uid, file, file.name || `photo_${index + 1}.jpg`, visibility, kind),
+  );
 }
 
 export async function updateStoredMediaVisibility(storagePath: string, visibility: MediaVisibility) {
@@ -263,7 +389,7 @@ export async function uploadChatMedia(uid: string, file: Blob, name: string): Pr
     throw new Error('El archivo debe pesar menos de 20 MB.');
   }
 
-  await ensureUserStorageFolder(uid).catch(() => undefined);
+  void ensureUserStorageFolder(uid);
   const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'adjunto';
   const objectRef = ref(storage, `${userStorageFolder(uid)}/chat/${Date.now()}_${safeName}`);
   await uploadBytes(objectRef, payload, { contentType: isImage ? payload.type || 'image/jpeg' : type });
@@ -279,7 +405,7 @@ export async function uploadGroupCover(
 ): Promise<string> {
   const prepared = await prepareImageForUpload(blob, 'La foto del grupo');
   const safeExt = ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'jpg';
-  await ensureUserStorageFolder(uid).catch(() => undefined);
+  void ensureUserStorageFolder(uid);
   const contentType = prepared.type || 'image/jpeg';
   const objectRef = ref(storage, `${userStorageFolder(uid)}/groups/${groupId}_cover.${safeExt}`);
   await uploadBytes(objectRef, prepared, { contentType });
@@ -296,7 +422,7 @@ export async function uploadGroupChatMedia(
   const type = file.type || 'application/octet-stream';
   if (!type.startsWith('image/')) throw new Error('Solo se permiten fotos en el chat del grupo.');
   const prepared = await prepareImageForUpload(file, 'La foto');
-  await ensureUserStorageFolder(uid).catch(() => undefined);
+  void ensureUserStorageFolder(uid);
   const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'foto.jpg';
   const objectRef = ref(
     storage,

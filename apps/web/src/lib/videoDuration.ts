@@ -3,7 +3,7 @@ export function readVideoDurationSec(file: File, fallbackSec = 0): Promise<numbe
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
-    video.preload = 'auto';
+    video.preload = 'metadata';
     video.muted = true;
     video.playsInline = true;
 

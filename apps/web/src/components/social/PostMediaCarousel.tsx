@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { publicationFeedPlaceholderStyle } from '../../lib/publicationMedia';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
+import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { PostActionRail } from './PostActionRail';
+import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
@@ -60,6 +62,7 @@ export function PostMediaCarousel({
   onExpandChange,
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
+  const isDesktop = useIsDesktop();
   const [index, setIndex] = useState(0);
   const [expanded, setExpanded] = useState(startExpanded);
   const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
@@ -241,6 +244,9 @@ export function PostMediaCarousel({
                     text={shareText}
                     mediaUrl={sources[index]}
                     mediaType="photo"
+                    postId={postId}
+                    authorUid={authorUid}
+                    authorUsername={authorUsername}
                     iconOnly
                   />
                 </span>
@@ -291,65 +297,126 @@ export function PostMediaCarousel({
               else goPrev();
             }}
           >
-            <div className="relative flex h-full w-full items-center justify-center px-2">
+            <ImmersiveMediaStage
+              mediaWidth={frameW || 9}
+              mediaHeight={frameH || 16}
+              mediaUrl={sources[index] || sources[0] || ''}
+              mediaKind="image"
+              landscapeRailAside
+              fillMode="contain"
+              insets={{ top: 56, bottom: caption ? 132 : 100, left: 4, right: 4, actionRail: 56 }}
+              sideChrome={
+                postId ? (
+                  <PostActionRail
+                    postId={postId}
+                    authorUid={authorUid}
+                    authorUsername={authorUsername}
+                    authorAvatarUrl={authorAvatarUrl}
+                    likes={likes}
+                    dislikes={dislikes}
+                    viewerReaction={viewerReaction}
+                    likers={likers}
+                    dislikers={dislikers}
+                    busy={busy}
+                    onReact={(r) => void react(r)}
+                    commentCount={commentCount}
+                    commentsOpen={commentsOpen}
+                    onToggleComments={() => setCommentsOpen((v) => !v)}
+                    shareUrl={shareUrl}
+                    shareTitle={shareTitle}
+                    shareText={shareText}
+                    mediaUrl={sources[index]}
+                    mediaType="photo"
+                    commentsPanelOpen={commentsOpen}
+                    anchor="media"
+                    layout={isDesktop ? 'aside' : 'corner'}
+                  />
+                ) : null
+              }
+              mediaOverlay={
+                total > 1 ? (
+                  <>
+                    {index > 0 ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          goPrev();
+                        }}
+                        className="absolute left-2 top-1/2 z-20 grid min-h-11 min-w-11 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-black/65 text-white shadow-lg backdrop-blur-md"
+                        aria-label="Foto anterior"
+                      >
+                        <ChevronLeft size={20} />
+                      </button>
+                    ) : null}
+                    {index < total - 1 ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          goNext();
+                        }}
+                        className="absolute right-2 top-1/2 z-20 grid min-h-11 min-w-11 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-black/65 text-white shadow-lg backdrop-blur-md"
+                        aria-label="Foto siguiente"
+                      >
+                        <ChevronRight size={20} />
+                      </button>
+                    ) : null}
+                  </>
+                ) : null
+              }
+            >
+              <div className="relative h-full w-full">
+                {sources.map((src, i) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt=""
+                    draggable={false}
+                    className={`lb-post-media__img absolute inset-0 h-full w-full transition-opacity duration-200 ${
+                      i === index ? 'opacity-100' : 'pointer-events-none opacity-0'
+                    }`}
+                  />
+                ))}
+              </div>
+            </ImmersiveMediaStage>
+
+            <header
+              className="pointer-events-auto absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-3 px-3"
+              style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }}
+            >
               <button
                 type="button"
                 onClick={closeExpand}
-                className="absolute left-[max(0.75rem,var(--lb-safe-left))] top-[max(0.75rem,var(--lb-safe-top))] z-30 grid min-h-11 min-w-11 place-items-center rounded-full border border-white/15 bg-black/65 text-white backdrop-blur-md"
+                className="grid min-h-11 min-w-11 place-items-center rounded-full border border-white/15 bg-black/65 text-white backdrop-blur-md"
                 aria-label="Cerrar"
               >
                 <X size={20} />
               </button>
-              <div
-                className="relative w-full max-w-[min(100%,56rem)]"
-                style={{ maxHeight: 'min(720px, 92dvh)' }}
-              >
-                {carouselBody}
-              </div>
+              {total > 1 ? (
+                <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/80">
+                  {index + 1}/{total}
+                </span>
+              ) : null}
+            </header>
 
-              {postId ? (
-                <PostActionRail
+            {caption && !commentsOpen ? <PublicationCaptionOverlay caption={caption} /> : null}
+
+            {commentsOpen && postId ? (
+              <div
+                className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex max-h-[min(44dvh,calc(100dvh-5rem))] flex-col rounded-t-2xl border border-white/15 bg-zinc-950/95 backdrop-blur-md"
+                style={{ paddingBottom: 'max(0px, env(safe-area-inset-bottom, 0px))' }}
+              >
+                <PostComments
                   postId={postId}
                   authorUid={authorUid}
-                  authorUsername={authorUsername}
-                  authorAvatarUrl={authorAvatarUrl}
-                  likes={likes}
-                  dislikes={dislikes}
-                  viewerReaction={viewerReaction}
-                  likers={likers}
-                  dislikers={dislikers}
-                  busy={busy}
-                  onReact={(r) => void react(r)}
-                  commentCount={commentCount}
-                  commentsOpen={commentsOpen}
-                  onToggleComments={() => setCommentsOpen((v) => !v)}
-                  shareUrl={shareUrl}
-                  shareTitle={shareTitle}
-                  shareText={shareText}
-                  mediaUrl={sources[index]}
-                  mediaType="photo"
-                  anchor="viewport"
+                  variant="overlay"
+                  defaultOpen
+                  scrollable
+                  embedded
                 />
-              ) : null}
-
-              {caption && !commentsOpen ? <PublicationCaptionOverlay caption={caption} /> : null}
-
-              {commentsOpen && postId ? (
-                <div
-                  className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex max-h-[min(44dvh,calc(100dvh-5rem))] flex-col rounded-t-2xl border border-white/15 bg-zinc-950/95 backdrop-blur-md"
-                  style={{ paddingBottom: 'max(0px, env(safe-area-inset-bottom, 0px))' }}
-                >
-                  <PostComments
-                    postId={postId}
-                    authorUid={authorUid}
-                    variant="overlay"
-                    defaultOpen
-                    scrollable
-                    embedded
-                  />
-                </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>,
           document.body,
         )

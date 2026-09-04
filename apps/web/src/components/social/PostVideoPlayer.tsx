@@ -30,7 +30,6 @@ import {
   releaseUnmuted,
 } from '../../lib/videoPlayback';
 import { useVideoAspect } from '../../lib/videoAspect';
-import { usesImmersiveAsideRail } from '../../lib/immersiveMediaLayout';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster } from '../../lib/videoPoster';
@@ -39,6 +38,12 @@ import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
+import { StorySegmentBar } from './StorySegmentBar';
+import {
+  classifyStoryGesture,
+  STORY_WHEEL_COOLDOWN_MS,
+  STORY_WHEEL_MIN_DELTA,
+} from '../../lib/storyAuthorNav';
 import { insertEmojiToken, COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
 import { PostActionRail } from './PostActionRail';
 import { ImmersiveMediaStage } from './ImmersiveMediaStage';
@@ -82,8 +87,17 @@ type Props = {
     onPrev: () => void;
   };
   reelPosition?: { current: number; total: number };
-  /** Modo Flash Boom: auto-avance + barras de progreso. */
+  /** Flash Boom / Boom Clip: swipe horizontal para cambiar de usuario. */
+  userNavigation?: {
+    onNextUser: () => void;
+    onPrevUser: () => void;
+  };
+  /** Modo Flash Boom / Boom Clip: auto-avance + barras de progreso. */
   storyMode?: boolean;
+  /** Toque izquierdo/derecho cambia de ítem (no seek ±10s). */
+  itemSideNav?: boolean;
+  /** Duración conocida del clip (s); respaldo si el video aún no reporta duration. */
+  durationSec?: number | null;
   /** Foto del creador (se completa vía perfil si falta). */
   authorAvatarUrl?: string | null;
   /** Feed embebido en página (Explorar): sin portal fullscreen. */
@@ -92,7 +106,7 @@ type Props = {
   hideClose?: boolean;
   /** Badge discreto: Boom Clip / Publicación. */
   contentBadge?: string | null;
-  /** Rail abajo-derecha en visor inmersivo (Explorar, Boom Clip, publicación). */
+  /** Rail en visor inmersivo: `corner` en móvil; en PC se usa aside (Explorar). */
   actionRailLayout?: 'corner' | 'default';
   /** Explorar / Flash Boom: media horizontal + rail fijo al lado. */
   immersiveLandscapeLayout?: boolean;
@@ -103,6 +117,10 @@ type Props = {
   posterUrl?: string | null;
   /** Publicación: descripción con Ver más / Ver menos. Default false (Boom Clip / Flash / Explorar). */
   publicationCaption?: boolean;
+  /** Si este clip/flash es un repost, quién lo compartió. */
+  repostByUsername?: string | null;
+  originalUsername?: string | null;
+  originalHref?: string | null;
 };
 
 const SEEK_STEP_SEC = 10;
@@ -133,7 +151,10 @@ export function PostVideoPlayer({
   overlayOnly = false,
   reelNavigation,
   reelPosition,
+  userNavigation,
   storyMode = false,
+  itemSideNav = false,
+  durationSec: durationSecProp = null,
   embedded = false,
   hideClose = false,
   contentBadge = null,
@@ -143,6 +164,9 @@ export function PostVideoPlayer({
   mediaHeight: mediaHeightProp,
   posterUrl: posterUrlProp = null,
   publicationCaption = false,
+  repostByUsername = null,
+  originalUsername = null,
+  originalHref = null,
 }: Props) {
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
@@ -152,6 +176,8 @@ export function PostVideoPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const posterCapturedRef = useRef(false);
   const swipeRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
+  const wheelLockRef = useRef(0);
+  const gestureLockRef = useRef(false);
   const playbackSnapshotRef = useRef({
     time: 0,
     playing: false,
@@ -163,6 +189,7 @@ export function PostVideoPlayer({
   const expandedRef = useRef(false);
   const [muted, setMuted] = useState(true);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
+  const [giftsOpen, setGiftsOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [storyProgress, setStoryProgress] = useState(0);
   const [seekHint, setSeekHint] = useState<string | null>(null);
@@ -178,6 +205,7 @@ export function PostVideoPlayer({
     caption?.trim() ||
     (authorUsername ? `Mira este video de @${authorUsername} en LiveBoom` : 'Mira este video en LiveBoom');
   const videoAspect = useVideoAspect(src);
+  const storyHeld = commentsPanelOpen || giftsOpen;
 
   useEffect(() => {
     if (videoAspect.isReady) {
@@ -230,8 +258,45 @@ export function PostVideoPlayer({
   useEffect(() => {
     setStoryProgress(0);
     setCommentsPanelOpen(false);
+    setGiftsOpen(false);
     setSeekHint(null);
   }, [postId, src]);
+
+  useEffect(() => {
+    if (!storyMode) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    let raf = 0;
+    const tick = () => {
+      if (!video.paused) {
+        const reported = video.duration;
+        const dur =
+          Number.isFinite(reported) && reported > 0
+            ? reported
+            : Number(durationSecProp) > 0
+              ? Number(durationSecProp)
+              : 0;
+        if (dur > 0) {
+          setStoryProgress(Math.min(1, video.currentTime / dur));
+        }
+      }
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [storyMode, src, postId, durationSecProp]);
+
+  useEffect(() => {
+    if (!storyMode) return;
+    const video = videoRef.current;
+    if (!video) return;
+    if (commentsPanelOpen || giftsOpen) {
+      video.pause();
+      return;
+    }
+    void video.play().catch(() => undefined);
+  }, [commentsPanelOpen, giftsOpen, storyMode, src, postId]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -418,25 +483,47 @@ export function PostVideoPlayer({
   }
 
   const handleSwipeStart = useCallback((clientX: number, clientY: number) => {
-    if (!reelNavigation) return;
+    if (!reelNavigation && !userNavigation) return;
     swipeRef.current = { x: clientX, y: clientY, active: true };
-  }, [reelNavigation]);
+  }, [reelNavigation, userNavigation]);
 
   const handleSwipeEnd = useCallback((clientX: number, clientY: number) => {
-    if (!reelNavigation || !swipeRef.current.active) return;
+    if (!swipeRef.current.active) return;
     swipeRef.current.active = false;
+    if (storyHeld) return;
     const dx = clientX - swipeRef.current.x;
     const dy = clientY - swipeRef.current.y;
-    if (Math.abs(dy) < 48 || Math.abs(dy) < Math.abs(dx) * 1.15) return;
-    if (dy < 0) reelNavigation.onNext();
+    const gesture = classifyStoryGesture(dx, dy);
+    if (!gesture) return;
+    if (gesture === 'user-next' || gesture === 'user-prev') {
+      if (!userNavigation) return;
+      gestureLockRef.current = true;
+      window.setTimeout(() => {
+        gestureLockRef.current = false;
+      }, 80);
+      if (gesture === 'user-next') userNavigation.onNextUser();
+      else userNavigation.onPrevUser();
+      return;
+    }
+    if (!reelNavigation) return;
+    gestureLockRef.current = true;
+    window.setTimeout(() => {
+      gestureLockRef.current = false;
+    }, 80);
+    if (gesture === 'item-next') reelNavigation.onNext();
     else reelNavigation.onPrev();
-  }, [reelNavigation]);
+  }, [reelNavigation, userNavigation, storyHeld]);
 
   const handleWheelNavigate = useCallback((deltaY: number) => {
-    if (!reelNavigation || Math.abs(deltaY) < 24) return;
+    if (!reelNavigation || storyHeld || Math.abs(deltaY) < STORY_WHEEL_MIN_DELTA) return;
+    if (storyMode) {
+      const now = Date.now();
+      if (now - wheelLockRef.current < STORY_WHEEL_COOLDOWN_MS) return;
+      wheelLockRef.current = now;
+    }
     if (deltaY > 0) reelNavigation.onNext();
     else reelNavigation.onPrev();
-  }, [reelNavigation]);
+  }, [reelNavigation, storyHeld, storyMode]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -450,15 +537,17 @@ export function PostVideoPlayer({
       if (!reelNavigation) return;
       if (event.key === 'ArrowUp') {
         event.preventDefault();
-        reelNavigation.onNext();
+        if (storyMode) reelNavigation.onPrev();
+        else reelNavigation.onNext();
       } else if (event.key === 'ArrowDown') {
         event.preventDefault();
-        reelNavigation.onPrev();
+        if (storyMode) reelNavigation.onNext();
+        else reelNavigation.onPrev();
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [expanded, reelNavigation]);
+  }, [expanded, reelNavigation, storyMode, hideClose]);
 
   const stopCommentTouch = useCallback((event: React.TouchEvent | React.WheelEvent) => {
     event.stopPropagation();
@@ -512,14 +601,21 @@ export function PostVideoPlayer({
         tryCapturePoster();
       }}
       onTimeUpdate={(event) => {
-        if (!storyMode) return;
+        if (!storyMode || storyHeld) return;
         const video = event.currentTarget;
-        if (video.duration > 0) {
-          setStoryProgress(Math.min(1, video.currentTime / video.duration));
+        const reported = video.duration;
+        const dur =
+          Number.isFinite(reported) && reported > 0
+            ? reported
+            : Number(durationSecProp) > 0
+              ? Number(durationSecProp)
+              : 0;
+        if (dur > 0) {
+          setStoryProgress(Math.min(1, video.currentTime / dur));
         }
       }}
       onEnded={() => {
-        if (!storyMode || commentsPanelOpen || !reelNavigation) return;
+        if (!storyMode || storyHeld || !reelNavigation) return;
         setStoryProgress(1);
         reelNavigation.onNext();
       }}
@@ -528,10 +624,9 @@ export function PostVideoPlayer({
 
   const immersiveW = pubW || videoAspect.width || 9;
   const immersiveH = pubH || videoAspect.height || 16;
-  // Rail lateral en escritorio (todos los formatos); en móvil landscape → borde derecho.
-  const useLandscapeAside =
-    isDesktop && usesImmersiveAsideRail(immersiveW, immersiveH, immersiveLandscapeLayout);
-  const parkRailAtDeviceEdge = deviceLandscape && immersiveLandscapeLayout;
+  // Rail al lado del media en PC (igual que Explorar). En móvil landscape → borde.
+  const useLandscapeAside = isDesktop;
+  const parkRailAtDeviceEdge = deviceLandscape;
   const expandedRailLayout =
     useLandscapeAside || parkRailAtDeviceEdge ? 'aside' : actionRailLayout;
   /** Publicaciones (feed): contain en fullscreen; Explorar/clips mantienen auto. */
@@ -550,7 +645,7 @@ export function PostVideoPlayer({
           mediaUrl={src}
           mediaKind="video"
           embedded={embedded}
-          landscapeRailAside={immersiveLandscapeLayout}
+          landscapeRailAside
           fillMode={publicationFillMode}
           insets={{
             top: storyMode ? 44 : 52,
@@ -563,78 +658,120 @@ export function PostVideoPlayer({
           onSwipeEnd={handleSwipeEnd}
           onWheel={reelNavigation ? handleWheelNavigate : undefined}
           mediaOverlay={
-            <>
-              <button
-                type="button"
-                className={`absolute left-0 z-[4] w-[28%] bg-transparent ${
-                  reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
-                }`}
-                aria-label={`Retroceder ${SEEK_STEP_SEC} segundos`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  seekExpanded(-SEEK_STEP_SEC);
-                }}
-              />
-              <button
-                type="button"
-                className={`absolute right-0 z-[4] w-[28%] bg-transparent ${
-                  reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
-                }`}
-                aria-label={`Adelantar ${SEEK_STEP_SEC} segundos`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  seekExpanded(SEEK_STEP_SEC);
-                }}
-              />
-              {seekHint ? (
-                <div className="pointer-events-none absolute inset-0 z-[6] grid place-items-center">
-                  <span className="rounded-full bg-black/65 px-4 py-2 text-lg font-bold tabular-nums text-white backdrop-blur-sm">
-                    {seekHint}
-                  </span>
-                </div>
-              ) : null}
-              {playbackFlash ? (
-                <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
-                  <div className="lb-playback-flash grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm sm:h-[4.5rem] sm:w-[4.5rem]">
-                    {playbackFlash === 'play' ? (
-                      <Play size={34} fill="currentColor" className="ml-1" />
-                    ) : (
-                      <Pause size={34} fill="currentColor" />
-                    )}
+            itemSideNav && reelNavigation && !storyHeld ? (
+              <>
+                <button
+                  type="button"
+                  className="absolute inset-y-0 left-0 z-[4] w-[32%] bg-transparent"
+                  aria-label="Anterior"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (gestureLockRef.current) return;
+                    reelNavigation.onPrev();
+                  }}
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 z-[4] w-[50%] bg-transparent"
+                  aria-label="Siguiente"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (gestureLockRef.current) return;
+                    reelNavigation.onNext();
+                  }}
+                />
+                {playbackFlash ? (
+                  <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
+                    <div className="lb-playback-flash grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm sm:h-[4.5rem] sm:w-[4.5rem]">
+                      {playbackFlash === 'play' ? (
+                        <Play size={34} fill="currentColor" className="ml-1" />
+                      ) : (
+                        <Pause size={34} fill="currentColor" />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                className={`absolute inset-x-[28%] z-[3] bg-transparent ${
-                  reelNavigation ? 'inset-y-[18%] md:inset-y-0' : 'inset-y-0'
-                }`}
-                aria-label="Reproducir o pausar"
-                onClick={toggleExpandedPlayback}
-              />
-              {reelNavigation ? (
-                <>
-                  <button
-                    type="button"
-                    className="absolute inset-x-0 top-0 z-[5] h-[18%] lg:hidden"
-                    aria-label="Clip siguiente"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      reelNavigation.onNext();
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-x-0 bottom-0 z-[5] h-[18%] lg:hidden"
-                    aria-label="Clip anterior"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      reelNavigation.onPrev();
-                    }}
-                  />
-                </>
-              ) : null}
-            </>
+                ) : null}
+                <button
+                  type="button"
+                  className="absolute bottom-0 left-[32%] right-[50%] top-0 z-[3] bg-transparent"
+                  aria-label="Reproducir o pausar"
+                  onClick={toggleExpandedPlayback}
+                />
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`absolute left-0 z-[4] w-[28%] bg-transparent ${
+                    reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
+                  }`}
+                  aria-label={`Retroceder ${SEEK_STEP_SEC} segundos`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    seekExpanded(-SEEK_STEP_SEC);
+                  }}
+                />
+                <button
+                  type="button"
+                  className={`absolute right-0 z-[4] w-[28%] bg-transparent ${
+                    reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
+                  }`}
+                  aria-label={`Adelantar ${SEEK_STEP_SEC} segundos`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    seekExpanded(SEEK_STEP_SEC);
+                  }}
+                />
+                {seekHint ? (
+                  <div className="pointer-events-none absolute inset-0 z-[6] grid place-items-center">
+                    <span className="rounded-full bg-black/65 px-4 py-2 text-lg font-bold tabular-nums text-white backdrop-blur-sm">
+                      {seekHint}
+                    </span>
+                  </div>
+                ) : null}
+                {playbackFlash ? (
+                  <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
+                    <div className="lb-playback-flash grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm sm:h-[4.5rem] sm:w-[4.5rem]">
+                      {playbackFlash === 'play' ? (
+                        <Play size={34} fill="currentColor" className="ml-1" />
+                      ) : (
+                        <Pause size={34} fill="currentColor" />
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className={`absolute inset-x-[28%] z-[3] bg-transparent ${
+                    reelNavigation ? 'inset-y-[18%] md:inset-y-0' : 'inset-y-0'
+                  }`}
+                  aria-label="Reproducir o pausar"
+                  onClick={toggleExpandedPlayback}
+                />
+                {reelNavigation ? (
+                  <>
+                    <button
+                      type="button"
+                      className="absolute inset-x-0 top-0 z-[5] h-[18%] lg:hidden"
+                      aria-label="Clip siguiente"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        reelNavigation.onNext();
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-x-0 bottom-0 z-[5] h-[18%] lg:hidden"
+                      aria-label="Clip anterior"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        reelNavigation.onPrev();
+                      }}
+                    />
+                  </>
+                ) : null}
+              </>
+            )
           }
           sideChrome={
             <PostActionRail
@@ -658,6 +795,7 @@ export function PostVideoPlayer({
               mediaUrl={src}
               mediaType="video"
               commentsPanelOpen={commentsPanelOpen}
+              onGiftsOpenChange={setGiftsOpen}
               anchor="media"
               layout={expandedRailLayout}
             />
@@ -670,25 +808,11 @@ export function PostVideoPlayer({
 
         <div className="pointer-events-none absolute inset-0 z-10 flex min-h-0 flex-col">
           {storyMode && reelPosition && reelPosition.total > 0 ? (
-            <div className="pointer-events-none flex shrink-0 gap-1 px-3 pt-[max(0.5rem,var(--lb-safe-top))]">
-              {Array.from({ length: reelPosition.total }).map((_, segmentIndex) => {
-                const current = reelPosition.current - 1;
-                let fill = '0%';
-                if (segmentIndex < current) fill = '100%';
-                else if (segmentIndex === current) fill = `${Math.round(storyProgress * 100)}%`;
-                return (
-                  <div
-                    key={segmentIndex}
-                    className="h-[3px] min-w-0 flex-1 overflow-hidden rounded-full bg-white/25"
-                  >
-                    <div
-                      className="h-full rounded-full bg-white transition-[width] duration-75 ease-linear"
-                      style={{ width: fill }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+            <StorySegmentBar
+              total={reelPosition.total}
+              current={reelPosition.current}
+              progress={storyProgress}
+            />
           ) : null}
 
           <div
@@ -793,7 +917,7 @@ export function PostVideoPlayer({
           <div
             className={`pointer-events-auto relative z-20 mt-auto min-w-0 max-w-full shrink-0 space-y-2 px-3 ${
               embedded || overlayOnly
-                ? 'pb-[max(0.75rem,var(--lb-safe-bottom))] pr-[4.25rem] sm:pr-[4.75rem] lg:pr-3'
+                ? 'pb-[max(0.75rem,var(--lb-safe-bottom))] pl-[4.25rem] sm:pl-[4.75rem] lg:pl-3'
                 : 'pb-[max(0.75rem,var(--lb-safe-bottom))]'
             }`}
             style={{ paddingRight: 'max(0.75rem, env(safe-area-inset-right))' }}
@@ -803,7 +927,19 @@ export function PostVideoPlayer({
                 {contentBadge}
               </span>
             ) : null}
-            {authorUsername ? (
+            {repostByUsername ? (
+              <p className="text-[11px] font-semibold text-fuchsia-200 drop-shadow">
+                @{repostByUsername} reposteó
+              </p>
+            ) : null}
+            {originalUsername ? (
+              <Link
+                to={originalHref || profileHref(originalUsername)}
+                className="inline-block text-sm font-bold text-white drop-shadow hover:text-cyan-300"
+              >
+                @{originalUsername}
+              </Link>
+            ) : authorUsername ? (
               <Link
                 to={profileHref(authorUsername, authorUid)}
                 className="inline-block text-sm font-bold text-white drop-shadow hover:text-cyan-300"
@@ -910,6 +1046,9 @@ export function PostVideoPlayer({
                           text={shareText}
                           mediaUrl={src}
                           mediaType="video"
+                          postId={postId}
+                          authorUid={authorUid}
+                          authorUsername={authorUsername}
                           iconOnly
                         />
                       ) : null}

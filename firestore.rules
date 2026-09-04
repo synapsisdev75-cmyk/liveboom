@@ -314,7 +314,7 @@ service cloud.firestore {
           && request.resource.data.username.size() <= 24
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 500;
+          && request.resource.data.text.size() <= 700;
         allow delete: if signedIn() && (
           resource.data.authorUid == request.auth.uid
           || loadedPost().authorUid == request.auth.uid

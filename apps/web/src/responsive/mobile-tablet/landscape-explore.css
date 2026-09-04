@@ -5,12 +5,13 @@
 
 @media (orientation: landscape) and (max-width: 1023px) {
   :root {
-    --lb-mt-explore-rail-right: clamp(4.75rem, 16vw, 8.5rem);
+    --lb-mt-explore-rail-left: clamp(4.75rem, 16vw, 8.5rem);
   }
 
-  /* Acerca el rail al video (zona letterbox), no pegado al borde. */
+  /* Acerca el rail al video (zona letterbox), lado izquierdo. */
   .lb-immersive-edge-rail {
-    right: max(var(--lb-mt-explore-rail-right), env(safe-area-inset-right, 0px));
+    left: max(var(--lb-mt-explore-rail-left), env(safe-area-inset-left, 0px));
+    right: auto;
     display: flex;
     flex-direction: column;
     align-items: center;

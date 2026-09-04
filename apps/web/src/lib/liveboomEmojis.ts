@@ -103,10 +103,21 @@ export function emojiToken(id: string) {
   return `:${id}:`;
 }
 
+export function insertEmojiTokenAt(text: string, id: string, start: number, end = start) {
+  const from = Math.max(0, Math.min(start, text.length));
+  const to = Math.max(from, Math.min(end, text.length));
+  const before = text.slice(0, from);
+  const after = text.slice(to);
+  const piece = byId.has(id)
+    ? before && !/\s$/.test(before)
+      ? ` ${emojiToken(id)}`
+      : emojiToken(id)
+    : id;
+  return { next: `${before}${piece}${after}`, caret: before.length + piece.length };
+}
+
 export function insertEmojiToken(text: string, id: string) {
-  const token = emojiToken(id);
-  if (!text) return token;
-  return text.endsWith(' ') ? `${text}${token}` : `${text} ${token}`;
+  return insertEmojiTokenAt(text, id, text.length).next;
 }
 
 export function resolveEmoji(id: string) {
@@ -114,3 +125,62 @@ export function resolveEmoji(id: string) {
 }
 
 export const EMOJI_SHORTCODE_RE = /:([a-z_]+):/g;
+
+export type EmojiTokenSpan = { start: number; end: number; id: string };
+
+export function listEmojiTokens(text: string): EmojiTokenSpan[] {
+  const re = new RegExp(EMOJI_SHORTCODE_RE.source, 'g');
+  const out: EmojiTokenSpan[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const id = match[1];
+    if (!id || !resolveEmoji(id)) continue;
+    out.push({ start: match.index, end: match.index + match[0].length, id });
+  }
+  return out;
+}
+
+/** Caret dentro del shortcode (no en los extremos). */
+export function emojiTokenCovering(text: string, index: number): EmojiTokenSpan | null {
+  return listEmojiTokens(text).find((token) => index > token.start && index < token.end) ?? null;
+}
+
+export function emojiTokenEndingAt(text: string, caret: number): EmojiTokenSpan | null {
+  return listEmojiTokens(text).find((token) => token.end === caret) ?? null;
+}
+
+export function emojiTokenStartingAt(text: string, caret: number): EmojiTokenSpan | null {
+  return listEmojiTokens(text).find((token) => token.start === caret) ?? null;
+}
+
+export function snapCaretOutOfEmojiToken(text: string, caret: number, preferEnd = true): number {
+  const inside = emojiTokenCovering(text, caret);
+  if (!inside) return caret;
+  return preferEnd ? inside.end : inside.start;
+}
+
+function graphemeSpans(text: string): Array<{ start: number; end: number }> {
+  if (!text) return [];
+  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+    const segments = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)];
+    return segments.map((item, index) => ({
+      start: item.index,
+      end: index + 1 < segments.length ? segments[index + 1]!.index : text.length,
+    }));
+  }
+  return [...text].reduce<Array<{ start: number; end: number }>>((acc, _, index, chars) => {
+    const start = chars.slice(0, index).reduce((sum, ch) => sum + ch.length, 0);
+    acc.push({ start, end: start + (chars[index]?.length ?? 0) });
+    return acc;
+  }, []);
+}
+
+export function graphemeEndingAt(text: string, caret: number): { start: number; end: number } | null {
+  if (caret <= 0) return null;
+  return graphemeSpans(text).find((span) => span.end === caret) ?? null;
+}
+
+export function graphemeStartingAt(text: string, caret: number): { start: number; end: number } | null {
+  if (caret >= text.length) return null;
+  return graphemeSpans(text).find((span) => span.start === caret) ?? null;
+}

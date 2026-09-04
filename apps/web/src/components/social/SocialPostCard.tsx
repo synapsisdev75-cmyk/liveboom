@@ -23,7 +23,9 @@ import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
-import { isPublicationPost } from '../../lib/contentType';
+import { isBoomClipPost, isPublicationPost } from '../../lib/contentType';
+import { RepostPostCard } from './RepostPostCard';
+import { isRepostPost } from '../../lib/socialFirestore';
 
 type Props = {
   username: string;
@@ -207,6 +209,9 @@ export type SocialPost = {
   postFormat?: 'story' | 'post' | null;
   durationSec?: number | null;
   reelFeedUntilMs?: number | null;
+  sharedFromPostId?: string;
+  sharedFromAuthorUid?: string;
+  sharedFromUsername?: string;
 };
 
 /** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
@@ -253,6 +258,29 @@ export function TextNoteBody({
   );
 }
 
+export function ShareAttribution({
+  username,
+  authorUid,
+  postId,
+}: {
+  username?: string | null;
+  authorUid?: string | null;
+  postId?: string | null;
+}) {
+  const handle = String(username || '').replace(/^@/, '').trim();
+  if (!handle) return null;
+  const base = profileHref(handle, authorUid);
+  const href = postId ? `${base}${base.includes('?') ? '&' : '?'}post=${encodeURIComponent(postId)}` : base;
+  return (
+    <p className="text-[11px] text-zinc-400">
+      Reposteado de{' '}
+      <Link to={href} className="font-semibold text-cyan-300 hover:underline">
+        @{handle}
+      </Link>
+    </p>
+  );
+}
+
 export function isTextOnlyPost(post: {
   type?: string | null;
   mediaUrl?: string | null;
@@ -281,12 +309,61 @@ export function PostCard({
   onDelete?: () => void;
   onReact?: (post: SocialPost) => void;
   onChangeVisibility?: (visibility: 'public' | 'friends' | 'private' | 'circle') => void;
-  /** Abrir el video en pantalla completa (p. ej. tras publicar). */
   startVideoExpanded?: boolean;
   onCloseVideoExpand?: () => void;
   startPhotoExpanded?: boolean;
   onClosePhotoExpand?: () => void;
-  /** Abre visor fullscreen del padre (ReelFeedViewer) en lugar de overlay inline. */
+  onVideoExpand?: () => void;
+}) {
+  if (isRepostPost(post)) {
+    return (
+      <RepostPostCard
+        post={post}
+        canDelete={canDelete}
+        canChangeVisibility={canChangeVisibility}
+        onDelete={onDelete}
+        onChangeVisibility={onChangeVisibility}
+        showVisibility={Boolean(post.visibility)}
+      />
+    );
+  }
+  return (
+    <StandardPostCard
+      post={post}
+      canDelete={canDelete}
+      canChangeVisibility={canChangeVisibility}
+      onDelete={onDelete}
+      onChangeVisibility={onChangeVisibility}
+      startVideoExpanded={startVideoExpanded}
+      onCloseVideoExpand={onCloseVideoExpand}
+      startPhotoExpanded={startPhotoExpanded}
+      onClosePhotoExpand={onClosePhotoExpand}
+      onVideoExpand={onVideoExpand}
+    />
+  );
+}
+
+function StandardPostCard({
+  post,
+  canDelete,
+  canChangeVisibility,
+  onDelete,
+  onChangeVisibility,
+  startVideoExpanded,
+  onCloseVideoExpand,
+  startPhotoExpanded,
+  onClosePhotoExpand,
+  onVideoExpand,
+}: {
+  post: SocialPost;
+  canDelete?: boolean;
+  canChangeVisibility?: boolean;
+  onDelete?: () => void;
+  onChangeVisibility?: (visibility: 'public' | 'friends' | 'private' | 'circle') => void;
+  startVideoExpanded?: boolean;
+  onCloseVideoExpand?: () => void;
+  startPhotoExpanded?: boolean;
+  onClosePhotoExpand?: () => void;
   onVideoExpand?: () => void;
 }) {
   const profile = useAuthStore((state) => state.profile);
@@ -345,6 +422,19 @@ export function PostCard({
       setBusy(false);
     }
   }
+
+  const contentKind = {
+    type: post.type,
+    mediaUrl: post.mediaUrl,
+    visibility: post.visibility,
+    postFormat: post.postFormat,
+    durationSec: post.durationSec,
+    reelFeedUntilMs: post.reelFeedUntilMs,
+  };
+  const showFeedCaption =
+    (isPublicationPost(contentKind) || isBoomClipPost(contentKind)) &&
+    (post.type === 'photo' || post.type === 'video') &&
+    Boolean(post.caption?.trim());
 
   return (
     <article className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
@@ -479,6 +569,9 @@ export function PostCard({
             text={shareText}
             mediaUrl={post.mediaUrl}
             mediaType={post.type === 'video' ? 'video' : post.type === 'photo' ? 'photo' : 'text'}
+            postId={post.id}
+            authorUid={post.authorUid}
+            authorUsername={post.authorUsername}
           />
         </div>
         {canDelete && !canChangeVisibility ? (
@@ -494,18 +587,7 @@ export function PostCard({
         ) : null}
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
-      {isPublicationPost({
-        type: post.type,
-        mediaUrl: post.mediaUrl,
-        visibility: post.visibility,
-        postFormat: post.postFormat,
-        durationSec: post.durationSec,
-        reelFeedUntilMs: post.reelFeedUntilMs,
-      }) &&
-      (post.type === 'photo' || post.type === 'video') &&
-      post.caption?.trim() ? (
-        <PublicationCaption key={post.id} caption={post.caption || ''} />
-      ) : null}
+      {showFeedCaption ? <PublicationCaption key={post.id} caption={post.caption || ''} /> : null}
       {!(post.type === 'video' && mediaExpanded) ? (
         <PostComments postId={post.id} authorUid={post.authorUid} />
       ) : null}

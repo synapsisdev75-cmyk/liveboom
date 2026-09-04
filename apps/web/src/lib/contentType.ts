@@ -4,6 +4,12 @@ import { BOOM_CLIP_MAX_DURATION_SEC } from './videoTrim';
 /** Límite oficial Boom Clip (front). Unifica cualquier validación previa. */
 export const MAX_CLIP_DURATION_SECONDS = BOOM_CLIP_MAX_DURATION_SEC;
 
+/** Descripción Boom Clip (caracteres). */
+export const BOOM_CLIP_CAPTION_MAX = 1700;
+
+/** Descripción Flash Boom (caracteres). */
+export const FLASH_BOOM_CAPTION_MAX = 500;
+
 export type ContentType = 'flashboom' | 'boom_clip' | 'post';
 
 export type ContentLike = {

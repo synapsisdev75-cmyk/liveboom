@@ -15,7 +15,7 @@ type Props = {
   mediaKind: 'video' | 'image';
   insets?: Partial<ImmersiveLayoutInsets>;
   embedded?: boolean;
-  /** Explorar / Flash Boom: rail fijo al lado en horizontal (sin scroll). */
+  /** Rail de acciones al lado del media en PC (Explorar, Publicaciones, Clips). */
   landscapeRailAside?: boolean;
   onSwipeStart?: (x: number, y: number) => void;
   onSwipeEnd?: (x: number, y: number) => void;
@@ -44,7 +44,7 @@ export function ImmersiveMediaStage({
   mediaKind,
   insets,
   embedded = false,
-  landscapeRailAside = false,
+  landscapeRailAside = true,
   onSwipeStart,
   onSwipeEnd,
   onWheel,
@@ -58,6 +58,9 @@ export function ImmersiveMediaStage({
   const stageRef = useRef<HTMLDivElement>(null);
   const [fillCover, setFillCover] = useState(false);
   const [deviceLandscape, setDeviceLandscape] = useState(false);
+  const [isDesktopStage, setIsDesktopStage] = useState(
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : false,
+  );
   const [box, setBox] = useState(() =>
     computeImmersiveMediaBox(
       mediaWidth || 9,
@@ -77,7 +80,7 @@ export function ImmersiveMediaStage({
       ? classifyVideoOrientation(mediaWidth, mediaHeight)
       : 'portrait';
   const useRailAside = usesImmersiveAsideRail(mediaWidth, mediaHeight, landscapeRailAside);
-  const railAside = useRailAside && !fillCover && !deviceLandscape;
+  const railAside = useRailAside && !fillCover && !deviceLandscape && isDesktopStage;
 
   useEffect(() => {
     const host = stageRef.current;
@@ -96,6 +99,7 @@ export function ImmersiveMediaStage({
       const nextFill = fillMode === 'contain' ? false : !desktop && devicePortrait;
       setFillCover(nextFill);
       setDeviceLandscape(nextDeviceLandscape);
+      setIsDesktopStage(desktop);
       setBox(
         computeImmersiveMediaBox(
           mediaWidth || 9,
@@ -115,12 +119,12 @@ export function ImmersiveMediaStage({
                   ...insets,
                   top: exploreLandscape.stageInsetTopPx,
                   bottom: exploreLandscape.stageInsetBottomPx,
-                  left: exploreLandscape.stageInsetLeftPx,
-                  right: exploreLandscape.mediaRightReservePx + 4,
+                  left: exploreLandscape.mediaRightReservePx + 4,
+                  right: exploreLandscape.stageInsetLeftPx,
                 }
               : insets,
           desktop,
-          useRailAside && !nextFill && !nextDeviceLandscape,
+          useRailAside && !nextFill && !nextDeviceLandscape && desktop,
           nextFill,
           nextDeviceLandscape,
         ),
@@ -196,6 +200,9 @@ export function ImmersiveMediaStage({
               : 'flex h-full w-full items-center justify-center'
           }
         >
+          {railAside && sideChrome ? (
+            <div className="lb-immersive-rail-aside shrink-0">{sideChrome}</div>
+          ) : null}
           <div
             className={`lb-immersive-media-box lb-immersive-media-box--${orientation} relative shrink-0 ${
               fillCover ? 'h-full w-full max-h-full max-w-full' : ''
@@ -223,13 +230,10 @@ export function ImmersiveMediaStage({
               </div>
             ) : null}
           </div>
-          {railAside && sideChrome ? (
-            <div className="lb-immersive-rail-aside order-last shrink-0">{sideChrome}</div>
-          ) : null}
         </div>
       </div>
 
-      {/* Teléfono girado: rail fuera del 9:16, al borde derecho de la pantalla. */}
+      {/* Teléfono girado: rail al lado izquierdo del media. */}
       {deviceLandscape && !railAside && sideChrome ? (
         <div className="lb-immersive-edge-rail pointer-events-none absolute top-1/2 z-40 -translate-y-1/2 [&_.pointer-events-auto]:pointer-events-auto">
           {sideChrome}

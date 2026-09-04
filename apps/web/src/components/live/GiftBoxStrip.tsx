@@ -12,6 +12,8 @@ type Props = {
   rechargeNeeded?: number | null;
   onRecharge?: () => void;
   compact?: boolean;
+  /** Dentro de GiftCatalogLayer: llena el panel y el grid hace scroll. */
+  floating?: boolean;
 };
 
 export function GiftBoxStrip({
@@ -24,14 +26,17 @@ export function GiftBoxStrip({
   rechargeNeeded,
   onRecharge,
   compact,
+  floating,
 }: Props) {
   return (
     <div
-      className={`gift-box-strip shrink-0 border-t border-white/10 bg-zinc-950/95 backdrop-blur-xl ${
-        compact ? 'rounded-t-xl' : 'rounded-t-2xl'
+      className={`gift-box-strip flex min-h-0 flex-col bg-zinc-950/95 backdrop-blur-xl ${
+        floating
+          ? 'h-full border-0'
+          : `shrink-0 border-t border-white/10 ${compact ? 'rounded-t-xl' : 'rounded-t-2xl'}`
       }`}
     >
-      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 sm:px-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-2.5 py-1.5 sm:px-3">
         <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-300">
           <Coins size={12} className="text-amber-400" />
           Regalos
@@ -42,21 +47,23 @@ export function GiftBoxStrip({
         <button
           type="button"
           onClick={onClose}
-          className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"
+          className="grid h-11 w-11 place-items-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"
           aria-label="Cerrar regalos"
         >
           <X size={16} />
         </button>
       </div>
-      <p className="px-3 pb-1 text-[10px] text-zinc-500">
+      <p className="shrink-0 px-3 pb-1 text-[10px] text-zinc-500">
         {compact ? 'Desliza o desplázate para ver todos los regalos' : 'Desplázate para ver todos los regalos'}
       </p>
 
       <div
-        className={`gift-row gift-box-row chat-scroll gap-1.5 px-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-0.5 sm:gap-2 sm:px-3 sm:pb-3 ${
-          compact
-            ? 'grid max-h-[min(44dvh,22rem)] grid-cols-4 overflow-x-hidden overflow-y-auto sm:grid-cols-5'
-            : 'flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden lg:grid lg:max-h-[min(52dvh,26rem)] lg:grid-cols-4 lg:overflow-x-hidden lg:overflow-y-auto lg:snap-none xl:grid-cols-5'
+        className={`min-h-0 gap-1.5 px-2.5 pt-0.5 sm:gap-2 sm:px-3 ${
+          floating
+            ? 'gift-catalog-scroll grid flex-1 grid-cols-4 content-start overflow-x-hidden overflow-y-auto overscroll-contain pb-2 touch-pan-y min-[420px]:grid-cols-5 sm:pb-3'
+            : compact
+              ? 'gift-row gift-box-row chat-scroll grid max-h-[min(44dvh,22rem)] grid-cols-4 overflow-x-hidden overflow-y-auto pb-[max(0.65rem,env(safe-area-inset-bottom))] sm:grid-cols-5'
+              : 'gift-row gift-box-row chat-scroll flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden pb-[max(0.65rem,env(safe-area-inset-bottom))] sm:pb-3 lg:grid lg:max-h-[min(52dvh,26rem)] lg:grid-cols-4 lg:overflow-x-hidden lg:overflow-y-auto lg:snap-none xl:grid-cols-5'
         }`}
       >
         {gifts.map((gift) => {
@@ -86,14 +93,14 @@ export function GiftBoxStrip({
         })}
       </div>
 
-      {error ? <p className="px-3 pb-2 text-[11px] text-fuchsia-400">{error}</p> : null}
+      {error ? <p className="shrink-0 px-3 pb-2 text-[11px] text-fuchsia-400">{error}</p> : null}
       {rechargeNeeded != null && typeof coins === 'number' && coins < rechargeNeeded && onRecharge ? (
         <button
           type="button"
           onClick={onRecharge}
-          className="mx-2.5 mb-2 min-h-10 w-[calc(100%-1.25rem)] rounded-lg bg-gradient-to-r from-fuchsia-500 to-cyan-400 py-1.5 text-xs font-bold text-zinc-950 sm:mx-3 sm:w-[calc(100%-1.5rem)]"
+          className="mx-2.5 mb-2 min-h-11 w-[calc(100%-1.25rem)] shrink-0 rounded-lg bg-gradient-to-r from-fuchsia-500 to-cyan-400 py-1.5 text-xs font-bold text-zinc-950 sm:mx-3 sm:w-[calc(100%-1.5rem)]"
         >
-          Recargar coins
+          Recargar Coins
         </button>
       ) : null}
     </div>

@@ -3,8 +3,8 @@ import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 
 /**
- * Descripción de Publicación (Inicio, Perfil y Expandir).
- * No usar en Boom Clip, Flash Boom ni LIVE.
+ * Descripción con Ver más / Ver menos (Inicio, perfil, Expandir, Boom Clip y Flash Boom).
+ * No usar en LIVE.
  */
 export function PublicationCaption({
   caption,

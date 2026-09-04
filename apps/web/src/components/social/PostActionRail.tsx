@@ -62,15 +62,16 @@ type Props = {
   /** Ajusta altura cuando el panel de comentarios está abierto. */
   commentsPanelOpen?: boolean;
   showGifts?: boolean;
+  onGiftsOpenChange?: (open: boolean) => void;
   /** `media` = anclado al borde del video; `viewport` = borde de pantalla (legacy). */
   anchor?: 'media' | 'viewport';
-  /** Solo Explorar: rail abajo-derecha en móvil/tablet/PC. */
+  /** `aside` = columna al lado del media (PC, igual que Explorar). */
   layout?: 'default' | 'corner' | 'aside';
 };
 
 /**
- * Barra derecha única de acciones para cualquier publicación abierta
- * (foto, video, explorar, perfil, feed, etc.).
+ * Barra de acciones (perfil, Boom, regalos, comentarios, compartir)
+ * a la izquierda del media, igual en Explorar / Clip / Flash / Publicaciones.
  */
 export function PostActionRail({
   postId,
@@ -94,6 +95,7 @@ export function PostActionRail({
   mediaType = 'photo',
   commentsPanelOpen = false,
   showGifts = true,
+  onGiftsOpenChange,
   anchor = 'viewport',
   layout = 'default',
 }: Props) {
@@ -117,7 +119,7 @@ export function PostActionRail({
                 ? `lb-action-rail--media lb-action-rail--corner ${
                     commentsPanelOpen ? 'lb-action-rail--comments-open' : ''
                   }`
-                : `${anchor === 'media' ? 'lb-action-rail--media' : 'pr-1'} ${
+                : `${anchor === 'media' ? 'lb-action-rail--media' : 'pl-1'} ${
                     commentsPanelOpen ? 'lb-action-rail--comments-open' : ''
                   } ${
                     anchor === 'media'
@@ -132,7 +134,7 @@ export function PostActionRail({
         isAsideRail
           ? undefined
           : anchor === 'viewport'
-            ? { right: 'max(0.5rem, env(safe-area-inset-right, 0px))' }
+            ? { left: 'max(0.5rem, env(safe-area-inset-left, 0px))' }
             : undefined
       }
     >
@@ -178,7 +180,7 @@ export function PostActionRail({
           {likes}
         </button>
         {showLikers ? (
-          <div className="absolute bottom-full right-0 mb-2">
+          <div className="absolute bottom-full left-0 mb-2">
             <ReactionList title="Les gustó (Boom)" users={likers} onClose={() => setShowLikers(false)} />
           </div>
         ) : null}
@@ -190,6 +192,7 @@ export function PostActionRail({
             authorUsername={authorUsername}
             authorUid={authorUid}
             postId={postId}
+            onOpenChange={onGiftsOpenChange}
           />
         </div>
       ) : null}
@@ -216,7 +219,7 @@ export function PostActionRail({
           {dislikes}
         </button>
         {showDislikers ? (
-          <div className="absolute bottom-full right-0 mb-2">
+          <div className="absolute bottom-full left-0 mb-2">
             <ReactionList title="No les gustó" users={dislikers} onClose={() => setShowDislikers(false)} />
           </div>
         ) : null}
@@ -242,6 +245,9 @@ export function PostActionRail({
           text={shareText}
           mediaUrl={mediaUrl}
           mediaType={mediaType}
+          postId={postId}
+          authorUid={authorUid}
+          authorUsername={authorUsername}
           iconOnly
           className="lb-action-rail-share"
         />

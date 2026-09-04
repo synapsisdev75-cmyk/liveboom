@@ -82,6 +82,9 @@ function postToReel(post: SocialPost): ReelFeedItem {
     caption: post.caption || 'Video',
     mediaUrl: post.mediaUrl ?? '',
     mediaType: 'video',
+    sharedFromPostId: post.sharedFromPostId,
+    sharedFromAuthorUid: post.sharedFromAuthorUid,
+    sharedFromUsername: post.sharedFromUsername,
   };
 }
 
@@ -315,6 +318,9 @@ export function UserProfileView() {
             postFormat: item.postFormat,
             durationSec: item.durationSec,
             reelFeedUntilMs: item.reelFeedUntilMs,
+            sharedFromPostId: item.sharedFromPostId,
+            sharedFromAuthorUid: item.sharedFromAuthorUid,
+            sharedFromUsername: item.sharedFromUsername,
           })),
         );
       },
@@ -770,6 +776,7 @@ export function UserProfileView() {
         <ReelFeedViewer
           reels={profileVideoPosts.map(postToReel)}
           initialIndex={profileViewerIndex}
+          collapsibleCaption
           onClose={() => setExpandVideoId(null)}
         />
       ) : null}

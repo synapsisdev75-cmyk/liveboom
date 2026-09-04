@@ -2,14 +2,13 @@ import type { CSSProperties } from 'react';
 import { clampDisplayToIntrinsic } from './mediaPresentation';
 import { classifyVideoOrientation, type VideoOrientation } from './videoAspect';
 
-/** Explorar / Flash Boom: rail fijo al lado derecho del media (PC/tablet aside). */
+/** PC: rail de perfil/regalos al lado del media (Explorar, Publicaciones, Clips, Flash). */
 export function usesImmersiveAsideRail(
-  mediaWidth: number,
-  mediaHeight: number,
-  immersiveLandscapeLayout: boolean,
+  _mediaWidth: number,
+  _mediaHeight: number,
+  enabled = true,
 ): boolean {
-  if (!immersiveLandscapeLayout || mediaWidth <= 0 || mediaHeight <= 0) return false;
-  return true;
+  return enabled;
 }
 
 export type ImmersiveLayoutInsets = {

@@ -1,5 +1,5 @@
 import { Gift } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { sendLiveboomGift } from '../../lib/giftsFirestore';
@@ -7,6 +7,7 @@ import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { FloatingGift } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
+import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
 import { CoinModal } from '../wallet/CoinModal';
 
 type FloatItem = { id: string; giftId: string; left: number; senderName?: string };
@@ -17,9 +18,17 @@ type Props = {
   postId: string;
   /** Fila compacta del feed (sin etiqueta debajo). */
   inline?: boolean;
+  /** Flash Boom / Boom Clip: el visor congela la barra de tiempo. */
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function ReelGiftControls({ authorUsername, authorUid, postId, inline = false }: Props) {
+export function ReelGiftControls({
+  authorUsername,
+  authorUid,
+  postId,
+  inline = false,
+  onOpenChange,
+}: Props) {
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
   const coins = profile?.coinsBalance ?? 0;
@@ -30,8 +39,9 @@ export function ReelGiftControls({ authorUsername, authorUid, postId, inline = f
   const [rechargeNeeded, setRechargeNeeded] = useState<number | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [floats, setFloats] = useState<FloatItem[]>([]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const giftCatalog = sortedLiveboomGiftCatalog();
+  const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
 
   const isSelf =
     Boolean(profile?.firebaseUid && authorUid && profile.firebaseUid === authorUid);
@@ -41,6 +51,22 @@ export function ReelGiftControls({ authorUsername, authorUid, postId, inline = f
     setGiftError(null);
     setRechargeNeeded(null);
   }, [postId]);
+
+  useEffect(() => {
+    onOpenChange?.(openGifts || rechargeOpen);
+  }, [openGifts, rechargeOpen, onOpenChange]);
+
+  useEffect(() => {
+    return () => onOpenChange?.(false);
+    // Solo al desmontar el control de regalos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const closeGifts = useCallback(() => {
+    setOpenGifts(false);
+    setGiftError(null);
+    setRechargeNeeded(null);
+  }, []);
 
   function pushFloat(giftId: string, senderName: string) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -56,7 +82,7 @@ export function ReelGiftControls({ authorUsername, authorUid, postId, inline = f
       return;
     }
     if (coins < catalog.coins) {
-      setGiftError('Saldo insuficiente. Recarga coins para continuar.');
+      setGiftError('No tienes Coins suficientes');
       setRechargeNeeded(catalog.coins);
       return;
     }
@@ -95,6 +121,7 @@ export function ReelGiftControls({ authorUsername, authorUid, postId, inline = f
     <>
       <div className={`relative flex items-center ${inline ? 'gap-0' : 'flex-col gap-1'}`}>
         <button
+          ref={triggerRef}
           type="button"
           disabled={isSelf}
           onClick={(event) => {
@@ -102,18 +129,24 @@ export function ReelGiftControls({ authorUsername, authorUid, postId, inline = f
             if (isSelf) return;
             setOpenGifts((value) => !value);
             setGiftError(null);
+            setRechargeNeeded(null);
           }}
-          className={`grid place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-45 ${
-            inline ? 'h-9 w-9' : 'h-12 w-12'
-          } ${
-            openGifts
-              ? 'bg-gradient-to-br from-amber-400 to-fuchsia-500 text-zinc-950'
-              : 'bg-black/55 text-amber-300'
-          }`}
-          aria-label="Regalos"
+          className={
+            inline
+              ? `inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition disabled:opacity-45 ${
+                  openGifts ? 'bg-white/10 text-amber-200' : 'text-amber-200 hover:bg-white/5'
+                }`
+              : `grid h-12 w-12 place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-45 ${
+                  openGifts
+                    ? 'bg-gradient-to-br from-amber-400 to-fuchsia-500 text-zinc-950'
+                    : 'bg-black/55 text-amber-300'
+                }`
+          }
+          aria-label="Regalar"
           title={isSelf ? 'No puedes enviarte regalos a ti mismo' : 'Enviar regalo'}
         >
-          <Gift size={inline ? 16 : 20} />
+          <Gift size={inline ? 15 : 20} />
+          {inline ? 'Regalar' : null}
         </button>
         {!inline ? (
           <span className="text-[11px] font-bold text-white drop-shadow">Regalar</span>
@@ -138,32 +171,26 @@ export function ReelGiftControls({ authorUsername, authorUid, postId, inline = f
           )
         : null}
 
-      {openGifts && typeof document !== 'undefined'
-        ? createPortal(
-            <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-[115]">
-              <GiftBoxStrip
-                gifts={giftCatalog}
-                sendingGiftId={sendingGift}
-                coins={coins}
-                error={giftError}
-                rechargeNeeded={rechargeNeeded}
-                onRecharge={() => setRechargeOpen(true)}
-                compact
-                onSelect={(id) => void sendGift(id)}
-                onClose={() => {
-                  setOpenGifts(false);
-                  setGiftError(null);
-                  setRechargeNeeded(null);
-                }}
-              />
-            </div>,
-            document.body,
-          )
-        : null}
+      {openGifts ? (
+        <GiftCatalogLayer open={openGifts} triggerRef={triggerRef} onClose={closeGifts}>
+          <GiftBoxStrip
+            gifts={giftCatalog}
+            sendingGiftId={sendingGift}
+            coins={coins}
+            error={giftError}
+            rechargeNeeded={rechargeNeeded}
+            onRecharge={() => setRechargeOpen(true)}
+            compact
+            floating
+            onSelect={(id) => void sendGift(id)}
+            onClose={closeGifts}
+          />
+        </GiftCatalogLayer>
+      ) : null}
 
       {rechargeOpen
         ? createPortal(
-            <div className="pointer-events-auto fixed inset-0 z-[120]">
+            <div className="pointer-events-auto fixed inset-0 z-[124]">
               <CoinModal onClose={() => setRechargeOpen(false)} />
             </div>,
             document.body,

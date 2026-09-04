@@ -28,10 +28,15 @@ import {
   reelLifecycleFromCreatedAt,
   targetReelVisibility,
 } from './reelLifecycle';
-import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS } from './contentType';
+import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from './contentType';
 import { isStoryActive, isStoryPost, storyExpiresAtFromNow } from './storyLifecycle';
-import { updateStoredMediaVisibility, uploadUserMedia, type UserMediaStorageKind } from './storage';
-import { captureVideoPosterPortrait, readVideoIntrinsicSize } from './videoPoster';
+import {
+  updateStoredMediaVisibility,
+  uploadUserMedia,
+  uploadUserMediaMany,
+  type UserMediaStorageKind,
+} from './storage';
+import { readVideoSizeAndPortraitPoster } from './videoPoster';
 
 export type FriendshipStatus =
   | 'none'
@@ -121,6 +126,10 @@ export type FsPost = {
   thumbUrl?: string | null;
   mediaWidth?: number;
   mediaHeight?: number;
+  /** Repost: apunta al contenido y autor originales. */
+  sharedFromPostId?: string;
+  sharedFromAuthorUid?: string;
+  sharedFromUsername?: string;
 };
 
 type MeProfile = {
@@ -1111,6 +1120,9 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     thumbUrl: (data.thumbUrl as string | null) ?? null,
     mediaWidth: Number(data.mediaWidth) || undefined,
     mediaHeight: Number(data.mediaHeight) || undefined,
+    sharedFromPostId: String(data.sharedFromPostId || '').trim() || undefined,
+    sharedFromAuthorUid: String(data.sharedFromAuthorUid || '').trim() || undefined,
+    sharedFromUsername: String(data.sharedFromUsername || '').trim() || undefined,
   };
 }
 
@@ -1210,6 +1222,31 @@ export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscr
   );
 }
 
+/** Pool de Publicaciones públicas para ranking de Inicio. Nunca borra ni mueve docs. */
+function listenPublicPublicationPool(onChange: (posts: FsPost[]) => void): Unsubscribe {
+  if (!auth.currentUser) {
+    onChange([]);
+    return () => undefined;
+  }
+  const q = query(
+    collection(db, 'posts'),
+    where('visibility', '==', 'public'),
+    orderBy('createdAt', 'desc'),
+    limit(320),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        snap.docs
+          .map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))
+          .filter((post) => isPublicationPost(post) && !isStoryPost(post)),
+      );
+    },
+    () => onChange([]),
+  );
+}
+
 function isHomeFeedPost(
   post: FsPost,
   viewerUid: string,
@@ -1240,14 +1277,19 @@ function isHomeFeedPost(
   return post.visibility === 'public' || post.visibility == null;
 }
 
-/** Feed de Inicio: Para ti (público + amigos) o Siguiendo (red personal). */
+export type HomeFeedMeta = {
+  friendUids: string[];
+  followingUids: string[];
+};
+
+/** Feed de Inicio: pool de Publicaciones (no Boom Clip / Flash). No borra docs. */
 export function listenHomeFeed(
   uid: string,
   tab: 'para_ti' | 'siguiendo',
-  onChange: (posts: FsPost[]) => void,
+  onChange: (posts: FsPost[], meta: HomeFeedMeta) => void,
 ): Unsubscribe {
   if (!uid) {
-    onChange([]);
+    onChange([], { friendUids: [], followingUids: [] });
     return () => undefined;
   }
 
@@ -1256,6 +1298,10 @@ export function listenHomeFeed(
   let friendUids = new Set<string>();
   let followingUids = new Set<string>();
 
+  function meta(): HomeFeedMeta {
+    return { friendUids: [...friendUids], followingUids: [...followingUids] };
+  }
+
   function emit() {
     if (tab === 'siguiendo') {
       onChange(
@@ -1263,7 +1309,8 @@ export function listenHomeFeed(
           networkPosts.filter((post) =>
             isHomeFeedPost(post, uid, friendUids, followingUids, 'siguiendo'),
           ),
-        ).slice(0, 60),
+        ),
+        meta(),
       );
       return;
     }
@@ -1279,12 +1326,12 @@ export function listenHomeFeed(
         merged.set(post.id, post);
       }
     }
-    onChange(sortPosts([...merged.values()]).slice(0, 60));
+    onChange(sortPosts([...merged.values()]), meta());
   }
 
   const unsubPublic =
     tab === 'para_ti'
-      ? listenRecentPosts((list) => {
+      ? listenPublicPublicationPool((list) => {
           publicPosts = list;
           emit();
         })
@@ -1334,7 +1381,7 @@ export function listenHomeFeed(
         collection(db, 'posts'),
         where('authorUid', '==', uid),
         orderBy('createdAt', 'desc'),
-        limit(40),
+        limit(80),
       ),
     );
 
@@ -1347,7 +1394,7 @@ export function listenHomeFeed(
           collection(db, 'posts'),
           where('authorUid', 'in', batch),
           orderBy('createdAt', 'desc'),
-          limit(40),
+          limit(80),
         ),
       );
     }
@@ -1499,6 +1546,47 @@ export async function getPostById(postId: string): Promise<FsPost | null> {
   const snap = await getDoc(doc(db, 'posts', id));
   if (!snap.exists()) return null;
   return postFromDoc(snap.id, snap.data() as Record<string, unknown>);
+}
+
+export function isRepostPost(post: { sharedFromPostId?: string | null }): boolean {
+  return Boolean(String(post.sharedFromPostId || '').trim());
+}
+
+export async function viewerCanSeePost(
+  post: FsPost,
+  viewerUid?: string | null,
+): Promise<boolean> {
+  if (post.visibility === 'public' || post.visibility == null) return true;
+  if (!viewerUid) return false;
+  if (post.authorUid === viewerUid) return true;
+  if (post.visibility === 'private' || post.visibility === 'circle') return false;
+  if (post.visibility === 'friends') {
+    const status = await getFriendshipStatusByUid(viewerUid, post.authorUid);
+    return status === 'friends';
+  }
+  return false;
+}
+
+/** Carga el contenido original de un repost. No crea ni modifica documentos. */
+export async function loadRepostOriginal(
+  originId: string,
+  viewerUid?: string | null,
+): Promise<FsPost | null> {
+  const id = String(originId || '').trim();
+  if (!id) return null;
+  try {
+    let current = await getPostById(id);
+    if (!current) return null;
+    if (current.sharedFromPostId && current.sharedFromPostId !== current.id) {
+      const nested = await getPostById(current.sharedFromPostId);
+      if (nested) current = nested;
+    }
+    if (isStoryPost(current) && !isStoryActive(current)) return null;
+    const visible = await viewerCanSeePost(current, viewerUid);
+    return visible ? current : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Boom Clip: solo videos cortos públicos en carrusel (no fotos ni historias). */
@@ -1758,55 +1846,53 @@ export async function createPost(input: {
       input.type === 'photo' && !isStory && !isBoomClip ? input.mediaFiles : undefined;
 
     if (multiPhotoFiles && multiPhotoFiles.length > 1) {
-      const uploadedUrls: string[] = [];
-      for (const file of multiPhotoFiles) {
-        const fileName = file.name || `photo_${uploadedUrls.length + 1}.jpg`;
-        const uploaded = await uploadUserMedia(
-          input.authorUid,
-          file,
-          fileName,
-          visibility,
-          storageKind,
-        );
-        uploadedUrls.push(uploaded.url);
-        if (!storagePath) storagePath = uploaded.storagePath;
-      }
-      mediaUrls = uploadedUrls;
-      mediaUrl = uploadedUrls[0] ?? null;
-    } else if (input.mediaFile) {
-      const fileName =
-        input.mediaFile instanceof File && input.mediaFile.name
-          ? input.mediaFile.name
-          : input.type === 'video'
-            ? 'clip.mp4'
-            : 'photo.jpg';
-      const uploaded = await uploadUserMedia(
+      const uploadedList = await uploadUserMediaMany(
         input.authorUid,
-        input.mediaFile,
-        fileName,
+        multiPhotoFiles,
         visibility,
         storageKind,
       );
+      const uploadedUrls = uploadedList.map((item) => item.url);
+      mediaUrls = uploadedUrls;
+      mediaUrl = uploadedUrls[0] ?? null;
+      storagePath = uploadedList[0]?.storagePath ?? null;
+    } else if (input.mediaFile) {
+      const mediaToUpload = input.mediaFile;
+      const fileName =
+        mediaToUpload instanceof File && mediaToUpload.name
+          ? mediaToUpload.name
+          : input.type === 'video'
+            ? 'clip.mp4'
+            : 'photo.jpg';
+      const clipExtrasPromise = isBoomClip
+        ? (async () => {
+            const meta = await readVideoSizeAndPortraitPoster(mediaToUpload);
+            const thumbUploaded = await uploadUserMedia(
+              input.authorUid,
+              meta.poster,
+              'thumb.jpg',
+              visibility,
+              'boom_clip',
+            );
+            return { width: meta.width, height: meta.height, thumbUrl: thumbUploaded.url };
+          })().catch(() => null)
+        : Promise.resolve(null);
+      const [uploaded, clipExtras] = await Promise.all([
+        uploadUserMedia(
+          input.authorUid,
+          mediaToUpload,
+          fileName,
+          visibility,
+          storageKind,
+        ),
+        clipExtrasPromise,
+      ]);
       mediaUrl = uploaded.url;
       storagePath = uploaded.storagePath;
-
-      if (isBoomClip) {
-        try {
-          const metrics = await readVideoIntrinsicSize(input.mediaFile);
-          mediaWidth = metrics.width;
-          mediaHeight = metrics.height;
-          const poster = await captureVideoPosterPortrait(input.mediaFile);
-          const thumbUploaded = await uploadUserMedia(
-            input.authorUid,
-            poster,
-            'thumb.jpg',
-            visibility,
-            'boom_clip',
-          );
-          thumbUrl = thumbUploaded.url;
-        } catch {
-          // Miniatura opcional; el feed usa video con contain si falla.
-        }
+      if (clipExtras) {
+        mediaWidth = clipExtras.width;
+        mediaHeight = clipExtras.height;
+        thumbUrl = clipExtras.thumbUrl;
       }
     } else if (input.mediaUrl?.startsWith('data:')) {
       const blob = await (await fetch(input.mediaUrl)).blob();
@@ -1830,7 +1916,9 @@ export async function createPost(input: {
     authorUid: input.authorUid,
     username: input.username.toLowerCase(),
     type: input.type,
-    caption: input.caption.trim().slice(0, 2000) || null,
+    caption:
+      input.caption.trim().slice(0, isStory ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : 2000) ||
+      null,
     mediaUrl,
     storagePath,
     visibility,
@@ -1911,6 +1999,69 @@ export async function createPost(input: {
   }
 
   return { id: ref.id, mediaUrl, storagePath, visibility, postFormat };
+}
+
+/**
+ * Republica un contenido existente como referencia (no duplica media).
+ * Boom / comentarios / regalos siguen en el documento original.
+ */
+export async function createRepost(input: {
+  authorUid: string;
+  username: string;
+  authorDisplayName?: string;
+  sourcePostId: string;
+  caption: string;
+  visibility?: 'public' | 'friends' | 'private';
+  notifyFriends?: boolean;
+}): Promise<{ id: string }> {
+  const source = await getPostById(input.sourcePostId);
+  if (!source) throw new Error('No se encontró el contenido original');
+
+  const originId = source.sharedFromPostId || source.id;
+  const originUid = source.sharedFromAuthorUid || source.authorUid;
+  const originUsername = (source.sharedFromUsername || source.username).replace(/^@/, '').toLowerCase();
+  const origin = source.sharedFromPostId ? (await getPostById(originId)) || source : source;
+  const canSee = await viewerCanSeePost(origin, input.authorUid);
+  if (!canSee) throw new Error('Este contenido ya no está disponible');
+
+  const visibility = input.visibility || 'public';
+  const caption = input.caption.trim().slice(0, 2000) || null;
+
+  const ref = await addDoc(collection(db, 'posts'), {
+    authorUid: input.authorUid,
+    username: input.username.toLowerCase(),
+    type: 'text',
+    caption,
+    mediaUrl: null,
+    storagePath: null,
+    visibility,
+    likes: 0,
+    createdAt: serverTimestamp(),
+    isRepost: true,
+    sharedFromPostId: originId,
+    sharedFromAuthorUid: originUid,
+    sharedFromUsername: originUsername,
+  });
+
+  if (visibility === 'public' && caption) {
+    void import('./trendsFirestore')
+      .then(({ bumpHashtagsFromCaption }) => bumpHashtagsFromCaption(caption))
+      .catch(() => undefined);
+  }
+
+  if (input.notifyFriends !== false && visibility !== 'private') {
+    const friends = await listFriends(input.authorUid);
+    void notifyFriendsAboutPost({
+      authorUid: input.authorUid,
+      authorUsername: input.username,
+      authorName: input.authorDisplayName?.trim() || input.username,
+      postId: ref.id,
+      recipientUids: friends.map((friend) => friend.uid),
+      mediaType: 'text',
+    }).catch(() => undefined);
+  }
+
+  return { id: ref.id };
 }
 
 export async function updatePostVisibility(

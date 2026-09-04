@@ -1,6 +1,7 @@
 import { Gift, Send, Smile, WalletCards } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
+import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
 import { api } from '../../lib/api';
 import { sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { getSocket } from '../../lib/socket';
@@ -21,6 +22,7 @@ export function InteractionPanel() {
   const setCoins = useAuthStore((s) => s.setCoins);
   const syncProfile = useAuthStore((s) => s.syncProfile);
   const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
+  const giftTriggerRef = useRef<HTMLButtonElement>(null);
 
   const first = donors.find((d) => d.rank === 1);
   const second = donors.find((d) => d.rank === 2);
@@ -114,13 +116,16 @@ export function InteractionPanel() {
           }}
         >
           {giftOpen ? (
-            <GiftBoxStrip
-              gifts={giftCatalog}
-              coins={coins}
-              compact
-              onSelect={(id) => void sendGift(id)}
-              onClose={toggleGifts}
-            />
+            <GiftCatalogLayer open={giftOpen} triggerRef={giftTriggerRef} onClose={toggleGifts}>
+              <GiftBoxStrip
+                gifts={giftCatalog}
+                coins={coins}
+                compact
+                floating
+                onSelect={(id) => void sendGift(id)}
+                onClose={toggleGifts}
+              />
+            </GiftCatalogLayer>
           ) : null}
 
           <div className="flex items-center gap-2 px-3 py-3">
@@ -140,6 +145,7 @@ export function InteractionPanel() {
 
       <div className="mt-3 flex items-center gap-2 rounded-2xl border border-white/5 bg-boom-panel px-3 py-2.5">
         <button
+          ref={giftTriggerRef}
           type="button"
           onClick={toggleGifts}
           className="grid h-10 w-10 place-items-center rounded-xl bg-boom-fuchsia/15 text-boom-fuchsia"

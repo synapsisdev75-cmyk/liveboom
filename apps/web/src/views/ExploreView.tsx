@@ -52,6 +52,9 @@ function toReelItem(post: FsPost): ReelFeedItem {
     mediaUrl: post.mediaUrl || '',
     mediaType: 'video',
     contentBadge: type === 'boom_clip' ? BOOM_CLIP_LABEL : contentTypeLabel(type),
+    sharedFromPostId: post.sharedFromPostId,
+    sharedFromAuthorUid: post.sharedFromAuthorUid,
+    sharedFromUsername: post.sharedFromUsername,
   };
 }
 

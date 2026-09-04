@@ -268,17 +268,19 @@
 }
 
 .lb-immersive-media-box .lb-action-rail--media:not(.lb-action-rail--corner) {
-  right: max(0.35rem, env(safe-area-inset-right, 0px));
+  left: max(0.35rem, env(safe-area-inset-left, 0px));
+  right: auto;
   bottom: auto;
   top: 50%;
   transform: translateY(-50%);
 }
 
-/* Visor inmersivo: rail derecho centrado verticalmente (sin scroll interno) */
+/* Visor inmersivo: rail izquierdo centrado verticalmente (sin scroll interno) */
 .lb-immersive-media-box .lb-action-rail--corner,
 .lb-action-rail--media.lb-action-rail--corner {
   position: absolute;
-  right: max(0.35rem, env(safe-area-inset-right, 0px));
+  left: max(0.35rem, env(safe-area-inset-left, 0px));
+  right: auto;
   top: 50%;
   bottom: auto;
   transform: translateY(-50%);
@@ -287,10 +289,10 @@
   z-index: 40;
 }
 
-/* Explorar / Flash Boom horizontal: rail fijo al lado del media, sin scroll */
+/* Explorar / Flash Boom / Clips / Publicaciones: rail fijo a la izquierda del media */
 .lb-immersive-stage__row {
   gap: clamp(0.2rem, 1vw, 0.45rem);
-  padding-right: max(0.15rem, env(safe-area-inset-right, 0px));
+  padding-left: max(0.15rem, env(safe-area-inset-left, 0px));
   min-height: 0;
 }
 
@@ -304,12 +306,18 @@
   overflow: visible;
 }
 
+.lb-immersive-edge-rail {
+  left: max(0.35rem, env(safe-area-inset-left, 0px));
+  right: auto;
+}
+
 /* Teléfono/tablet landscape: ver responsive/mobile-tablet/landscape-explore.css */
 
 .lb-action-rail--aside {
   position: static !important;
   top: auto !important;
   right: auto !important;
+  left: auto !important;
   bottom: auto !important;
   transform: none !important;
   overflow: visible !important;
@@ -402,23 +410,26 @@
 @media (min-width: 640px) {
   .lb-immersive-media-box .lb-action-rail--corner,
   .lb-action-rail--media.lb-action-rail--corner {
-    right: max(0.5rem, env(safe-area-inset-right, 0px));
+    left: max(0.5rem, env(safe-area-inset-left, 0px));
+    right: auto;
   }
 }
 
 @media (min-width: 1024px) {
   .lb-immersive-media-box .lb-action-rail--media:not(.lb-action-rail--corner) {
-    right: -4.25rem;
+    left: -4.25rem;
+    right: auto;
     transform: translateY(-50%);
   }
 
   .lb-immersive-stage__center {
-    padding-right: 0.5rem;
+    padding-left: 0.5rem;
   }
 
   .lb-immersive-media-box .lb-action-rail--corner,
   .lb-action-rail--media.lb-action-rail--corner {
-    right: max(0.5rem, env(safe-area-inset-right, 0px));
+    left: max(0.5rem, env(safe-area-inset-left, 0px));
+    right: auto;
   }
 }
 
@@ -625,6 +636,21 @@ video.lk-participant-media-video {
     background: #2a2d36;
     border-radius: 999px;
   }
+}
+
+.gift-catalog-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #52525b transparent;
+}
+
+.gift-catalog-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.gift-catalog-scroll::-webkit-scrollbar-thumb {
+  background: #52525b;
+  border-radius: 999px;
 }
 
 .gift-box-item {
@@ -1370,14 +1396,110 @@ body {
 }
 
 .publication-caption-overlay {
-  padding-left: max(0.75rem, var(--lb-safe-left));
-  padding-right: max(clamp(1rem, 14vw, 4.5rem), var(--lb-safe-right));
+  padding-left: max(clamp(1rem, 14vw, 4.5rem), var(--lb-safe-left));
+  padding-right: max(0.75rem, var(--lb-safe-right));
   padding-bottom: max(0.75rem, var(--lb-safe-bottom));
   padding-top: clamp(1.5rem, 8vh, 3rem);
+}
+
+@media (min-width: 1024px) {
+  .publication-caption-overlay {
+    padding-left: max(0.75rem, var(--lb-safe-left));
+  }
 }
 
 .publication-composer-field {
   min-width: 0;
   max-width: 100%;
+}
+
+/* Pestañas del compositor: solo estilo. Tamaño/grid siguen en el componente. */
+.composer-kind-tab {
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease;
+}
+
+.composer-kind-tab--publication {
+  border-color: rgba(232, 48, 160, 0.4);
+  background: rgba(232, 48, 160, 0.07);
+  color: rgb(244, 154, 210);
+}
+
+.composer-kind-tab--publication.is-active {
+  border-color: rgb(255, 120, 210);
+  color: #fff;
+  background: linear-gradient(165deg, #f472b6 0%, #e11d74 48%, #c026d3 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 186, 230, 0.35),
+    0 0 16px rgba(232, 48, 160, 0.48);
+}
+
+.composer-kind-tab--boomclip {
+  border-color: rgba(34, 211, 238, 0.38);
+  background: rgba(6, 182, 212, 0.07);
+  color: rgb(103, 232, 249);
+}
+
+.composer-kind-tab--boomclip.is-active {
+  border-color: rgb(165, 243, 252);
+  color: #fff;
+  background: linear-gradient(165deg, #22d3ee 0%, #06b6d4 48%, #0891b2 100%);
+  box-shadow:
+    0 0 0 1px rgba(165, 243, 252, 0.4),
+    0 0 16px rgba(34, 211, 238, 0.48);
+}
+
+.composer-kind-tab--flashboom {
+  border-color: rgba(167, 139, 250, 0.42);
+  background: rgba(139, 92, 246, 0.08);
+  color: rgb(196, 181, 253);
+}
+
+.composer-kind-tab--flashboom.is-active {
+  border-color: rgb(221, 214, 254);
+  color: #fff;
+  background: linear-gradient(165deg, #a78bfa 0%, #8b5cf6 48%, #7c3aed 100%);
+  box-shadow:
+    0 0 0 1px rgba(221, 214, 254, 0.38),
+    0 0 16px rgba(139, 92, 246, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-kind-tab {
+    transition: none;
+  }
+}
+
+/* Color emoji en captions (Publicación / Boom Clip / Flash Boom). */
+.lb-emoji-text {
+  font-family: 'Segoe UI Emoji', 'Noto Color Emoji', 'Apple Color Emoji', 'Twemoji Mozilla', sans-serif;
+}
+
+/* Unicode del selector: fuente de sistema + tinte leve (no copiamos arte de Apple). */
+.lb-unicode-emoji {
+  font-family: 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
+  filter: saturate(0.86) hue-rotate(10deg) contrast(1.05);
+}
+
+.lb-flag-icon {
+  border-radius: 50%;
+  object-fit: cover;
+  background: #101010;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.lb-flag-icon--picker {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.lb-flag-icon--tab {
+  width: 1.35rem;
+  height: 1.35rem;
 }
 

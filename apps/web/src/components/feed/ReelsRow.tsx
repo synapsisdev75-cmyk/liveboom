@@ -32,6 +32,9 @@ function toReel(post: FsPost, avatarUrl?: string | null): ReelItem {
     authorAvatarUrl: avatarUrl ?? null,
     contentBadge: BOOM_CLIP_LABEL,
     thumbUrl: post.thumbUrl ?? null,
+    sharedFromPostId: post.sharedFromPostId,
+    sharedFromAuthorUid: post.sharedFromAuthorUid,
+    sharedFromUsername: post.sharedFromUsername,
   };
 }
 
@@ -317,12 +320,15 @@ export function ReelsRow({
     [clipGroups, profile?.firebaseUid],
   );
 
-  function openAuthorClips(authorUid: string, storyMode: boolean) {
-    const group = clipGroups.find((g) => g.authorUid === authorUid);
-    if (!group?.clips.length) return;
-    setViewerReels(group.clips);
-    setViewerIndex(0);
-    setViewerStoryMode(storyMode);
+  function openAuthorClips(authorUid: string) {
+    if (!clipGroups.length) return;
+    const ordered = clipGroups.flatMap((group) => group.clips);
+    if (!ordered.length) return;
+    const startId = clipGroups.find((group) => group.authorUid === authorUid)?.clips[0]?.id;
+    const idx = startId ? ordered.findIndex((clip) => clip.id === startId) : 0;
+    setViewerReels(ordered);
+    setViewerIndex(Math.max(0, idx));
+    setViewerStoryMode(true);
   }
 
   const hasAnyClips = clipGroups.length > 0;
@@ -417,7 +423,7 @@ export function ReelsRow({
                 uid={profile.firebaseUid}
                 hasClips={Boolean(ownGroup?.clips.length)}
                 group={ownGroup}
-                onOpenOwn={() => openAuthorClips(profile.firebaseUid, true)}
+                onOpenOwn={() => openAuthorClips(profile.firebaseUid)}
                 onPublish={() => setCreateOpen(true)}
               />
             </div>
@@ -427,7 +433,7 @@ export function ReelsRow({
             <BoomClipGroupThumb
               key={group.authorUid}
               group={group}
-              onOpen={() => openAuthorClips(group.authorUid, true)}
+              onOpen={() => openAuthorClips(group.authorUid)}
             />
           ))}
         </HorizontalScrollRail>
@@ -438,6 +444,8 @@ export function ReelsRow({
           reels={viewerReels}
           initialIndex={viewerIndex}
           storyMode={viewerStoryMode}
+          immersiveLandscapeLayout
+          collapsibleCaption
           onClose={() => setViewerReels(null)}
         />
       ) : null}

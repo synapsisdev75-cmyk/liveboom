@@ -22,6 +22,9 @@ function toReel(post: FsPost): ReelItem {
     shared: true,
     createdAt: post.createdAt,
     durationSec: post.durationSec,
+    sharedFromPostId: post.sharedFromPostId,
+    sharedFromAuthorUid: post.sharedFromAuthorUid,
+    sharedFromUsername: post.sharedFromUsername,
   };
 }
 

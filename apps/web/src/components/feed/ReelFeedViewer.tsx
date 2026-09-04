@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   listenPostReactions,
@@ -7,8 +8,14 @@ import {
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
+import {
+  authorLocalPosition,
+  nextAuthorIndex,
+  prevAuthorIndex,
+} from '../../lib/storyAuthorNav';
 import { PostPhotoViewer } from '../social/PostPhotoViewer';
 import { PostVideoPlayer } from '../social/PostVideoPlayer';
+import { originalPostPath } from '../social/RepostPostCard';
 
 export type ReelFeedItem = {
   id: string;
@@ -22,6 +29,10 @@ export type ReelFeedItem = {
   thumbUrl?: string | null;
   /** Boom Clip / Publicación */
   contentBadge?: string | null;
+  durationSec?: number | null;
+  sharedFromPostId?: string | null;
+  sharedFromAuthorUid?: string | null;
+  sharedFromUsername?: string | null;
 };
 
 type Props = {
@@ -30,9 +41,11 @@ type Props = {
   onClose?: () => void;
   /** Flash Boom: auto-avance al terminar cada video. */
   storyMode?: boolean;
+  /** Boom Clip / Flash Boom: Ver más / Ver menos en la descripción. */
+  collapsibleCaption?: boolean;
   /** Embebido en página (Explorar): sin portal ni botón cerrar. */
   embedded?: boolean;
-  /** Explorar / Flash Boom: layout horizontal con rail fijo al lado. */
+  /** Explorar / Boom Clip / Flash: cover en móvil. El rail aside en PC es independiente. */
   immersiveLandscapeLayout?: boolean;
   onIndexChange?: (index: number) => void;
 };
@@ -43,7 +56,8 @@ export function ReelFeedViewer({
   onClose,
   storyMode = false,
   embedded = false,
-  immersiveLandscapeLayout = false,
+  immersiveLandscapeLayout = true,
+  collapsibleCaption = false,
   onIndexChange,
 }: Props) {
   useBodyScrollLock(!embedded);
@@ -60,6 +74,14 @@ export function ReelFeedViewer({
   const [busy, setBusy] = useState(false);
 
   const reel = reels[index];
+  const originId = reel ? reel.sharedFromPostId || reel.id : '';
+  const originUid = reel ? reel.sharedFromAuthorUid || reel.authorUid : '';
+  const originUsername = reel ? reel.sharedFromUsername || reel.username : '';
+  const isRepost = Boolean(reel?.sharedFromPostId && reel?.sharedFromUsername);
+  const originHref =
+    isRepost && reel?.sharedFromUsername && reel.sharedFromPostId
+      ? originalPostPath(reel.sharedFromUsername, reel.sharedFromPostId, reel.sharedFromAuthorUid)
+      : null;
 
   useEffect(() => {
     setIndex((current) => Math.min(Math.max(current, 0), Math.max(reels.length - 1, 0)));
@@ -76,27 +98,15 @@ export function ReelFeedViewer({
   }, [toast]);
 
   useEffect(() => {
-    if (!reel || !profile) return;
-    return listenPostReactions(reel.id, profile.firebaseUid, (stats) => {
+    if (!originId || !profile) return;
+    return listenPostReactions(originId, profile.firebaseUid, (stats) => {
       setLikes(stats.likes);
       setDislikes(stats.dislikes);
       setViewerReaction(stats.viewerReaction);
       setLikers(stats.likers);
       setDislikers(stats.dislikers);
     });
-  }, [reel?.id, profile?.firebaseUid]);
-
-  useEffect(() => {
-    if (!storyMode || !reel || reel.mediaType !== 'photo') return;
-    const timer = window.setTimeout(() => {
-      setIndex((current) => {
-        if (current < reels.length - 1) return current + 1;
-        onClose?.();
-        return current;
-      });
-    }, 6000);
-    return () => window.clearTimeout(timer);
-  }, [index, storyMode, reel?.id, reel?.mediaType, reels.length, onClose]);
+  }, [originId, profile?.firebaseUid]);
 
   // Precarga URL del siguiente video
   useEffect(() => {
@@ -112,6 +122,37 @@ export function ReelFeedViewer({
     };
   }, [index, reels]);
 
+  const storyPosition = useMemo(
+    () => (storyMode ? authorLocalPosition(reels, index) : { current: index + 1, total: reels.length }),
+    [storyMode, reels, index],
+  );
+
+  useEffect(() => {
+    if (!storyMode || embedded) return;
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        const next = nextAuthorIndex(reels, index);
+        if (next >= 0) setIndex(next);
+        else onClose?.();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        const prev = prevAuthorIndex(reels, index);
+        if (prev >= 0) setIndex(prev);
+        else setToast('Este es el primer usuario.');
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [storyMode, embedded, index, reels, onClose]);
+
   if (!reel) return null;
 
   async function react(reaction: 'like' | 'dislike') {
@@ -119,7 +160,7 @@ export function ReelFeedViewer({
     setBusy(true);
     try {
       await setPostReaction(
-        reel.id,
+        originId,
         profile.firebaseUid,
         viewerReaction === reaction ? null : reaction,
         {
@@ -153,6 +194,30 @@ export function ReelFeedViewer({
     setToast('Este es el primer video.');
   }
 
+  function goNextUser() {
+    const next = nextAuthorIndex(reels, index);
+    if (next >= 0) {
+      setIndex(next);
+      return;
+    }
+    if (storyMode) {
+      onClose?.();
+      return;
+    }
+    setToast('¡Es todo! Desliza más tarde para nuevos videos.');
+  }
+
+  function goPrevUser() {
+    const prev = prevAuthorIndex(reels, index);
+    if (prev >= 0) {
+      setIndex(prev);
+      return;
+    }
+    setToast('Este es el primer usuario.');
+  }
+
+  const userNavigation = storyMode ? { onNextUser: goNextUser, onPrevUser: goPrevUser } : undefined;
+
   const player = (
     <>
       {reel.mediaType === 'photo' ? (
@@ -160,24 +225,30 @@ export function ReelFeedViewer({
           key={reel.id}
           src={reel.mediaUrl}
           caption={reel.caption}
-          postId={reel.id}
-          authorUid={reel.authorUid}
-          authorUsername={reel.username}
+          postId={originId}
+          authorUid={originUid}
+          authorUsername={originUsername}
           authorAvatarUrl={reel.authorAvatarUrl}
           overlayOnly
           startExpanded
           onCloseExpand={onClose}
           navigation={{ onNext: goNext, onPrev: goPrev }}
-          position={{ current: index + 1, total: reels.length }}
+          userNavigation={userNavigation}
+          position={storyPosition}
           immersiveLandscapeLayout={immersiveLandscapeLayout}
+          publicationCaption={collapsibleCaption}
+          storyMode={storyMode}
+          repostByUsername={isRepost ? reel.username : null}
+          originalUsername={isRepost ? originUsername : null}
+          originalHref={originHref}
         />
       ) : (
         <PostVideoPlayer
           key={reel.id}
           src={reel.mediaUrl}
-          postId={reel.id}
-          authorUid={reel.authorUid}
-          authorUsername={reel.username}
+          postId={originId}
+          authorUid={originUid}
+          authorUsername={originUsername}
           authorAvatarUrl={reel.authorAvatarUrl}
           caption={reel.caption}
           likes={likes}
@@ -194,12 +265,45 @@ export function ReelFeedViewer({
           hideClose={embedded}
           contentBadge={reel.contentBadge}
           reelNavigation={{ onNext: goNext, onPrev: goPrev }}
-          reelPosition={{ current: index + 1, total: reels.length }}
+          userNavigation={userNavigation}
+          reelPosition={storyPosition}
           storyMode={storyMode}
+          itemSideNav={storyMode}
+          durationSec={reel.durationSec}
           onCloseExpand={onClose}
           immersiveLandscapeLayout={immersiveLandscapeLayout}
+          publicationCaption={collapsibleCaption}
+          repostByUsername={isRepost ? reel.username : null}
+          originalUsername={isRepost ? originUsername : null}
+          originalHref={originHref}
         />
       )}
+      {storyMode && !embedded ? (
+        <div className="pointer-events-none fixed inset-0 z-[105] hidden lg:block">
+          <button
+            type="button"
+            className="pointer-events-auto absolute left-[max(0.5rem,var(--lb-safe-left))] top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white backdrop-blur-sm"
+            aria-label="Usuario anterior"
+            onClick={(event) => {
+              event.stopPropagation();
+              goPrevUser();
+            }}
+          >
+            <ChevronLeft size={22} />
+          </button>
+          <button
+            type="button"
+            className="pointer-events-auto absolute right-[max(0.5rem,var(--lb-safe-right))] top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white backdrop-blur-sm"
+            aria-label="Siguiente usuario"
+            onClick={(event) => {
+              event.stopPropagation();
+              goNextUser();
+            }}
+          >
+            <ChevronRight size={22} />
+          </button>
+        </div>
+      ) : null}
       {toast && typeof document !== 'undefined'
         ? createPortal(
             <div className="pointer-events-none fixed inset-x-0 top-[max(4.5rem,var(--lb-safe-top))] z-[110] flex justify-center px-4">
