@@ -20,8 +20,10 @@ import { PostMediaCarousel } from './PostMediaCarousel';
 import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
+import { PublicationCaption } from './PublicationCaption';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
+import { isPublicationPost } from '../../lib/contentType';
 
 type Props = {
   username: string;
@@ -345,7 +347,7 @@ export function PostCard({
   }
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
+    <article className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
       {post.visibility ? (
         <p className="border-b border-white/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
           {post.visibility === 'public'
@@ -377,6 +379,7 @@ export function PostCard({
           startExpanded={startPhotoExpanded}
           onCloseExpand={onClosePhotoExpand}
           onExpandChange={setMediaExpanded}
+          publicationCaption
         />
       ) : null}
       {post.type === 'video' && post.mediaUrl ? (
@@ -402,6 +405,7 @@ export function PostCard({
           onRequestExpand={onVideoExpand}
           onCloseExpand={onCloseVideoExpand}
           onExpandChange={setMediaExpanded}
+          publicationCaption
         />
       ) : null}
       {post.type === 'text' || isTextOnlyPost(post) ? (
@@ -490,6 +494,18 @@ export function PostCard({
         ) : null}
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
+      {isPublicationPost({
+        type: post.type,
+        mediaUrl: post.mediaUrl,
+        visibility: post.visibility,
+        postFormat: post.postFormat,
+        durationSec: post.durationSec,
+        reelFeedUntilMs: post.reelFeedUntilMs,
+      }) &&
+      (post.type === 'photo' || post.type === 'video') &&
+      post.caption?.trim() ? (
+        <PublicationCaption key={post.id} caption={post.caption || ''} />
+      ) : null}
       {!(post.type === 'video' && mediaExpanded) ? (
         <PostComments postId={post.id} authorUid={post.authorUid} />
       ) : null}

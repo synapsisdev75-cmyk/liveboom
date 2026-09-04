@@ -1,0 +1,29 @@
+---
+description: Esta máquina trabaja y despliega solo la rama jhonantan, nunca main ni otras ramas
+alwaysApply: true
+---
+
+# LiveBoom: solo rama jhonantan (esta máquina)
+
+Repo: `https://github.com/synapsisdev75-cmyk/liveboom`  
+Rama única: **`jhonantan`**
+
+## Git
+
+- Trabajar, commitear y hacer push **solo** a `origin/jhonantan`.
+- **Nunca** push, merge, rebase ni deploy hacia `main` / principal ni hacia otras ramas (`cursor/workspace`, etc.).
+- Antes de cualquier git push o deploy: `git branch --show-current` debe ser `jhonantan`. Si no, parar y cambiar a esa rama.
+
+## Cuando el usuario pida desplegar
+
+Desplegar **solo el código de `jhonantan`**, nada más:
+
+1. Confirmar que HEAD es `jhonantan` y está al día con `origin/jhonantan` (o push primero a esa rama).
+2. Hosting: canal de preview de Firebase **`jhonantan`**, no el canal live.
+   - `npm run build -w apps/web`
+   - `npx firebase hosting:channel:deploy jhonantan --project liveboom-app`
+3. **No** usar `firebase deploy --only hosting` ni `deploy:prod` / `deploy:hosting` (eso publica **liveboomapp.com** / www = principal).
+4. **No** desplegar Functions, Vercel, rules ni indexes al entorno de producción salvo que el usuario diga explícitamente “producción”, “www” o “principal”.
+5. **No** desplegar otras ramas ni “todas”.
+
+Entregar la URL del canal `jhonantan`, no dar por listo www.

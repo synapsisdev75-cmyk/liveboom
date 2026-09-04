@@ -18,6 +18,7 @@ import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
+import { PublicationCaptionOverlay } from './PublicationCaption';
 
 type Props = {
   src: string;
@@ -44,6 +45,8 @@ type Props = {
   position?: { current: number; total: number };
   /** Explorar / Flash Boom: layout horizontal con rail fijo al lado. */
   immersiveLandscapeLayout?: boolean;
+  /** Publicación: descripción con Ver más / Ver menos. Default false (Boom Clip / Flash / Explorar). */
+  publicationCaption?: boolean;
 };
 
 /**
@@ -66,6 +69,7 @@ export function PostPhotoViewer({
   navigation,
   position,
   immersiveLandscapeLayout = false,
+  publicationCaption = false,
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const isDesktop = useIsDesktop();
@@ -213,7 +217,7 @@ export function PostPhotoViewer({
           mediaKind="image"
           landscapeRailAside={immersiveLandscapeLayout}
           fillMode={publicationFillMode}
-          insets={{ top: 56, bottom: 100, left: 4, right: 4, actionRail: 56 }}
+          insets={{ top: 56, bottom: publicationCaption ? 132 : 100, left: 4, right: 4, actionRail: 56 }}
           onSwipeStart={(x, y) => {
             if (!navigation) return;
             swipeRef.current = { x, y, active: true };
@@ -304,15 +308,19 @@ export function PostPhotoViewer({
         </header>
 
         {caption && !commentsOpen ? (
-          <p
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 text-sm text-white/90"
-            style={{
-              paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
-              paddingRight: 'max(4.5rem, env(safe-area-inset-right, 0px))',
-            }}
-          >
-            {caption}
-          </p>
+          publicationCaption ? (
+            <PublicationCaptionOverlay caption={caption} />
+          ) : (
+            <p
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 text-sm text-white/90"
+              style={{
+                paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
+                paddingRight: 'max(4.5rem, env(safe-area-inset-right, 0px))',
+              }}
+            >
+              {caption}
+            </p>
+          )
         ) : null}
 
         {commentsOpen && postId ? (

@@ -25,6 +25,7 @@ import { PostMediaCarousel } from '../components/social/PostMediaCarousel';
 import { postPhotoUrls } from '../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { EmojiText } from '../components/social/EmojiText';
+import { PublicationCaption } from '../components/social/PublicationCaption';
 import {
   TextNoteBody,
   isTextOnlyPost,
@@ -161,8 +162,8 @@ function FeaturedFeedCard({
   }
 
   return (
-    <article className="lb-card lb-panel overflow-hidden rounded-2xl">
-      <div className="flex items-center gap-3 px-3.5 pt-3.5 sm:px-4 sm:pt-4">
+    <article className="lb-card lb-panel min-w-0 max-w-full overflow-hidden rounded-2xl">
+      <div className="flex min-w-0 items-center gap-3 px-3.5 pt-3.5 sm:px-4 sm:pt-4">
         <Link to={`/u/${encodeURIComponent(post.authorUsername)}`} className="shrink-0">
           <UserAvatar
             uid={post.authorUid}
@@ -215,6 +216,7 @@ function FeaturedFeedCard({
             mediaWidth={post.mediaWidth}
             mediaHeight={post.mediaHeight}
             posterUrl={post.thumbUrl}
+            publicationCaption
           />
         </div>
       ) : postPhotoUrls(post).length > 1 ? (
@@ -237,6 +239,7 @@ function FeaturedFeedCard({
             authorUid={post.authorUid}
             mediaWidth={post.mediaWidth}
             mediaHeight={post.mediaHeight}
+            publicationCaption
           />
         </div>
       ) : post.caption ? (
@@ -251,7 +254,7 @@ function FeaturedFeedCard({
         </p>
       ) : null}
 
-      <div className="relative flex flex-wrap items-center gap-1 border-t border-white/5 px-2 py-2.5 sm:gap-2 sm:px-3">
+      <div className="relative flex min-w-0 max-w-full flex-wrap items-center gap-1 border-t border-white/5 px-2 py-2.5 sm:gap-2 sm:px-3">
         <span className="relative inline-flex items-center">
           <BoomLikeButton
             active={viewerReaction === 'like'}
@@ -291,6 +294,12 @@ function FeaturedFeedCard({
           className="ml-auto"
         />
       </div>
+
+      {!isTextOnlyPost(post) &&
+      (post.type === 'photo' || post.type === 'video') &&
+      post.caption?.trim() ? (
+        <PublicationCaption key={post.id} caption={post.caption || ''} />
+      ) : null}
 
       {showComments || commentCount > 0 ? (
         <PostComments

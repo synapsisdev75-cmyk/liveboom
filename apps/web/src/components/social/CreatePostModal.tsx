@@ -571,7 +571,10 @@ export function CreatePostModal({
                     : '¿Qué quieres compartir?'
               }
               emojiSize={POST_EMOJI_SIZE}
-              fieldClassName={`${composeHeight} w-full rounded-xl border border-white/10 bg-black/40`}
+              growToMaxScroll={composeTab === 'publication'}
+              fieldClassName={`${
+                composeTab === 'publication' ? 'publication-composer-field min-h-[4.5rem]' : composeHeight
+              } w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/40`}
               padClassName="px-3 py-2"
               mirrorTextClassName="text-white"
             />

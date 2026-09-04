@@ -1338,3 +1338,46 @@ body {
   }
 }
 
+/* Publicaciones: descripción + compositor (un contenedor, todos los viewports) */
+.publication-caption {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.publication-caption p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.publication-caption__more {
+  min-height: 2.75rem;
+}
+
+@media (pointer: coarse) {
+  .publication-caption button {
+    min-height: 2.75rem;
+  }
+}
+
+.publication-caption--overlay-scroll {
+  max-height: min(36dvh, 14rem);
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .publication-caption--overlay-scroll {
+    max-height: min(28dvh, 8.5rem);
+  }
+}
+
+.publication-caption-overlay {
+  padding-left: max(0.75rem, var(--lb-safe-left));
+  padding-right: max(clamp(1rem, 14vw, 4.5rem), var(--lb-safe-right));
+  padding-bottom: max(0.75rem, var(--lb-safe-bottom));
+  padding-top: clamp(1.5rem, 8vh, 3rem);
+}
+
+.publication-composer-field {
+  min-width: 0;
+  max-width: 100%;
+}
+

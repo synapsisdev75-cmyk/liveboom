@@ -17,14 +17,11 @@ Ver también `liveboom-responsive-universal.mdc`: **una sola app** PC/tablet/mó
 - Thumb reach, botones ≥ ~44px (touch), texto legible, regalos/overlays sin tapar la cara del host.
 - No dar por terminado un cambio que solo se ve bien en escritorio.
 
-## Deploy obligatorio al cerrar cambios de producto
+## Deploy (esta máquina = rama `jhonantan`)
 
-Cuando el usuario pida ver cambios en producción o tras features listas:
+En esta máquina rige `liveboom-jhonantan-branch.mdc`: un “desplegar” **no** publica el sitio principal.
 
-1. `npm run build -w apps/web`
-2. Desplegar Firebase al proyecto `liveboom-app`:
-   - Hosting (sirve **https://liveboomapp.com**, **https://www.liveboomapp.com** y **https://liveboom-app.web.app** — mismo sitio)
-   - Incluir `firestore:rules` / indexes / storage si se tocaron
-3. Si cambió el API (`backend/`), desplegar también Vercel (`liveboom.vercel.app`) para que www use la lógica nueva (coins, gifts, locks).
+- Default: canal Firebase **`jhonantan`** (`hosting:channel:deploy jhonantan`). No `main`, no todas las ramas, no www.
+- Producción (`liveboomapp.com` / www / Functions / Vercel) **solo** si el usuario dice explícitamente “producción”, “www” o “principal”.
 
-No dar por “listo en www” solo con build local.
+No dar por “listo en www” un preview de `jhonantan`.

@@ -38,6 +38,7 @@ import { ShareContentButton } from './ShareContentButton';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { EmojiText } from './EmojiText';
+import { PublicationCaption } from './PublicationCaption';
 import { insertEmojiToken, COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
 import { PostActionRail } from './PostActionRail';
 import { ImmersiveMediaStage } from './ImmersiveMediaStage';
@@ -100,6 +101,8 @@ type Props = {
   mediaHeight?: number;
   /** Poster/thumbnail de Publicaciones (evita bloque negro). */
   posterUrl?: string | null;
+  /** Publicación: descripción con Ver más / Ver menos. Default false (Boom Clip / Flash / Explorar). */
+  publicationCaption?: boolean;
 };
 
 const SEEK_STEP_SEC = 10;
@@ -139,6 +142,7 @@ export function PostVideoPlayer({
   mediaWidth: mediaWidthProp,
   mediaHeight: mediaHeightProp,
   posterUrl: posterUrlProp = null,
+  publicationCaption = false,
 }: Props) {
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
@@ -787,7 +791,7 @@ export function PostVideoPlayer({
 
           {!commentsPanelOpen ? (
           <div
-            className={`pointer-events-auto relative z-20 mt-auto shrink-0 space-y-2 px-3 ${
+            className={`pointer-events-auto relative z-20 mt-auto min-w-0 max-w-full shrink-0 space-y-2 px-3 ${
               embedded || overlayOnly
                 ? 'pb-[max(0.75rem,var(--lb-safe-bottom))] pr-[4.25rem] sm:pr-[4.75rem] lg:pr-3'
                 : 'pb-[max(0.75rem,var(--lb-safe-bottom))]'
@@ -808,9 +812,13 @@ export function PostVideoPlayer({
               </Link>
             ) : null}
             {caption ? (
-              <p className="line-clamp-3 text-sm font-medium text-white/90 drop-shadow">
-                <EmojiText text={caption} size={COMMENT_EMOJI_SIZE} />
-              </p>
+              publicationCaption ? (
+                <PublicationCaption caption={caption} variant="overlay" />
+              ) : (
+                <p className="line-clamp-3 text-sm font-medium text-white/90 drop-shadow">
+                  <EmojiText text={caption} size={COMMENT_EMOJI_SIZE} />
+                </p>
+              )
             ) : null}
 
             {canChangeVisibility ? (

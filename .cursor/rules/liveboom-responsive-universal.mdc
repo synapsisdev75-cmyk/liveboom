@@ -31,3 +31,13 @@ Boom Clip / Explorar / Publicaciones / Flash Boom / Composer / `+ Clip`: mismas 
 ## Criterio de “terminado”
 
 No dar por listo solo desktop. Verificar mentalmente desktop + tablet + móvil, portrait + landscape, mouse + touch. Feature nueva en un lado ⇒ misma feature en el otro vía el mismo componente.
+
+## Siempre (todo cambio de UI)
+
+Esta regla aplica en **cada** tarea de interfaz, no solo en un módulo. Una sola estructura; se adapta por viewport, orientación, `pointer` y safe-area. Sin apps/componentes duplicados por dispositivo.
+
+- Nada cortado, superpuesto o fuera de pantalla. Sin scroll horizontal de página.
+- Media: proporción + `object-fit: contain` cuando no deba recortar. Fullscreen: `dvh` + `--lb-safe-*`.
+- Touch ≥ ~44px; en PC mouse y teclado. Unidades: `%`, `min()`, `max()`, `clamp()`, `rem`, flex/grid — no px rígidos de una sola resolución.
+- Comprobar al menos anchos 360 / 375 / 390 / 412 / 430 / 768 / 820 / 1024 / 1280 / 1440 y portrait + landscape.
+- No rediseñar ni tocar módulos ajenos para “hacerlo responsive”. Si hace falta reconstruir algo fuera de alcance: parar y reportar.

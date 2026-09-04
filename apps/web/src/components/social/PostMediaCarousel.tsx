@@ -7,6 +7,7 @@ import { PostActionRail } from './PostActionRail';
 import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
+import { PublicationCaptionOverlay } from './PublicationCaption';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import {
   listenPostComments,
@@ -331,14 +332,7 @@ export function PostMediaCarousel({
                 />
               ) : null}
 
-              {caption && !commentsOpen ? (
-                <p
-                  className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 text-sm text-white/90"
-                  style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
-                >
-                  {caption}
-                </p>
-              ) : null}
+              {caption && !commentsOpen ? <PublicationCaptionOverlay caption={caption} /> : null}
 
               {commentsOpen && postId ? (
                 <div
