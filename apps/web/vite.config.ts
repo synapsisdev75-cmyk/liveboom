@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { emoticonesCatalogPlugin } from './scripts/emoticonesCatalogPlugin.mjs';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -11,7 +12,7 @@ export default defineConfig(({ mode }) => {
       : rawApi;
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), emoticonesCatalogPlugin()],
     optimizeDeps: {
       include: ['react-router-dom', 'firebase/app', 'firebase/auth'],
       exclude: ['deepar'],

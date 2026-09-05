@@ -3,6 +3,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -42,6 +43,15 @@ import {
   serializeMediaOverlays,
   type MediaOverlayItem,
 } from './mediaOverlays';
+import { resolveMentionUsers } from './mentionUsers';
+import { extractMentionHandles } from './textEntities';
+import {
+  addCommentBoom as addCommentBoomService,
+  getCommentBoomCount as getCommentBoomCountService,
+  hasUserBoomedComment,
+  listenCommentBooms as listenCommentBoomService,
+  removeCommentBoom as removeCommentBoomService,
+} from './commentBoomService';
 
 export type FriendshipStatus =
   | 'none'
@@ -70,8 +80,11 @@ export type ChatMessage = {
   mine: boolean;
   createdAt: string;
   mediaUrl?: string | null;
-  mediaType?: 'image' | 'audio' | 'video' | 'file' | 'call' | null;
+  mediaType?: 'image' | 'audio' | 'video' | 'file' | 'call' | 'gif' | null;
   linkUrl?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  giftId?: string | null;
   /** sent = enviado, delivered = entregado, read = leído */
   status?: 'sent' | 'delivered' | 'read';
   editedAt?: string | null;
@@ -94,7 +107,10 @@ export type PrivateCall = {
   fromAvatar: string | null;
   toUid: string;
   video: boolean;
+  type?: 'voice' | 'video';
   createdAt: string;
+  connectedAt?: string | null;
+  answeredAt?: string | null;
 };
 
 export type Conversation = FriendChip & {
@@ -137,6 +153,8 @@ export type FsPost = {
   sharedFromUsername?: string;
   /** Stickers/GIF sobre la foto o el video (Publicación, Boom Clip, Flash Boom). */
   overlays?: MediaOverlayItem[];
+  updatedAt?: string;
+  edited?: boolean;
 };
 
 type MeProfile = {
@@ -177,7 +195,10 @@ function parseCall(value: unknown): PrivateCall | null {
     fromAvatar: (data.fromAvatar as string | null) ?? null,
     toUid: String(data.toUid),
     video: Boolean(data.video),
+    type: data.video ? 'video' : 'voice',
     createdAt: asIso(data.createdAt),
+    connectedAt: data.connectedAt ? asIso(data.connectedAt) : null,
+    answeredAt: data.answeredAt ? asIso(data.answeredAt) : null,
   };
 }
 
@@ -190,8 +211,9 @@ export async function startPrivateCall(
   me: MeProfile,
   friend: FriendChip,
   video: boolean,
+  existingCallId?: string,
 ) {
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = existingCallId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   await updateDoc(doc(db, 'chats', chatId), {
     call: {
       id,
@@ -201,15 +223,25 @@ export async function startPrivateCall(
       fromHandle: me.handle,
       fromAvatar: me.avatarUrl,
       toUid: friend.uid,
+      callerId: me.firebaseUid,
+      receiverId: friend.uid,
       video,
+      type: video ? 'video' : 'audio',
+      roomName: callRoomName(chatId),
       createdAt: serverTimestamp(),
+      connectedAt: null,
+      answeredAt: null,
     },
   });
   return id;
 }
 
 export async function answerPrivateCall(chatId: string) {
-  await updateDoc(doc(db, 'chats', chatId), { 'call.status': 'active' });
+  await updateDoc(doc(db, 'chats', chatId), {
+    'call.status': 'active',
+    'call.connectedAt': serverTimestamp(),
+    'call.answeredAt': serverTimestamp(),
+  });
 }
 
 export async function endPrivateCall(chatId: string) {
@@ -811,6 +843,9 @@ export function listenMessages(
         mediaUrl: deleted ? null : ((data.mediaUrl as string | null) ?? null),
         mediaType: deleted ? null : ((data.mediaType as ChatMessage['mediaType']) ?? null),
         linkUrl: deleted ? null : ((data.linkUrl as string | null) ?? null),
+        fileName: deleted ? null : String(data.fileName || '').trim() || null,
+        fileSize: deleted ? null : Number(data.fileSize) || null,
+        giftId: deleted ? null : String(data.giftId || '').trim() || null,
         status: (data.status as ChatMessage['status']) || 'sent',
         editedAt: data.editedAt ? asIso(data.editedAt) : null,
         deleted,
@@ -1068,18 +1103,24 @@ export async function sendChatMessage(
   text: string,
   extras?: {
     mediaUrl?: string | null;
-    mediaType?: 'image' | 'audio' | 'video' | 'file' | null;
+    mediaType?: 'image' | 'audio' | 'video' | 'file' | 'gif' | null;
     linkUrl?: string | null;
+    fileName?: string | null;
+    fileSize?: number | null;
+    mimeType?: string | null;
+    storagePath?: string | null;
+    giftId?: string | null;
   },
 ) {
   const body = text.trim().slice(0, 2000);
   const mediaUrl = extras?.mediaUrl || null;
   const linkUrl = extras?.linkUrl?.trim() || null;
-  if (!body && !mediaUrl && !linkUrl) throw new Error('Escribe un mensaje o adjunta algo');
+  const giftId = extras?.giftId?.trim() || null;
+  if (!body && !mediaUrl && !linkUrl && !giftId) throw new Error('Escribe un mensaje o adjunta algo');
   await assertAreFriends(me.firebaseUid, friend.uid);
   const id = await ensureChat(me, friend);
   const payload: Record<string, unknown> = {
-    text: body || (mediaUrl ? '📎 Adjunto' : linkUrl || '🔗'),
+    text: body || (giftId ? '🎁 Regalo' : mediaUrl ? '📎 Adjunto' : linkUrl || '🔗'),
     fromUid: me.firebaseUid,
     createdAt: serverTimestamp(),
     status: 'sent',
@@ -1090,11 +1131,23 @@ export async function sendChatMessage(
     payload.mediaType = extras?.mediaType || 'file';
   }
   if (linkUrl) payload.linkUrl = linkUrl;
+  if (extras?.fileName) payload.fileName = extras.fileName;
+  if (extras?.fileSize) payload.fileSize = extras.fileSize;
+  if (extras?.mimeType) payload.mimeType = extras.mimeType;
+  if (extras?.storagePath) payload.storagePath = extras.storagePath;
+  if (giftId) payload.giftId = giftId;
 
   await addDoc(collection(db, 'chats', id, 'messages'), payload);
   const unreadKey = `unread.${friend.uid}`;
+  const preview = giftId
+    ? '🎁 Regalo'
+    : extras?.mediaType === 'gif'
+      ? 'GIF'
+      : extras?.fileName
+        ? extras.fileName
+        : body || (mediaUrl ? 'Adjunto' : linkUrl) || '';
   await updateDoc(doc(db, 'chats', id), {
-    lastMessage: body || (mediaUrl ? 'Adjunto' : linkUrl) || '',
+    lastMessage: preview,
     lastAt: serverTimestamp(),
     lastFromUid: me.firebaseUid,
     [unreadKey]: increment(1),
@@ -1132,6 +1185,8 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     sharedFromAuthorUid: String(data.sharedFromAuthorUid || '').trim() || undefined,
     sharedFromUsername: String(data.sharedFromUsername || '').trim() || undefined,
     ...(overlays.length ? { overlays } : {}),
+    updatedAt: data.updatedAt ? asIso(data.updatedAt) : undefined,
+    edited: Boolean(data.edited) || Boolean(data.updatedAt),
   };
 }
 
@@ -1478,14 +1533,18 @@ export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubs
       for (const post of list) merged.set(post.id, post);
     }
     const networkSet = new Set([...friendUids, ...followingUids, ...followerUids]);
+    const friendSet = new Set(friendUids);
     const now = Date.now();
     onChange(
       [...merged.values()]
-        .filter(
-          (post) =>
-            isStoryActive(post, now) &&
-            (post.authorUid === uid || networkSet.has(post.authorUid)),
-        )
+        .filter((post) => {
+          if (!isStoryActive(post, now)) return false;
+          if (post.authorUid === uid) return true;
+          if (!networkSet.has(post.authorUid)) return false;
+          if (post.visibility === 'private') return false;
+          if (post.visibility === 'friends' && !friendSet.has(post.authorUid)) return false;
+          return true;
+        })
         .sort(
           (a, b) =>
             (b.storyExpiresAtMs ?? Date.parse(b.createdAt)) -
@@ -1538,6 +1597,16 @@ export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubs
         limit(40),
       ),
     );
+    attachRecentPostsQuery(
+      '__own_format__',
+      query(
+        collection(db, 'posts'),
+        where('authorUid', '==', uid),
+        where('postFormat', '==', 'story'),
+        orderBy('storyExpiresAtMs', 'desc'),
+        limit(40),
+      ),
+    );
 
     const others = [...new Set([...friendUids, ...followingUids, ...followerUids])]
       .filter((id) => id !== uid)
@@ -1552,6 +1621,16 @@ export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubs
           where('authorUid', '==', authorUid),
           where('visibility', '==', 'circle'),
           orderBy('createdAt', 'desc'),
+          limit(12),
+        ),
+      );
+      attachRecentPostsQuery(
+        `author-format-${authorUid}`,
+        query(
+          collection(db, 'posts'),
+          where('authorUid', '==', authorUid),
+          where('postFormat', '==', 'story'),
+          orderBy('storyExpiresAtMs', 'desc'),
           limit(12),
         ),
       );
@@ -1727,6 +1806,106 @@ export async function notifyFriendsAboutPost(input: {
   return recipients.filter((uidRecipient) => uidRecipient !== input.authorUid).length;
 }
 
+function postPermalinkHref(input: {
+  authorUid: string;
+  authorUsername: string;
+  postId: string;
+  story?: boolean;
+  postFormat?: 'story' | 'post';
+  mediaType?: 'photo' | 'video' | 'text';
+}) {
+  const author = encodeURIComponent(input.authorUsername.replace(/^@/, '').toLowerCase());
+  const pid = encodeURIComponent(input.postId);
+  const uid = encodeURIComponent(input.authorUid);
+  if (input.story) return `/?flash=${pid}&u=${author}`;
+  if (input.postFormat === 'post' && input.mediaType === 'video') {
+    return `/?clip=${pid}&u=${author}&uid=${uid}`;
+  }
+  return `/u/${author}?post=${pid}&uid=${uid}`;
+}
+
+function mentionHandlesFrom(value: unknown, fallbackCaption: string): string[] {
+  if (Array.isArray(value)) {
+    return [
+      ...new Set(
+        value
+          .map((item) =>
+            String(item || '')
+              .replace(/^@/, '')
+              .trim()
+              .toLowerCase(),
+          )
+          .filter((handle) => handle.length >= 3),
+      ),
+    ];
+  }
+  return extractMentionHandles(fallbackCaption);
+}
+
+/** Tras guardar el post: notifica @menciones nuevas (una por usuario y publicación). */
+async function finalizePostMentions(input: {
+  postId: string;
+  authorUid: string;
+  authorUsername: string;
+  caption: string;
+  visibility: string;
+  previousHandles?: string[];
+  story?: boolean;
+  postFormat?: 'story' | 'post';
+  mediaType?: 'photo' | 'video' | 'text';
+}) {
+  if (input.visibility === 'private') return;
+  const caption = String(input.caption || '');
+  const handles = extractMentionHandles(caption);
+  if (handles.length === 0 && !(input.previousHandles || []).length) return;
+
+  const resolved = await resolveMentionUsers(handles);
+  const mentionedUsernames = [...resolved.keys()];
+  const prev = new Set((input.previousHandles || []).map((handle) => handle.toLowerCase()));
+  const fresh = mentionedUsernames.filter((handle) => !prev.has(handle));
+  const authorHandle = input.authorUsername.replace(/^@/, '');
+  const href = postPermalinkHref(input);
+  const title = input.story
+    ? `@${authorHandle} te mencionó en un Flash Boom.`
+    : input.postFormat === 'post' && input.mediaType === 'video'
+      ? `@${authorHandle} te mencionó en un Boom Clip.`
+      : `@${authorHandle} te mencionó en una publicación.`;
+  const at = Date.now();
+  const batch = writeBatch(db);
+  let writes = 0;
+
+  for (const handle of fresh) {
+    const user = resolved.get(handle);
+    if (!user || user.firebaseUid === input.authorUid) continue;
+    const alertRef = doc(db, 'users', user.firebaseUid, 'postAlerts', `mention_${input.postId}`);
+    const existing = await getDoc(alertRef);
+    if (existing.exists()) continue;
+    batch.set(alertRef, {
+      authorUid: input.authorUid,
+      authorUsername: authorHandle.toLowerCase(),
+      authorName: authorHandle,
+      postId: input.postId,
+      postFormat: input.postFormat || (input.story ? 'story' : null),
+      mediaType: input.mediaType || null,
+      kind: 'mention',
+      title,
+      href,
+      createdAt: serverTimestamp(),
+      createdAtMs: at,
+    });
+    writes += 1;
+  }
+
+  if (writes > 0) await batch.commit();
+
+  const postRef = doc(db, 'posts', input.postId);
+  if (mentionedUsernames.length > 0) {
+    await updateDoc(postRef, { mentionedUsernames });
+  } else if ((input.previousHandles || []).length > 0) {
+    await updateDoc(postRef, { mentionedUsernames: deleteField() });
+  }
+}
+
 export type PostAlertItem = {
   id: string;
   text: string;
@@ -1860,7 +2039,7 @@ export async function createPost(input: {
   const isStory = input.postFormat === 'story';
   // Boom Clip = solo video con postFormat post (nunca foto)
   const isBoomClip = input.postFormat === 'post' && input.type === 'video';
-  const visibility = isStory ? 'circle' : input.visibility || 'public';
+  const visibility = input.visibility || (isStory ? 'circle' : 'public');
   const durationSec = Math.max(0, Math.floor(Number(input.durationSec) || 0));
   const postFormat = isStory
     ? 'story'
@@ -1998,6 +2177,17 @@ export async function createPost(input: {
       .catch(() => undefined);
   }
 
+  void finalizePostMentions({
+    postId: ref.id,
+    authorUid: input.authorUid,
+    authorUsername: input.username,
+    caption: input.caption,
+    visibility,
+    story: isStory,
+    postFormat: postFormat || undefined,
+    mediaType: input.type,
+  }).catch(() => undefined);
+
   if (input.notifyFriends && visibility !== 'private' && visibility !== 'circle') {
     const friends = await listFriends(input.authorUid);
     void notifyFriendsAboutPost({
@@ -2015,7 +2205,7 @@ export async function createPost(input: {
     void sweepAuthorReelLifecycle(input.authorUid).catch(() => undefined);
   }
 
-  if (isStory) {
+  if (isStory && input.notifyFriends) {
     const [friends, followers] = await Promise.all([
       listFriends(input.authorUid),
       listFollowers(input.authorUid),
@@ -2091,6 +2281,15 @@ export async function createRepost(input: {
       .catch(() => undefined);
   }
 
+  void finalizePostMentions({
+    postId: ref.id,
+    authorUid: input.authorUid,
+    authorUsername: input.username,
+    caption: caption || '',
+    visibility,
+    mediaType: 'text',
+  }).catch(() => undefined);
+
   if (input.notifyFriends !== false && visibility !== 'private') {
     const friends = await listFriends(input.authorUid);
     void notifyFriendsAboutPost({
@@ -2104,6 +2303,145 @@ export async function createRepost(input: {
   }
 
   return { id: ref.id };
+}
+
+export async function updatePost(input: {
+  postId: string;
+  authorUid: string;
+  type: 'photo' | 'video' | 'text';
+  caption: string;
+  visibility: 'public' | 'friends' | 'private';
+  mediaSlots?: Array<{ file?: File | Blob | null; url?: string | null }>;
+  mediaUrl?: string | null;
+  overlays?: MediaOverlayItem[];
+  durationSec?: number;
+  notifyFriends?: boolean;
+  authorDisplayName?: string;
+  username?: string;
+}): Promise<{
+  id: string;
+  mediaUrl: string | null;
+  mediaUrls?: string[];
+  visibility: 'public' | 'friends' | 'private' | 'circle';
+  caption: string | null;
+  type: 'photo' | 'video' | 'text';
+}> {
+  const ref = doc(db, 'posts', input.postId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('Publicación no encontrada');
+  const data = snap.data() as Record<string, unknown>;
+  if (String(data.authorUid || '') !== input.authorUid) {
+    throw new Error('No autorizado');
+  }
+
+  const current = postFromDoc(input.postId, data);
+  if (isStoryPost(current) || isBoomClipPost(current)) {
+    throw new Error('Por ahora solo se pueden editar publicaciones.');
+  }
+
+  const visibility = input.visibility;
+  const caption =
+    input.caption.trim().slice(0, 2000) || null;
+  let mediaUrl: string | null = null;
+  let mediaUrls: string[] | undefined;
+  let storagePath: string | null = current.storagePath;
+
+  if (input.type === 'text') {
+    mediaUrl = null;
+    storagePath = null;
+  } else {
+    const slots = (input.mediaSlots || []).filter((slot) => slot.file || String(slot.url || '').trim());
+    if (slots.length === 0 && input.mediaUrl && /^https?:\/\//i.test(input.mediaUrl)) {
+      mediaUrl = input.mediaUrl;
+    } else if (slots.length === 0) {
+      throw new Error(input.type === 'video' ? 'Elige un video para guardar' : 'Elige una foto para guardar');
+    } else {
+      const urls: string[] = [];
+      for (let index = 0; index < slots.length; index += 1) {
+        const slot = slots[index];
+        if (!slot) continue;
+        if (slot.file) {
+          const fileName =
+            slot.file instanceof File && slot.file.name
+              ? slot.file.name
+              : input.type === 'video'
+                ? 'clip.mp4'
+                : `photo_${index + 1}.jpg`;
+          const uploaded = await uploadUserMedia(
+            input.authorUid,
+            slot.file,
+            fileName,
+            visibility,
+            'publication',
+          );
+          urls.push(uploaded.url);
+          if (index === 0) storagePath = uploaded.storagePath;
+        } else if (slot.url) {
+          urls.push(slot.url);
+        }
+      }
+      mediaUrl = urls[0] ?? null;
+      if (input.type === 'photo' && urls.length > 1) mediaUrls = urls;
+    }
+  }
+
+  const overlayPayload = serializeMediaOverlays(input.overlays || []);
+  // Same postId: never rewrite authorUid, createdAt, likes, comments or stats.
+  const patch: Record<string, unknown> = {
+    type: input.type,
+    caption,
+    visibility,
+    mediaUrl,
+    storagePath,
+    updatedAt: serverTimestamp(),
+    edited: true,
+  };
+  if (mediaUrls?.length) patch.mediaUrls = mediaUrls;
+  else patch.mediaUrls = deleteField();
+  if (overlayPayload.length) patch.overlays = overlayPayload;
+  else patch.overlays = deleteField();
+  if (input.type === 'video' && Number(input.durationSec) > 0) {
+    patch.durationSec = Math.max(1, Math.floor(Number(input.durationSec)));
+  }
+
+  await updateDoc(ref, patch);
+  if (storagePath && visibility !== current.visibility) {
+    await updateStoredMediaVisibility(storagePath, visibility).catch(() => undefined);
+  }
+  if (visibility === 'public' && caption) {
+    void import('./trendsFirestore')
+      .then(({ bumpHashtagsFromCaption }) => bumpHashtagsFromCaption(caption))
+      .catch(() => undefined);
+  }
+  void finalizePostMentions({
+    postId: input.postId,
+    authorUid: input.authorUid,
+    authorUsername: input.username || current.username,
+    caption: caption || '',
+    visibility,
+    previousHandles: mentionHandlesFrom(data.mentionedUsernames, String(data.caption || '')),
+    mediaType: input.type,
+  }).catch(() => undefined);
+  if (input.notifyFriends && visibility !== 'private') {
+    const friends = await listFriends(input.authorUid);
+    void notifyFriendsAboutPost({
+      authorUid: input.authorUid,
+      authorUsername: input.username || current.username,
+      authorName: input.authorDisplayName?.trim() || input.username || current.username,
+      postId: input.postId,
+      recipientUids: friends.map((friend) => friend.uid),
+      mediaType: input.type,
+    }).catch(() => undefined);
+  }
+
+  return {
+    id: input.postId,
+    mediaUrl,
+    mediaUrls,
+    visibility,
+    caption,
+    type: input.type,
+  };
 }
 
 export async function updatePostVisibility(
@@ -2264,6 +2602,14 @@ export async function setPostBoom(
   );
 }
 
+export type PostCommentMediaType = 'image' | 'video' | 'gif';
+
+export type PostCommentMedia = {
+  mediaUrl: string;
+  mediaType: PostCommentMediaType;
+  mediaPreviewUrl?: string | null;
+};
+
 export type PostComment = {
   id: string;
   authorUid: string;
@@ -2276,6 +2622,9 @@ export type PostComment = {
   parentId?: string | null;
   replyToUid?: string | null;
   replyToUsername?: string | null;
+  mediaUrl?: string | null;
+  mediaType?: PostCommentMediaType | null;
+  mediaPreviewUrl?: string | null;
 };
 
 export type PostCommentReply = {
@@ -2284,9 +2633,16 @@ export type PostCommentReply = {
   replyToUsername?: string | null;
 };
 
+function asCommentMediaType(value: unknown): PostCommentMediaType | null {
+  const raw = String(value || '').trim();
+  if (raw === 'image' || raw === 'video' || raw === 'gif') return raw;
+  return null;
+}
+
 function commentsFromSnap(snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): PostComment[] {
   return snap.docs.map((item) => {
     const data = item.data();
+    const mediaUrl = String(data.mediaUrl || '').trim() || null;
     return {
       id: item.id,
       authorUid: String(data.authorUid || ''),
@@ -2298,8 +2654,17 @@ function commentsFromSnap(snap: { docs: Array<{ id: string; data: () => Record<s
       parentId: String(data.parentId || '').trim() || null,
       replyToUid: String(data.replyToUid || '').trim() || null,
       replyToUsername: String(data.replyToUsername || '').trim() || null,
+      mediaUrl,
+      mediaType: asCommentMediaType(data.mediaType) || (mediaUrl ? inferCommentMediaType(mediaUrl) : null),
+      mediaPreviewUrl: String(data.mediaPreviewUrl || '').trim() || null,
     };
   });
+}
+
+function inferCommentMediaType(url: string): PostCommentMediaType {
+  if (/\.gif(\?|$)/i.test(url) || /giphy\.com|tenor\.com|media\.giphy/i.test(url)) return 'gif';
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)) return 'video';
+  return 'image';
 }
 
 export function listenPostComments(
@@ -2333,18 +2698,28 @@ export async function addPostComment(
   author: MeProfile,
   text: string,
   reply?: PostCommentReply | null,
+  media?: PostCommentMedia | null,
 ) {
   const body = text.trim().slice(0, 500);
-  if (!body) throw new Error('Escribe un comentario');
+  const mediaUrl = String(media?.mediaUrl || '').trim();
+  const mediaType = media?.mediaType || (mediaUrl ? inferCommentMediaType(mediaUrl) : null);
+  if (!body && !mediaUrl) throw new Error('Escribe un comentario');
   const parentId = String(reply?.parentId || '').trim();
   const payload: Record<string, unknown> = {
     authorUid: author.firebaseUid,
     username: author.handle.toLowerCase(),
     displayName: author.displayName || author.handle,
     avatarUrl: author.avatarUrl,
-    text: body,
+    // Las reglas exigen text.size() > 0; un adjunto solo usa un marcador invisible.
+    text: body || '\u200b',
     createdAt: serverTimestamp(),
   };
+  if (mediaUrl && mediaType) {
+    payload.mediaUrl = mediaUrl;
+    payload.mediaType = mediaType;
+    const preview = String(media?.mediaPreviewUrl || '').trim();
+    if (preview) payload.mediaPreviewUrl = preview;
+  }
   if (parentId) {
     payload.parentId = parentId;
     payload.replyToUid = String(reply?.replyToUid || '').trim() || null;
@@ -2357,4 +2732,70 @@ export async function addPostComment(
 
 export async function deletePostComment(postId: string, commentId: string) {
   await deleteDoc(doc(db, 'posts', postId, 'comments', commentId));
+}
+
+export type CommentBoomStats = {
+  count: number;
+  viewerBoom: boolean;
+  users: PostReactionUser[];
+};
+
+export function listenCommentBooms(
+  postId: string,
+  commentId: string,
+  viewerUid: string | null | undefined,
+  onChange: (stats: CommentBoomStats) => void,
+): Unsubscribe {
+  void postId;
+  return listenCommentBoomService(commentId, viewerUid, onChange);
+}
+
+export async function addCommentBoom(
+  postId: string,
+  commentId: string,
+  uid: string,
+  profile?: { username: string; displayName: string; avatarUrl: string | null },
+) {
+  return addCommentBoomService(commentId, uid, profile, postId);
+}
+
+export async function removeCommentBoom(postId: string, commentId: string, uid: string) {
+  void postId;
+  return removeCommentBoomService(commentId, uid);
+}
+
+export async function getCommentBoomCount(postId: string, commentId: string): Promise<number> {
+  void postId;
+  return getCommentBoomCountService(commentId);
+}
+
+export async function hasCurrentUserBoomedComment(
+  postId: string,
+  commentId: string,
+  uid: string | null | undefined,
+): Promise<boolean> {
+  void postId;
+  if (!uid) return false;
+  return hasUserBoomedComment(commentId, uid);
+}
+
+export async function setCommentBoom(
+  postId: string,
+  commentId: string,
+  uid: string,
+  active: boolean,
+  profile?: { username: string; displayName: string; avatarUrl: string | null },
+) {
+  if (active) return addCommentBoomService(commentId, uid, profile, postId);
+  return removeCommentBoomService(commentId, uid);
+}
+
+export async function setCommentReaction(
+  postId: string,
+  commentId: string,
+  uid: string,
+  reaction: 'like' | null,
+  profile?: { username: string; displayName: string; avatarUrl: string | null },
+) {
+  return setCommentBoom(postId, commentId, uid, reaction === 'like', profile);
 }

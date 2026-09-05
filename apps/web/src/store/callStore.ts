@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import {
   endPrivateCall,
@@ -45,7 +46,7 @@ type CallState = {
     token: string;
     serverUrl: string;
   }) => void;
-  markActive: () => void;
+  markActive: (connectedAtMs?: number) => void;
   hangup: (outcome?: 'completed' | 'missed' | 'cancelled' | 'declined', opts?: { skipHistory?: boolean }) => Promise<void>;
 };
 
@@ -98,11 +99,13 @@ export const useCallStore = create<CallState>((set, get) => ({
     });
   },
 
-  markActive: () => {
+  markActive: (connectedAtMs) => {
     if (get().status === 'idle') return;
+    const parsed = Number(connectedAtMs);
+    const fromServer = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     set({
       status: 'active',
-      activeStartedAt: get().activeStartedAt || Date.now(),
+      activeStartedAt: fromServer || get().activeStartedAt || Date.now(),
     });
   },
 
@@ -154,3 +157,34 @@ export const useCallStore = create<CallState>((set, get) => ({
     await endPrivateCall(chatId);
   },
 }));
+
+export function formatCallClock(sec: number) {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+export function connectedAtToMs(value: string | null | undefined): number {
+  if (!value) return 0;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : 0;
+}
+
+export function useCallElapsed() {
+  const status = useCallStore((state) => state.status);
+  const started = useCallStore((state) => state.activeStartedAt);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (status !== 'active' || !started) {
+      setElapsed(0);
+      return;
+    }
+    const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - started) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [status, started]);
+
+  return elapsed;
+}

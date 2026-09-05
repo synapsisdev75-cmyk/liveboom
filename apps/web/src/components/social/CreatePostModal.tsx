@@ -1,15 +1,15 @@
-import { Bell, Camera, ChevronLeft, ChevronRight, Globe, Image, Lock, Music2, Paperclip, PenLine, Smile, Users, Video, Wand2, X, Zap } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Bell, Camera, ChevronLeft, ChevronRight, Globe, Image, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
-import { createPost } from '../../lib/socialFirestore';
+import { createPost, updatePost } from '../../lib/socialFirestore';
 import { reelLifecycleHint } from '../../lib/reelLifecycle';
 import { storyLifecycleHint, STORY_MAX_DURATION_SEC } from '../../lib/storyLifecycle';
 import { readVideoDurationSec } from '../../lib/videoDuration';
 import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
 import { BOOM_CLIP_MAX_DURATION_SEC } from '../../lib/videoTrim';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
-import { isVideoFile, mediaKindFromFile } from '../../lib/mediaFile';
+import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/mediaFile';
 import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput } from './EmojiInput';
@@ -22,6 +22,7 @@ import type { SocialPost } from './SocialPostCard';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
 import { GifPickerSheet } from './GifPickerSheet';
 import { StickerPickerSheet } from './StickerPickerSheet';
+import { PhotoEditPanel } from './PhotoEditPanel';
 import {
   canAddOverlay,
   newOverlayId,
@@ -29,10 +30,26 @@ import {
 } from '../../lib/mediaOverlays';
 import type { ComposerGif } from '../../lib/composerGifs';
 import type { ComposerSticker } from '../../lib/composerStickers';
+import { postPhotoUrls } from '../../lib/mediaFrame';
+import {
+  bakePhotoEdit,
+  clampPan,
+  cropAspectRatio,
+  DEFAULT_PHOTO_EDIT,
+  isDefaultPhotoEdit,
+  photoCssFilter,
+  type PhotoEditValues,
+} from '../../lib/photoEdit';
+
+type PostComposerMode = 'create' | 'edit';
+
+function revokeLocalUrl(url: string | null | undefined) {
+  if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+}
 
 type Props = {
   username: string;
-  onCreated: (post: SocialPost) => void;
+  onCreated?: (post: SocialPost) => void;
   autoOpen?: boolean;
   /** Oculta el botón "Nueva publicación" (p. ej. abrir desde Inicio). */
   hideTrigger?: boolean;
@@ -43,6 +60,11 @@ type Props = {
   defaultVideoMode?: 'story' | 'post';
   /** Tipo inicial al abrir desde Crear. */
   defaultKind?: PostKind;
+  /** create = publicar nuevo; edit = actualizar el mismo postId. */
+  mode?: PostComposerMode;
+  /** Publicación a editar. Requiere mode="edit". */
+  editPost?: SocialPost | null;
+  onUpdated?: (post: SocialPost) => void;
 };
 
 type PostKind = 'photo' | 'video' | 'text';
@@ -58,9 +80,13 @@ export function CreatePostModal({
   onClose,
   defaultVideoMode,
   defaultKind,
+  mode = 'create',
+  editPost = null,
+  onUpdated,
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const isInline = variant === 'inline';
+  const isEditMode = mode === 'edit' && Boolean(editPost?.id);
 
   function initialTab(): ComposeTab {
     if (defaultVideoMode === 'story') return 'flashboom';
@@ -81,7 +107,7 @@ export function CreatePostModal({
   const [notifyFriends, setNotifyFriends] = useState(false);
   const [caption, setCaption] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<Array<File | null>>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [albumUrls, setAlbumUrls] = useState<string[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -104,14 +130,71 @@ export function CreatePostModal({
   const [gifAttach, setGifAttach] = useState<ComposerGif | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
+  const [photoEditOpen, setPhotoEditOpen] = useState(false);
+  const [photoEdits, setPhotoEdits] = useState<Record<number, PhotoEditValues>>({});
+  const [editHistory, setEditHistory] = useState<PhotoEditValues[]>([DEFAULT_PHOTO_EDIT]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [editBusy, setEditBusy] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const editBaselineRef = useRef('');
   const galleryPhotoRef = useRef<HTMLInputElement>(null);
   const galleryVideoRef = useRef<HTMLInputElement>(null);
   const galleryMixedRef = useRef<HTMLInputElement>(null);
+  const galleryAppendRef = useRef<HTMLInputElement>(null);
   const mediaMenuRef = useRef<HTMLDivElement>(null);
+  const panDragRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    panX: number;
+    panY: number;
+  } | null>(null);
+
+  function snapshotDraft() {
+    return JSON.stringify({
+      caption,
+      visibility,
+      kind,
+      notifyFriends,
+      albumUrls,
+      previewUrl,
+      gif: gifAttach?.url || null,
+      overlays,
+      photoEdits,
+    });
+  }
 
   function closeModal() {
     if (!isInline) setOpen(false);
+    setDiscardOpen(false);
     onClose?.();
+  }
+
+  function hasDraft() {
+    if (isEditMode) return snapshotDraft() !== editBaselineRef.current;
+    return Boolean(
+      caption.trim() ||
+        mediaFile ||
+        mediaFiles.length ||
+        gifAttach ||
+        overlays.length ||
+        selectedMusic,
+    );
+  }
+
+  function requestClose() {
+    if (isInline) return;
+    if (hasDraft()) {
+      setDiscardOpen(true);
+      return;
+    }
+    reset();
+    closeModal();
+  }
+
+  function confirmDiscard() {
+    reset();
+    closeModal();
   }
 
   const albumUrlsRef = useRef<string[]>([]);
@@ -126,6 +209,77 @@ export function CreatePostModal({
   useEffect(() => {
     if (autoOpen) setOpen(true);
   }, [autoOpen]);
+
+  useEffect(() => {
+    if (!isEditMode || !editPost) return;
+    const post = editPost;
+    const vis: Visibility =
+      post.visibility === 'friends' || post.visibility === 'private' ? post.visibility : 'public';
+    const urls = postPhotoUrls(post);
+    const gifUrl =
+      post.type === 'photo' &&
+      urls.length <= 1 &&
+      post.mediaUrl &&
+      (/\.gif(\?|$)/i.test(post.mediaUrl) || /giphy\.com|tenor\.com/i.test(post.mediaUrl))
+        ? post.mediaUrl
+        : null;
+    let nextKind: PostKind = 'text';
+    let nextAlbum: string[] = [];
+    let nextPreview: string | null = null;
+    let nextGif: string | null = null;
+    setComposeTab('publication');
+    setCaption(post.caption || '');
+    setVisibility(vis);
+    setNotifyFriends(false);
+    setOverlays(post.overlays || []);
+    setPhotoEdits({});
+    setEditHistory([DEFAULT_PHOTO_EDIT]);
+    setHistoryIndex(0);
+    setMediaFile(null);
+    setMediaFiles([]);
+    setError(null);
+    setPreviewIndex(0);
+    if (post.type === 'video' && post.mediaUrl) {
+      nextKind = 'video';
+      nextPreview = post.mediaUrl;
+      setKind('video');
+      setPreviewUrl(post.mediaUrl);
+      setAlbumUrls([]);
+      setGifAttach(null);
+      videoDurationSecRef.current = Number(post.durationSec) || 0;
+    } else if (gifUrl) {
+      nextKind = 'photo';
+      nextGif = gifUrl;
+      setKind('photo');
+      setGifAttach({ id: post.id, title: 'GIF', url: gifUrl, preview: gifUrl });
+      setPreviewUrl(null);
+      setAlbumUrls([]);
+    } else if (post.type === 'photo' && urls.length) {
+      nextKind = 'photo';
+      nextAlbum = urls;
+      nextPreview = urls[0] ?? null;
+      setKind('photo');
+      setAlbumUrls(urls);
+      setPreviewUrl(urls[0] ?? null);
+      setGifAttach(null);
+    } else {
+      setKind('text');
+      setPreviewUrl(null);
+      setAlbumUrls([]);
+      setGifAttach(null);
+    }
+    editBaselineRef.current = JSON.stringify({
+      caption: post.caption || '',
+      visibility: vis,
+      kind: nextKind,
+      notifyFriends: false,
+      albumUrls: nextAlbum,
+      previewUrl: nextPreview,
+      gif: nextGif,
+      overlays: post.overlays || [],
+      photoEdits: {},
+    });
+  }, [isEditMode, editPost?.id]);
 
   useEffect(() => {
     if (defaultKind === 'photo') {
@@ -157,9 +311,9 @@ export function CreatePostModal({
   }, [mediaMenuOpen]);
 
   function reset() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    revokeLocalUrl(previewUrl);
     for (const url of albumUrls) {
-      if (url !== previewUrl) URL.revokeObjectURL(url);
+      if (url !== previewUrl) revokeLocalUrl(url);
     }
     setCaption('');
     setMediaFile(null);
@@ -168,6 +322,8 @@ export function CreatePostModal({
     setAlbumUrls([]);
     setPreviewIndex(0);
     setEditMenuOpen(false);
+    setPhotoEditOpen(false);
+    setPhotoEdits({});
     videoDurationSecRef.current = 0;
     setError(null);
     setVisibility('public');
@@ -182,53 +338,103 @@ export function CreatePostModal({
     setGifAttach(null);
     setGifPickerOpen(false);
     setStickerPickerOpen(false);
+    setPhotoEditOpen(false);
+    setPhotoEdits({});
+    setEditHistory([DEFAULT_PHOTO_EDIT]);
+    setHistoryIndex(0);
+    setEditBusy(false);
+    setDiscardOpen(false);
   }
 
   function switchTab(tab: ComposeTab) {
+    if (isEditMode) return;
     setComposeTab(tab);
-    setError(null);
     setMediaMenuOpen(false);
-    const nextMax =
-      tab === 'flashboom' ? FLASH_BOOM_CAPTION_MAX : tab === 'boomclip' ? BOOM_CLIP_CAPTION_MAX : null;
-    if (nextMax != null) {
-      setCaption((current) => (current.length > nextMax ? current.slice(0, nextMax) : current));
+    const file = mediaFiles[previewIndex] || mediaFile;
+    if (file) {
+      const detected = mediaKindFromFile(file);
+      if (detected) setKind(detected);
     }
-    if (tab === 'boomclip') {
-      setKind('video');
-      // Boom Clip = solo video; si había foto, limpiar
-      if (mediaFile && mediaKindFromFile(mediaFile) === 'photo') {
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-        for (const url of albumUrls) {
-          if (url !== previewUrl) URL.revokeObjectURL(url);
-        }
-        setMediaFile(null);
-        setMediaFiles([]);
-        setAlbumUrls([]);
-        setPreviewIndex(0);
-        setPreviewUrl(null);
-        videoDurationSecRef.current = 0;
-      }
-    } else if (tab === 'publication') {
-      if (kind === 'video') {
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-        for (const url of albumUrls) {
-          if (url !== previewUrl) URL.revokeObjectURL(url);
-        }
-        setMediaFile(null);
-        setMediaFiles([]);
-        setAlbumUrls([]);
-        setPreviewIndex(0);
-        setPreviewUrl(null);
-        videoDurationSecRef.current = 0;
-        setKind('text');
-      }
+    if (tab === 'boomclip' && file && mediaKindFromFile(file) === 'photo') {
+      setError(
+        `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
+      );
+    } else {
+      setError(null);
     }
   }
 
-  function applyMediaFile(file: File, forcedKind?: PostKind, durationSec = 0) {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  function removeAttachedMedia() {
+    revokeLocalUrl(previewUrl);
     for (const url of albumUrls) {
-      if (url !== previewUrl) URL.revokeObjectURL(url);
+      if (url !== previewUrl) revokeLocalUrl(url);
+    }
+    setMediaFile(null);
+    setMediaFiles([]);
+    setAlbumUrls([]);
+    setPreviewIndex(0);
+    setPreviewUrl(null);
+    setOverlays([]);
+    setGifAttach(null);
+    setPhotoEditOpen(false);
+    setPhotoEdits({});
+    setEditHistory([DEFAULT_PHOTO_EDIT]);
+    setHistoryIndex(0);
+    setSelectedMusic(null);
+    setEditMenuOpen(false);
+    videoDurationSecRef.current = 0;
+    setKind('text');
+    setError(null);
+  }
+
+  function removeCurrentSlide() {
+    const urls = albumUrls.length ? albumUrls : previewUrl ? [previewUrl] : [];
+    if (urls.length <= 1) {
+      removeAttachedMedia();
+      return;
+    }
+    const index = previewIndex;
+    revokeLocalUrl(urls[index]);
+    const nextAlbum = urls.filter((_, itemIndex) => itemIndex !== index);
+    const sourceFiles = mediaFiles.length ? mediaFiles : mediaFile ? [mediaFile] : [];
+    const nextFiles = nextAlbum.map((_, itemIndex) => {
+      const from = itemIndex >= index ? itemIndex + 1 : itemIndex;
+      return sourceFiles[from] ?? null;
+    });
+    const nextEdits: Record<number, PhotoEditValues> = {};
+    for (const [key, value] of Object.entries(photoEdits)) {
+      const from = Number(key);
+      if (!Number.isFinite(from) || from === index) continue;
+      nextEdits[from > index ? from - 1 : from] = value;
+    }
+    const nextIndex = Math.min(index, nextAlbum.length - 1);
+    setAlbumUrls(nextAlbum);
+    setMediaFiles(nextFiles);
+    setMediaFile(nextFiles[nextIndex] || null);
+    setPreviewIndex(nextIndex);
+    setPreviewUrl(nextAlbum[nextIndex] ?? null);
+    setPhotoEdits(nextEdits);
+    setOverlays((current) =>
+      current
+        .filter((item) => (item.mediaIndex ?? 0) !== index)
+        .map((item) => {
+          const mediaIndex = item.mediaIndex ?? 0;
+          return mediaIndex > index ? { ...item, mediaIndex: mediaIndex - 1 } : item;
+        }),
+    );
+    setError(null);
+  }
+
+  function applyMediaFile(file: File, forcedKind?: PostKind, durationSec = 0) {
+    const detected = mediaKindFromFile(file);
+    if (composeTab === 'boomclip' && detected === 'photo' && forcedKind !== 'video') {
+      setError(
+        `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
+      );
+    }
+    revokeLocalUrl(previewUrl);
+    for (const url of albumUrls) {
+      if (url !== previewUrl) revokeLocalUrl(url);
     }
     if (gifAttach) {
       const attached = gifAttach;
@@ -257,20 +463,16 @@ export function CreatePostModal({
     setPreviewIndex(0);
     setPreviewUrl(nextUrl);
     setEditMenuOpen(false);
+    setPhotoEditOpen(false);
+    setPhotoEdits({});
+    setEditHistory([DEFAULT_PHOTO_EDIT]);
+    setHistoryIndex(0);
     videoDurationSecRef.current = durationSec > 0 ? durationSec : 0;
 
-    const detected = mediaKindFromFile(file);
     if (detected === 'video' || forcedKind === 'video') {
       setKind('video');
     } else {
       setKind('photo');
-      if (composeTab === 'boomclip') {
-        // Fotos no son Boom Clip → Publicación
-        setComposeTab('publication');
-        setError('Las fotos van como Publicación. Boom Clip es solo video (máx. 90 s).');
-      } else if (composeTab !== 'flashboom') {
-        setComposeTab('publication');
-      }
     }
   }
 
@@ -329,20 +531,65 @@ export function CreatePostModal({
       return;
     }
 
+    if (
+      composeTab === 'publication' &&
+      detected === 'photo' &&
+      albumUrls.length > 1
+    ) {
+      replaceCurrentSlide(file);
+      return;
+    }
     applyMediaFile(file, forcedKind || 'photo');
+  }
+
+  function replaceCurrentSlide(file: File) {
+    const index = previewIndex;
+    const detected = mediaKindFromFile(file);
+    if (detected !== 'photo' || albumUrls.length <= 1) {
+      applyMediaFile(file, detected || undefined);
+      return;
+    }
+    const nextUrl = URL.createObjectURL(file);
+    const previous = albumUrls[index];
+    revokeLocalUrl(previous);
+    const nextAlbum = [...albumUrls];
+    nextAlbum[index] = nextUrl;
+    const aligned = (
+      mediaFiles.length
+        ? [...mediaFiles]
+        : mediaFile
+          ? [mediaFile]
+          : []
+    ) as Array<File | null>;
+    while (aligned.length < nextAlbum.length) aligned.push(null);
+    aligned[index] = file;
+    setAlbumUrls(nextAlbum);
+    setMediaFiles(aligned);
+    setMediaFile(file);
+    setPreviewUrl(nextUrl);
+    setKind('photo');
+    setPhotoEdits((current) => ({ ...current, [index]: DEFAULT_PHOTO_EDIT }));
+    setEditMenuOpen(false);
+    setError(null);
   }
 
   async function onMultiPhotoChange(files: FileList) {
     setError(null);
     setMediaMenuOpen(false);
+    if (composeTab === 'boomclip') {
+      setError(
+        `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
+      );
+      return;
+    }
     const picked = Array.from(files).filter((f) => mediaKindFromFile(f) === 'photo');
     if (picked.length === 0) {
       setError('Archivo no compatible. Usa foto (JPG, PNG).');
       return;
     }
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    revokeLocalUrl(previewUrl);
     for (const url of albumUrls) {
-      if (url !== previewUrl) URL.revokeObjectURL(url);
+      if (url !== previewUrl) revokeLocalUrl(url);
     }
     const first = picked[0];
     if (!first) return;
@@ -373,9 +620,11 @@ export function CreatePostModal({
     setPreviewIndex(0);
     setPreviewUrl(urls[0] ?? null);
     setEditMenuOpen(false);
+    setPhotoEditOpen(false);
+    setPhotoEdits({});
     setKind('photo');
     videoDurationSecRef.current = 0;
-    if (composeTab === 'boomclip' || composeTab === 'flashboom') {
+    if (composeTab === 'flashboom') {
       setComposeTab('publication');
     }
   }
@@ -422,11 +671,14 @@ export function CreatePostModal({
     if (mode === 'video') {
       setKind('video');
     } else {
-      setKind('photo');
       if (composeTab === 'boomclip') {
-        setComposeTab('publication');
-        setError('Las fotos van como Publicación. Boom Clip es solo video (máx. 90 s).');
-      } else if (composeTab !== 'flashboom') {
+        setError(
+          `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
+        );
+        return;
+      }
+      setKind('photo');
+      if (composeTab !== 'flashboom') {
         setComposeTab('publication');
       }
     }
@@ -452,6 +704,147 @@ export function CreatePostModal({
   const slideCount = Math.max(albumUrls.length, previewSrc ? 1 : 0);
   const slideOverlays = overlays.filter((item) => (item.mediaIndex ?? 0) === previewIndex);
   const previewIsVideo = kind === 'video' && Boolean(previewUrl);
+  const currentEdit = photoEdits[previewIndex] ?? DEFAULT_PHOTO_EDIT;
+  const photoStageOpen =
+    photoEditOpen && !previewIsVideo && Boolean(mediaFile || gifAttach || (previewSrc && kind !== 'video'));
+  const cropRatio = cropAspectRatio(currentEdit.crop);
+
+  function setCurrentEdit(next: PhotoEditValues, recordHistory = false) {
+    const clamped = clampPan(next);
+    setPhotoEdits((current) => ({ ...current, [previewIndex]: clamped }));
+    if (recordHistory) {
+      setEditHistory((history) => {
+        const trimmed = history.slice(0, historyIndex + 1);
+        const last = trimmed[trimmed.length - 1];
+        if (last && JSON.stringify(last) === JSON.stringify(clamped)) return trimmed;
+        const stacked = [...trimmed, clamped].slice(-20);
+        setHistoryIndex(stacked.length - 1);
+        return stacked;
+      });
+    }
+  }
+
+  function undoEdit() {
+    if (historyIndex <= 0) return;
+    const nextIndex = historyIndex - 1;
+    const next = editHistory[nextIndex];
+    if (!next) return;
+    setHistoryIndex(nextIndex);
+    setPhotoEdits((current) => ({ ...current, [previewIndex]: next }));
+  }
+
+  function redoEdit() {
+    if (historyIndex >= editHistory.length - 1) return;
+    const nextIndex = historyIndex + 1;
+    const next = editHistory[nextIndex];
+    if (!next) return;
+    setHistoryIndex(nextIndex);
+    setPhotoEdits((current) => ({ ...current, [previewIndex]: next }));
+  }
+
+  async function applyCurrentPhotoEdit() {
+    let file = mediaFiles[previewIndex] || mediaFile;
+    if ((!file || mediaKindFromFile(file) !== 'photo') && previewSrc && kind !== 'video') {
+      try {
+        file = await fileFromMediaUrl(previewSrc, 'photo.jpg');
+      } catch {
+        setPhotoEditOpen(false);
+        setError('No se pudo editar esta foto. Cambia el archivo e inténtalo de nuevo.');
+        return;
+      }
+    }
+    if (!file || mediaKindFromFile(file) !== 'photo') {
+      setPhotoEditOpen(false);
+      return;
+    }
+    if (isDefaultPhotoEdit(currentEdit)) {
+      setPhotoEditOpen(false);
+      return;
+    }
+    setEditBusy(true);
+    setError(null);
+    try {
+      const baked = await bakePhotoEdit(file, currentEdit);
+      const nextUrl = URL.createObjectURL(baked);
+      const urls = albumUrls.length ? [...albumUrls] : previewUrl ? [previewUrl] : [];
+      const previous = urls[previewIndex];
+      if (previous?.startsWith('blob:')) URL.revokeObjectURL(previous);
+      urls[previewIndex] = nextUrl;
+      setAlbumUrls(urls);
+      setPreviewUrl(nextUrl);
+      const nextFiles = (urls.length ? urls : [nextUrl]).map((_, index) =>
+        index === previewIndex ? baked : mediaFiles[index] ?? null,
+      );
+      setMediaFiles(nextFiles);
+      setMediaFile(baked);
+      setCurrentEdit(DEFAULT_PHOTO_EDIT);
+      setEditHistory([DEFAULT_PHOTO_EDIT]);
+      setHistoryIndex(0);
+      setPhotoEditOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo aplicar la edición.');
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
+  function onStagePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!photoStageOpen) return;
+    if ((event.target as HTMLElement).closest('[data-overlay-item]')) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panDragRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      panX: currentEdit.panX,
+      panY: currentEdit.panY,
+    };
+  }
+
+  function onStagePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = panDragRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const damp = 0.28;
+    const dx = ((event.clientX - drag.x) / Math.max(1, rect.width)) * 100 * damp;
+    const dy = ((event.clientY - drag.y) / Math.max(1, rect.height)) * 100 * damp;
+    setCurrentEdit({ ...currentEdit, panX: drag.panX + dx, panY: drag.panY + dy });
+  }
+
+  function onStagePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (panDragRef.current?.pointerId === event.pointerId) {
+      panDragRef.current = null;
+    }
+  }
+
+  function appendAlbumPhotos(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (composeTab !== 'publication') return;
+    const picked = Array.from(files).filter((file) => mediaKindFromFile(file) === 'photo');
+    if (picked.length === 0) {
+      setError('Archivo no compatible. Usa foto (JPG, PNG).');
+      return;
+    }
+    const urls = picked.map((file) => URL.createObjectURL(file));
+    if (!mediaFile && mediaFiles.length === 0 && albumUrls.length === 0) {
+      void onMultiPhotoChange(files);
+      return;
+    }
+    setMediaFiles((current) => {
+      const aligned =
+        albumUrls.length > current.length
+          ? [...current, ...Array.from({ length: albumUrls.length - current.length }, () => null)]
+          : current.length
+            ? current
+            : mediaFile
+              ? [mediaFile]
+              : [];
+      return [...aligned, ...picked];
+    });
+    setAlbumUrls((current) => [...current, ...urls]);
+    setKind('photo');
+  }
 
   function addOverlay(item: Omit<MediaOverlayItem, 'id' | 'x' | 'y' | 'scale' | 'rotation'> & Partial<MediaOverlayItem>) {
     if (!canAddOverlay(overlays)) {
@@ -494,34 +887,48 @@ export function CreatePostModal({
       if (detected) setKind(detected);
     }
     setEditMenuOpen(false);
+    const slideEdit = photoEdits[next] ?? DEFAULT_PHOTO_EDIT;
+    setEditHistory([slideEdit]);
+    setHistoryIndex(0);
   }
 
   function startVideoTrim() {
-    if (!mediaFile || mediaKindFromFile(mediaFile) !== 'video') return;
     setEditMenuOpen(false);
-    const maxSec =
-      composeTab === 'flashboom'
-        ? STORY_MAX_DURATION_SEC
-        : composeTab === 'boomclip'
-          ? MAX_CLIP_DURATION_SECONDS
-          : BOOM_CLIP_MAX_DURATION_SEC;
-    void readVideoDurationSec(mediaFile, maxSec)
-      .then((durationSec) => {
+    void (async () => {
+      let file = mediaFile;
+      if (!file || mediaKindFromFile(file) !== 'video') {
+        if (kind !== 'video' || !previewUrl) return;
+        try {
+          file = await fileFromMediaUrl(previewUrl, 'clip.mp4');
+          setMediaFile(file);
+        } catch {
+          setError('No se pudo cargar el video original para recortar.');
+          return;
+        }
+      }
+      const maxSec =
+        composeTab === 'flashboom'
+          ? STORY_MAX_DURATION_SEC
+          : composeTab === 'boomclip'
+            ? MAX_CLIP_DURATION_SECONDS
+            : BOOM_CLIP_MAX_DURATION_SEC;
+      try {
+        const durationSec = await readVideoDurationSec(file, maxSec);
         setTrimDraft({
-          file: mediaFile,
-          url: previewUrl || URL.createObjectURL(mediaFile),
+          file,
+          url: previewUrl?.startsWith('blob:') ? previewUrl : URL.createObjectURL(file),
           durationSec: Math.max(1, durationSec),
           maxDurationSec: maxSec,
         });
-      })
-      .catch(() => {
+      } catch {
         setTrimDraft({
-          file: mediaFile,
-          url: previewUrl || URL.createObjectURL(mediaFile),
+          file,
+          url: previewUrl?.startsWith('blob:') ? previewUrl : URL.createObjectURL(file),
           durationSec: 0,
           maxDurationSec: maxSec,
         });
-      });
+      }
+    })();
   }
 
   function pickGif(gif: ComposerGif) {
@@ -560,11 +967,18 @@ export function CreatePostModal({
       return;
     }
     if (isMediaTab) {
-      if (!mediaFile) {
+      if (!mediaFile && !(isEditMode && previewUrl)) {
         setError(`Elige una foto o video para tu ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}.`);
         return;
       }
-    } else if (kind === 'photo' && !mediaFile && mediaFiles.length === 0 && !gifAttach) {
+    } else if (
+      kind === 'photo' &&
+      !mediaFile &&
+      !mediaFiles.some(Boolean) &&
+      !gifAttach &&
+      !albumUrls.length &&
+      !previewUrl
+    ) {
       setError('Elige una foto, un video o escribe un post de texto.');
       return;
     }
@@ -575,7 +989,9 @@ export function CreatePostModal({
       let durationSec = 0;
       const publishKind = kind;
       if (isBoomClip && publishKind !== 'video') {
-        setError(`${BOOM_CLIP_LABEL} solo admite video (máx. ${MAX_CLIP_DURATION_SECONDS} s).`);
+        setError(
+          `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
+        );
         return;
       }
       const publishPostFormat = isFlashBoom ? 'story' : isBoomClip ? 'post' : undefined;
@@ -611,6 +1027,24 @@ export function CreatePostModal({
       }
 
       let uploadFile = mediaFile;
+      const createFiles = mediaFiles.filter((file): file is File => Boolean(file));
+      let albumForUpload = createFiles;
+      if (publishKind === 'photo') {
+        if (createFiles.length > 1) {
+          albumForUpload = await Promise.all(
+            createFiles.map(async (file, index) => {
+              const edit = photoEdits[index] ?? DEFAULT_PHOTO_EDIT;
+              if (mediaKindFromFile(file) !== 'photo' || isDefaultPhotoEdit(edit)) return file;
+              return bakePhotoEdit(file, edit);
+            }),
+          );
+        } else if (uploadFile && mediaKindFromFile(uploadFile) === 'photo') {
+          const edit = photoEdits[previewIndex] ?? currentEdit;
+          if (!isDefaultPhotoEdit(edit)) {
+            uploadFile = await bakePhotoEdit(uploadFile, edit);
+          }
+        }
+      }
       if (publishKind === 'video' && uploadFile && selectedMusic) {
         setError(null);
         const { mergeVideoWithMusicClip } = await import('../../lib/audioTrim');
@@ -622,6 +1056,62 @@ export function CreatePostModal({
         );
       }
 
+      if (isEditMode && editPost?.id) {
+        const displayUrls = albumUrls.length ? albumUrls : previewUrl ? [previewUrl] : [];
+        let mediaSlots: Array<{ file?: File | Blob | null; url?: string | null }> = [];
+        if (publishKind === 'photo' && displayUrls.length) {
+          mediaSlots = await Promise.all(
+            displayUrls.map(async (url, index) => {
+              let file = mediaFiles[index] || (displayUrls.length === 1 ? uploadFile : null) || null;
+              const edit = photoEdits[index] ?? DEFAULT_PHOTO_EDIT;
+              if (file && mediaKindFromFile(file) === 'photo' && !isDefaultPhotoEdit(edit)) {
+                file = await bakePhotoEdit(file, edit);
+              } else if (!file && !isDefaultPhotoEdit(edit) && /^https?:/i.test(url)) {
+                const remote = await fileFromMediaUrl(url, 'photo.jpg');
+                file = await bakePhotoEdit(remote, edit);
+              }
+              return file ? { file } : { url };
+            }),
+          );
+        } else if (publishKind === 'video') {
+          mediaSlots = uploadFile ? [{ file: uploadFile }] : previewUrl ? [{ url: previewUrl }] : [];
+        }
+        const savedType =
+          publishKind === 'text' && gifAttach && !mediaSlots.length ? 'photo' : publishKind;
+        const saved = await updatePost({
+          postId: editPost.id,
+          authorUid: profile.firebaseUid,
+          username: profile.handle || username,
+          authorDisplayName: profile.displayName,
+          type: savedType === 'text' && !mediaSlots.length && !gifAttach ? 'text' : savedType,
+          caption,
+          visibility,
+          mediaSlots: savedType === 'text' && !gifAttach ? [] : mediaSlots,
+          mediaUrl: !mediaSlots.length && gifAttach ? gifAttach.url : undefined,
+          overlays,
+          durationSec,
+          notifyFriends: visibility !== 'private' && notifyFriends,
+        });
+        onUpdated?.({
+          ...editPost,
+          id: editPost.id,
+          authorUid: editPost.authorUid,
+          createdAt: editPost.createdAt,
+          type: saved.type,
+          caption: saved.caption,
+          mediaUrl: saved.mediaUrl,
+          mediaUrls: saved.mediaUrls,
+          visibility: saved.visibility,
+          overlays,
+          durationSec: saved.type === 'video' ? durationSec || editPost.durationSec : editPost.durationSec,
+          edited: true,
+          updatedAt: new Date().toISOString(),
+        });
+        reset();
+        closeModal();
+        return;
+      }
+
       const created = await createPost({
         authorUid: profile.firebaseUid,
         username: profile.handle || username,
@@ -629,22 +1119,22 @@ export function CreatePostModal({
         type: publishKind === 'text' && gifAttach && !uploadFile ? 'photo' : publishKind,
         caption,
         mediaFile:
-          publishKind === 'text' || (publishKind === 'photo' && mediaFiles.length > 1)
+          publishKind === 'text' || (publishKind === 'photo' && albumForUpload.length > 1)
             ? null
             : uploadFile,
         mediaFiles:
-          publishKind === 'photo' && mediaFiles.length > 1 ? mediaFiles : undefined,
+          publishKind === 'photo' && albumForUpload.length > 1 ? albumForUpload : undefined,
         mediaUrl: !uploadFile && gifAttach ? gifAttach.url : undefined,
-        visibility: publishPostFormat === 'story' ? 'circle' : visibility,
+        visibility,
         postFormat: publishPostFormat,
         durationSec,
-        notifyFriends: visibility !== 'private' && notifyFriends && publishPostFormat !== 'story',
+        notifyFriends: visibility !== 'private' && notifyFriends,
         musicTrackId: selectedMusic?.trackId,
         musicStartSec: selectedMusic?.startSec,
         overlays,
       });
 
-      onCreated({
+      onCreated?.({
         id: created.id,
         authorUid: profile.firebaseUid,
         authorUsername: profile.handle || username,
@@ -669,12 +1159,24 @@ export function CreatePostModal({
     }
   }
 
-  const showVisibility = !isFlashBoom && (composeTab === 'publication' || composeTab === 'boomclip');
+  const showVisibility = true;
   const showPanel = isInline || open;
   const isModalOpen = showPanel && !isInline;
   useBodyScrollLock(isModalOpen || cameraCaptureOpen);
-  const modalTitle =
-    isFlashBoom ? FLASH_BOOM_LABEL : isBoomClip ? BOOM_CLIP_LABEL : 'Nueva publicación';
+  const modalTitle = isEditMode
+    ? 'Editar publicación'
+    : isFlashBoom
+      ? FLASH_BOOM_LABEL
+      : isBoomClip
+        ? BOOM_CLIP_LABEL
+        : 'Nueva publicación';
+  const submitLabel = isEditMode
+    ? busy
+      ? 'Guardando…'
+      : 'Guardar cambios'
+    : busy
+      ? 'Subiendo…'
+      : 'Publicar';
   const composeRows = isInline ? 2 : isFlashBoom ? 2 : 3;
   const captionMax = isFlashBoom ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : undefined;
 
@@ -702,10 +1204,18 @@ export function CreatePostModal({
       <input
         ref={galleryMixedRef}
         type="file"
-        accept="image/*,video/*"
+        accept={composeTab === 'boomclip' ? 'video/*' : 'image/*,video/*'}
         multiple={composeTab === 'publication'}
         className="hidden"
         onChange={(event) => onGalleryMediaChange(event.target.files)}
+      />
+      <input
+        ref={galleryAppendRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(event) => appendAlbumPhotos(event.target.files)}
       />
 
       {trimDraft && !isModalOpen ? (
@@ -724,37 +1234,41 @@ export function CreatePostModal({
         />
       ) : trimDraft && isModalOpen ? null : (
         <>
-          <div className={`composer-kind-tabs grid grid-cols-3 gap-1.5 ${isInline || isModalOpen ? 'mt-0' : 'mt-4'} sm:gap-2`}>
+          <div className={`composer-kind-tabs ${isInline || isModalOpen ? 'mt-0' : 'mt-3'}`}>
             <button
               type="button"
               onClick={() => switchTab('publication')}
-              className={`composer-kind-tab composer-kind-tab--publication flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
+              className={`composer-kind-tab composer-kind-tab--publication ${
                 composeTab === 'publication' ? 'is-active' : ''
               }`}
             >
-              <PenLine size={14} />
-              Publicación
+              <PenLine size={12} />
+              <span>Publicación</span>
             </button>
+            {!isEditMode ? (
+              <>
             <button
               type="button"
               onClick={() => switchTab('boomclip')}
-              className={`composer-kind-tab composer-kind-tab--boomclip flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
+              className={`composer-kind-tab composer-kind-tab--boomclip ${
                 composeTab === 'boomclip' ? 'is-active' : ''
               }`}
             >
-              <Video size={14} />
-              {BOOM_CLIP_LABEL}
+              <Video size={12} />
+              <span>{BOOM_CLIP_LABEL}</span>
             </button>
             <button
               type="button"
               onClick={() => switchTab('flashboom')}
-              className={`composer-kind-tab composer-kind-tab--flashboom flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-[10px] font-semibold sm:px-2 sm:text-xs ${
+              className={`composer-kind-tab composer-kind-tab--flashboom ${
                 composeTab === 'flashboom' ? 'is-active' : ''
               }`}
             >
-              <Zap size={14} />
-              {FLASH_BOOM_LABEL}
+              <Zap size={12} />
+              <span>{FLASH_BOOM_LABEL}</span>
             </button>
+              </>
+            ) : null}
           </div>
 
           <div className="mt-3 space-y-2">
@@ -790,143 +1304,254 @@ export function CreatePostModal({
             </div>
 
             {previewSrc ? (
-              <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-950">
-                <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-                  <img
-                    src={previewSrc}
-                    alt=""
-                    className="h-full w-full scale-125 object-cover opacity-35 blur-2xl"
-                  />
-                </div>
-                <div className="relative z-[1] flex min-h-[12rem] w-full items-center justify-center">
-                  <div className="relative w-full">
-                    {previewIsVideo ? (
-                      <video
-                        src={previewSrc}
-                        className="mx-auto max-h-[min(52dvh,24rem)] w-full object-contain"
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                      />
-                    ) : (
+              <div
+                className={`grid gap-3 ${
+                  photoStageOpen ? 'min-[900px]:grid-cols-[minmax(0,1fr)_minmax(15rem,18.5rem)]' : ''
+                }`}
+              >
+                <div className="min-w-0 space-y-2">
+                  <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-950">
+                    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
                       <img
                         src={previewSrc}
                         alt=""
-                        className="mx-auto max-h-[min(52dvh,24rem)] w-full object-contain"
+                        className="h-full w-full scale-125 object-cover opacity-35 blur-2xl"
                       />
-                    )}
-                    <MediaOverlayLayer
-                      overlays={slideOverlays}
-                      editable
-                      onChange={setSlideOverlays}
-                    />
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditMenuOpen((value) => !value)}
-                  className="absolute left-2 top-2 z-[6] inline-flex min-h-9 items-center gap-1 rounded-full border border-white/15 bg-black/55 px-2.5 text-[11px] font-semibold text-white backdrop-blur-sm"
-                >
-                  <Wand2 size={13} />
-                  Editar
-                </button>
-                {gifAttach && !mediaFile ? (
-                  <button
-                    type="button"
-                    onClick={() => setGifAttach(null)}
-                    className="absolute right-2 top-2 z-[6] grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/55 text-white backdrop-blur-sm"
-                    aria-label="Quitar GIF"
-                  >
-                    <X size={14} />
-                  </button>
-                ) : null}
-                {editMenuOpen ? (
-                  <div className="absolute left-2 top-12 z-[8] min-w-[10.5rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-xl backdrop-blur-md">
-                    {previewIsVideo ? (
-                      <button
-                        type="button"
-                        className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
-                        onClick={startVideoTrim}
-                      >
-                        Recortar
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
-                      onClick={() => {
-                        setEditMenuOpen(false);
-                        setStickerPickerOpen(true);
-                      }}
-                    >
-                      Stickers
-                    </button>
-                    {previewIsVideo ? (
-                      <button
-                        type="button"
-                        className="flex min-h-11 w-full items-center gap-1.5 px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
-                        onClick={() => {
-                          setEditMenuOpen(false);
-                          setMusicPickerOpen(true);
-                        }}
-                      >
-                        <Music2 size={12} />
-                        {selectedMusic ? 'Cambiar música' : 'Añadir música'}
-                      </button>
-                    ) : null}
-                    {selectedMusic ? (
-                      <button
-                        type="button"
-                        className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-zinc-400 hover:bg-white/5"
-                        onClick={() => {
-                          setSelectedMusic(null);
-                          setEditMenuOpen(false);
-                        }}
-                      >
-                        Quitar música
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-                {slideCount > 1 ? (
-                  <>
-                    <button
-                      type="button"
-                      className={`absolute left-1 top-1/2 z-[6] grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white ${
-                        previewIndex <= 0 ? 'opacity-30' : ''
-                      }`}
-                      aria-label="Anterior"
-                      onClick={() => showSlide(previewIndex - 1)}
-                      disabled={previewIndex <= 0}
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      className={`absolute right-1 top-1/2 z-[6] grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white ${
-                        previewIndex >= slideCount - 1 ? 'opacity-30' : ''
-                      }`}
-                      aria-label="Siguiente"
-                      onClick={() => showSlide(previewIndex + 1)}
-                      disabled={previewIndex >= slideCount - 1}
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                    <div className="absolute inset-x-0 bottom-2 z-[6] flex justify-center gap-1.5">
-                      {Array.from({ length: slideCount }).map((_, index) => (
-                        <button
-                          key={index}
-                          type="button"
-                          aria-label={`Foto ${index + 1}`}
-                          onClick={() => showSlide(index)}
-                          className={`h-1.5 rounded-full ${
-                            index === previewIndex ? 'w-4 bg-fuchsia-400' : 'w-1.5 bg-white/40'
-                          }`}
-                        />
-                      ))}
                     </div>
-                  </>
+                    <div
+                      className={`lb-composer-stage relative z-[1] flex w-full items-center justify-center ${
+                        photoStageOpen ? 'cursor-grab touch-none active:cursor-grabbing' : ''
+                      }`}
+                      style={cropRatio ? { aspectRatio: String(cropRatio) } : undefined}
+                      onPointerDown={onStagePointerDown}
+                      onPointerMove={onStagePointerMove}
+                      onPointerUp={onStagePointerUp}
+                      onPointerCancel={onStagePointerUp}
+                    >
+                      <div className="relative max-h-full min-h-0 w-full overflow-hidden">
+                        {previewIsVideo ? (
+                          <video
+                            src={previewSrc}
+                            className="mx-auto max-h-[min(56dvh,28rem)] w-full object-contain"
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                          />
+                        ) : (
+                          <img
+                            src={previewSrc}
+                            alt=""
+                            draggable={false}
+                            className="mx-auto max-h-[min(56dvh,28rem)] w-full select-none object-contain"
+                            style={{
+                              filter: photoCssFilter(currentEdit),
+                              transform: `translate(${currentEdit.panX}%, ${currentEdit.panY}%) scale(${
+                                currentEdit.zoom / 100
+                              }) rotate(${currentEdit.rotate}deg)`,
+                              transformOrigin: 'center center',
+                            }}
+                          />
+                        )}
+                        {currentEdit.vignette > 0 && !previewIsVideo ? (
+                          <div
+                            className="pointer-events-none absolute inset-0"
+                            style={{
+                              background: `radial-gradient(circle, transparent 42%, rgba(0,0,0,${
+                                currentEdit.vignette / 140
+                              }) 100%)`,
+                            }}
+                          />
+                        ) : null}
+                        <MediaOverlayLayer
+                          overlays={slideOverlays}
+                          editable
+                          onChange={setSlideOverlays}
+                        />
+                      </div>
+                    </div>
+                    <div className="absolute left-2 top-2 z-[6] flex max-w-[calc(100%-5.5rem)] flex-wrap items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openGallery(composeTab === 'boomclip' ? 'video' : 'any')}
+                        className="inline-flex min-h-9 items-center rounded-full border border-white/15 bg-black/55 px-2.5 text-[11px] font-semibold text-white backdrop-blur-sm"
+                      >
+                        Cambiar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => (slideCount > 1 ? removeCurrentSlide() : removeAttachedMedia())}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-full border border-rose-400/40 bg-black/55 px-2.5 text-[11px] font-semibold text-rose-200 backdrop-blur-sm"
+                      >
+                        <Trash2 size={12} />
+                        Eliminar
+                      </button>
+                    </div>
+                    <div className="absolute right-2 top-2 z-[6] flex items-center gap-1">
+                      {photoStageOpen ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={undoEdit}
+                            disabled={historyIndex <= 0}
+                            className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/55 text-white disabled:opacity-35"
+                            aria-label="Deshacer"
+                          >
+                            <Undo2 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={redoEdit}
+                            disabled={historyIndex >= editHistory.length - 1}
+                            className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/55 text-white disabled:opacity-35"
+                            aria-label="Rehacer"
+                          >
+                            <Redo2 size={14} />
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (previewIsVideo) {
+                            setEditMenuOpen((value) => !value);
+                            return;
+                          }
+                          setEditMenuOpen(false);
+                          setPhotoEditOpen((value) => !value);
+                        }}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-full border border-white/15 bg-black/55 px-2.5 text-[11px] font-semibold text-white backdrop-blur-sm"
+                      >
+                        <Wand2 size={13} />
+                        Editar
+                      </button>
+                    </div>
+                    {gifAttach && !mediaFile ? (
+                      <button
+                        type="button"
+                        onClick={() => setGifAttach(null)}
+                        className="absolute right-2 bottom-2 z-[6] grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/55 text-white backdrop-blur-sm"
+                        aria-label="Quitar GIF"
+                      >
+                        <X size={14} />
+                      </button>
+                    ) : null}
+                    {editMenuOpen && previewIsVideo ? (
+                      <div className="absolute right-2 top-12 z-[8] min-w-[10.5rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-xl backdrop-blur-md">
+                        <button
+                          type="button"
+                          className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
+                          onClick={startVideoTrim}
+                        >
+                          Recortar
+                        </button>
+                        <button
+                          type="button"
+                          className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
+                          onClick={() => {
+                            setEditMenuOpen(false);
+                            setStickerPickerOpen(true);
+                          }}
+                        >
+                          Stickers
+                        </button>
+                        <button
+                          type="button"
+                          className="flex min-h-11 w-full items-center gap-1.5 px-3 text-left text-xs font-semibold text-white hover:bg-white/5"
+                          onClick={() => {
+                            setEditMenuOpen(false);
+                            setMusicPickerOpen(true);
+                          }}
+                        >
+                          <Music2 size={12} />
+                          {selectedMusic ? 'Cambiar música' : 'Añadir música'}
+                        </button>
+                        {selectedMusic ? (
+                          <button
+                            type="button"
+                            className="flex min-h-11 w-full items-center px-3 text-left text-xs font-semibold text-zinc-400 hover:bg-white/5"
+                            onClick={() => {
+                              setSelectedMusic(null);
+                              setEditMenuOpen(false);
+                            }}
+                          >
+                            Quitar música
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {slideCount > 1 ? (
+                      <>
+                        <button
+                          type="button"
+                          className={`absolute left-1 top-1/2 z-[6] grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white ${
+                            previewIndex <= 0 ? 'opacity-30' : ''
+                          }`}
+                          aria-label="Anterior"
+                          onClick={() => showSlide(previewIndex - 1)}
+                          disabled={previewIndex <= 0}
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`absolute right-1 top-1/2 z-[6] grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/45 text-white ${
+                            previewIndex >= slideCount - 1 ? 'opacity-30' : ''
+                          }`}
+                          aria-label="Siguiente"
+                          onClick={() => showSlide(previewIndex + 1)}
+                          disabled={previewIndex >= slideCount - 1}
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                        <p className="pointer-events-none absolute inset-x-0 bottom-2 z-[6] text-center text-[11px] font-semibold text-white/80">
+                          {previewIndex + 1}/{slideCount}
+                        </p>
+                      </>
+                    ) : null}
+                  </div>
+                  {composeTab === 'publication' && !previewIsVideo ? (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {(albumUrls.length ? albumUrls : previewSrc ? [previewSrc] : []).map((url, index) => (
+                        <button
+                          key={`${url}-${index}`}
+                          type="button"
+                          onClick={() => showSlide(index)}
+                          className={`h-14 w-14 shrink-0 overflow-hidden rounded-xl border ${
+                            index === previewIndex ? 'border-fuchsia-400' : 'border-white/15'
+                          }`}
+                        >
+                          <img src={url} alt="" className="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = galleryAppendRef.current;
+                          if (!target) return;
+                          target.value = '';
+                          target.click();
+                        }}
+                        className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-white/25 text-[9px] font-semibold text-zinc-400"
+                      >
+                        <Plus size={14} />
+                        Agregar
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                {photoStageOpen ? (
+                  <PhotoEditPanel
+                    value={currentEdit}
+                    onChange={(next) => setCurrentEdit(next, true)}
+                    onReset={() => {
+                      setCurrentEdit(DEFAULT_PHOTO_EDIT, true);
+                      setEditHistory([DEFAULT_PHOTO_EDIT]);
+                      setHistoryIndex(0);
+                    }}
+                    onApply={() => void applyCurrentPhotoEdit()}
+                    applying={editBusy}
+                  />
                 ) : null}
               </div>
             ) : null}
@@ -945,7 +1570,7 @@ export function CreatePostModal({
               <button
                 type="button"
                 onClick={() => setMediaMenuOpen((value) => !value)}
-                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition ${
+                className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border px-2 transition ${
                   mediaMenuOpen
                     ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
                     : 'border-white/15 bg-zinc-900/80 text-zinc-300 hover:border-cyan-400/40'
@@ -954,6 +1579,7 @@ export function CreatePostModal({
                 aria-expanded={mediaMenuOpen}
               >
                 <Paperclip size={16} />
+                <span className="hidden text-[11px] font-semibold sm:inline">Adjuntar</span>
               </button>
               {mediaMenuOpen ? (
                 <div className="absolute bottom-full left-0 z-20 mb-1.5 w-[min(18.5rem,calc(100vw-2.5rem))] rounded-2xl bg-gradient-to-br from-cyan-400/80 to-violet-500/80 p-px shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
@@ -1050,31 +1676,6 @@ export function CreatePostModal({
             <p className="mt-2 text-[10px] leading-snug text-zinc-500">{storyLifecycleHint()}</p>
           ) : null}
 
-          {isFlashBoom && isModalOpen ? (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => openGallery('photo')}
-                className="rounded-xl border border-white/10 py-2.5 text-[11px] font-semibold text-zinc-200 hover:border-cyan-400/40"
-              >
-                Foto
-              </button>
-              <button
-                type="button"
-                onClick={() => openGallery('video')}
-                className="rounded-xl border border-white/10 py-2.5 text-[11px] font-semibold text-zinc-200 hover:border-fuchsia-400/40"
-              >
-                Video
-              </button>
-              <button
-                type="button"
-                onClick={() => openCamera()}
-                className="rounded-xl border border-fuchsia-400/40 bg-fuchsia-500/10 py-2.5 text-[11px] font-semibold text-fuchsia-200"
-              >
-                Cámara
-              </button>
-            </div>
-          ) : null}
         </>
       )}
 
@@ -1082,12 +1683,14 @@ export function CreatePostModal({
         <button
           type="button"
           onClick={() => setNotifyFriends((value) => !value)}
-          className={`mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold ${
-            notifyFriends ? 'border-rose-500/60 bg-rose-500/10 text-rose-200' : 'border-white/10 text-zinc-400'
-          }`}
+          className={`lb-notify-friends-btn ${notifyFriends ? 'is-active' : ''}`}
+          aria-pressed={notifyFriends}
         >
-          <Bell size={13} />
-          Notificar amigos
+          <span className="lb-notify-friends-btn__bell" aria-hidden>
+            <Bell size={13} />
+          </span>
+          <span>Notificar amigos</span>
+          {notifyFriends ? <span className="lb-notify-friends-btn__dot" aria-hidden /> : null}
         </button>
       ) : null}
 
@@ -1111,7 +1714,7 @@ export function CreatePostModal({
       {!isModalOpen ? (
         <div className={`mt-3 flex justify-end gap-2 ${isInline ? '' : 'pb-[max(0.5rem,env(safe-area-inset-bottom))]'}`}>
           {!isInline ? (
-            <button type="button" onClick={closeModal} className="px-4 py-2 text-sm text-zinc-400">
+            <button type="button" onClick={requestClose} className="px-4 py-2 text-sm text-zinc-400">
               Cancelar
             </button>
           ) : null}
@@ -1121,7 +1724,7 @@ export function CreatePostModal({
             onClick={() => void publish()}
             className="rounded-full bg-cyan-500 px-5 py-2 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
-            {busy ? 'Subiendo…' : 'Publicar'}
+            {submitLabel}
           </button>
         </div>
       ) : null}
@@ -1151,7 +1754,7 @@ export function CreatePostModal({
         </div>
       ) : null}
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={closeModal} className="px-4 py-2 text-sm text-zinc-400">
+        <button type="button" onClick={requestClose} className="px-4 py-2 text-sm text-zinc-400">
           Cancelar
         </button>
         <button
@@ -1160,7 +1763,7 @@ export function CreatePostModal({
           onClick={() => void publish()}
           className="rounded-full bg-cyan-500 px-5 py-2 text-sm font-bold text-zinc-950 disabled:opacity-60"
         >
-          {busy ? 'Subiendo…' : 'Publicar'}
+          {submitLabel}
         </button>
       </div>
     </div>
@@ -1171,11 +1774,11 @@ export function CreatePostModal({
       <div
         className="fixed inset-0 z-[100] flex items-end justify-center overscroll-none bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
         onClick={(event) => {
-          if (event.target === event.currentTarget) closeModal();
+          if (event.target === event.currentTarget) requestClose();
         }}
       >
         <div
-          className="flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-zinc-950 shadow-2xl sm:rounded-3xl"
+          className="lb-composer-modal relative flex w-full flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-zinc-950 shadow-2xl sm:rounded-3xl"
           style={{
             maxHeight:
               'min(92dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 0.5rem))',
@@ -1191,7 +1794,7 @@ export function CreatePostModal({
             </h3>
             <button
               type="button"
-              onClick={closeModal}
+              onClick={requestClose}
               className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white"
               aria-label="Cerrar"
             >
@@ -1200,6 +1803,36 @@ export function CreatePostModal({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">{panelBody}</div>
           {modalFooter}
+          {discardOpen ? (
+            <div className="absolute inset-0 z-[20] flex items-center justify-center bg-black/70 p-4">
+              <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-900 p-4 shadow-2xl">
+                <p className="text-sm font-bold text-white">
+                  {isEditMode ? '¿Descartar cambios?' : '¿Descartar el borrador?'}
+                </p>
+                <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
+                  {isEditMode
+                    ? 'Si sales ahora, la publicación original se mantiene igual.'
+                    : 'Si sales ahora se perderán el archivo, el texto y las ediciones de esta publicación.'}
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDiscardOpen(false)}
+                    className="min-h-11 rounded-full px-4 text-sm text-zinc-300"
+                  >
+                    Seguir editando
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDiscard}
+                    className="min-h-11 rounded-full bg-rose-500 px-4 text-sm font-bold text-white"
+                  >
+                    Descartar
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     ) : null;

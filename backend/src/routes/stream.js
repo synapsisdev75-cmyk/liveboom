@@ -466,7 +466,10 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
   const createLivekitToken = lk.createLivekitToken || lk.default?.createLivekitToken;
 
   if (typeof livekitEnabled !== 'function' || !livekitEnabled()) {
-    res.status(503).json({ error: 'LiveKit no está configurado en el API' });
+    const payload = typeof lk.livekitConfigError === 'function'
+      ? lk.livekitConfigError()
+      : { error: 'LiveKit no está configurado en el API' };
+    res.status(503).json(payload);
     return;
   }
 
@@ -482,6 +485,25 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     const host = isRoomHost(req.user, roomName, claimedHandle);
     const guest = await canGuestPublishAsync(req.user, roomName);
     const isDirectCall = /^dm[_-]/.test(roomName);
+
+    if (isDirectCall) {
+      const { bearerFromReq, canCallUser, otherUidFromChatId } = require('../lib/canCallUser');
+      const chatId = roomName.replace(/^dm[_-]/, '');
+      const otherUid = otherUidFromChatId(chatId, req.user.uid);
+      if (!otherUid) {
+        res.status(403).json({ error: 'No perteneces a esta llamada', code: 'CALL_NOT_ALLOWED', stage: 'token' });
+        return;
+      }
+      const allowed = await canCallUser(req.user.uid, otherUid, bearerFromReq(req));
+      if (!allowed) {
+        res.status(403).json({
+          error: 'Solo puedes llamar a tus amigos.',
+          code: 'CALL_NOT_ALLOWED',
+          stage: 'friendship',
+        });
+        return;
+      }
+    }
 
     if (!host && !isDirectCall && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
       const lock = liveLocks.getLock(roomName);

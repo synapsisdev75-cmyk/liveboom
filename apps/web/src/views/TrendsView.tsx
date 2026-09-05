@@ -1,7 +1,9 @@
 import { Hash, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { CreatePostModal } from '../components/social/CreatePostModal';
 import { PostCard, type SocialPost } from '../components/social/SocialPostCard';
+import { canEditOwnedPublication } from '../lib/contentType';
 import {
   listenPostsByHashtag,
   listenTopTrends,
@@ -9,6 +11,7 @@ import {
   type TrendTag,
 } from '../lib/trendsFirestore';
 import type { FsPost } from '../lib/socialFirestore';
+import { useAuthStore } from '../store/authStore';
 
 function toSocial(post: FsPost): SocialPost {
   return {
@@ -28,14 +31,18 @@ function toSocial(post: FsPost): SocialPost {
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
     overlays: post.overlays,
+    edited: post.edited,
+    updatedAt: post.updatedAt,
   };
 }
 
 export function TrendsView() {
+  const profile = useAuthStore((state) => state.profile);
   const [searchParams, setSearchParams] = useSearchParams();
   const selected = (searchParams.get('tag') || '').replace(/^#/, '').toLowerCase();
   const [trends, setTrends] = useState<TrendTag[]>([]);
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
 
   useEffect(() => {
     const unsub = listenTopTrends(setTrends);
@@ -84,7 +91,7 @@ export function TrendsView() {
                     }`}
                   >
                     <Hash size={14} />
-                    {item.tag}
+                    <span className={active ? '' : 'lb-entity lb-entity-hashtag'}>#{item.tag}</span>
                     <span className={`text-[11px] ${active ? 'text-zinc-700' : 'text-zinc-500'}`}>
                       #{index + 1} · {item.count}
                     </span>
@@ -105,7 +112,12 @@ export function TrendsView() {
             </p>
           ) : (
             posts.map((post) => (
-              <PostCard key={post.id} post={post} />
+              <PostCard
+                key={post.id}
+                post={post}
+                canEdit={canEditOwnedPublication(post, profile?.firebaseUid)}
+                onEdit={() => setEditingPost(post)}
+              />
             ))
           )}
         </section>
@@ -116,6 +128,23 @@ export function TrendsView() {
       <Link to="/explorar" className="text-center text-sm font-semibold text-cyan-400 hover:underline">
         Ir a Explorar posts
       </Link>
+
+      {editingPost && profile ? (
+        <CreatePostModal
+          mode="edit"
+          editPost={editingPost}
+          username={profile.handle}
+          autoOpen
+          hideTrigger
+          onClose={() => setEditingPost(null)}
+          onUpdated={(post) => {
+            setPosts((current) =>
+              current.map((item) => (item.id === post.id ? { ...item, ...post } : item)),
+            );
+            setEditingPost(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

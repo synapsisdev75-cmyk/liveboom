@@ -15,6 +15,7 @@ import {
 import { getFirestore } from 'firebase/firestore';
 import { firebaseApp } from './firebase';
 import type { FsPost } from './socialFirestore';
+import { extractHashtagsFromText as extractHashtags } from './textEntities';
 
 const db = getFirestore(firebaseApp);
 
@@ -24,19 +25,7 @@ export type TrendTag = {
   updatedAtMs: number;
 };
 
-const TAG_RE = /#([\p{L}\p{N}_]{2,32})/gu;
-
-export function extractHashtags(text: string): string[] {
-  const found = new Set<string>();
-  const raw = String(text || '');
-  let match: RegExpExecArray | null;
-  TAG_RE.lastIndex = 0;
-  while ((match = TAG_RE.exec(raw))) {
-    const tag = String(match[1] || '').toLowerCase();
-    if (tag) found.add(tag);
-  }
-  return [...found].slice(0, 12);
-}
+export { extractHashtags };
 
 export async function bumpHashtagsFromCaption(caption: string) {
   const tags = extractHashtags(caption);

@@ -34,6 +34,69 @@ service firebase.storage {
         );
     }
 
+    function isChatParticipant(chatId) {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/chats/$(chatId))
+        && request.auth.uid in firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants;
+    }
+    function isBlockedChatName() {
+      return request.resource.name.matches('.*\\.exe$')
+        || request.resource.name.matches('.*\\.bat$')
+        || request.resource.name.matches('.*\\.cmd$')
+        || request.resource.name.matches('.*\\.js$')
+        || request.resource.name.matches('.*\\.apk$');
+    }
+    function hasAllowedChatExt() {
+      return request.resource.name.matches('.*\\.pdf$')
+        || request.resource.name.matches('.*\\.doc$')
+        || request.resource.name.matches('.*\\.docx$')
+        || request.resource.name.matches('.*\\.xls$')
+        || request.resource.name.matches('.*\\.xlsx$')
+        || request.resource.name.matches('.*\\.ppt$')
+        || request.resource.name.matches('.*\\.pptx$')
+        || request.resource.name.matches('.*\\.txt$')
+        || request.resource.name.matches('.*\\.zip$')
+        || request.resource.name.matches('.*\\.rar$')
+        || request.resource.name.matches('.*\\.jpg$')
+        || request.resource.name.matches('.*\\.jpeg$')
+        || request.resource.name.matches('.*\\.png$')
+        || request.resource.name.matches('.*\\.gif$')
+        || request.resource.name.matches('.*\\.webp$')
+        || request.resource.name.matches('.*\\.heic$')
+        || request.resource.name.matches('.*\\.heif$')
+        || request.resource.name.matches('.*\\.mp3$')
+        || request.resource.name.matches('.*\\.m4a$')
+        || request.resource.name.matches('.*\\.wav$')
+        || request.resource.name.matches('.*\\.ogg$')
+        || request.resource.name.matches('.*\\.webm$')
+        || request.resource.name.matches('.*\\.aac$')
+        || request.resource.name.matches('.*\\.mp4$')
+        || request.resource.name.matches('.*\\.mov$')
+        || request.resource.name.matches('.*\\.mkv$');
+    }
+    function isAllowedChatFile() {
+      return request.resource.size < 25 * 1024 * 1024
+        && !isBlockedChatName()
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('audio/.*')
+          || request.resource.contentType.matches('video/.*')
+          || request.resource.contentType == 'application/pdf'
+          || request.resource.contentType == 'application/msword'
+          || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          || request.resource.contentType == 'application/vnd.ms-excel'
+          || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          || request.resource.contentType == 'application/vnd.ms-powerpoint'
+          || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+          || request.resource.contentType == 'text/plain'
+          || request.resource.contentType == 'application/zip'
+          || request.resource.contentType == 'application/x-zip-compressed'
+          || request.resource.contentType == 'application/vnd.rar'
+          || request.resource.contentType == 'application/x-rar-compressed'
+          || (request.resource.contentType == 'application/octet-stream' && hasAllowedChatExt())
+        );
+    }
+
     match /users/{userId}/.keep {
       allow read: if true;
       allow write: if isOwner(userId) && request.resource.size < 1024;
@@ -88,13 +151,12 @@ service firebase.storage {
 
     match /users/{userId}/chat/{fileName} {
       allow read: if signedIn();
-      allow write: if isOwner(userId)
-        && request.resource.size < 20 * 1024 * 1024
-        && (
-          request.resource.contentType.matches('image/.*')
-          || request.resource.contentType.matches('audio/.*')
-          || request.resource.contentType.matches('video/.*')
-        );
+      allow write: if isOwner(userId) && isAllowedChatFile();
+    }
+
+    match /chats/{chatId}/files/{fileName} {
+      allow read: if isChatParticipant(chatId);
+      allow write: if isChatParticipant(chatId) && isAllowedChatFile();
     }
 
     // Media de grupos (portada / chat) bajo la carpeta del usuario — permisos fiables.

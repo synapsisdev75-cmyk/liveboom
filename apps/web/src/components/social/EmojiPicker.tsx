@@ -1,7 +1,12 @@
-import { Bomb, Search, Smile } from 'lucide-react';
+import { Bomb, Search, Smile, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BOOM_EMOJIS, LIVEBOOM_EMOJIS, type LiveboomEmoji } from '../../lib/liveboomEmojis';
+import {
+  BOOM_EMOJIS,
+  EMOTICON_EMOJIS,
+  LIVEBOOM_EMOJIS,
+  type LiveboomEmoji,
+} from '../../lib/liveboomEmojis';
 import {
   filterUnicodeEmojis,
   UNICODE_EMOJI_CATEGORIES,
@@ -110,6 +115,9 @@ type Props = {
   /** Preferencia inicial; el panel se voltea si no cabe en el viewport. */
   placement?: 'above' | 'below';
   className?: string;
+  /** Estilo del botón disparador. Default: el botón actual de 40px. */
+  buttonClassName?: string;
+  disabled?: boolean;
   /** Packs unicode. Default true: mismo catálogo en todos los módulos. */
   showUnicode?: boolean;
 };
@@ -126,10 +134,12 @@ function LiveboomGrid({
   emojis,
   onPick,
   cols,
+  large = false,
 }: {
   emojis: readonly LiveboomEmoji[];
   onPick: (id: string) => void;
   cols: string;
+  large?: boolean;
 }) {
   if (emojis.length === 0) {
     return (
@@ -147,7 +157,9 @@ function LiveboomGrid({
           type="button"
           title={emoji.label}
           onClick={() => onPick(emoji.id)}
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg transition hover:bg-white/10 active:scale-95"
+          className={`flex shrink-0 items-center justify-center rounded-lg transition hover:bg-white/10 active:scale-95 ${
+            large ? 'size-11' : 'size-9'
+          }`}
         >
           <img
             src={emoji.file}
@@ -155,9 +167,9 @@ function LiveboomGrid({
             draggable={false}
             loading="lazy"
             decoding="async"
-            width={28}
-            height={28}
-            className="size-7 shrink-0 object-contain object-center"
+            width={large ? 40 : 28}
+            height={large ? 40 : 28}
+            className={`shrink-0 object-contain object-center ${large ? 'size-10' : 'size-7'}`}
           />
         </button>
       ))}
@@ -221,6 +233,8 @@ export function EmojiPickerButton({
   onPick,
   placement = 'above',
   className = '',
+  buttonClassName,
+  disabled = false,
   showUnicode = true,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -292,7 +306,9 @@ export function EmojiPickerButton({
   }, [open]);
 
   useEffect(() => {
-    if (!showUnicode && tab !== 'classic' && tab !== 'boom') setTab('classic');
+    if (!showUnicode && tab !== 'classic' && tab !== 'boom' && tab !== 'emoticones') {
+      setTab('classic');
+    }
   }, [showUnicode, tab]);
 
   useLayoutEffect(() => {
@@ -321,6 +337,7 @@ export function EmojiPickerButton({
   const liveboomShown = useMemo(() => {
     if (tab === 'classic') return filterLiveboom(LIVEBOOM_EMOJIS, query);
     if (tab === 'boom') return filterLiveboom(BOOM_EMOJIS, query);
+    if (tab === 'emoticones') return filterLiveboom(EMOTICON_EMOJIS, query);
     return [];
   }, [tab, query]);
   const unicodeShown = useMemo(() => {
@@ -345,7 +362,9 @@ export function EmojiPickerButton({
         ? unicodeCategory.label
         : tab === 'classic'
           ? 'Caritas LiveBoom'
-          : 'Boom';
+          : tab === 'emoticones'
+            ? 'Reacciones'
+            : 'Boom';
 
   const place = coords?.place ?? (placement === 'below' ? 'below' : 'above');
   const caretPx = coords?.caret ?? 20;
@@ -392,11 +411,18 @@ export function EmojiPickerButton({
 
             <p className="mb-1.5 px-0.5 text-[11px] font-semibold text-zinc-400">{heading}</p>
 
-            {tab === 'classic' || tab === 'boom' ? (
+            {tab === 'classic' || tab === 'boom' || tab === 'emoticones' ? (
               <LiveboomGrid
                 emojis={liveboomShown}
                 onPick={pick}
-                cols={tab === 'classic' ? 'grid-cols-8' : 'grid-cols-6'}
+                cols={
+                  tab === 'classic'
+                    ? 'grid-cols-8'
+                    : tab === 'emoticones'
+                      ? 'grid-cols-5'
+                      : 'grid-cols-6'
+                }
+                large={tab === 'emoticones'}
               />
             ) : (
               <UnicodeGrid emojis={unicodeShown} onPick={pick} />
@@ -432,6 +458,21 @@ export function EmojiPickerButton({
                 title="Boom"
               >
                 <Bomb size={18} />
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'emoticones'}
+                onClick={() => setTab('emoticones')}
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg transition ${
+                  tab === 'emoticones'
+                    ? 'text-amber-300 ring-1 ring-amber-400/50'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+                aria-label="Reacciones"
+                title="Reacciones"
+              >
+                <Sparkles size={18} />
               </button>
               {showUnicode
                 ? UNICODE_EMOJI_CATEGORIES.map((category) => (
@@ -491,11 +532,15 @@ export function EmojiPickerButton({
       <button
         ref={buttonRef}
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         onMouseDown={(event) => event.preventDefault()}
-        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl transition ${
-          open ? 'bg-white/10 text-amber-300' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
-        }`}
+        className={
+          buttonClassName ||
+          `grid h-10 w-10 shrink-0 place-items-center rounded-xl transition ${
+            open ? 'bg-white/10 text-amber-300' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+          }`
+        }
         aria-label="Emoticones"
         aria-expanded={open}
       >

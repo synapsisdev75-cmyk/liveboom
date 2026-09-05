@@ -1453,7 +1453,7 @@ function DiscoveryRail() {
                     className="lb-card flex items-center gap-2 rounded-lg px-1 py-1.5 hover:bg-white/5"
                   >
                     <span className="w-4 text-[11px] font-bold text-zinc-600">{i + 1}</span>
-                    <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">#{t.tag}</span>
+                    <span className="lb-entity lb-entity-hashtag min-w-0 flex-1 truncate text-xs font-semibold">#{t.tag}</span>
                     <span className="text-[10px] text-zinc-500">{t.count} pub.</span>
                   </Link>
                 </li>

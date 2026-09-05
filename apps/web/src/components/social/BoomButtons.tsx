@@ -6,12 +6,13 @@ type Props = {
   count: number;
   onToggle: () => void;
   onShowWho?: () => void;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xs';
   showCount?: boolean;
   className?: string;
 };
 
 const SIZES = {
+  xs: 'h-6 w-6',
   sm: 'h-7 w-7',
   md: 'h-8 w-8',
   lg: 'h-11 w-11',

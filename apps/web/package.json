@@ -10,6 +10,7 @@
     "split-boom-emojis": "node scripts/split-boom-emojis.mjs",
     "split-blast-packs": "node scripts/split-blast-packs.mjs",
     "rebuild-emojis": "node scripts/split-emojis.mjs && node scripts/split-boom-emojis.mjs",
+    "sync-emoticones": "node ./scripts/sync-emoticones.mjs",
     "rebuild-level-badges": "node scripts/matte-level-badges.mjs",
     "preview": "vite preview",
     "lint": "tsc --noEmit"

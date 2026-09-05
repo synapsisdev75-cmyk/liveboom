@@ -1,9 +1,25 @@
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 
+function livekitMissing() {
+  const missing = [];
+  if (!String(process.env.LIVEKIT_URL || '').trim()) missing.push('LIVEKIT_URL');
+  if (!String(process.env.LIVEKIT_API_KEY || '').trim()) missing.push('LIVEKIT_API_KEY');
+  if (!String(process.env.LIVEKIT_API_SECRET || '').trim()) missing.push('LIVEKIT_API_SECRET');
+  return missing;
+}
+
 function livekitEnabled() {
-  return Boolean(
-    process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET,
-  );
+  return livekitMissing().length === 0;
+}
+
+function livekitConfigError() {
+  const missing = livekitMissing();
+  return {
+    error: 'LiveKit no está configurado en el API',
+    code: 'LIVEKIT_NOT_CONFIGURED',
+    stage: 'config',
+    missing,
+  };
 }
 
 function livekitHttpHost() {
@@ -66,6 +82,8 @@ async function listActiveLiveRooms() {
 
 module.exports = {
   livekitEnabled,
+  livekitMissing,
+  livekitConfigError,
   createLivekitToken,
   listActiveLiveRooms,
   livekitHttpHost,

@@ -319,6 +319,24 @@ service cloud.firestore {
           resource.data.authorUid == request.auth.uid
           || loadedPost().authorUid == request.auth.uid
         );
+
+        match /booms/{boomUid} {
+          allow read: if canReadLoadedPost();
+          allow create, update: if signedIn()
+            && request.auth.uid == boomUid
+            && canReadLoadedPost()
+            && request.resource.data.boom == true;
+          allow delete: if signedIn() && request.auth.uid == boomUid;
+        }
+
+        match /reactions/{reactorId} {
+          allow read: if canReadLoadedPost();
+          allow create, update: if signedIn()
+            && request.auth.uid == reactorId
+            && canReadLoadedPost()
+            && request.resource.data.type in ['like', 'dislike'];
+          allow delete: if signedIn() && request.auth.uid == reactorId;
+        }
       }
     }
 
@@ -493,6 +511,24 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if signedIn();
       allow delete: if signedIn();
+    }
+
+    /** Boom de comentarios: independiente de posts/{postId}/reactions. UNIQUE por commentId + userId. */
+    match /commentBooms/{commentId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
+
+      match /users/{userId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.commentId == commentId;
+        allow update: if false;
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && resource.data.userId == request.auth.uid;
+      }
     }
 
     match /{document=**} {

@@ -1,4 +1,5 @@
-import { getDownloadURL, ref, updateMetadata, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref, updateMetadata, uploadBytes, uploadBytesResumable } from 'firebase/storage';
+import { mimeFromFileName } from './chatAttachments';
 import { storage } from './firebase';
 
 /** Peso máximo de fotos tras optimización. */
@@ -6,7 +7,7 @@ export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 /** Resolución máxima objetivo: 20 megapíxeles (ancho × alto). */
 export const MAX_IMAGE_MEGAPIXELS = 20;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
-const MAX_CHAT_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_CHAT_FILE_BYTES = 25 * 1024 * 1024;
 
 export type MediaVisibility = 'public' | 'friends' | 'private' | 'circle';
 
@@ -386,7 +387,7 @@ export async function uploadChatMedia(uid: string, file: Blob, name: string): Pr
   if (isImage) {
     payload = await prepareImageForUpload(file, 'La foto');
   } else if (file.size > MAX_CHAT_FILE_BYTES) {
-    throw new Error('El archivo debe pesar menos de 20 MB.');
+    throw new Error(`El archivo debe pesar menos de ${Math.round(MAX_CHAT_FILE_BYTES / (1024 * 1024))} MB.`);
   }
 
   void ensureUserStorageFolder(uid);
@@ -394,6 +395,117 @@ export async function uploadChatMedia(uid: string, file: Blob, name: string): Pr
   const objectRef = ref(storage, `${userStorageFolder(uid)}/chat/${Date.now()}_${safeName}`);
   await uploadBytes(objectRef, payload, { contentType: isImage ? payload.type || 'image/jpeg' : type });
   return getDownloadURL(objectRef);
+}
+
+export type ChatUploadResult = {
+  url: string;
+  storagePath: string;
+};
+
+function storageErrorCode(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: unknown }).code;
+    return typeof code === 'string' ? code : undefined;
+  }
+  return undefined;
+}
+
+/** Conserva la extensión real (.docx, .pdf) aunque el nombre tenga acentos o sea largo. */
+function chatObjectFileName(name: string): string {
+  const trimmed = name.trim() || 'archivo';
+  const dot = trimmed.lastIndexOf('.');
+  const ext =
+    dot > 0 ? trimmed.slice(dot).replace(/[^a-zA-Z0-9.]/g, '').slice(0, 8).toLowerCase() : '';
+  const stemSource = (dot > 0 ? trimmed.slice(0, dot) : trimmed)
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(0, 60);
+  const stem = stemSource || 'archivo';
+  return ext && ext !== '.' ? `${stem}${ext}` : stem;
+}
+
+function resolveChatUploadMime(name: string, file: Blob, mime?: string): string {
+  if (mime && mime !== 'application/octet-stream') return mime;
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  return mimeFromFileName(name) || mime || file.type || 'application/octet-stream';
+}
+
+async function uploadChatObject(
+  path: string,
+  file: Blob,
+  contentType: string,
+  onProgress?: (pct: number) => void,
+): Promise<ChatUploadResult> {
+  const objectRef = ref(storage, path);
+  if (onProgress) {
+    const task = uploadBytesResumable(objectRef, file, { contentType });
+    await new Promise<void>((resolve, reject) => {
+      task.on(
+        'state_changed',
+        (snap) => {
+          const total = snap.totalBytes || file.size || 1;
+          onProgress(Math.min(100, Math.round((snap.bytesTransferred / total) * 100)));
+        },
+        reject,
+        () => resolve(),
+      );
+    });
+  } else {
+    await uploadBytes(objectRef, file, { contentType });
+  }
+  const url = await getDownloadURL(objectRef);
+  return { url, storagePath: path };
+}
+
+/** Adjunto genérico de chat (documentos + media). No altera uploadChatMedia. */
+export async function uploadChatAttachment(
+  uid: string,
+  file: Blob,
+  name: string,
+  mime?: string,
+  opts?: {
+    chatId?: string | null;
+    onProgress?: (pct: number) => void;
+  },
+): Promise<ChatUploadResult> {
+  const type = resolveChatUploadMime(name, file, mime);
+  if (file.size > MAX_CHAT_FILE_BYTES) {
+    throw new Error(`El archivo supera el límite de ${Math.round(MAX_CHAT_FILE_BYTES / (1024 * 1024))} MB.`);
+  }
+  const safeName = chatObjectFileName(name);
+  const fileId = `${Date.now()}_${safeName}`;
+  const conversationId = opts?.chatId || '';
+
+  const tryUserFolder = async () => {
+    void ensureUserStorageFolder(uid);
+    return uploadChatObject(
+      `${userStorageFolder(uid)}/chat/${fileId}`,
+      file,
+      type,
+      opts?.onProgress,
+    );
+  };
+
+  if (conversationId) {
+    try {
+      return await uploadChatObject(
+        `chats/${conversationId}/files/${fileId}`,
+        file,
+        type,
+        opts?.onProgress,
+      );
+    } catch (err) {
+      const code = storageErrorCode(err);
+      console.error('[ChatUpload ERROR]', {
+        conversationId,
+        stage: 'upload-conversation',
+        code,
+      });
+      if (code !== 'storage/unauthorized') throw err;
+      return tryUserFolder();
+    }
+  }
+
+  return tryUserFolder();
 }
 
 /** Portada / foto del grupo (sube bajo users/{uid}/groups — permiso fiable). */

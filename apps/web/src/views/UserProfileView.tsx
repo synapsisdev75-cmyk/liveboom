@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { Ban, LogOut, MessageCircle, Share2 } from 'lucide-react';
+import { Ban, LogOut, MessageCircle, Plus, Share2 } from 'lucide-react';
 import { ActivityHistory } from '../components/live/ActivityHistory';
 import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { CreatePostModal } from '../components/social/CreatePostModal';
@@ -34,7 +34,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
 import type { PublicFsUser } from '../lib/profileFirestore';
-import { isBoomClipPost, isPublicationPost } from '../lib/contentType';
+import { isBoomClipPost, isPublicationPost, canEditOwnedPublication } from '../lib/contentType';
 import { isStoryPost } from '../lib/storyLifecycle';
 import { BOOM_CLIP_LABEL } from '../lib/brand';
 
@@ -91,7 +91,7 @@ function postToReel(post: SocialPost): ReelFeedItem {
 
 export function UserProfileView() {
   const { username: usernameParam } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const username = usernameParam
     ? decodeURIComponent(usernameParam).trim().replace(/^@/, '')
     : '';
@@ -115,6 +115,8 @@ export function UserProfileView() {
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [expandVideoId, setExpandVideoId] = useState<string | null>(postHint || null);
   const [expandPhotoId, setExpandPhotoId] = useState<string | null>(postHint || null);
+  const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
+  const [createOpen, setCreateOpen] = useState(autoOpenCreate);
   const [feedTab, setFeedTab] = useState<'posts' | 'clips' | 'photos'>('posts');
   const highlightPostRef = useRef<HTMLDivElement | null>(null);
   const setToast = useUiStore((s) => s.setToast);
@@ -173,6 +175,23 @@ export function UserProfileView() {
     setExpandVideoId(postId);
     setExpandPhotoId(postId);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (autoOpenCreate) setCreateOpen(true);
+  }, [autoOpenCreate]);
+
+  function closeCreateModal() {
+    setCreateOpen(false);
+    if (!crearParam) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('crear');
+        return next;
+      },
+      { replace: true },
+    );
+  }
 
   useEffect(() => {
     if (!postHint) return;
@@ -311,6 +330,7 @@ export function UserProfileView() {
             type: item.type,
             caption: item.caption,
             mediaUrl: item.mediaUrl,
+            mediaUrls: item.mediaUrls,
             visibility: item.visibility,
             createdAt: item.createdAt,
             likes: item.likes,
@@ -323,6 +343,8 @@ export function UserProfileView() {
             sharedFromAuthorUid: item.sharedFromAuthorUid,
             sharedFromUsername: item.sharedFromUsername,
             overlays: item.overlays,
+            edited: item.edited,
+            updatedAt: item.updatedAt,
           })),
         );
       },
@@ -530,6 +552,18 @@ export function UserProfileView() {
                     Compartir perfil
                   </button>
                   <LogoutProfileButton />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingPost(null);
+                      setCreateOpen(true);
+                    }}
+                    className="lb-new-post-btn"
+                  >
+                    <span className="lb-new-post-btn__shine" aria-hidden />
+                    <Plus size={14} strokeWidth={2.75} />
+                    <span>Nueva publicación</span>
+                  </button>
                 </>
               ) : publicProfile.friendshipStatus === 'blocked' ? (
                 <button
@@ -652,15 +686,16 @@ export function UserProfileView() {
       ) : null}
 
       <section className="lb-panel rounded-3xl p-4 sm:p-6">
-        {publicProfile.isOwnProfile ? (
+        {createOpen && profile && publicProfile.isOwnProfile ? (
           <CreatePostModal
-            variant="inline"
+            username={profile.handle || publicProfile.username}
+            autoOpen
             hideTrigger
-            username={publicProfile.username}
-            autoOpen={autoOpenCreate}
             defaultVideoMode={defaultVideoMode}
             defaultKind={defaultCreateKind}
+            onClose={closeCreateModal}
             onCreated={(post) => {
+              closeCreateModal();
               setLibraryError(null);
               setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
               const isClip = isBoomClipPost({
@@ -677,6 +712,22 @@ export function UserProfileView() {
               setToast('Publicación lista', 'success');
               if (post.type === 'video') setExpandVideoId(post.id);
               if (post.type === 'photo') setExpandPhotoId(post.id);
+            }}
+          />
+        ) : null}
+        {editingPost && profile ? (
+          <CreatePostModal
+            mode="edit"
+            editPost={editingPost}
+            username={profile.handle || publicProfile.username}
+            autoOpen
+            hideTrigger
+            onClose={() => setEditingPost(null)}
+            onUpdated={(post) => {
+              setLibraryError(null);
+              setPosts((current) => current.map((item) => (item.id === post.id ? { ...item, ...post } : item)));
+              setEditingPost(null);
+              setToast('Cambios guardados', 'success');
             }}
           />
         ) : null}
@@ -726,6 +777,7 @@ export function UserProfileView() {
                   post={post}
                   canDelete={publicProfile.isOwnProfile}
                   canChangeVisibility={publicProfile.isOwnProfile}
+                  canEdit={canEditOwnedPublication(post, profile?.firebaseUid)}
                   startVideoExpanded={expandVideoId === post.id}
                   onCloseVideoExpand={() => setExpandVideoId(null)}
                   onVideoExpand={
@@ -736,6 +788,10 @@ export function UserProfileView() {
                   startPhotoExpanded={expandPhotoId === post.id}
                   onClosePhotoExpand={() => setExpandPhotoId(null)}
                   onDelete={() => void deletePost(post.id)}
+                  onEdit={() => {
+                    setCreateOpen(false);
+                    setEditingPost(post);
+                  }}
                   onChangeVisibility={(visibility) => {
                     if (!profile) return;
                     void updatePostVisibility(post.id, profile.firebaseUid, visibility)

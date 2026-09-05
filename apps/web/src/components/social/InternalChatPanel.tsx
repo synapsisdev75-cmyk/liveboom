@@ -4,6 +4,8 @@ import {
   Camera,
   Check,
   CheckCheck,
+  FileText,
+  Gift,
   Image as ImageIcon,
   Info,
   MessageCircle,
@@ -20,20 +22,44 @@ import {
   Send,
   Trash2,
   Video,
+  X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { EmojiPickerButton } from './EmojiPicker';
 import { VideoNoteBubble, VideoNoteCapture } from './ChatVideoNote';
+import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
+import { ChatVoiceRecorderBar } from './ChatVoiceRecorderBar';
 import { EmojiInput } from './EmojiInput';
 import { EmojiText } from './EmojiText';
+import { GifPickerSheet } from './GifPickerSheet';
 import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
 import { api } from '../../lib/api';
-import { listenMyGroups, type LiveGroup } from '../../lib/groupsFirestore';
-import { uploadChatMedia } from '../../lib/storage';
+import { ensureCallMediaPermission } from '../../lib/callMedia';
 import {
-  callRoomName,
+  CHAT_FILE_ACCEPT,
+  formatChatFileSize,
+  isAnimatedChatGif,
+  previewChatAttachment,
+  type ChatAttachmentPreview,
+} from '../../lib/chatAttachments';
+import { listenMyGroups, type LiveGroup } from '../../lib/groupsFirestore';
+import { uploadChatAttachment, uploadChatMedia } from '../../lib/storage';
+import type { ComposerGif } from '../../lib/composerGifs';
+import {
+  openRechargeCoins,
+  sendPrivateGift,
+  validateCoinsBalance,
+} from '../../lib/giftsFirestore';
+import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
+import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
+import { FloatingGift, GiftVisual } from '../live/FloatingGift';
+import { GiftBoxStrip } from '../live/GiftBoxStrip';
+import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
+import { CoinModal } from '../wallet/CoinModal';
+import {
   deleteChatMessageForEveryone,
   deleteChatMessageForMe,
   deleteConversation,
@@ -53,8 +79,12 @@ import {
   type FriendChip,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
-import { useCallStore } from '../../store/callStore';
+import { formatCallClock, useCallElapsed, useCallStore } from '../../store/callStore';
 import { profileHref } from '../../lib/profileFirestore';
+import { canCallFromFriends, canCallUser } from '../../lib/canCallUser';
+import { createCall, formatCallApiError } from '../../lib/liveKitCallService';
+import { StickerPickerSheet } from './StickerPickerSheet';
+import type { ComposerSticker } from '../../lib/composerStickers';
 
 type Props = {
   compact?: boolean;
@@ -191,6 +221,134 @@ function CallEventBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+function ChatAttachMenu({
+  open,
+  anchorRef,
+  onClose,
+  onGallery,
+  onCamera,
+  onVideoNote,
+  onFile,
+}: {
+  open: boolean;
+  anchorRef: RefObject<HTMLElement | null>;
+  onClose: () => void;
+  onGallery: () => void;
+  onCamera: () => void;
+  onVideoNote: () => void;
+  onFile: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, ready: false });
+
+  const place = useCallback(() => {
+    const btn = anchorRef.current;
+    const menu = menuRef.current;
+    if (!btn || !menu) return;
+    const rect = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    const pad = 8;
+    const gap = 10;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = rect.left;
+    if (left + mw > vw - pad) left = vw - pad - mw;
+    if (left < pad) left = pad;
+
+    let top = rect.top - gap - mh;
+    if (top < pad) top = pad;
+    if (top + mh > vh - pad) top = Math.max(pad, vh - pad - mh);
+
+    setPos({ top, left, ready: true });
+  }, [anchorRef]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos((current) => (current.ready ? { ...current, ready: false } : current));
+      return;
+    }
+    place();
+  }, [open, place]);
+
+  useEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    menu?.focus();
+    const onReposition = () => place();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onClose();
+        anchorRef.current?.focus();
+      }
+    };
+    const onDoc = (event: MouseEvent) => {
+      const node = event.target as Node;
+      if (menuRef.current?.contains(node) || anchorRef.current?.contains(node)) return;
+      onClose();
+    };
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    window.addEventListener('orientationchange', onReposition);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDoc);
+    return () => {
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+      window.removeEventListener('orientationchange', onReposition);
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDoc);
+    };
+  }, [open, place, onClose, anchorRef]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  const pick = (action: () => void) => {
+    action();
+    onClose();
+  };
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      id="lb-chat-attach-menu"
+      role="menu"
+      tabIndex={-1}
+      aria-label="Adjuntar"
+      className="lb-chat-attach-menu"
+      style={{ top: pos.top, left: pos.left, visibility: pos.ready ? 'visible' : 'hidden' }}
+    >
+      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onGallery)}>
+        <span className="lb-chat-attach-ico is-gallery">
+          <ImageIcon size={16} />
+        </span>
+        Galería
+      </button>
+      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onCamera)}>
+        <span className="lb-chat-attach-ico is-camera">
+          <Camera size={16} />
+        </span>
+        Abrir cámara
+      </button>
+      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onVideoNote)}>
+        <span className="lb-chat-attach-ico is-video">
+          <Video size={16} />
+        </span>
+        Nota de video
+      </button>
+      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onFile)}>
+        <span className="lb-chat-attach-ico is-file">
+          <FileText size={16} />
+        </span>
+        Adjuntar archivo
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 function formatListTime(iso: string | null) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -287,6 +445,7 @@ function Avatar({
 export function InternalChatPanel({ compact = false, page = false, fullscreen = false }: Props) {
   const isPage = page || fullscreen;
   const profile = useAuthStore((state) => state.profile);
+  const setCoins = useAuthStore((state) => state.setCoins);
   const [searchParams, setSearchParams] = useSearchParams();
   const [friends, setFriends] = useState<FriendChip[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -303,11 +462,31 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [pendingImage, setPendingImage] = useState<{ file: File; url: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [videoNoteOpen, setVideoNoteOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [fileUpload, setFileUpload] = useState<{
+    stage: 'preparing' | 'uploading' | 'sent' | 'error';
+    pct: number;
+  } | null>(null);
   const callStatus = useCallStore((state) => state.status);
   const callChatId = useCallStore((state) => state.chatId);
   const beginOutgoing = useCallStore((state) => state.beginOutgoing);
   const hangup = useCallStore((state) => state.hangup);
+  const callElapsed = useCallElapsed();
   const [recording, setRecording] = useState(false);
+  const [recordElapsed, setRecordElapsed] = useState(0);
+  const [recordLevels, setRecordLevels] = useState<number[]>(() => Array(18).fill(0.18));
+  const [pendingFile, setPendingFile] = useState<ChatAttachmentPreview | null>(null);
+  const [gifOpen, setGifOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const [giftsOpen, setGiftsOpen] = useState(false);
+  const [sendingGift, setSendingGift] = useState<string | null>(null);
+  const [giftError, setGiftError] = useState<string | null>(null);
+  const [rechargeNeeded, setRechargeNeeded] = useState<number | null>(null);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [giftFloats, setGiftFloats] = useState<
+    Array<{ id: string; giftId: string; left: number; senderName?: string }>
+  >([]);
+  const [mediaViewer, setMediaViewer] = useState<{ url: string; gif?: boolean } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [listTab, setListTab] = useState<ListTab>('todos');
@@ -319,10 +498,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastMsgCount = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const attachWrapRef = useRef<HTMLDivElement>(null);
+  const attachFileRef = useRef<HTMLInputElement>(null);
+  const attachBtnRef = useRef<HTMLButtonElement>(null);
+  const giftTriggerRef = useRef<HTMLButtonElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordCtxRef = useRef<AudioContext | null>(null);
+  const recordRafRef = useRef(0);
+  const recordTimerRef = useRef(0);
+  const recordCancelRef = useRef(false);
+  const seenGiftAnimRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!profile) return;
@@ -401,6 +587,9 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       });
   }, [friends, conversations]);
 
+  const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
+  const coins = profile?.coinsBalance ?? 0;
+
   const totalUnread = useMemo(
     () => conversations.reduce((sum, chat) => sum + (chat.unread || 0), 0),
     [conversations],
@@ -431,6 +620,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   const activeFriend = people.find((item) => item.uid === activeUid) || null;
   const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
+  const mayCall = Boolean(activeFriend && canCallFromFriends(friends, activeFriend.uid));
 
   useEffect(() => {
     if (!activeFriend?.uid) {
@@ -502,20 +692,73 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }, [messages, activeUid]);
 
   useEffect(() => {
-    if (!attachOpen) return;
-    function onDoc(event: MouseEvent) {
-      if (!attachWrapRef.current?.contains(event.target as Node)) setAttachOpen(false);
+    function openGiftsFromCall() {
+      setGiftsOpen(true);
     }
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [attachOpen]);
+    function openGifFromCall() {
+      setGifOpen(true);
+    }
+    function openStickersFromCall() {
+      setStickerOpen(true);
+    }
+    window.addEventListener('liveboom:open-chat-gifts', openGiftsFromCall);
+    window.addEventListener('liveboom:open-chat-gif', openGifFromCall);
+    window.addEventListener('liveboom:open-chat-stickers', openStickersFromCall);
+    return () => {
+      window.removeEventListener('liveboom:open-chat-gifts', openGiftsFromCall);
+      window.removeEventListener('liveboom:open-chat-gif', openGifFromCall);
+      window.removeEventListener('liveboom:open-chat-stickers', openStickersFromCall);
+    };
+  }, []);
+
+  useEffect(() => {
+    setAttachOpen(false);
+  }, [activeUid, recording]);
+
+  useEffect(() => {
+    return () => {
+      recordCancelRef.current = true;
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        recorderRef.current.stop();
+      }
+      stopVoiceMeter();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUid]);
+
+  const giftSeededRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!chatId) {
+      giftSeededRef.current = null;
+      seenGiftAnimRef.current.clear();
+      return;
+    }
+    if (giftSeededRef.current !== chatId) {
+      if (messages.length === 0) return;
+      giftSeededRef.current = chatId;
+      messages.forEach((message) => {
+        if (message.giftId) seenGiftAnimRef.current.add(message.id);
+      });
+      return;
+    }
+    for (const message of messages) {
+      if (!message.giftId || message.mine || seenGiftAnimRef.current.has(message.id)) continue;
+      seenGiftAnimRef.current.add(message.id);
+      animateGiftInChat(message.giftId);
+    }
+  }, [chatId, messages]);
 
   async function send(
     text: string,
     extras?: {
       mediaUrl?: string | null;
-      mediaType?: 'image' | 'audio' | 'video' | 'file' | null;
+      mediaType?: 'image' | 'audio' | 'video' | 'file' | 'gif' | null;
       linkUrl?: string | null;
+      fileName?: string | null;
+      fileSize?: number | null;
+      mimeType?: string | null;
+      storagePath?: string | null;
+      giftId?: string | null;
     },
   ) {
     if (!profile || !activeFriend || busy) return;
@@ -563,6 +806,188 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       setError(err instanceof Error ? err.message : 'No se pudo subir');
     } finally {
       setBusy(false);
+    }
+  }
+
+  function onPickAttachment(file: File | null) {
+    if (!file) return;
+    const preview = previewChatAttachment(file);
+    if ('error' in preview) {
+      setError(preview.error);
+      return;
+    }
+    setError(null);
+    setFileUpload(null);
+    if (preview.kind === 'image') {
+      if (pendingImage) URL.revokeObjectURL(pendingImage.url);
+      if (preview.previewUrl) URL.revokeObjectURL(preview.previewUrl);
+      setPendingImage({ file: preview.file, url: URL.createObjectURL(preview.file) });
+      setPendingFile(null);
+      return;
+    }
+    if (pendingFile?.previewUrl) URL.revokeObjectURL(pendingFile.previewUrl);
+    setPendingFile(preview);
+  }
+
+  function removePendingFile() {
+    if (pendingFile?.previewUrl) URL.revokeObjectURL(pendingFile.previewUrl);
+    setPendingFile(null);
+    setFileUpload(null);
+  }
+
+  async function confirmPendingFile() {
+    if (!pendingFile || !profile || !activeFriend) return;
+    let conversationId = chatId || '';
+    let stage = 'validate';
+    setBusy(true);
+    setError(null);
+    setFileUpload({ stage: 'preparing', pct: 0 });
+    try {
+      console.info('[ChatUpload] validating conversation', { conversationId: conversationId || null });
+      stage = 'ensure-chat';
+      conversationId = await ensureChat(
+        {
+          firebaseUid: profile.firebaseUid,
+          handle: profile.handle,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+        },
+        activeFriend,
+      );
+      if (conversationId && conversationId !== chatId) setChatId(conversationId);
+
+      stage = 'upload';
+      console.info('[ChatUpload] uploading', { conversationId });
+      setFileUpload({ stage: 'uploading', pct: 0 });
+      const uploaded = await uploadChatAttachment(
+        profile.firebaseUid,
+        pendingFile.file,
+        pendingFile.name,
+        pendingFile.mime,
+        {
+          chatId: conversationId,
+          onProgress: (pct) => setFileUpload({ stage: 'uploading', pct }),
+        },
+      );
+      console.info('[ChatUpload] upload complete', { conversationId });
+      console.info('[ChatUpload] download URL created', { conversationId });
+
+      stage = 'save-message';
+      setFileUpload({ stage: 'sent', pct: 100 });
+      const mediaType = pendingFile.kind;
+      const label =
+        mediaType === 'audio'
+          ? '🎤 Audio'
+          : mediaType === 'video'
+            ? '🎬 Video'
+            : `📎 ${pendingFile.name}`;
+      await sendChatMessage(
+        {
+          firebaseUid: profile.firebaseUid,
+          handle: profile.handle,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+        },
+        activeFriend,
+        label,
+        {
+          mediaUrl: uploaded.url,
+          mediaType,
+          fileName: pendingFile.name,
+          fileSize: pendingFile.size,
+          mimeType: pendingFile.mime,
+          storagePath: uploaded.storagePath,
+        },
+      );
+      playMessagePop();
+      console.info('[ChatUpload] message saved', { conversationId });
+      removePendingFile();
+      setFileUpload(null);
+    } catch (err) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code?: unknown }).code || '')
+          : '';
+      console.error('[ChatUpload ERROR]', {
+        conversationId: conversationId || null,
+        stage,
+        code: code || undefined,
+      });
+      setFileUpload((current) => ({ stage: 'error', pct: current?.pct || 0 }));
+      const raw = err instanceof Error ? err.message : 'No se pudo enviar el archivo. Reintentar';
+      setError(
+        /storage\/unauthorized/i.test(raw) || code === 'storage/unauthorized'
+          ? `${raw}\nNo se pudo enviar el archivo. Reintentar`
+          : raw,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendGifMessage(gif: ComposerGif) {
+    setGifOpen(false);
+    await send('GIF', { mediaUrl: gif.url, mediaType: 'gif' });
+  }
+
+  async function sendStickerMessage(sticker: ComposerSticker) {
+    setStickerOpen(false);
+    if (sticker.kind === 'text' && sticker.text) {
+      await send(sticker.text);
+      return;
+    }
+    if (sticker.src) {
+      await send(sticker.label || 'Sticker', { mediaUrl: sticker.src, mediaType: 'image' });
+    }
+  }
+
+  function animateGiftInChat(giftId: string, senderName?: string) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setGiftFloats((current) => [
+      ...current.slice(-2),
+      { id, giftId, left: 22 + Math.random() * 56, senderName },
+    ]);
+  }
+
+  async function sendGiftMessage(giftId: string) {
+    if (sendingGift || !profile || !activeFriend) return;
+    const catalog = findLiveGift(giftId);
+    if (!catalog) {
+      setGiftError('Regalo no válido');
+      return;
+    }
+    const coins = profile.coinsBalance ?? 0;
+    if (!validateCoinsBalance(coins, catalog.coins)) {
+      setGiftError('No tienes Coins suficientes');
+      setRechargeNeeded(catalog.coins);
+      return;
+    }
+    setGiftError(null);
+    setRechargeNeeded(null);
+    setSendingGift(giftId);
+    const senderName = profile.displayName || profile.handle || 'Liveboomer';
+    try {
+      const result = await sendPrivateGift({
+        giftId: catalog.id,
+        senderUid: profile.firebaseUid,
+        senderName,
+        senderBalance: coins,
+        recipientUsername: activeFriend.username,
+        recipientUid: activeFriend.uid,
+        clientId: `chat-${chatId || activeFriend.uid}-${Date.now()}`,
+        roomName: `chat:${activeFriend.username}`,
+      });
+      setCoins(result.senderBalance);
+      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
+      await send(`🎁 ${catalog.name}`, { giftId: catalog.id });
+      animateGiftInChat(catalog.id, senderName);
+      setGiftsOpen(false);
+    } catch (err) {
+      setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
+      setGiftsOpen(true);
+    } finally {
+      setSendingGift(null);
     }
   }
 
@@ -651,11 +1076,24 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     return <Check size={12} className="text-white/50" aria-label="Enviado" />;
   }
 
-  async function toggleVoice() {
-    if (recording) {
-      recorderRef.current?.stop();
-      return;
+  function stopVoiceMeter() {
+    if (recordRafRef.current) {
+      cancelAnimationFrame(recordRafRef.current);
+      recordRafRef.current = 0;
     }
+    if (recordTimerRef.current) {
+      window.clearInterval(recordTimerRef.current);
+      recordTimerRef.current = 0;
+    }
+    recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordStreamRef.current = null;
+    const ctx = recordCtxRef.current;
+    recordCtxRef.current = null;
+    if (ctx && ctx.state !== 'closed') void ctx.close();
+  }
+
+  async function startAudioRecording() {
+    if (recording || draft.trim()) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported('audio/mp4')
@@ -670,12 +1108,18 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         : new MediaRecorder(stream);
       const usedType = recorder.mimeType || mimeType || 'audio/webm';
       chunksRef.current = [];
+      recordCancelRef.current = false;
+      recordStreamRef.current = stream;
       recorder.ondataavailable = (event) => {
         if (event.data.size) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
-        stream.getTracks().forEach((track) => track.stop());
+        stopVoiceMeter();
         setRecording(false);
+        setRecordElapsed(0);
+        setRecordLevels(Array(18).fill(0.18));
+        recorderRef.current = null;
+        if (recordCancelRef.current) return;
         const blob = new Blob(chunksRef.current, { type: usedType });
         if (blob.size < 200) {
           setError('Audio demasiado corto');
@@ -686,18 +1130,87 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         void onPickFile(file, 'audio');
       };
       recorderRef.current = recorder;
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.55;
+      source.connect(analyser);
+      recordCtxRef.current = audioCtx;
+      const bins = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(bins);
+        const step = Math.max(1, Math.floor(bins.length / 18));
+        const next: number[] = [];
+        for (let i = 0; i < 18; i += 1) {
+          let sum = 0;
+          for (let j = 0; j < step; j += 1) sum += bins[i * step + j] || 0;
+          next.push(Math.min(1, sum / (step * 180)));
+        }
+        setRecordLevels(next);
+        recordRafRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+      setRecordElapsed(0);
+      const started = Date.now();
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordElapsed((Date.now() - started) / 1000);
+      }, 200);
       recorder.start(250);
       setRecording(true);
+      setError(null);
     } catch (err) {
+      stopVoiceMeter();
       setError(err instanceof Error ? err.message : 'No se pudo grabar audio');
     }
   }
 
+  function cancelAudioRecording() {
+    recordCancelRef.current = true;
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+      return;
+    }
+    stopVoiceMeter();
+    setRecording(false);
+  }
+
+  function stopAudioRecording() {
+    recordCancelRef.current = false;
+    recorderRef.current?.stop();
+  }
+
+  async function toggleVoice() {
+    if (recording) {
+      stopAudioRecording();
+      return;
+    }
+    await startAudioRecording();
+  }
+
   async function startCall(withVideo = false) {
     if (!chatId || !activeFriend || !profile) return;
+    let allowed = canCallFromFriends(friends, activeFriend.uid);
+    if (!allowed) {
+      try {
+        allowed = await canCallUser(profile.firebaseUid, activeFriend.uid);
+      } catch {
+        allowed = false;
+      }
+    }
+    if (!allowed) {
+      setError('Las llamadas están disponibles solo entre amigos.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
+      const session = await createCall(activeFriend.uid, withVideo ? 'video' : 'audio');
+      const denied = await ensureCallMediaPermission(withVideo);
+      if (denied) {
+        setError(denied);
+        return;
+      }
       const callId = await startPrivateCall(
         chatId,
         {
@@ -708,9 +1221,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         },
         activeFriend,
         withVideo,
-      );
-      const session = await api<{ token: string; serverUrl: string }>(
-        `/api/stream/token/${encodeURIComponent(callRoomName(chatId))}`,
+        session.callId,
       );
       beginOutgoing({
         chatId,
@@ -722,7 +1233,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       });
     } catch (err) {
       await endPrivateCall(chatId).catch(() => undefined);
-      setError(err instanceof Error ? err.message : 'No se pudo iniciar la llamada');
+      setError(formatCallApiError(err));
     } finally {
       setBusy(false);
     }
@@ -929,6 +1440,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             {filteredPeople.map((friend) => {
               const isLive = liveHandles.has(friend.username.toLowerCase());
               const active = activeUid === friend.uid;
+              const rowInCall = Boolean(friend.chatId && callChatId === friend.chatId && callStatus !== 'idle');
+              const rowLive = rowInCall && callStatus === 'active';
               return (
                 <li key={friend.uid}>
                   <button
@@ -950,13 +1463,22 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                           {friend.displayName || friend.username}
                         </span>
                         <BadgeCheck size={14} className="shrink-0 fill-violet-500 text-violet-500" />
+                        {rowInCall ? <Phone size={12} className="shrink-0 text-cyan-300" /> : null}
                       </span>
                       <span
                         className={`mt-0.5 block truncate text-xs ${
-                          friend.unread > 0 ? 'font-medium text-zinc-300' : 'text-zinc-500'
+                          rowInCall
+                            ? 'font-semibold text-cyan-300'
+                            : friend.unread > 0
+                              ? 'font-medium text-zinc-300'
+                              : 'text-zinc-500'
                         }`}
                       >
-                        {friend.lastMessage || `@${friend.username}`}
+                        {rowLive
+                          ? `En llamada · ${formatCallClock(callElapsed)}`
+                          : rowInCall
+                            ? 'Llamando...'
+                            : friend.lastMessage || `@${friend.username}`}
                       </span>
                     </span>
                     <span className="flex shrink-0 flex-col items-end gap-1">
@@ -1029,8 +1551,24 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 <BadgeCheck size={15} className="shrink-0 fill-violet-500 text-violet-500" />
               </span>
               <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
-                <span className={online ? 'text-emerald-400' : 'text-zinc-500'}>
-                  {online ? 'En línea' : 'Desconectado'}
+                <span
+                  className={
+                    inThisCall && callStatus === 'active'
+                      ? 'font-semibold text-cyan-300'
+                      : inThisCall
+                        ? 'font-semibold text-cyan-200'
+                        : online
+                          ? 'text-emerald-400'
+                          : 'text-zinc-500'
+                  }
+                >
+                  {inThisCall && callStatus === 'active'
+                    ? `En llamada · ${formatCallClock(callElapsed)}`
+                    : inThisCall
+                      ? 'Llamando...'
+                      : online
+                        ? 'En línea'
+                        : 'Desconectado'}
                 </span>
                 <span className="rounded-md bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold text-violet-300">
                   Creador/a
@@ -1048,26 +1586,28 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 <PhoneOff size={14} /> Colgar
               </button>
             ) : (
-              <>
+              <div className="lb-call-header-actions">
                 <button
                   type="button"
                   disabled={busy || callStatus !== 'idle'}
                   onClick={() => void startCall(true)}
-                  className="grid h-9 w-9 place-items-center rounded-lg text-zinc-300 hover:bg-white/5"
+                  className={`lb-call-header-btn lb-call-header-btn--video${mayCall ? '' : ' is-locked'}`}
                   aria-label="Videollamada"
+                  title={mayCall ? 'Videollamada' : 'Las llamadas están disponibles solo entre amigos.'}
                 >
-                  <Video size={18} />
+                  <Video size={16} />
                 </button>
                 <button
                   type="button"
                   disabled={busy || callStatus !== 'idle'}
                   onClick={() => void startCall(false)}
-                  className="grid h-9 w-9 place-items-center rounded-lg text-zinc-300 hover:bg-white/5"
-                  aria-label="Llamar"
+                  className={`lb-call-header-btn lb-call-header-btn--voice${mayCall ? '' : ' is-locked'}`}
+                  aria-label="Llamada"
+                  title={mayCall ? 'Llamada' : 'Las llamadas están disponibles solo entre amigos.'}
                 >
-                  <Phone size={18} />
+                  <Phone size={16} />
                 </button>
-              </>
+              </div>
             )}
             <Link
               to={profileHref(activeFriend.username, activeFriend.uid)}
@@ -1088,6 +1628,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           </div>
         </div>
 
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <div id="lb-chat-call-host" className="lb-chat-call-host" />
         <div
           className="chat-scroll flex-1 space-y-3 overflow-y-auto px-4 py-4"
           style={{
@@ -1104,14 +1646,22 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
               const isCall = message.mediaType === 'call' || Boolean(message.callMeta);
               const isAudio = message.mediaType === 'audio' && Boolean(message.mediaUrl);
               const isVideo = message.mediaType === 'video' && Boolean(message.mediaUrl);
+              const isGif = isAnimatedChatGif(message.mediaUrl, message.mediaType);
+              const isFile = message.mediaType === 'file' && Boolean(message.mediaUrl);
+              const isGift = Boolean(message.giftId);
+              const giftItem = isGift ? findLiveGift(message.giftId) : null;
               const plainText =
                 !message.deleted &&
                 !isAudio &&
                 !isVideo &&
+                !isFile &&
+                !isGift &&
                 message.text &&
                 !/^🎤\s*Audio$/i.test(message.text.trim()) &&
                 !/^📷\s*Foto$/i.test(message.text.trim()) &&
-                !/^🎬\s*Nota de video$/i.test(message.text.trim());
+                !/^🎬\s*Nota de video$/i.test(message.text.trim()) &&
+                !/^GIF$/i.test(message.text.trim()) &&
+                !/^📎/.test(message.text.trim());
               return (
                 <div key={message.id}>
                   {showDay ? (
@@ -1182,14 +1732,54 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                             {isVideo && message.mediaUrl ? (
                               <VideoNoteBubble src={message.mediaUrl} mine={message.mine} />
                             ) : null}
-                            {message.mediaType === 'image' && message.mediaUrl ? (
-                              <a href={message.mediaUrl} target="_blank" rel="noreferrer">
+                            {message.mediaType === 'image' || isGif ? (
+                              message.mediaUrl ? (
+                              <button
+                                type="button"
+                                className="mb-1 block max-w-full"
+                                onClick={() =>
+                                  setMediaViewer({ url: message.mediaUrl!, gif: isGif })
+                                }
+                              >
                                 <img
                                   src={message.mediaUrl}
                                   alt=""
-                                  className="mb-1 max-h-48 rounded-lg object-cover"
+                                  className={`max-h-48 rounded-lg ${
+                                    isGif ? 'object-contain' : 'object-cover'
+                                  }`}
                                 />
+                              </button>
+                              ) : null
+                            ) : null}
+                            {isFile && message.mediaUrl ? (
+                              <a
+                                href={message.mediaUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mb-1 flex min-w-[12rem] items-center gap-2 rounded-xl bg-black/25 px-2.5 py-2"
+                              >
+                                <FileText size={18} className="shrink-0 text-cyan-300" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-xs font-semibold">
+                                    {message.fileName || 'Archivo'}
+                                  </span>
+                                  <span className="block text-[10px] opacity-70">
+                                    {message.fileSize ? formatChatFileSize(message.fileSize) : 'Documento'}
+                                  </span>
+                                  <span className="mt-0.5 block text-[10px] font-semibold text-cyan-300">
+                                    Abrir / descargar
+                                  </span>
+                                </span>
                               </a>
+                            ) : null}
+                            {isGift ? (
+                              <div className="mb-1 flex min-w-[9rem] flex-col items-center gap-1 py-1">
+                                <GiftVisual gift={giftItem} size={56} />
+                                <p className="text-xs font-semibold">{giftItem?.name || 'Regalo'}</p>
+                                {giftItem ? (
+                                  <p className="text-[10px] opacity-80">{giftItem.coins} coins</p>
+                                ) : null}
+                              </div>
                             ) : null}
                             {isAudio && message.mediaUrl ? (
                               <VoiceNotePlayer src={message.mediaUrl} mine={message.mine} />
@@ -1321,9 +1911,70 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 type="button"
                 disabled={busy}
                 onClick={() => void confirmPendingImage()}
-                className="rounded-lg bg-violet-500 px-3 py-1 text-xs font-bold text-white"
+                className="rounded-lg bg-violet-500 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
               >
-                Enviar foto
+                {busy ? 'Enviando...' : 'Enviar foto'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {pendingFile ? (
+          <div className="border-t border-white/[0.06] px-3 py-2">
+            <div className="flex items-center gap-2 rounded-xl border border-violet-400/20 bg-[#12131a] px-3 py-2">
+              {pendingFile.kind === 'video' && pendingFile.previewUrl ? (
+                <video
+                  src={pendingFile.previewUrl}
+                  className="h-14 w-14 shrink-0 rounded-lg object-contain bg-black"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <FileText size={18} className="shrink-0 text-cyan-300" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold text-white">{pendingFile.name}</p>
+                <p className="text-[10px] text-zinc-500">
+                  {formatChatFileSize(pendingFile.size)} · {pendingFile.kind === 'file' ? 'Archivo' : pendingFile.kind}
+                </p>
+                {fileUpload?.stage === 'preparing' ? (
+                  <p className="text-[10px] text-violet-300">Preparando...</p>
+                ) : null}
+                {fileUpload?.stage === 'uploading' ? (
+                  <p className="text-[10px] text-violet-300">Subiendo {fileUpload.pct}%</p>
+                ) : null}
+                {fileUpload?.stage === 'sent' ? (
+                  <p className="text-[10px] text-emerald-300">Enviado</p>
+                ) : null}
+                {fileUpload?.stage === 'error' ? (
+                  <p className="text-[10px] text-fuchsia-300">No se pudo enviar el archivo. Reintentar</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={removePendingFile}
+                disabled={busy && fileUpload?.stage !== 'error'}
+                className="grid h-11 w-11 place-items-center rounded-full text-zinc-500 hover:text-white disabled:opacity-40"
+                aria-label="Quitar archivo"
+              >
+                <X size={14} />
+              </button>
+              <button
+                type="button"
+                disabled={busy && fileUpload?.stage !== 'error'}
+                onClick={() => void confirmPendingFile()}
+                className="min-h-11 rounded-lg bg-violet-500 px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-40"
+              >
+                {fileUpload?.stage === 'preparing'
+                  ? 'Preparando...'
+                  : fileUpload?.stage === 'uploading'
+                    ? `Subiendo ${fileUpload.pct}%`
+                    : fileUpload?.stage === 'sent'
+                      ? 'Enviado'
+                      : fileUpload?.stage === 'error'
+                        ? 'Reintentar'
+                        : 'Enviar'}
               </button>
             </div>
           </div>
@@ -1332,7 +1983,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         {error ? <p className="px-4 text-[11px] text-fuchsia-300">{error}</p> : null}
 
         <div
-          className="flex shrink-0 items-center gap-2 border-t border-white/[0.06] px-3 py-2.5"
+          className="lb-chat-composer flex min-w-0 shrink-0 flex-wrap items-end gap-1.5 overflow-x-hidden border-t border-white/[0.06] px-3 py-2.5"
           style={{
             paddingBottom: isPage ? '0.65rem' : 'max(0.65rem, var(--lb-safe-bottom))',
           }}
@@ -1348,68 +1999,79 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             }}
           />
           <input
-            ref={cameraRef}
+            ref={attachFileRef}
             type="file"
-            accept="image/*"
-            capture="environment"
+            accept={CHAT_FILE_ACCEPT}
             className="hidden"
             onChange={(event) => {
-              void onPickFile(event.target.files?.[0] || null, 'image');
+              onPickAttachment(event.target.files?.[0] || null);
               event.target.value = '';
             }}
           />
-          <div ref={attachWrapRef} className="relative shrink-0">
+          {recording ? (
+            <ChatVoiceRecorderBar
+              elapsedSec={recordElapsed}
+              levels={recordLevels}
+              sending={busy}
+              onCancel={cancelAudioRecording}
+              onSend={stopAudioRecording}
+            />
+          ) : (
+            <>
+          <div className="flex shrink-0 items-center gap-0.5">
+          <div className="relative shrink-0">
             <button
+              ref={attachBtnRef}
               type="button"
               onClick={() => setAttachOpen((v) => !v)}
-              className={`grid h-10 w-10 place-items-center rounded-xl transition ${
-                attachOpen ? 'bg-white/10 text-cyan-300' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
-              }`}
+              className={`lb-chat-composer-btn ${attachOpen ? 'is-on' : ''}`}
               aria-label="Adjuntar"
+              aria-haspopup="menu"
               aria-expanded={attachOpen}
+              aria-controls="lb-chat-attach-menu"
             >
               <Paperclip size={18} />
             </button>
-            {attachOpen ? (
-              <div className="absolute bottom-full left-0 z-30 mb-2 w-44 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 py-1 shadow-2xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    fileRef.current?.click();
-                    setAttachOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-200 hover:bg-white/5"
-                >
-                  <ImageIcon size={16} className="text-violet-300" />
-                  Galería
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    cameraRef.current?.click();
-                    setAttachOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-200 hover:bg-white/5"
-                >
-                  <Camera size={16} className="text-cyan-300" />
-                  Tomar foto
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVideoNoteOpen(true);
-                    setAttachOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-zinc-200 hover:bg-white/5"
-                >
-                  <Video size={16} className="text-fuchsia-300" />
-                  Nota de video
-                </button>
-              </div>
-            ) : null}
+            <ChatAttachMenu
+              open={attachOpen}
+              anchorRef={attachBtnRef}
+              onClose={() => setAttachOpen(false)}
+              onGallery={() => fileRef.current?.click()}
+              onCamera={() => setCameraOpen(true)}
+              onVideoNote={() => setVideoNoteOpen(true)}
+              onFile={() => attachFileRef.current?.click()}
+            />
+          </div>
+          <EmojiPickerButton
+            placement="above"
+            className="shrink-0"
+            buttonClassName="lb-chat-composer-btn"
+            onPick={(id) => setDraft((d) => insertEmojiToken(d, id))}
+          />
+          <button
+            type="button"
+            className={`lb-chat-composer-btn ${gifOpen ? 'is-on' : ''}`}
+            onClick={() => setGifOpen(true)}
+            aria-label="GIF"
+          >
+            <span className="text-[10px] font-black tracking-wide">GIF</span>
+          </button>
+          <button
+            ref={giftTriggerRef}
+            type="button"
+            className={`lb-chat-composer-btn ${giftsOpen ? 'is-on' : ''}`}
+            onClick={() => {
+              setGiftsOpen((value) => !value);
+              setGiftError(null);
+              setRechargeNeeded(null);
+            }}
+            aria-label="Regalos"
+          >
+            <Gift size={18} />
+          </button>
           </div>
           <form
-            className="flex min-w-0 flex-1 items-center gap-1 rounded-full border border-white/[0.08] bg-[#12131a] px-3 py-1.5"
+            className="flex min-w-[10rem] flex-1 items-end gap-1 rounded-full border border-white/[0.08] bg-[#12131a] px-3 py-1.5 transition focus-within:border-violet-400/40 focus-within:shadow-[0_0_14px_rgba(139,92,246,0.18)]"
             onSubmit={(event) => {
               event.preventDefault();
               const link = detectLink(draft);
@@ -1425,15 +2087,11 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
               padClassName="py-1.5"
               mirrorTextClassName="text-white"
             />
-            <EmojiPickerButton
-              placement="above"
-              onPick={(id) => setDraft((d) => insertEmojiToken(d, id))}
-            />
             {draft.trim() ? (
               <button
                 type="submit"
                 disabled={busy}
-                className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white disabled:opacity-40"
+                className="lb-chat-composer-send"
                 aria-label="Enviar"
               >
                 <Send size={15} />
@@ -1442,17 +2100,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
               <button
                 type="button"
                 onClick={() => void toggleVoice()}
-                className={`grid h-9 w-9 place-items-center rounded-full ${
-                  recording
-                    ? 'bg-red-500/30 text-red-300'
-                    : 'bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white'
-                }`}
+                disabled={busy}
+                className="lb-chat-composer-send"
                 aria-label="Audio"
               >
                 <Mic size={16} />
               </button>
             )}
           </form>
+            </>
+          )}
+        </div>
         </div>
       </div>
     ) : isPage ? (
@@ -1464,6 +2122,105 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         Selecciona un amigo para chatear.
       </p>
     );
+
+  const chatExtras = (
+    <>
+      <VideoNoteCapture
+        open={videoNoteOpen}
+        onClose={() => setVideoNoteOpen(false)}
+        onCapture={(file) => void sendVideoNote(file)}
+      />
+      <FlashBoomCameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        title="Abrir cámara"
+        allowPhoto
+        defaultMode="photo"
+        maxDurationSec={180}
+        onCapture={(file) => {
+          setCameraOpen(false);
+          if (file.type.startsWith('image/')) {
+            void onPickFile(file, 'image');
+            return;
+          }
+          onPickAttachment(file);
+        }}
+      />
+      <GifPickerSheet
+        open={gifOpen}
+        onClose={() => setGifOpen(false)}
+        onPick={(gif) => void sendGifMessage(gif)}
+      />
+      <StickerPickerSheet
+        open={stickerOpen}
+        onClose={() => setStickerOpen(false)}
+        onPick={(sticker) => void sendStickerMessage(sticker)}
+      />
+      {giftsOpen ? (
+        <GiftCatalogLayer open={giftsOpen} triggerRef={giftTriggerRef} onClose={() => setGiftsOpen(false)}>
+          <GiftBoxStrip
+            gifts={giftCatalog}
+            sendingGiftId={sendingGift}
+            coins={coins}
+            error={giftError}
+            rechargeNeeded={rechargeNeeded}
+            onRecharge={() => {
+              setRechargeOpen(true);
+              openRechargeCoins();
+            }}
+            compact
+            floating
+            onSelect={(id) => void sendGiftMessage(id)}
+            onClose={() => setGiftsOpen(false)}
+          />
+        </GiftCatalogLayer>
+      ) : null}
+      {rechargeOpen
+        ? createPortal(
+            <div className="pointer-events-auto fixed inset-0 z-[124]">
+              <CoinModal onClose={() => setRechargeOpen(false)} />
+            </div>,
+            document.body,
+          )
+        : null}
+      {giftFloats.length > 0 && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="pointer-events-none fixed inset-0 z-[112] overflow-hidden">
+              {giftFloats.map((item) => (
+                <FloatingGift
+                  key={item.id}
+                  giftId={item.giftId}
+                  senderName={item.senderName}
+                  left={item.left}
+                  lite
+                  onComplete={() =>
+                    setGiftFloats((current) => current.filter((row) => row.id !== item.id))
+                  }
+                />
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+      {mediaViewer && typeof document !== 'undefined'
+        ? createPortal(
+            <button
+              type="button"
+              className="fixed inset-0 z-[130] grid place-items-center bg-black/85 p-4"
+              onClick={() => setMediaViewer(null)}
+              aria-label="Cerrar"
+            >
+              <img
+                src={mediaViewer.url}
+                alt=""
+                className="max-h-[90dvh] max-w-[min(100%,90vw)] object-contain"
+              />
+            </button>,
+            document.body,
+          )
+        : null}
+    </>
+  );
 
   if (!isPage) {
     return (
@@ -1485,11 +2242,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             {threadPane}
           </div>
         </section>
-        <VideoNoteCapture
-          open={videoNoteOpen}
-          onClose={() => setVideoNoteOpen(false)}
-          onCapture={(file) => void sendVideoNote(file)}
-        />
+        {chatExtras}
       </>
     );
   }
@@ -1500,11 +2253,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         {listPane}
         {threadPane}
       </section>
-      <VideoNoteCapture
-        open={videoNoteOpen}
-        onClose={() => setVideoNoteOpen(false)}
-        onCapture={(file) => void sendVideoNote(file)}
-      />
+      {chatExtras}
     </>
   );
 }

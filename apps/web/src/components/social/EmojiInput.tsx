@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
@@ -10,6 +11,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type TextareaHTMLAttributes,
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   emojiTokenCovering,
   emojiTokenEndingAt,
@@ -19,6 +21,10 @@ import {
   insertEmojiTokenAt,
   snapCaretOutOfEmojiToken,
 } from '../../lib/liveboomEmojis';
+import { searchMentionUsers } from '../../lib/mentionUsers';
+import type { PublicFsUser } from '../../lib/profileFirestore';
+import { mentionQueryAt } from '../../lib/textEntities';
+import { UserAvatar } from '../profile/UserAvatar';
 import { EmojiText } from './EmojiText';
 
 type BaseProps = {
@@ -39,6 +45,13 @@ type BaseProps = {
    * Default false = comportamiento anterior (comentarios, Boom Clip, Flash Boom).
    */
   growToMaxScroll?: boolean;
+  /**
+   * Autoaltura. `comment` = crecimiento moderado para la barra de comentarios.
+   * Si no se pasa, `growToMaxScroll` sigue mapeando a `publication`.
+   */
+  growMode?: 'none' | 'publication' | 'comment';
+  /** Enter envía (Shift+Enter = salto de línea en multiline). */
+  onEnterSubmit?: () => void;
 };
 
 type InputProps = BaseProps &
@@ -73,6 +86,15 @@ function publicationComposerMinPx() {
   return Math.min(5 * 16, (window.visualViewport?.height ?? window.innerHeight) * 0.18);
 }
 
+function commentComposerMaxPx() {
+  const viewH = window.visualViewport?.height ?? window.innerHeight;
+  return Math.min(viewH * 0.2, 5.5 * 16);
+}
+
+function commentComposerMinPx() {
+  return 2.5 * 16;
+}
+
 function visualCaretBox(
   mirrorRoot: HTMLElement,
   raw: string,
@@ -81,9 +103,6 @@ function visualCaretBox(
 ): { left: number; top: number; height: number } | null {
   const hostRect = host.getBoundingClientRect();
   const span = mirrorRoot.firstElementChild as HTMLElement | null;
-  if (!span || span.getAttribute('aria-hidden') === '') {
-    /* placeholder is a span without data; treat as empty start */
-  }
   if (!raw || !span || span.tagName !== 'SPAN') return null;
 
   const toBox = (rect: DOMRect) => ({
@@ -92,39 +111,49 @@ function visualCaretBox(
     height: Math.max(rect.height, 16),
   });
 
-  let rawPos = 0;
-  for (const node of span.childNodes) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent ?? '';
-      const len = text.length;
-      if (caret <= rawPos + len) {
-        const offset = Math.max(0, Math.min(len, caret - rawPos));
-        const range = document.createRange();
-        range.setStart(node, offset);
-        range.collapse(true);
-        const rects = range.getClientRects();
-        const rect = rects[0] ?? range.getBoundingClientRect();
-        if (rect.width === 0 && rect.height === 0 && offset === 0 && node.parentElement) {
-          return toBox(node.parentElement.getBoundingClientRect());
+  const acc = { pos: 0 };
+
+  function walk(nodes: NodeListOf<ChildNode>): { left: number; top: number; height: number } | null {
+    for (const node of nodes) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent ?? '';
+        const len = text.length;
+        if (caret <= acc.pos + len) {
+          const offset = Math.max(0, Math.min(len, caret - acc.pos));
+          const range = document.createRange();
+          range.setStart(node, offset);
+          range.collapse(true);
+          const rects = range.getClientRects();
+          const rect = rects[0] ?? range.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0 && offset === 0 && node.parentElement) {
+            return toBox(node.parentElement.getBoundingClientRect());
+          }
+          return toBox(rect);
         }
-        return toBox(rect);
+        acc.pos += len;
+      } else if (node instanceof HTMLImageElement) {
+        const len = Number(
+          node.dataset.rawLen || (node.dataset.emojiId ? `:${node.dataset.emojiId}:`.length : 1),
+        );
+        const imgRect = node.getBoundingClientRect();
+        if (caret <= acc.pos) return toBox(imgRect);
+        if (caret <= acc.pos + len) {
+          return {
+            left: imgRect.right - hostRect.left + host.scrollLeft,
+            top: imgRect.top - hostRect.top + host.scrollTop,
+            height: Math.max(imgRect.height, 16),
+          };
+        }
+        acc.pos += len;
+      } else if (node instanceof HTMLElement) {
+        const found = walk(node.childNodes);
+        if (found) return found;
       }
-      rawPos += len;
-    } else if (node instanceof HTMLImageElement) {
-      const len = Number(node.dataset.rawLen || (node.dataset.emojiId ? `:${node.dataset.emojiId}:`.length : 1));
-      const imgRect = node.getBoundingClientRect();
-      if (caret <= rawPos) return toBox(imgRect);
-      if (caret <= rawPos + len) {
-        return {
-          left: imgRect.right - hostRect.left + host.scrollLeft,
-          top: imgRect.top - hostRect.top + host.scrollTop,
-          height: Math.max(imgRect.height, 16),
-        };
-      }
-      rawPos += len;
     }
+    return null;
   }
-  return null;
+
+  return walk(span.childNodes);
 }
 
 /** Input/textarea con espejo: muestra iconos en lugar de :shortcode: mientras escribes. */
@@ -143,9 +172,13 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       placeholderClassName = 'text-zinc-500',
       padClassName = 'px-3 py-2',
       growToMaxScroll = false,
+      growMode,
+      onEnterSubmit,
       multiline,
       ...rest
     } = props;
+
+    const resolvedGrow = growMode ?? (growToMaxScroll ? 'publication' : 'none');
 
     const fieldRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
     const mirrorRef = useRef<HTMLDivElement>(null);
@@ -154,6 +187,12 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     const savedCaret = useRef<{ start: number; end: number } | null>(null);
     const [focused, setFocused] = useState(false);
     const [caretBox, setCaretBox] = useState<{ left: number; top: number; height: number } | null>(
+      null,
+    );
+    const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
+    const [mentionHits, setMentionHits] = useState<PublicFsUser[]>([]);
+    const [mentionIndex, setMentionIndex] = useState(0);
+    const [mentionBox, setMentionBox] = useState<{ top: number; left: number; width: number } | null>(
       null,
     );
 
@@ -208,13 +247,13 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     }, [value, refreshCaret, focused]);
 
     useLayoutEffect(() => {
-      if (!growToMaxScroll || !multiline) return;
+      if (resolvedGrow === 'none' || !multiline) return;
       const field = fieldRef.current;
       if (!field || !(field instanceof HTMLTextAreaElement)) return;
 
       const applySize = () => {
-        const cap = publicationComposerMaxPx();
-        const minH = publicationComposerMinPx();
+        const cap = resolvedGrow === 'comment' ? commentComposerMaxPx() : publicationComposerMaxPx();
+        const minH = resolvedGrow === 'comment' ? commentComposerMinPx() : publicationComposerMinPx();
         field.style.height = 'auto';
         const next = Math.min(Math.max(field.scrollHeight, minH), cap);
         field.style.height = `${next}px`;
@@ -237,7 +276,69 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         window.removeEventListener('orientationchange', onResize);
         window.visualViewport?.removeEventListener('resize', onResize);
       };
-    }, [value, growToMaxScroll, multiline, refreshCaret]);
+    }, [value, resolvedGrow, multiline, refreshCaret]);
+
+    useEffect(() => {
+      if (!focused) return;
+      const field = fieldRef.current;
+      const caret = field?.selectionStart ?? savedCaret.current?.start ?? value.length;
+      const next = mentionQueryAt(value, caret);
+      setMentionQuery(next);
+      if (!next) {
+        setMentionHits([]);
+        setMentionIndex(0);
+      }
+    }, [value, focused]);
+
+    useEffect(() => {
+      if (!focused || !mentionQuery || mentionQuery.query.length < 1) {
+        if (!mentionQuery?.query) setMentionHits([]);
+        return;
+      }
+      let cancelled = false;
+      const timer = window.setTimeout(() => {
+        void searchMentionUsers(mentionQuery.query).then((list) => {
+          if (cancelled) return;
+          setMentionHits(list);
+          setMentionIndex(0);
+        });
+      }, 120);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }, [focused, mentionQuery]);
+
+    useLayoutEffect(() => {
+      if (!focused || !mentionQuery || mentionHits.length === 0 || !hostRef.current) {
+        setMentionBox(null);
+        return;
+      }
+      const rect = hostRef.current.getBoundingClientRect();
+      const width = Math.min(Math.max(rect.width, 220), 320);
+      const estimated = Math.min(mentionHits.length, 6) * 48 + 10;
+      const below = rect.bottom + 6;
+      const top =
+        below + estimated > window.innerHeight - 12
+          ? Math.max(12, rect.top - estimated - 6)
+          : below;
+      const left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
+      setMentionBox({ top, left, width });
+    }, [focused, mentionQuery, mentionHits.length, value]);
+
+    function applyMention(user: PublicFsUser) {
+      if (!mentionQuery) return;
+      const handle = user.username.replace(/^@/, '');
+      const insertion = `@${handle} `;
+      const replaceEnd = mentionQuery.start + 1 + mentionQuery.query.length;
+      const next = `${value.slice(0, mentionQuery.start)}${insertion}${value.slice(replaceEnd)}`;
+      const caret = mentionQuery.start + insertion.length;
+      if (maxLength != null && next.length > maxLength) return;
+      setMentionHits([]);
+      setMentionQuery(null);
+      commit(next, caret);
+      window.setTimeout(() => fieldRef.current?.focus(), 0);
+    }
 
     function commit(next: string, caret: number) {
       pendingCaret.current = caret;
@@ -245,6 +346,52 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     }
 
     function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
+      if (mentionHits.length > 0) {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          setMentionIndex((index) => (index + 1) % mentionHits.length);
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          setMentionIndex((index) => (index - 1 + mentionHits.length) % mentionHits.length);
+          return;
+        }
+        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+          const picked = mentionHits[mentionIndex];
+          if (picked) {
+            event.preventDefault();
+            applyMention(picked);
+            return;
+          }
+        }
+        if (event.key === 'Tab') {
+          const picked = mentionHits[mentionIndex];
+          if (picked) {
+            event.preventDefault();
+            applyMention(picked);
+            return;
+          }
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setMentionHits([]);
+          setMentionQuery(null);
+          return;
+        }
+      }
+
+      if (
+        event.key === 'Enter' &&
+        !event.shiftKey &&
+        !event.nativeEvent.isComposing &&
+        onEnterSubmit
+      ) {
+        event.preventDefault();
+        onEnterSubmit();
+        return;
+      }
+
       const field = event.currentTarget;
       const start = field.selectionStart ?? 0;
       const end = field.selectionEnd ?? 0;
@@ -334,6 +481,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       const start = field.selectionStart ?? 0;
       const end = field.selectionEnd ?? 0;
       savedCaret.current = { start, end };
+      if (focused) setMentionQuery(mentionQueryAt(value, start));
       if (start !== end) {
         refreshCaret();
         return;
@@ -352,6 +500,58 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     ) : (
       <span className={placeholderClassName}>{placeholder}</span>
     );
+
+    const mentionMenu =
+      typeof document !== 'undefined' &&
+      focused &&
+      mentionQuery &&
+      mentionBox &&
+      mentionHits.length > 0
+        ? createPortal(
+            <ul
+              className="lb-mention-suggest"
+              role="listbox"
+              style={{
+                top: mentionBox.top,
+                left: mentionBox.left,
+                width: mentionBox.width,
+              }}
+            >
+              {mentionHits.map((user, index) => {
+                const handle = user.username.replace(/^@/, '');
+                return (
+                  <li key={user.firebaseUid}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={index === mentionIndex}
+                      className={`lb-mention-suggest__item${
+                        index === mentionIndex ? ' is-active' : ''
+                      }`}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => applyMention(user)}
+                    >
+                      <UserAvatar
+                        src={user.avatarUrl}
+                        uid={user.firebaseUid}
+                        username={handle}
+                        displayName={user.displayName}
+                        size="xs"
+                      />
+                      <span className="lb-mention-suggest__meta">
+                        <span className="lb-mention-suggest__name">
+                          {user.displayName || handle}
+                        </span>
+                        <span className="lb-mention-suggest__handle">@{handle}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>,
+            document.body,
+          )
+        : null;
 
     const mirrorShell = `pointer-events-none absolute inset-0 z-0 overflow-hidden text-sm ${padClassName}`;
 
@@ -377,7 +577,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               ref={mirrorRef}
               aria-hidden
               className={`${mirrorShell} whitespace-pre-wrap break-words ${
-                growToMaxScroll ? 'overflow-y-auto' : 'overflow-hidden'
+                resolvedGrow !== 'none' ? 'overflow-y-auto' : 'overflow-hidden'
               }`}
               style={fieldStyle}
             >
@@ -394,7 +594,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               maxLength={maxLength}
               placeholder=""
               onScroll={
-                growToMaxScroll
+                resolvedGrow !== 'none'
                   ? (event) => {
                       const mirrorEl = mirrorRef.current;
                       if (mirrorEl) mirrorEl.scrollTop = event.currentTarget.scrollTop;
@@ -419,12 +619,17 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                 setCaretBox(null);
               }}
               className={`${inputInner} ${caretClass} resize-none ${padClassName} ${
-                growToMaxScroll ? 'publication-composer-field min-h-[4.5rem] overflow-y-auto' : ''
+                resolvedGrow === 'publication'
+                  ? 'publication-composer-field min-h-[4.5rem] overflow-y-auto'
+                  : resolvedGrow === 'comment'
+                    ? 'lb-comment-composer-field overflow-y-auto'
+                    : ''
               }`}
               style={fieldStyle}
             />
             {caretEl}
           </div>
+          {mentionMenu}
         </div>
       );
     }
@@ -471,6 +676,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
           />
           {caretEl}
         </div>
+        {mentionMenu}
       </div>
     );
   },

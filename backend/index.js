@@ -1,13 +1,8 @@
 // Wompi sandbox — env cargado desde backend/.env en Firebase deploy
 const path = require('path');
-const envPaths = [
-  path.join(__dirname, '.env'),
-  path.join(__dirname, '.env.local'),
-  path.join(__dirname, '../.env'),
-];
-for (const envPath of envPaths) {
-  require('dotenv').config({ path: envPath, override: false });
-}
+require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
+require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
+require('dotenv').config({ path: path.join(__dirname, '../.env'), override: false });
 
 const http = require('http');
 const express = require('express');
@@ -61,6 +56,7 @@ mount('/api/auth', () => require('./src/routes/auth'));
 mount('/api/payments', () => require('./src/routes/payments'));
 mount('/api/webhooks', () => require('./src/routes/webhooks'));
 mount('/api/livekit', () => require('./src/routes/livekit'));
+mount('/api/calls', () => require('./src/routes/calls'));
 mount('/api/stream', () => require('./src/routes/stream'));
 mount('/api/battle', () => require('./src/routes/battle'));
 mount('/api/gifts', () => require('./src/routes/gifts'));
@@ -146,7 +142,14 @@ if (!isServerless && require.main === module) {
     console.error('[liveboom] error del servidor http', error);
   });
   httpServer.listen(port, () => {
+    const { livekitMissing } = require('./src/lib/livekit');
+    const missing = livekitMissing();
     console.log(`[liveboom] backend listo en http://localhost:${port}`);
+    console.log(
+      missing.length
+        ? `[liveboom] LiveKit: falta ${missing.join(', ')}`
+        : '[liveboom] LiveKit: configurado',
+    );
   });
 }
 

@@ -1,3 +1,5 @@
+import { EMOTICON_EMOJIS as importedEmoticones } from 'virtual:liveboom-emoticones';
+
 /** Set básico LiveBoom — 5×10 desde assets/emojis/source-sheet.jpg */
 
 /** Tamaños inline al mostrar emoticones enviados */
@@ -14,6 +16,7 @@ export type LiveboomEmoji = {
   id: string;
   label: string;
   file: string;
+  pack?: 'classic' | 'boom' | 'emoticones';
 };
 
 export const LIVEBOOM_EMOJIS: LiveboomEmoji[] = [
@@ -97,7 +100,17 @@ export const BOOM_EMOJIS: LiveboomEmoji[] = [
   { id: 'boom_zen', label: 'Boom zen', file: '/emojis/boom/boom_zen.png' },
 ];
 
-const byId = new Map([...LIVEBOOM_EMOJIS, ...BOOM_EMOJIS].map((e) => [e.id, e]));
+/** GIFs/JPG/PNG en public/emojis/emoticones — drop-in; npm run sync-emoticones para copiar más. */
+export const EMOTICON_EMOJIS: LiveboomEmoji[] = (importedEmoticones ?? []).map((emoji) => ({
+  id: emoji.id,
+  label: emoji.label,
+  file: emoji.file,
+  pack: 'emoticones' as const,
+}));
+
+const byId = new Map(
+  [...LIVEBOOM_EMOJIS, ...BOOM_EMOJIS, ...EMOTICON_EMOJIS].map((e) => [e.id, e]),
+);
 
 export function emojiToken(id: string) {
   return `:${id}:`;
@@ -124,7 +137,7 @@ export function resolveEmoji(id: string) {
   return byId.get(id);
 }
 
-export const EMOJI_SHORTCODE_RE = /:([a-z_]+):/g;
+export const EMOJI_SHORTCODE_RE = /:([a-z0-9_]+):/g;
 
 export type EmojiTokenSpan = { start: number; end: number; id: string };
 

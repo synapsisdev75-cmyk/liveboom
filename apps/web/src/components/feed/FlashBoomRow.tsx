@@ -12,12 +12,17 @@ import {
   type FsPost,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { isStoryActive, STORY_TTL_MS } from '../../lib/storyLifecycle';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { AutoplayMuteVideo } from './AutoplayMuteVideo';
 import { HorizontalScrollRail } from './HorizontalScrollRail';
 import { ReelFeedViewer, type ReelFeedItem } from './ReelFeedViewer';
 
-type StoryReel = ReelFeedItem & { createdAt: string; mediaType: 'photo' | 'video' };
+type StoryReel = ReelFeedItem & {
+  createdAt: string;
+  mediaType: 'photo' | 'video';
+  storyExpiresAtMs?: number | null;
+};
 
 function toStoryReel(post: FsPost): StoryReel {
   return {
@@ -33,7 +38,16 @@ function toStoryReel(post: FsPost): StoryReel {
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
     overlays: post.overlays,
+    storyExpiresAtMs: post.storyExpiresAtMs ?? null,
   };
+}
+
+function isStoryReelActive(reel: StoryReel, now = Date.now()) {
+  if (!reel.mediaUrl) return false;
+  const created = Date.parse(reel.createdAt);
+  const expires =
+    reel.storyExpiresAtMs ?? (Number.isFinite(created) ? created + STORY_TTL_MS : 0);
+  return now < expires;
 }
 
 function StoryThumb({
@@ -135,33 +149,7 @@ function PublishCard({
   );
 }
 
-function FriendIdleBubble({ friend }: { friend: FriendChip }) {
-  return (
-    <div
-      className="flex w-[4.75rem] shrink-0 flex-col items-center gap-1.5 opacity-55 sm:w-20"
-      title={`@${friend.username} aún no tiene Flash Boom`}
-    >
-      <span className="grid h-[4.5rem] w-[4.5rem] place-items-center rounded-full bg-zinc-900 ring-2 ring-white/10 sm:h-[4.75rem] sm:w-[4.75rem]">
-        {friend.avatarUrl ? (
-          <img
-            src={friend.avatarUrl}
-            alt=""
-            className="h-full w-full rounded-full object-cover grayscale-[0.35]"
-          />
-        ) : (
-          <span className="grid h-full w-full place-items-center rounded-full bg-zinc-800 text-sm font-bold uppercase text-zinc-400">
-            {friend.username.slice(0, 1)}
-          </span>
-        )}
-      </span>
-      <span className="line-clamp-2 w-full text-center text-[10px] font-medium text-zinc-500">
-        {friend.displayName?.split(' ')[0] || friend.username}
-      </span>
-    </div>
-  );
-}
-
-/** Flash Boom: publicar + historias de amigos y de quien sigues. */
+/** Flash Boom: publicar + historias activas de amigos y de quien sigues. */
 export function FlashBoomRow() {
   const profile = useAuthStore((state) => state.profile);
   const [friends, setFriends] = useState<FriendChip[]>([]);
@@ -201,8 +189,23 @@ export function FlashBoomRow() {
       setStories([]);
       return;
     }
-    return listenActiveStories((posts) => setStories(posts.map(toStoryReel)));
+    return listenActiveStories((posts) =>
+      setStories(posts.filter((post) => isStoryActive(post) && post.mediaUrl).map(toStoryReel)),
+    );
   }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    const prune = () => {
+      const now = Date.now();
+      setStories((current) => {
+        const next = current.filter((reel) => isStoryReelActive(reel, now));
+        return next.length === current.length ? current : next;
+      });
+    };
+    prune();
+    const timer = window.setInterval(prune, 20_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const storiesByAuthor = useMemo(() => {
     const map = new Map<string, StoryReel[]>();
@@ -238,10 +241,6 @@ export function FlashBoomRow() {
   const networkWithStories = useMemo(() => {
     return networkPeople.filter((person) => (storiesByAuthor.get(person.uid)?.length ?? 0) > 0);
   }, [networkPeople, storiesByAuthor]);
-
-  const friendsWithoutStories = useMemo(() => {
-    return friends.filter((friend) => !(storiesByAuthor.get(friend.uid)?.length ?? 0));
-  }, [friends, storiesByAuthor]);
 
   /** Historias visibles: propias + amigos + quien sigues. */
   const visibleStories = useMemo(() => {
@@ -303,7 +302,7 @@ export function FlashBoomRow() {
       <div className="mb-3">
         <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">{FLASH_BOOM_LABEL}</h2>
         <p className="mt-0.5 text-[10px] text-zinc-500">
-          24 h · amigos y seguidores · {networkPeople.length} en tu red
+          24 h · amigos y seguidores · {networkWithStories.length} en tu red
         </p>
       </div>
 
@@ -349,12 +348,6 @@ export function FlashBoomRow() {
               />
             );
           })}
-
-          {friendsWithoutStories.map((friend) => (
-            <div key={friend.uid} className="snap-start">
-              <FriendIdleBubble friend={friend} />
-            </div>
-          ))}
         </HorizontalScrollRail>
       )}
 

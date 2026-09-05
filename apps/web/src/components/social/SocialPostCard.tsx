@@ -215,6 +215,8 @@ export type SocialPost = {
   sharedFromAuthorUid?: string;
   sharedFromUsername?: string;
   overlays?: MediaOverlayItem[];
+  updatedAt?: string;
+  edited?: boolean;
 };
 
 /** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
@@ -298,7 +300,9 @@ export function PostCard({
   post,
   canDelete,
   canChangeVisibility,
+  canEdit,
   onDelete,
+  onEdit,
   onChangeVisibility,
   startVideoExpanded,
   onCloseVideoExpand,
@@ -309,7 +313,9 @@ export function PostCard({
   post: SocialPost;
   canDelete?: boolean;
   canChangeVisibility?: boolean;
+  canEdit?: boolean;
   onDelete?: () => void;
+  onEdit?: () => void;
   onReact?: (post: SocialPost) => void;
   onChangeVisibility?: (visibility: 'public' | 'friends' | 'private' | 'circle') => void;
   startVideoExpanded?: boolean;
@@ -335,7 +341,9 @@ export function PostCard({
       post={post}
       canDelete={canDelete}
       canChangeVisibility={canChangeVisibility}
+      canEdit={canEdit}
       onDelete={onDelete}
+      onEdit={onEdit}
       onChangeVisibility={onChangeVisibility}
       startVideoExpanded={startVideoExpanded}
       onCloseVideoExpand={onCloseVideoExpand}
@@ -350,7 +358,9 @@ function StandardPostCard({
   post,
   canDelete,
   canChangeVisibility,
+  canEdit,
   onDelete,
+  onEdit,
   onChangeVisibility,
   startVideoExpanded,
   onCloseVideoExpand,
@@ -361,7 +371,9 @@ function StandardPostCard({
   post: SocialPost;
   canDelete?: boolean;
   canChangeVisibility?: boolean;
+  canEdit?: boolean;
   onDelete?: () => void;
+  onEdit?: () => void;
   onChangeVisibility?: (visibility: 'public' | 'friends' | 'private' | 'circle') => void;
   startVideoExpanded?: boolean;
   onCloseVideoExpand?: () => void;
@@ -454,6 +466,7 @@ function StandardPostCard({
             : post.visibility === 'friends'
               ? 'Solo amigos'
               : 'Privado'}
+          {post.edited ? ' · Editado' : ''}
         </p>
       ) : null}
       {post.type === 'photo' && postPhotoUrls(post).length > 1 ? (
@@ -502,6 +515,8 @@ function StandardPostCard({
           onChangeVisibility={onChangeVisibility}
           canDelete={canDelete}
           onDelete={onDelete}
+          canEdit={canEdit}
+          onEdit={onEdit}
           startExpanded={onVideoExpand ? false : startVideoExpanded}
           onRequestExpand={onVideoExpand}
           onCloseExpand={onCloseVideoExpand}
@@ -543,6 +558,18 @@ function StandardPostCard({
               </button>
             ))}
           </div>
+          <div className="flex items-center gap-3">
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => onEdit?.()}
+              title="Editar publicación"
+              aria-label="Editar publicación"
+              className="text-[11px] text-zinc-500 hover:text-cyan-300"
+            >
+              Editar
+            </button>
+          ) : null}
           {canDelete ? (
             <button
               type="button"
@@ -554,6 +581,7 @@ function StandardPostCard({
               Eliminar
             </button>
           ) : null}
+          </div>
         </div>
       ) : null}
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
@@ -598,6 +626,17 @@ function StandardPostCard({
             authorUsername={post.authorUsername}
           />
         </div>
+        {canEdit && !canChangeVisibility ? (
+          <button
+            type="button"
+            onClick={() => onEdit?.()}
+            title="Editar publicación"
+            aria-label="Editar publicación"
+            className="text-[11px] text-zinc-500 hover:text-cyan-300"
+          >
+            Editar
+          </button>
+        ) : null}
         {canDelete && !canChangeVisibility ? (
           <button
             type="button"

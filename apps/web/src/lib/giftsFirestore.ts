@@ -224,3 +224,21 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
     return sendGiftViaFirestore(input, catalog, totalCoins);
   }
 }
+
+export function validateCoinsBalance(balance: number, cost: number): boolean {
+  return Number(balance) >= Number(cost);
+}
+
+export function openRechargeCoins() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('liveboom:open-recharge'));
+}
+
+/** Mismo envío de coins que LIVE/feed, para chat o llamada privada. */
+export async function sendPrivateGift(input: SendGiftInput): Promise<SendGiftResult> {
+  return sendLiveboomGift(input);
+}
+
+export async function registerGiftTransaction(input: SendGiftInput): Promise<SendGiftResult> {
+  return sendPrivateGift(input);
+}

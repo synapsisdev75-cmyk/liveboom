@@ -20,6 +20,7 @@ import {
   deletePostComment,
   listenPostComments,
   type PostComment,
+  type PostCommentMedia,
   type PostReactionUser,
 } from '../../lib/socialFirestore';
 import {
@@ -33,10 +34,14 @@ import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster } from '../../lib/videoPoster';
+import { uploadUserMedia } from '../../lib/storage';
 import { ShareContentButton } from './ShareContentButton';
-import { EmojiPickerButton } from './EmojiPicker';
-import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
+import { type EmojiInputHandle } from './EmojiInput';
 import { EmojiText } from './EmojiText';
+import { CommentComposerBar, type CommentDraftAttachment } from './CommentComposerBar';
+import { CommentMediaThumb, commentPlainText } from './CommentMediaThumb';
+import { CommentMediaViewer, type CommentMediaViewerItem } from './CommentMediaViewer';
+import { CommentBoomReaction } from './CommentBoomButton';
 import { PublicationCaption } from './PublicationCaption';
 import { StorySegmentBar } from './StorySegmentBar';
 import {
@@ -44,7 +49,7 @@ import {
   STORY_WHEEL_COOLDOWN_MS,
   STORY_WHEEL_MIN_DELTA,
 } from '../../lib/storyAuthorNav';
-import { insertEmojiToken, COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
+import { COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
 import { PostActionRail } from './PostActionRail';
 import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
@@ -73,6 +78,8 @@ type Props = {
   onChangeVisibility?: (visibility: Visibility) => void;
   canDelete?: boolean;
   onDelete?: () => void;
+  canEdit?: boolean;
+  onEdit?: () => void;
   /** Abrir expandido al montar (p. ej. justo después de publicar). */
   startExpanded?: boolean;
   onCloseExpand?: () => void;
@@ -147,6 +154,8 @@ export function PostVideoPlayer({
   onChangeVisibility,
   canDelete,
   onDelete,
+  canEdit,
+  onEdit,
   startExpanded = false,
   onCloseExpand,
   onExpandChange,
@@ -987,6 +996,17 @@ export function PostVideoPlayer({
                     {label}
                   </button>
                 ))}
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    title="Editar publicación"
+                    aria-label="Editar publicación"
+                    className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-cyan-100 backdrop-blur-sm"
+                  >
+                    Editar
+                  </button>
+                ) : null}
                 {canDelete ? (
                   <button
                     type="button"
@@ -1132,6 +1152,8 @@ export function PostComments({
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(defaultOpen);
   const [replyTo, setReplyTo] = useState<CommentReplyTarget | null>(null);
+  const [mediaViewer, setMediaViewer] = useState<CommentMediaViewerItem | null>(null);
+  const closeMediaViewer = useCallback(() => setMediaViewer(null), []);
   const listRef = useRef<HTMLUListElement>(null);
   const inputRef = useRef<EmojiInputHandle>(null);
 
@@ -1166,16 +1188,36 @@ export function PostComments({
     window.setTimeout(() => inputRef.current?.focus(), 50);
   }
 
-  async function submit() {
+  async function submit(attachment: CommentDraftAttachment | null = null) {
     if (!profile) {
       setError('Inicia sesión para comentar');
-      return;
+      throw new Error('Inicia sesión para comentar');
     }
     const body = text.trim();
-    if (!body) return;
+    if (!body && !attachment) return;
     setBusy(true);
     setError(null);
     try {
+      let media: PostCommentMedia | null = null;
+      if (attachment?.kind === 'gif' && attachment.gifUrl) {
+        media = {
+          mediaUrl: attachment.gifUrl,
+          mediaType: 'gif',
+          mediaPreviewUrl: attachment.gifPreviewUrl || attachment.previewUrl,
+        };
+      } else if (attachment?.file) {
+        const uploaded = await uploadUserMedia(
+          profile.firebaseUid,
+          attachment.file,
+          attachment.file.name,
+          'public',
+          'publication',
+        );
+        media = {
+          mediaUrl: uploaded.url,
+          mediaType: attachment.kind === 'video' ? 'video' : 'image',
+        };
+      }
       await addPostComment(
         postId,
         {
@@ -1192,12 +1234,14 @@ export function PostComments({
               replyToUsername: replyTo.username,
             }
           : null,
+        media,
       );
       setText('');
       setReplyTo(null);
       setExpanded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo publicar el comentario');
+      throw err;
     } finally {
       setBusy(false);
     }
@@ -1254,18 +1298,44 @@ export function PostComments({
             Respondió a @{comment.replyToUsername}
           </p>
         ) : null}
-        <p className={`mt-0.5 min-w-0 break-words text-xs ${bodyClass}`}>
-          <EmojiText text={comment.text} size={COMMENT_EMOJI_SIZE} />
-        </p>
-        <button
-          type="button"
-          onClick={() => startReply(rootId, comment)}
-          className={`mt-0.5 inline-flex min-h-11 items-center text-[11px] font-semibold ${
-            overlay ? 'text-white/70 hover:text-white' : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          Responder
-        </button>
+        {commentPlainText(comment.text) ? (
+          <p className={`mt-0.5 min-w-0 break-words text-xs ${bodyClass}`}>
+            <EmojiText text={comment.text} size={COMMENT_EMOJI_SIZE} />
+          </p>
+        ) : null}
+        {comment.mediaUrl && comment.mediaType ? (
+          <div className="mt-1.5 min-w-0 max-w-full">
+            <CommentMediaThumb
+              url={comment.mediaUrl}
+              previewUrl={comment.mediaType === 'gif' ? null : comment.mediaPreviewUrl}
+              kind={comment.mediaType}
+              size="thread"
+              onOpen={() =>
+                setMediaViewer({
+                  url: comment.mediaUrl!,
+                  kind: comment.mediaType!,
+                  previewUrl: comment.mediaPreviewUrl,
+                })
+              }
+            />
+          </div>
+        ) : null}
+        <div className="mt-0.5 flex min-h-11 min-w-0 flex-wrap items-center gap-3">
+          <CommentBoomReaction
+            postId={postId}
+            commentId={comment.id}
+            currentUserId={profile?.firebaseUid}
+          />
+          <button
+            type="button"
+            onClick={() => startReply(rootId, comment)}
+            className={`inline-flex min-h-11 items-center text-[11px] font-semibold ${
+              overlay ? 'text-white/70 hover:text-white' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Responder
+          </button>
+        </div>
       </div>
     );
   }
@@ -1321,11 +1391,28 @@ export function PostComments({
               key={root.id}
               className={overlay ? 'rounded-lg bg-white/10 px-2 py-1.5' : 'rounded-lg bg-zinc-900/60 px-2 py-1.5'}
             >
-              <p className={`min-w-0 break-words text-[11px] ${overlay ? 'text-white/90' : 'text-zinc-300'}`}>
+              <p className={`flex min-w-0 items-center gap-2 text-[11px] ${overlay ? 'text-white/90' : 'text-zinc-300'}`}>
                 <span className={overlay ? 'font-semibold text-cyan-300' : 'font-semibold text-cyan-400'}>
                   @{root.username}
                 </span>{' '}
-                <EmojiText text={root.text} size={COMMENT_EMOJI_SIZE_COMPACT} className={overlay ? 'text-white/90' : 'text-zinc-300'} />
+                {commentPlainText(root.text) ? (
+                  <EmojiText text={root.text} size={COMMENT_EMOJI_SIZE_COMPACT} className={overlay ? 'text-white/90' : 'text-zinc-300'} />
+                ) : null}
+                {root.mediaUrl && root.mediaType ? (
+                  <CommentMediaThumb
+                    url={root.mediaUrl}
+                    previewUrl={root.mediaType === 'gif' ? null : root.mediaPreviewUrl}
+                    kind={root.mediaType}
+                    size="preview"
+                    onOpen={() =>
+                      setMediaViewer({
+                        url: root.mediaUrl!,
+                        kind: root.mediaType!,
+                        previewUrl: root.mediaPreviewUrl,
+                      })
+                    }
+                  />
+                ) : null}
               </p>
             </li>
           ))}
@@ -1356,12 +1443,8 @@ export function PostComments({
               ))
             )}
           </ul>
-          <form
+          <div
             className={`mt-2 flex min-w-0 shrink-0 flex-col gap-1.5 ${scrollable && overlay ? 'pt-2' : ''}`}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
-            }}
           >
             {replyTo ? (
               <div className="flex min-w-0 items-center gap-2">
@@ -1381,48 +1464,33 @@ export function PostComments({
                 </button>
               </div>
             ) : null}
-            <div className="flex min-w-0 items-end gap-2">
-              <EmojiInput
-                ref={inputRef}
-                value={text}
-                onChange={setText}
-                placeholder={
-                  !profile
-                    ? 'Inicia sesión para comentar'
-                    : replyTo
-                      ? `Responde a @${replyTo.username}…`
-                      : 'Escribe un comentario…'
-                }
-                disabled={!profile || busy}
-                maxLength={280}
-                emojiSize={COMMENT_EMOJI_SIZE}
-                className="min-w-0 flex-1"
-                mirrorTextClassName={overlay ? 'text-white/90' : 'text-zinc-200'}
-                fieldClassName={`min-h-10 min-w-0 rounded-xl ${
-                  overlay
-                    ? 'border border-white/20 bg-black/40'
-                    : 'border border-white/10 bg-zinc-900'
-                }`}
-                placeholderClassName={overlay ? 'text-white/40' : 'text-zinc-600'}
-              />
-              <EmojiPickerButton
-                placement="above"
-                onPick={(id) => setText((t) => insertEmojiToken(t, id))}
-              />
-              <button
-                type="submit"
-                disabled={!profile || busy || !text.trim()}
-                className="min-h-10 shrink-0 rounded-xl bg-cyan-500 px-3 text-xs font-bold text-zinc-950 disabled:opacity-50"
-              >
-                Enviar
-              </button>
-            </div>
-          </form>
+            <CommentComposerBar
+              ref={inputRef}
+              value={text}
+              onChange={setText}
+              onPublish={submit}
+              disabled={!profile}
+              busy={busy}
+              overlay={overlay}
+              placeholder={
+                !profile
+                  ? 'Inicia sesión para comentar'
+                  : replyTo
+                    ? `Responde a @${replyTo.username}…`
+                    : 'Escribe un comentario...'
+              }
+              avatarSrc={profile?.avatarUrl}
+              avatarUid={profile?.firebaseUid}
+              username={profile?.handle}
+              displayName={profile?.displayName}
+            />
+          </div>
         </div>
       ) : null}
       {error ? (
         <p className={`mt-1.5 text-[11px] ${overlay ? 'text-rose-300' : 'text-fuchsia-400'}`}>{error}</p>
       ) : null}
+      <CommentMediaViewer item={mediaViewer} onClose={closeMediaViewer} />
     </div>
   );
 }

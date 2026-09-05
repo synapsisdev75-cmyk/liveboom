@@ -115,7 +115,7 @@ export function MediaOverlayLayer({ overlays, editable = false, onChange }: Prop
   return (
     <div
       ref={boxRef}
-      className={`absolute inset-0 z-[5] overflow-hidden ${editable ? '' : 'pointer-events-none'}`}
+      className="pointer-events-none absolute inset-0 z-[5] overflow-hidden"
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
@@ -125,7 +125,8 @@ export function MediaOverlayLayer({ overlays, editable = false, onChange }: Prop
         return (
           <div
             key={item.id}
-            className={`absolute left-0 top-0 ${editable ? 'cursor-grab touch-none active:cursor-grabbing' : ''}`}
+            data-overlay-item="true"
+            className={`absolute left-0 top-0 ${editable ? 'pointer-events-auto cursor-grab touch-none active:cursor-grabbing' : 'pointer-events-none'}`}
             style={{
               width: `${18 * item.scale}%`,
               transform: `translate(-50%, -50%) rotate(${item.rotation}deg)`,

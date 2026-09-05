@@ -63,7 +63,7 @@ import {
   nextHomeFeedPage,
   rankHomePublications,
 } from '../lib/homeFeedRanking';
-import { isPublicationPost } from '../lib/contentType';
+import { canEditOwnedPublication, isPublicationPost } from '../lib/contentType';
 import { fetchPrivateLocation } from '../lib/userLocation';
 import { isStoryActive, isStoryPost } from '../lib/storyLifecycle';
 import { useAuthStore } from '../store/authStore';
@@ -94,6 +94,8 @@ function toSocial(post: FsPost): SocialPost {
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
     overlays: post.overlays,
+    edited: post.edited,
+    updatedAt: post.updatedAt,
   };
 }
 
@@ -111,9 +113,11 @@ function timeAgo(iso: string) {
 function FeaturedFeedCard({
   post,
   live,
+  onEdit,
 }: {
   post: SocialPost;
   live: ActiveLiveFeedItem | null;
+  onEdit?: (post: SocialPost) => void;
 }) {
   const profile = useAuthStore((state) => state.profile);
   if (isRepostPost(post)) {
@@ -127,15 +131,17 @@ function FeaturedFeedCard({
       />
     );
   }
-  return <HomePublicationCard post={post} live={live} />;
+  return <HomePublicationCard post={post} live={live} onEdit={onEdit} />;
 }
 
 function HomePublicationCard({
   post,
   live,
+  onEdit,
 }: {
   post: SocialPost;
   live: ActiveLiveFeedItem | null;
+  onEdit?: (post: SocialPost) => void;
 }) {
   const profile = useAuthStore((state) => state.profile);
   const [likes, setLikes] = useState(post.likes || 0);
@@ -147,6 +153,7 @@ function HomePublicationCard({
   const [busy, setBusy] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [showComments, setShowComments] = useState(false);
+  const canEdit = canEditOwnedPublication(post, profile?.firebaseUid);
 
   useEffect(() => {
     return listenPostReactions(post.id, profile?.firebaseUid, (stats) => {
@@ -221,18 +228,34 @@ function HomePublicationCard({
             >
               @{post.authorUsername}
             </Link>
-            <span className="text-[11px] text-zinc-500">{timeAgo(post.createdAt)}</span>
+            <span className="text-[11px] text-zinc-500">
+              {timeAgo(post.createdAt)}
+              {post.edited ? ' · Editado' : ''}
+            </span>
           </div>
         </div>
-        {live ? (
-          <Link
-            to={`/stream/${encodeURIComponent(live.username)}`}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia-600/90 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-[0_0_16px_rgba(217,70,239,0.45)]"
-          >
-            <span className="live-dot h-1.5 w-1.5 rounded-full bg-white" />
-            En vivo
-          </Link>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {canEdit ? (
+            <button
+              type="button"
+              title="Editar publicación"
+              aria-label="Editar publicación"
+              onClick={() => onEdit?.(post)}
+              className="text-[11px] font-semibold text-zinc-500 hover:text-cyan-300"
+            >
+              Editar
+            </button>
+          ) : null}
+          {live ? (
+            <Link
+              to={`/stream/${encodeURIComponent(live.username)}`}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-fuchsia-600/90 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-[0_0_16px_rgba(217,70,239,0.45)]"
+            >
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-white" />
+              En vivo
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       {isTextOnlyPost(post) ? (
@@ -394,6 +417,7 @@ export function HomeView() {
   const [regionLabel, setRegionLabel] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [createPublicationOpen, setCreatePublicationOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [flashViewer, setFlashViewer] = useState<{
     reels: ReelFeedItem[];
     index: number;
@@ -809,7 +833,11 @@ export function HomeView() {
                 para ver el feed Para ti.
               </div>
             ) : featured ? (
-              <FeaturedFeedCard post={featured} live={liveForFeatured} />
+              <FeaturedFeedCard
+                post={featured}
+                live={liveForFeatured}
+                onEdit={setEditingPost}
+              />
             ) : tab === 'siguiendo' ? (
               <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
                 Aún no hay publicaciones de quienes sigues. Cuando publiquen fotos, textos o videos,
@@ -832,7 +860,14 @@ export function HomeView() {
             const live = streams.find(
               (s) => s.username.toLowerCase() === post.authorUsername.toLowerCase(),
             );
-            return <FeaturedFeedCard key={post.id} post={post} live={live ?? null} />;
+            return (
+              <FeaturedFeedCard
+                key={post.id}
+                post={post}
+                live={live ?? null}
+                onEdit={setEditingPost}
+              />
+            );
           })}
           <div ref={loadMoreRef} className="h-4" />
           {canLoadMore ? (
@@ -873,6 +908,23 @@ export function HomeView() {
             if (!isPublicationPost(post)) return;
             setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
             setVisibleIds((prev) => [post.id, ...prev.filter((id) => id !== post.id)]);
+          }}
+        />
+      ) : null}
+
+      {editingPost && profile ? (
+        <CreatePostModal
+          mode="edit"
+          editPost={editingPost}
+          username={profile.handle}
+          autoOpen
+          hideTrigger
+          onClose={() => setEditingPost(null)}
+          onUpdated={(post) => {
+            setPosts((current) =>
+              current.map((item) => (item.id === post.id ? { ...item, ...post } : item)),
+            );
+            setEditingPost(null);
           }}
         />
       ) : null}

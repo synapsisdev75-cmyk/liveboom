@@ -62,6 +62,16 @@ export function isPublicationPost(item: ContentLike): boolean {
   return resolveContentType(item) === 'post';
 }
 
+/** Publicación propia (no Boom Clip / Flash Boom / repost). Lista para ampliar a otros tipos. */
+export function canEditOwnedPublication(
+  item: ContentLike & { authorUid?: string | null; sharedFromPostId?: string | null },
+  viewerUid?: string | null,
+): boolean {
+  if (!viewerUid || !item.authorUid || item.authorUid !== viewerUid) return false;
+  if (item.sharedFromPostId) return false;
+  return isPublicationPost(item);
+}
+
 export function isFlashBoomContent(item: ContentLike): boolean {
   return resolveContentType(item) === 'flashboom';
 }

@@ -1,5 +1,14 @@
 /// <reference types="vite/client" />
 
+declare module 'virtual:liveboom-emoticones' {
+  export const EMOTICON_EMOJIS: Array<{
+    id: string;
+    label: string;
+    file: string;
+    pack: 'emoticones';
+  }>;
+}
+
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN: string;
