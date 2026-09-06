@@ -487,21 +487,26 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     const isDirectCall = /^dm[_-]/.test(roomName);
 
     if (isDirectCall) {
-      const { bearerFromReq, canCallUser, otherUidFromChatId } = require('../lib/canCallUser');
+      const { bearerFromReq, canCallUser, isActiveCall, loadChatCall, otherUidFromChatId } = require('../lib/canCallUser');
+      const idToken = bearerFromReq(req);
       const chatId = roomName.replace(/^dm[_-]/, '');
       const otherUid = otherUidFromChatId(chatId, req.user.uid);
       if (!otherUid) {
         res.status(403).json({ error: 'No perteneces a esta llamada', code: 'CALL_NOT_ALLOWED', stage: 'token' });
         return;
       }
-      const allowed = await canCallUser(req.user.uid, otherUid, bearerFromReq(req));
-      if (!allowed) {
-        res.status(403).json({
-          error: 'Solo puedes llamar a tus amigos.',
-          code: 'CALL_NOT_ALLOWED',
-          stage: 'friendship',
-        });
-        return;
+      const call = await loadChatCall(chatId, idToken);
+      const joiningActive = isActiveCall(call, null, req.user.uid);
+      if (!joiningActive) {
+        const allowed = await canCallUser(req.user.uid, otherUid, idToken);
+        if (!allowed) {
+          res.status(403).json({
+            error: 'Solo puedes llamar a tus amigos.',
+            code: 'CALL_NOT_ALLOWED',
+            stage: 'friendship',
+          });
+          return;
+        }
       }
     }
 

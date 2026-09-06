@@ -10,36 +10,35 @@ import {
   Info,
   MessageCircle,
   Mic,
-  MoreHorizontal,
-  Paperclip,
   Pause,
   Pencil,
   Phone,
   PhoneMissed,
   PhoneOff,
   Play,
+  Plus,
   Search,
   Send,
+  MoreHorizontal,
   Trash2,
   Video,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { EmojiPickerButton } from './EmojiPicker';
 import { VideoNoteBubble, VideoNoteCapture } from './ChatVideoNote';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { ChatVoiceRecorderBar } from './ChatVoiceRecorderBar';
-import { EmojiInput } from './EmojiInput';
+import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { TranslatedText } from '../i18n/TranslatedText';
 import { useT } from '../../i18n';
-import { MessageReactionBar } from './LiveBoomReactionControl';
 import { GifPickerSheet } from './GifPickerSheet';
-import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import { CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
 import { api } from '../../lib/api';
-import { ensureCallMediaPermission } from '../../lib/callMedia';
 import {
   CHAT_FILE_ACCEPT,
   formatChatFileSize,
@@ -60,31 +59,41 @@ import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
 import { FloatingGift, GiftVisual } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
+import { CallChatActions } from './CallChatActions';
 import { CoinModal } from '../wallet/CoinModal';
 import {
+  clearConversationForEveryone,
   deleteChatMessageForEveryone,
   deleteChatMessageForMe,
   deleteConversation,
   editChatMessage,
   ensureChat,
+  listenChatMeta,
   listenConversations,
+  listenFollowers,
+  listenFollowing,
   listenFriends,
   listenMessages,
   listenPresence,
   markMessagesDelivered,
   markMessagesRead,
   sendChatMessage,
-  startPrivateCall,
-  endPrivateCall,
+  MAX_CHAT_MESSAGE_LENGTH,
   type ChatMessage,
   type Conversation,
   type FriendChip,
 } from '../../lib/socialFirestore';
+import {
+  archiveConversationForUser,
+  listenArchivedChats,
+  unarchiveConversationForUser,
+  type ArchivedChatMap,
+} from '../../lib/chatArchive';
+import { generateConversationPdf } from '../../lib/chatExportPdf';
+import { ConversationActionsModal } from './ConversationActionsModal';
 import { useAuthStore } from '../../store/authStore';
 import { formatCallClock, useCallElapsed, useCallStore } from '../../store/callStore';
 import { profileHref } from '../../lib/profileFirestore';
-import { canCallFromFriends, canCallUser } from '../../lib/canCallUser';
-import { createCall, formatCallApiError } from '../../lib/liveKitCallService';
 import { StickerPickerSheet } from './StickerPickerSheet';
 import type { ComposerSticker } from '../../lib/composerStickers';
 
@@ -96,7 +105,7 @@ type Props = {
   fullscreen?: boolean;
 };
 
-type ListTab = 'todos' | 'unread' | 'grupos';
+type ListTab = 'todos' | 'unread' | 'grupos' | 'archivados';
 
 type PersonRow = FriendChip & {
   lastMessage: string | null;
@@ -104,6 +113,13 @@ type PersonRow = FriendChip & {
   unread: number;
   chatId: string | null;
 };
+
+function comparePeopleByPresence(a: PersonRow, b: PersonRow, onlineByUid: Record<string, boolean>) {
+  const aOnline = Boolean(onlineByUid[a.uid]);
+  const bOnline = Boolean(onlineByUid[b.uid]);
+  if (aOnline !== bOnline) return Number(bOnline) - Number(aOnline);
+  return String(b.lastAt || '').localeCompare(String(a.lastAt || ''));
+}
 
 function detectLink(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s]+/i);
@@ -204,21 +220,49 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
   );
 }
 
-function CallEventBubble({ message }: { message: ChatMessage }) {
+function ChatTombstone({
+  everyone,
+  mine,
+  time,
+  ticks,
+}: {
+  everyone: boolean;
+  mine: boolean;
+  time: string;
+  ticks?: ReactNode;
+}) {
+  return (
+    <div className={`flex max-w-[min(85%,18rem)] flex-col ${mine ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
+      <p className="lb-chat-tombstone">
+        {everyone ? 'Mensaje eliminado para todos' : 'Mensaje eliminado'}
+      </p>
+      <div className="mt-1 flex items-center gap-1.5 px-1">
+        <span className="text-[10px] text-zinc-500">{time}</span>
+        {mine ? ticks : null}
+      </div>
+    </div>
+  );
+}
+
+function CallEventBubble({ message, mine }: { message: ChatMessage; mine: boolean }) {
   const meta = message.callMeta;
   const outcome = meta?.outcome || 'missed';
   const video = Boolean(meta?.video);
   const missed = outcome === 'missed' || outcome === 'declined' || outcome === 'cancelled';
   const Icon = missed ? PhoneMissed : video ? Video : Phone;
-  const label =
-    message.text ||
-    (missed
-      ? `${video ? 'Videollamada' : 'Llamada'} perdida`
-      : `${video ? 'Videollamada' : 'Llamada'}`);
+  const kind = video ? 'Videollamada' : 'Llamada';
+  let label = `${kind} perdida`;
+  if (outcome === 'completed') {
+    label = `${kind} · ${formatAudioClock(Math.max(0, Number(meta?.durationSec) || 0))}`;
+  } else if (outcome === 'declined') {
+    label = `${kind} rechazada`;
+  } else if (outcome === 'cancelled') {
+    label = `${kind} cancelada`;
+  }
   return (
-    <div className="mx-auto my-2 flex max-w-[90%] items-center justify-center gap-2 rounded-full border border-white/10 bg-[#14151c] px-3.5 py-1.5 text-[11px] text-zinc-400">
-      <Icon size={13} className={missed ? 'text-rose-400' : 'text-emerald-400'} />
-      <span className="font-medium text-zinc-300">{label}</span>
+    <div className={`lb-chat-call-chip${mine ? ' is-mine' : ''}${missed ? ' is-missed' : ''}`}>
+      <Icon size={13} aria-hidden />
+      <span>{label}</span>
     </div>
   );
 }
@@ -227,6 +271,7 @@ function ChatAttachMenu({
   open,
   anchorRef,
   onClose,
+  onGift,
   onGallery,
   onCamera,
   onVideoNote,
@@ -235,6 +280,7 @@ function ChatAttachMenu({
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
+  onGift: () => void;
   onGallery: () => void;
   onCamera: () => void;
   onVideoNote: () => void;
@@ -242,11 +288,23 @@ function ChatAttachMenu({
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, ready: false });
+  const breakpoint = useBreakpoint();
+  const sheet = breakpoint === 'phone';
 
   const place = useCallback(() => {
     const btn = anchorRef.current;
     const menu = menuRef.current;
     if (!btn || !menu) return;
+    if (sheet) {
+      const rect = btn.getBoundingClientRect();
+      const mh = menu.offsetHeight;
+      const pad = 8;
+      const gap = 10;
+      let top = rect.top - gap - mh;
+      if (top < pad) top = pad;
+      setPos({ top, left: 0, ready: true });
+      return;
+    }
     const rect = btn.getBoundingClientRect();
     const mw = menu.offsetWidth;
     const mh = menu.offsetHeight;
@@ -264,7 +322,7 @@ function ChatAttachMenu({
     if (top + mh > vh - pad) top = Math.max(pad, vh - pad - mh);
 
     setPos({ top, left, ready: true });
-  }, [anchorRef]);
+  }, [anchorRef, sheet]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -286,7 +344,7 @@ function ChatAttachMenu({
         anchorRef.current?.focus();
       }
     };
-    const onDoc = (event: MouseEvent) => {
+    const onDoc = (event: Event) => {
       const node = event.target as Node;
       if (menuRef.current?.contains(node) || anchorRef.current?.contains(node)) return;
       onClose();
@@ -295,13 +353,13 @@ function ChatAttachMenu({
     window.addEventListener('scroll', onReposition, true);
     window.addEventListener('orientationchange', onReposition);
     document.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('pointerdown', onDoc);
     return () => {
       window.removeEventListener('resize', onReposition);
       window.removeEventListener('scroll', onReposition, true);
       window.removeEventListener('orientationchange', onReposition);
       document.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('pointerdown', onDoc);
     };
   }, [open, place, onClose, anchorRef]);
 
@@ -318,33 +376,43 @@ function ChatAttachMenu({
       id="lb-chat-attach-menu"
       role="menu"
       tabIndex={-1}
-      aria-label="Adjuntar"
-      className="lb-chat-attach-menu"
-      style={{ top: pos.top, left: pos.left, visibility: pos.ready ? 'visible' : 'hidden' }}
+      aria-label="Más acciones"
+      className={`lb-chat-attach-menu ${sheet ? 'is-sheet' : 'is-popover'}`}
+      style={
+        sheet
+          ? { top: pos.top, visibility: pos.ready ? 'visible' : 'hidden' }
+          : { top: pos.top, left: pos.left, visibility: pos.ready ? 'visible' : 'hidden' }
+      }
     >
-      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onGallery)}>
-        <span className="lb-chat-attach-ico is-gallery">
-          <ImageIcon size={16} />
-        </span>
-        Galería
-      </button>
-      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onCamera)}>
-        <span className="lb-chat-attach-ico is-camera">
-          <Camera size={16} />
-        </span>
-        Abrir cámara
-      </button>
-      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onVideoNote)}>
-        <span className="lb-chat-attach-ico is-video">
-          <Video size={16} />
-        </span>
+      <div className="lb-chat-attach-grid">
+        <button type="button" role="menuitem" className="lb-chat-attach-cell" onClick={() => pick(onGift)}>
+          <span className="lb-chat-attach-ico is-gift">
+            <Gift size={18} />
+          </span>
+          Regalo
+        </button>
+        <button type="button" role="menuitem" className="lb-chat-attach-cell" onClick={() => pick(onCamera)}>
+          <span className="lb-chat-attach-ico is-camera">
+            <Camera size={18} />
+          </span>
+          Cámara
+        </button>
+        <button type="button" role="menuitem" className="lb-chat-attach-cell" onClick={() => pick(onGallery)}>
+          <span className="lb-chat-attach-ico is-gallery">
+            <ImageIcon size={18} />
+          </span>
+          Galería
+        </button>
+        <button type="button" role="menuitem" className="lb-chat-attach-cell" onClick={() => pick(onFile)}>
+          <span className="lb-chat-attach-ico is-file">
+            <FileText size={18} />
+          </span>
+          Archivo
+        </button>
+      </div>
+      <button type="button" role="menuitem" className="lb-chat-attach-note" onClick={() => pick(onVideoNote)}>
+        <Video size={14} />
         Nota de video
-      </button>
-      <button type="button" role="menuitem" className="lb-chat-attach-item" onClick={() => pick(onFile)}>
-        <span className="lb-chat-attach-ico is-file">
-          <FileText size={16} />
-        </span>
-        Adjuntar archivo
       </button>
     </div>,
     document.body,
@@ -394,50 +462,66 @@ function sameCalendarDay(a: string, b: string) {
   );
 }
 
+function PresenceDot({ online, className = '' }: { online: boolean; className?: string }) {
+  return (
+    <span
+      className={`lb-presence-dot ${className}`.trim()}
+      data-online={online ? 'true' : 'false'}
+      title={online ? 'En línea' : 'Desconectado'}
+      aria-hidden
+    />
+  );
+}
+
 function Avatar({
   url,
   name,
   size = 44,
   ring,
   online,
+  presence,
 }: {
   url: string | null;
   name: string;
   size?: number;
   ring?: boolean;
   online?: boolean;
+  presence?: boolean;
 }) {
   const letter = (name || '?').slice(0, 1).toUpperCase();
+  const showPresence = typeof presence === 'boolean';
+  const isOnline = showPresence ? presence : Boolean(online);
   return (
     <span
-      className="relative block shrink-0 overflow-hidden rounded-full"
+      className="relative block shrink-0 rounded-full"
       style={{ width: size, height: size, minWidth: size, minHeight: size, maxWidth: size, maxHeight: size }}
     >
-      {url ? (
-        <img
-          src={url}
-          alt=""
-          width={size}
-          height={size}
-          className={`block rounded-full object-cover ${
-            ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
-          }`}
-          style={{ width: size, height: size, maxWidth: size, maxHeight: size }}
-        />
-      ) : (
+      <span className="block h-full w-full overflow-hidden rounded-full">
+        {url ? (
+          <img
+            src={url}
+            alt=""
+            width={size}
+            height={size}
+            className={`block rounded-full object-cover ${
+              ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
+            }`}
+            style={{ width: size, height: size, maxWidth: size, maxHeight: size }}
+          />
+        ) : (
+          <span
+            className={`grid h-full w-full place-items-center rounded-full bg-zinc-800 text-[10px] font-bold text-violet-300 ${
+              ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
+            }`}
+          >
+            {letter}
+          </span>
+        )}
+      </span>
+      {showPresence || online ? (
         <span
-          className={`grid h-full w-full place-items-center rounded-full bg-zinc-800 text-[10px] font-bold text-violet-300 ${
-            ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
-          }`}
-        >
-          {letter}
-        </span>
-      )}
-      {online ? (
-        <span
-          className={`absolute bottom-0 right-0 rounded-full border-2 border-[#0a0a0b] bg-emerald-400 ${
-            size <= 32 ? 'h-2 w-2' : 'h-2.5 w-2.5'
-          }`}
+          className="lb-presence-dot lb-presence-dot--on-avatar"
+          data-online={isOnline ? 'true' : 'false'}
         />
       ) : null}
     </span>
@@ -451,6 +535,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const setCoins = useAuthStore((state) => state.setCoins);
   const [searchParams, setSearchParams] = useSearchParams();
   const [friends, setFriends] = useState<FriendChip[]>([]);
+  const [following, setFollowing] = useState<FriendChip[]>([]);
+  const [followers, setFollowers] = useState<FriendChip[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeUid, setActiveUid] = useState<string | null>(searchParams.get('conUid'));
   const [chatId, setChatId] = useState<string | null>(null);
@@ -461,9 +547,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [docVisible, setDocVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState === 'visible',
   );
-  const [online, setOnline] = useState(false);
+  const [onlineByUid, setOnlineByUid] = useState<Record<string, boolean>>({});
   const [pendingImage, setPendingImage] = useState<{ file: File; url: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [videoNoteOpen, setVideoNoteOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [fileUpload, setFileUpload] = useState<{
@@ -472,7 +559,6 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   } | null>(null);
   const callStatus = useCallStore((state) => state.status);
   const callChatId = useCallStore((state) => state.chatId);
-  const beginOutgoing = useCallStore((state) => state.beginOutgoing);
   const hangup = useCallStore((state) => state.hangup);
   const callElapsed = useCallElapsed();
   const [recording, setRecording] = useState(false);
@@ -494,6 +580,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [editDraft, setEditDraft] = useState('');
   const [listTab, setListTab] = useState<ListTab>('todos');
   const [queryText, setQueryText] = useState('');
+  const [manageOpen, setManageOpen] = useState(false);
+  const [archivedMap, setArchivedMap] = useState<ArchivedChatMap>({});
+  const [clearedAtMs, setClearedAtMs] = useState(0);
+  const [peerDeletedNotice, setPeerDeletedNotice] = useState<string | null>(null);
   const [liveHandles, setLiveHandles] = useState<Set<string>>(new Set());
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [newMsgOpen, setNewMsgOpen] = useState(false);
@@ -504,6 +594,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const fileRef = useRef<HTMLInputElement>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
+  const composerInputRef = useRef<EmojiInputHandle>(null);
   const giftTriggerRef = useRef<HTMLButtonElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -520,6 +611,16 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
+    if (!profile) return;
+    return listenFollowing(profile.firebaseUid, setFollowing);
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!profile) return;
+    return listenFollowers(profile.firebaseUid, setFollowers);
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
     const onVis = () => setDocVisible(document.visibilityState === 'visible');
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
@@ -529,6 +630,46 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     if (!profile) return;
     return listenConversations(profile.firebaseUid, setConversations);
   }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!profile) return;
+    return listenArchivedChats(profile.firebaseUid, setArchivedMap);
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!profile) return;
+    for (const chat of conversations) {
+      const archived = archivedMap[chat.chatId];
+      if (!archived || chat.deletedAtMs || !chat.lastMessage) continue;
+      const lastMs = chat.lastAt ? Date.parse(chat.lastAt) : 0;
+      if (Number.isFinite(lastMs) && lastMs > archived.archivedAtMs + 2000) {
+        void unarchiveConversationForUser(profile.firebaseUid, chat.chatId);
+      }
+    }
+  }, [conversations, archivedMap, profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!chatId || !profile) {
+      setClearedAtMs(0);
+      return;
+    }
+    return listenChatMeta(chatId, (meta) => {
+      setClearedAtMs(meta.clearedAtMs);
+      if (meta.deletedAtMs && meta.deletedBy && meta.deletedBy !== profile.firebaseUid) {
+        setPeerDeletedNotice('Esta conversación fue eliminada.');
+        setManageOpen(false);
+        setMessages([]);
+        setChatId(null);
+        setActiveUid(null);
+      }
+    });
+  }, [chatId, profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!peerDeletedNotice) return;
+    const id = window.setTimeout(() => setPeerDeletedNotice(null), 4200);
+    return () => window.clearTimeout(id);
+  }, [peerDeletedNotice]);
 
   useEffect(() => {
     if (!profile || !isPage) return;
@@ -564,21 +705,39 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   const conUser = searchParams.get('con');
   useEffect(() => {
-    if (!conUser || friends.length === 0) return;
-    const match = friends.find((f) => f.username.toLowerCase() === conUser.toLowerCase());
-    if (match) {
+    if (!conUser) return;
+    const pool = [...friends, ...following, ...followers, ...conversations];
+    const match = pool.find((item) => item.username.toLowerCase() === conUser.toLowerCase());
+    if (match?.uid) {
       setActiveUid(match.uid);
       setSearchParams({}, { replace: true });
     }
-  }, [conUser, friends, setSearchParams]);
+  }, [conUser, friends, following, followers, conversations, setSearchParams]);
 
   const people = useMemo(() => {
-    const convByUid = new Map(conversations.map((chat) => [chat.uid, chat]));
-    return friends
-      .map((friend) => {
-        const chat = convByUid.get(friend.uid);
+    const convByUid = new Map(
+      conversations.filter((chat) => !chat.deletedAtMs).map((chat) => [chat.uid, chat]),
+    );
+    const byUid = new Map<string, FriendChip>();
+    for (const chip of [...friends, ...following, ...followers]) {
+      if (chip.uid) byUid.set(chip.uid, chip);
+    }
+    for (const chat of conversations) {
+      if (chat.deletedAtMs) continue;
+      if (chat.uid && !byUid.has(chat.uid)) {
+        byUid.set(chat.uid, {
+          uid: chat.uid,
+          username: chat.username,
+          displayName: chat.displayName,
+          avatarUrl: chat.avatarUrl,
+        });
+      }
+    }
+    return [...byUid.values()]
+      .map((person) => {
+        const chat = convByUid.get(person.uid);
         return {
-          ...friend,
+          ...person,
           lastMessage: chat?.lastMessage ?? null,
           lastAt: chat?.lastAt ?? null,
           unread: chat?.unread ?? 0,
@@ -589,20 +748,29 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         if ((b.unread || 0) !== (a.unread || 0)) return (b.unread || 0) - (a.unread || 0);
         return String(b.lastAt || '').localeCompare(String(a.lastAt || ''));
       });
-  }, [friends, conversations]);
+  }, [friends, following, followers, conversations]);
 
   const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
   const coins = profile?.coinsBalance ?? 0;
 
   const totalUnread = useMemo(
-    () => conversations.reduce((sum, chat) => sum + (chat.unread || 0), 0),
-    [conversations],
+    () =>
+      conversations.reduce((sum, chat) => {
+        if (chat.deletedAtMs || archivedMap[chat.chatId]) return sum;
+        return sum + (chat.unread || 0);
+      }, 0),
+    [conversations, archivedMap],
   );
 
   const filteredPeople = useMemo(() => {
     const q = queryText.trim().toLowerCase();
     let list = people;
-    if (listTab === 'unread') list = list.filter((p) => p.unread > 0);
+    if (listTab === 'unread') list = list.filter((p) => p.unread > 0 && !archivedMap[p.chatId || '']);
+    if (listTab === 'archivados') {
+      list = list.filter((p) => Boolean(p.chatId && archivedMap[p.chatId]));
+    } else if (listTab !== 'grupos') {
+      list = list.filter((p) => !p.chatId || !archivedMap[p.chatId]);
+    }
     if (q) {
       list = list.filter(
         (p) =>
@@ -611,28 +779,38 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           (p.lastMessage || '').toLowerCase().includes(q),
       );
     }
-    return list;
-  }, [people, listTab, queryText]);
+    if (listTab === 'grupos') return list;
+    return [...list].sort((a, b) => comparePeopleByPresence(a, b, onlineByUid));
+  }, [people, listTab, queryText, archivedMap, onlineByUid]);
 
   useEffect(() => {
-    if (isPage || compact) return;
+    if (isPage || compact || peerDeletedNotice) return;
     if (people.length > 0 && !activeUid) {
       const first = people[0];
       if (first) setActiveUid(first.uid);
     }
-  }, [people, compact, activeUid, isPage]);
+  }, [people, compact, activeUid, isPage, peerDeletedNotice]);
 
   const activeFriend = people.find((item) => item.uid === activeUid) || null;
+  const online = Boolean(activeFriend && onlineByUid[activeFriend.uid]);
   const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
-  const mayCall = Boolean(activeFriend && canCallFromFriends(friends, activeFriend.uid));
 
+  const presenceUidsKey = people.map((item) => item.uid).join('|');
   useEffect(() => {
-    if (!activeFriend?.uid) {
-      setOnline(false);
+    const uids = presenceUidsKey ? presenceUidsKey.split('|') : [];
+    if (uids.length === 0) {
+      setOnlineByUid({});
       return;
     }
-    return listenPresence(activeFriend.uid, setOnline);
-  }, [activeFriend?.uid]);
+    const unsubs = uids.map((uid) =>
+      listenPresence(uid, (value) => {
+        setOnlineByUid((prev) => (prev[uid] === value ? prev : { ...prev, [uid]: value }));
+      }),
+    );
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [presenceUidsKey]);
 
   useEffect(() => {
     if (!profile || !activeFriend) {
@@ -700,6 +878,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       setGiftsOpen(true);
     }
     function openGifFromCall() {
+      setEmojiPickerOpen(false);
+      setAttachOpen(false);
       setGifOpen(true);
     }
     function openStickersFromCall() {
@@ -717,6 +897,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   useEffect(() => {
     setAttachOpen(false);
+    setEmojiPickerOpen(false);
   }, [activeUid, recording]);
 
   useEffect(() => {
@@ -782,6 +963,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       );
       playMessagePop();
       setDraft('');
+      window.setTimeout(() => composerInputRef.current?.focus(), 0);
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'No se pudo enviar';
       setError(
@@ -1026,32 +1208,68 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }
 
   async function removeConversation() {
-    if (!profile || !chatId || !activeFriend) return;
-    if (!window.confirm(`¿Eliminar la conversación con @${activeFriend.username}?`)) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await deleteConversation(chatId, profile.firebaseUid);
-      setMessages([]);
-      setChatId(null);
-      setActiveUid(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo eliminar');
-    } finally {
-      setBusy(false);
+    if (!profile || !chatId) return;
+    await deleteConversation(chatId, profile.firebaseUid);
+    setManageOpen(false);
+    setMessages([]);
+    setChatId(null);
+    setActiveUid(null);
+  }
+
+  async function emptyConversation() {
+    if (!profile || !chatId) return;
+    await clearConversationForEveryone(chatId, profile.firebaseUid);
+    setMessages([]);
+    lastMsgCount.current = 0;
+  }
+
+  async function exportThreadPdf() {
+    if (!profile || !chatId || !activeFriend) {
+      throw new Error('No se pudo completar la acción. Intenta nuevamente.');
     }
+    const visible = messages.filter((item) => !clearedAtMs || Date.parse(item.createdAt) >= clearedAtMs);
+    await generateConversationPdf({
+      chatId,
+      requestingUserId: profile.firebaseUid,
+      meHandle: profile.handle,
+      peerHandle: activeFriend.username,
+      peerName: activeFriend.displayName,
+      messages: visible,
+    });
   }
 
   async function removeMessage(messageId: string, scope: 'me' | 'everyone') {
     if (!chatId || !profile) return;
+    const previous = messages;
     setMenuMessageId(null);
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === messageId
+          ? {
+              ...item,
+              text: '',
+              mediaUrl: null,
+              mediaType: null,
+              linkUrl: null,
+              fileName: null,
+              fileSize: null,
+              giftId: null,
+              callMeta: null,
+              deleted: scope === 'everyone' ? true : item.deleted,
+              deletedForEveryone: scope === 'everyone' ? true : item.deletedForEveryone,
+              hiddenForMe: scope === 'me' ? true : item.hiddenForMe,
+            }
+          : item,
+      ),
+    );
     try {
       if (scope === 'everyone') {
-        await deleteChatMessageForEveryone(chatId, messageId);
+        await deleteChatMessageForEveryone(chatId, messageId, profile.firebaseUid);
       } else {
         await deleteChatMessageForMe(chatId, messageId, profile.firebaseUid);
       }
     } catch (err) {
+      setMessages(previous);
       setError(err instanceof Error ? err.message : 'No se pudo eliminar el mensaje');
     }
   }
@@ -1192,57 +1410,6 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     await startAudioRecording();
   }
 
-  async function startCall(withVideo = false) {
-    if (!chatId || !activeFriend || !profile) return;
-    let allowed = canCallFromFriends(friends, activeFriend.uid);
-    if (!allowed) {
-      try {
-        allowed = await canCallUser(profile.firebaseUid, activeFriend.uid);
-      } catch {
-        allowed = false;
-      }
-    }
-    if (!allowed) {
-      setError('Las llamadas están disponibles solo entre amigos.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const session = await createCall(activeFriend.uid, withVideo ? 'video' : 'audio');
-      const denied = await ensureCallMediaPermission(withVideo);
-      if (denied) {
-        setError(denied);
-        return;
-      }
-      const callId = await startPrivateCall(
-        chatId,
-        {
-          firebaseUid: profile.firebaseUid,
-          handle: profile.handle,
-          displayName: profile.displayName,
-          avatarUrl: profile.avatarUrl,
-        },
-        activeFriend,
-        withVideo,
-        session.callId,
-      );
-      beginOutgoing({
-        chatId,
-        callId,
-        peer: activeFriend,
-        video: withVideo,
-        token: session.token,
-        serverUrl: session.serverUrl,
-      });
-    } catch (err) {
-      await endPrivateCall(chatId).catch(() => undefined);
-      setError(formatCallApiError(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function stopCall() {
     void hangup();
   }
@@ -1306,7 +1473,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     <div
       className={`flex min-h-0 flex-col border-white/[0.06] bg-[#0a0a0b] ${
         isPage
-          ? `w-full md:w-[min(42%,20rem)] md:shrink-0 md:border-r ${mobileHideList ? 'hidden md:flex' : 'flex'}`
+          ? `w-full md:w-[min(38%,21.25rem)] md:shrink-0 md:border-l ${mobileHideList ? 'hidden md:flex' : 'flex'}`
           : 'flex w-full md:w-48 md:border-r'
       }`}
     >
@@ -1346,7 +1513,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           />
         </label>
 
-        <div className="mt-3 flex gap-4 border-b border-white/[0.06] text-sm">
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-b border-white/[0.06] text-sm">
           {(
             [
               { id: 'todos' as const, label: 'Todos' },
@@ -1354,6 +1521,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 id: 'unread' as const,
                 label: totalUnread > 0 ? `No leídos (${totalUnread})` : 'No leídos',
               },
+              { id: 'archivados' as const, label: 'Archivados' },
               { id: 'grupos' as const, label: 'Grupos' },
             ] as const
           ).map((tab) => (
@@ -1438,7 +1606,9 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             Aún no tienes amigos. Acepta una solicitud para empezar a chatear.
           </p>
         ) : filteredPeople.length === 0 ? (
-          <p className="px-3 py-8 text-center text-xs text-zinc-500">Sin resultados.</p>
+          <p className="px-3 py-8 text-center text-xs text-zinc-500">
+            {listTab === 'archivados' ? 'No hay conversaciones archivadas.' : 'Sin resultados.'}
+          </p>
         ) : (
           <ul className="space-y-0.5">
             {filteredPeople.map((friend) => {
@@ -1447,11 +1617,11 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
               const rowInCall = Boolean(friend.chatId && callChatId === friend.chatId && callStatus !== 'idle');
               const rowLive = rowInCall && callStatus === 'active';
               return (
-                <li key={friend.uid}>
+                <li key={friend.uid} className="flex items-stretch gap-1">
                   <button
                     type="button"
                     onClick={() => setActiveUid(friend.uid)}
-                    className={`flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition ${
+                    className={`flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2.5 text-left transition ${
                       active ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'
                     }`}
                   >
@@ -1460,12 +1630,14 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       name={friend.username}
                       size={48}
                       ring={isLive}
+                      presence={Boolean(onlineByUid[friend.uid])}
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1">
                         <span className="truncate text-sm font-semibold text-white">
                           {friend.displayName || friend.username}
                         </span>
+                        <PresenceDot online={Boolean(onlineByUid[friend.uid])} />
                         <BadgeCheck size={14} className="shrink-0 fill-violet-500 text-violet-500" />
                         {rowInCall ? <Phone size={12} className="shrink-0 text-cyan-300" /> : null}
                       </span>
@@ -1498,30 +1670,21 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       ) : null}
                     </span>
                   </button>
+                  {listTab === 'archivados' && friend.chatId && profile ? (
+                    <button
+                      type="button"
+                      className="self-center min-h-11 rounded-md px-2 py-2 text-[10px] font-bold text-cyan-300 hover:bg-white/5"
+                      onClick={() => void unarchiveConversationForUser(profile.firebaseUid, friend.chatId!)}
+                    >
+                      Desarchivar
+                    </button>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
         )}
       </div>
-
-      {isPage && friends.length > 0 ? (
-        <div className="shrink-0 border-t border-white/[0.06] px-2.5 py-1.5">
-          <div className="flex h-8 items-center gap-1.5 overflow-x-auto">
-            {friends.slice(0, 12).map((f) => (
-              <button
-                key={`story-${f.uid}`}
-                type="button"
-                onClick={() => setActiveUid(f.uid)}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full p-0"
-                title={f.displayName || f.username}
-              >
-                <Avatar url={f.avatarUrl} name={f.username} size={28} online />
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 
@@ -1546,12 +1709,18 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             to={profileHref(activeFriend.username, activeFriend.uid)}
             className="flex min-w-0 flex-1 items-center gap-3"
           >
-            <Avatar url={activeFriend.avatarUrl} name={activeFriend.username} size={44} />
+            <Avatar
+              url={activeFriend.avatarUrl}
+              name={activeFriend.username}
+              size={44}
+              presence={online}
+            />
             <span className="min-w-0">
               <span className="flex items-center gap-1">
                 <span className="truncate text-sm font-bold text-white">
                   {activeFriend.displayName || activeFriend.username}
                 </span>
+                <PresenceDot online={online} />
                 <BadgeCheck size={15} className="shrink-0 fill-violet-500 text-violet-500" />
               </span>
               <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
@@ -1562,8 +1731,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       : inThisCall
                         ? 'font-semibold text-cyan-200'
                         : online
-                          ? 'text-emerald-400'
-                          : 'text-zinc-500'
+                          ? 'lb-status-online'
+                          : 'lb-status-offline'
                   }
                 >
                   {inThisCall && callStatus === 'active'
@@ -1590,28 +1759,16 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 <PhoneOff size={14} /> Colgar
               </button>
             ) : (
-              <div className="lb-call-header-actions">
-                <button
-                  type="button"
-                  disabled={busy || callStatus !== 'idle'}
-                  onClick={() => void startCall(true)}
-                  className={`lb-call-header-btn lb-call-header-btn--video${mayCall ? '' : ' is-locked'}`}
-                  aria-label="Videollamada"
-                  title={mayCall ? 'Videollamada' : 'Las llamadas están disponibles solo entre amigos.'}
-                >
-                  <Video size={16} />
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || callStatus !== 'idle'}
-                  onClick={() => void startCall(false)}
-                  className={`lb-call-header-btn lb-call-header-btn--voice${mayCall ? '' : ' is-locked'}`}
-                  aria-label="Llamada"
-                  title={mayCall ? 'Llamada' : 'Las llamadas están disponibles solo entre amigos.'}
-                >
-                  <Phone size={16} />
-                </button>
-              </div>
+              <CallChatActions
+                chatId={chatId}
+                peer={activeFriend}
+                inThisCall={false}
+                busy={busy}
+                callStatus={callStatus}
+                onBusy={setBusy}
+                onError={setError}
+                onStopCall={stopCall}
+              />
             )}
             <Link
               to={profileHref(activeFriend.username, activeFriend.uid)}
@@ -1623,9 +1780,9 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             <button
               type="button"
               disabled={busy || !chatId}
-              onClick={() => void removeConversation()}
-              className="grid h-9 w-9 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-rose-300"
-              aria-label="Eliminar conversación"
+              onClick={() => setManageOpen(true)}
+              className="grid h-11 w-11 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-rose-300"
+              aria-label="Administrar conversación"
             >
               <Trash2 size={16} />
             </button>
@@ -1641,21 +1798,28 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             paddingRight: 'max(1rem, var(--lb-safe-right))',
           }}
         >
-          {messages.length === 0 ? (
-            <p className="py-10 text-center text-xs text-zinc-500">Sin mensajes aún. ¡Saluda!</p>
+          {messages.filter((item) => !clearedAtMs || Date.parse(item.createdAt) >= clearedAtMs).length === 0 ? (
+            <p className="py-10 text-center text-xs leading-relaxed text-zinc-500">
+              No hay mensajes todavía.
+              <br />
+              Escribe algo para comenzar de nuevo.
+            </p>
           ) : (
-            messages.map((message, index) => {
-              const prev = messages[index - 1];
+            messages
+              .filter((item) => !clearedAtMs || Date.parse(item.createdAt) >= clearedAtMs)
+              .map((message, index, list) => {
+              const prev = list[index - 1];
               const showDay = !prev || !sameCalendarDay(prev.createdAt, message.createdAt);
               const isCall = message.mediaType === 'call' || Boolean(message.callMeta);
-              const isAudio = message.mediaType === 'audio' && Boolean(message.mediaUrl);
-              const isVideo = message.mediaType === 'video' && Boolean(message.mediaUrl);
-              const isGif = isAnimatedChatGif(message.mediaUrl, message.mediaType);
-              const isFile = message.mediaType === 'file' && Boolean(message.mediaUrl);
-              const isGift = Boolean(message.giftId);
+              const gone = Boolean(message.deleted || message.deletedForEveryone || message.hiddenForMe);
+              const isAudio = !gone && message.mediaType === 'audio' && Boolean(message.mediaUrl);
+              const isVideo = !gone && message.mediaType === 'video' && Boolean(message.mediaUrl);
+              const isGif = !gone && isAnimatedChatGif(message.mediaUrl, message.mediaType);
+              const isFile = !gone && message.mediaType === 'file' && Boolean(message.mediaUrl);
+              const isGift = !gone && Boolean(message.giftId);
               const giftItem = isGift ? findLiveGift(message.giftId) : null;
               const plainText =
-                !message.deleted &&
+                !gone &&
                 !isAudio &&
                 !isVideo &&
                 !isFile &&
@@ -1673,50 +1837,18 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       {dayLabel(message.createdAt)}
                     </p>
                   ) : null}
-                  {isCall && !message.deleted ? (
-                    <div className="relative">
-                      <CallEventBubble message={message} />
-                      <div className="mt-0.5 flex items-center justify-center gap-2">
-                        <span className="text-[10px] text-zinc-600">
-                          {formatBubbleTime(message.createdAt)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setMenuMessageId((id) => (id === message.id ? null : message.id))
-                          }
-                          className="text-zinc-600 hover:text-zinc-300"
-                          aria-label="Opciones"
-                        >
-                          <MoreHorizontal size={12} />
-                        </button>
-                      </div>
-                      {menuMessageId === message.id ? (
-                        <div className="absolute left-1/2 z-20 mt-1 w-44 -translate-x-1/2 overflow-hidden rounded-xl border border-white/10 bg-zinc-950 py-1 shadow-xl">
-                          <button
-                            type="button"
-                            onClick={() => void removeMessage(message.id, 'me')}
-                            className="flex w-full px-3 py-2 text-left text-xs text-zinc-300 hover:bg-white/5"
-                          >
-                            Eliminar para mí
-                          </button>
-                          {message.mine ? (
-                            <button
-                              type="button"
-                              onClick={() => void removeMessage(message.id, 'everyone')}
-                              className="flex w-full px-3 py-2 text-left text-xs text-rose-300 hover:bg-white/5"
-                            >
-                              Eliminar para todos
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
+                  {gone ? (
+                    <ChatTombstone
+                      everyone={Boolean(message.deleted || message.deletedForEveryone)}
+                      mine={message.mine}
+                      time={formatBubbleTime(message.createdAt)}
+                      ticks={<MessageTicks status={message.status} />}
+                    />
                   ) : (
                     <div
-                      className={`group relative flex max-w-[min(85%,22rem)] flex-col ${
-                        message.mine ? 'ml-auto items-end' : 'mr-auto items-start'
-                      }`}
+                      className={`group relative flex flex-col ${
+                        isCall ? 'max-w-[min(85%,20rem)]' : 'max-w-[min(85%,22rem)]'
+                      } ${message.mine ? 'ml-auto items-end' : 'mr-auto items-start'}`}
                       onPointerDown={() => {
                         window.clearTimeout(holdTimerRef.current);
                         holdTimerRef.current = window.setTimeout(() => {
@@ -1730,6 +1862,9 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                         setMenuMessageId(message.id);
                       }}
                     >
+                      {isCall ? (
+                        <CallEventBubble message={message} mine={message.mine} />
+                      ) : (
                       <div
                         className={`break-words ${
                           isVideo
@@ -1741,10 +1876,6 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                               }`
                         }`}
                       >
-                        {message.deleted ? (
-                          <p className="rounded-2xl bg-[#1c1d26] px-3.5 py-2.5 italic text-zinc-400">Mensaje eliminado</p>
-                        ) : (
-                          <>
                             {isVideo && message.mediaUrl ? (
                               <VideoNoteBubble src={message.mediaUrl} mine={message.mine} />
                             ) : null}
@@ -1814,7 +1945,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                               <div className="mt-1 flex gap-1">
                                 <input
                                   value={editDraft}
-                                  onChange={(event) => setEditDraft(event.target.value)}
+                                  onChange={(event) =>
+                                    setEditDraft(event.target.value.slice(0, MAX_CHAT_MESSAGE_LENGTH))
+                                  }
+                                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
                                   className="min-w-0 flex-1 rounded border border-white/20 bg-black/40 px-2 py-1 text-xs text-white"
                                 />
                                 <button
@@ -1845,16 +1979,18 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                                 ) : null}
                               </p>
                             ) : null}
-                          </>
-                        )}
                       </div>
-                      {chatId && !message.deleted ? (
-                        <MessageReactionBar chatId={chatId} messageId={message.id} />
-                      ) : null}
+                      )}
                       <div className="mt-1 flex items-center gap-1.5 px-1">
                         {!message.deleted ? (
-                          <span className="relative flex items-center gap-1 opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100">
-                            {message.mine && !isAudio && !isVideo ? (
+                          <span
+                            className={`relative z-20 flex items-center gap-1 ${
+                              menuMessageId === message.id
+                                ? 'opacity-100'
+                                : 'opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100'
+                            }`}
+                          >
+                            {message.mine && !isAudio && !isVideo && !isCall ? (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1879,32 +2015,24 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                             </button>
                             {menuMessageId === message.id ? (
                               <div
-                                className={`absolute bottom-5 z-20 w-48 overflow-hidden rounded-xl border border-white/10 bg-zinc-950 py-1 shadow-xl ${
+                                className={`lb-chat-msg-menu absolute bottom-5 z-30 ${
                                   message.mine ? 'right-0' : 'left-0'
                                 }`}
                               >
-                                {chatId ? (
-                                  <div className="border-b border-white/10 px-2 py-1.5">
-                                    <p className="mb-1 text-[10px] font-semibold text-zinc-500">Reacciones</p>
-                                    <MessageReactionBar chatId={chatId} messageId={message.id} always />
-                                  </div>
-                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => void removeMessage(message.id, 'me')}
-                                  className="flex w-full px-3 py-2 text-left text-xs text-zinc-300 hover:bg-white/5"
+                                  className="lb-chat-msg-menu__item"
                                 >
                                   Eliminar para mí
                                 </button>
-                                {message.mine ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => void removeMessage(message.id, 'everyone')}
-                                    className="flex w-full px-3 py-2 text-left text-xs text-rose-300 hover:bg-white/5"
-                                  >
-                                    Eliminar para todos
-                                  </button>
-                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => void removeMessage(message.id, 'everyone')}
+                                  className="lb-chat-msg-menu__item lb-chat-msg-menu__item--everyone"
+                                >
+                                  Eliminar para todos
+                                </button>
                               </div>
                             ) : null}
                           </span>
@@ -2013,7 +2141,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         {error ? <p className="px-4 text-[11px] text-fuchsia-300">{error}</p> : null}
 
         <div
-          className="lb-chat-composer flex min-w-0 shrink-0 flex-wrap items-end gap-1.5 overflow-x-hidden border-t border-white/[0.06] px-3 py-2.5"
+          className="lb-chat-composer flex min-w-0 shrink-0 items-end gap-2 overflow-x-hidden border-t border-[color:var(--border-soft)] px-3 py-2.5"
           style={{
             paddingBottom: isPage ? '0.65rem' : 'max(0.65rem, var(--lb-safe-bottom))',
           }}
@@ -2021,11 +2149,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             className="hidden"
             onChange={(event) => {
-              void onPickFile(event.target.files?.[0] || null, 'image');
+              const file = event.target.files?.[0] || null;
               event.target.value = '';
+              if (!file) return;
+              if (file.type.startsWith('image/')) {
+                void onPickFile(file, 'image');
+                return;
+              }
+              onPickAttachment(file);
             }}
           />
           <input
@@ -2048,96 +2182,133 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             />
           ) : (
             <>
-          <div className="flex shrink-0 items-center gap-0.5">
-          <div className="relative shrink-0">
-            <button
-              ref={attachBtnRef}
-              type="button"
-              onClick={() => setAttachOpen((v) => !v)}
-              className={`lb-chat-composer-btn ${attachOpen ? 'is-on' : ''}`}
-              aria-label="Adjuntar"
-              aria-haspopup="menu"
-              aria-expanded={attachOpen}
-              aria-controls="lb-chat-attach-menu"
-            >
-              <Paperclip size={18} />
-            </button>
-            <ChatAttachMenu
-              open={attachOpen}
-              anchorRef={attachBtnRef}
-              onClose={() => setAttachOpen(false)}
-              onGallery={() => fileRef.current?.click()}
-              onCamera={() => setCameraOpen(true)}
-              onVideoNote={() => setVideoNoteOpen(true)}
-              onFile={() => attachFileRef.current?.click()}
-            />
-          </div>
-          <EmojiPickerButton
-            placement="above"
-            className="shrink-0"
-            buttonClassName="lb-chat-composer-btn"
-            onPick={(id) => setDraft((d) => insertEmojiToken(d, id))}
-          />
-          <button
-            type="button"
-            className={`lb-chat-composer-btn ${gifOpen ? 'is-on' : ''}`}
-            onClick={() => setGifOpen(true)}
-            aria-label="GIF"
-          >
-            <span className="text-[10px] font-black tracking-wide">GIF</span>
-          </button>
-          <button
-            ref={giftTriggerRef}
-            type="button"
-            className={`lb-chat-composer-btn ${giftsOpen ? 'is-on' : ''}`}
-            onClick={() => {
-              setGiftsOpen((value) => !value);
-              setGiftError(null);
-              setRechargeNeeded(null);
-            }}
-            aria-label="Regalos"
-          >
-            <Gift size={18} />
-          </button>
-          </div>
-          <form
-            className="flex min-w-[10rem] flex-1 items-end gap-1 rounded-full border border-white/[0.08] bg-[#12131a] px-3 py-1.5 transition focus-within:border-violet-400/40 focus-within:shadow-[0_0_14px_rgba(139,92,246,0.18)]"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const link = detectLink(draft);
-              void send(draft, link ? { linkUrl: link } : undefined);
-            }}
-          >
-            <EmojiInput
-              value={draft}
-              onChange={setDraft}
-              placeholder={t('chat.writeMessage')}
-              emojiSize={CHAT_EMOJI_SIZE}
-              fieldClassName="min-w-0 flex-1"
-              padClassName="py-1.5"
-              mirrorTextClassName="text-white"
-            />
-            {draft.trim() ? (
-              <button
-                type="submit"
-                disabled={busy}
-                className="lb-chat-composer-send"
-                aria-label={t('chat.send')}
+              <div className="relative shrink-0">
+                <button
+                  ref={(node) => {
+                    attachBtnRef.current = node;
+                    giftTriggerRef.current = node;
+                  }}
+                  type="button"
+                  onClick={() => {
+                    setAttachOpen((v) => !v);
+                    setEmojiPickerOpen(false);
+                    setGifOpen(false);
+                  }}
+                  className={`lb-chat-plus ${attachOpen ? 'is-on' : ''}`}
+                  aria-label="Más acciones"
+                  aria-haspopup="menu"
+                  aria-expanded={attachOpen}
+                  aria-controls="lb-chat-attach-menu"
+                >
+                  <Plus size={20} strokeWidth={2.4} />
+                </button>
+                <ChatAttachMenu
+                  open={attachOpen}
+                  anchorRef={attachBtnRef}
+                  onClose={() => setAttachOpen(false)}
+                  onGift={() => {
+                    setGiftsOpen(true);
+                    setGiftError(null);
+                    setRechargeNeeded(null);
+                  }}
+                  onGallery={() => fileRef.current?.click()}
+                  onCamera={() => setCameraOpen(true)}
+                  onVideoNote={() => setVideoNoteOpen(true)}
+                  onFile={() => attachFileRef.current?.click()}
+                />
+              </div>
+              <form
+                id="lb-chat-composer-form"
+                className="lb-chat-composer-field flex min-w-0 flex-1 flex-col justify-end"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const link = detectLink(draft);
+                  void send(draft, link ? { linkUrl: link } : undefined);
+                }}
               >
-                <Send size={15} />
-              </button>
-            ) : (
+                <EmojiInput
+                  ref={composerInputRef}
+                  multiline
+                  rows={1}
+                  growMode="message"
+                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
+                  value={draft}
+                  onChange={(next) => setDraft(next.slice(0, MAX_CHAT_MESSAGE_LENGTH))}
+                  onEnterSubmit={() => {
+                    const link = detectLink(draft);
+                    void send(draft, link ? { linkUrl: link } : undefined);
+                  }}
+                  placeholder="Escribe un mensaje..."
+                  emojiSize={CHAT_EMOJI_SIZE}
+                  className="w-full min-w-0"
+                  fieldClassName="min-w-0 w-full"
+                  padClassName="py-1.5"
+                  mirrorTextClassName="text-[color:var(--text-primary)]"
+                />
+                {draft.length >= 3500 ? (
+                  <span
+                    className={`lb-chat-composer-count${
+                      draft.length >= MAX_CHAT_MESSAGE_LENGTH
+                        ? ' is-max'
+                        : draft.length >= 3800
+                          ? ' is-warn'
+                          : ''
+                    }`}
+                  >
+                    {draft.length.toLocaleString('es-CO')} /{' '}
+                    {MAX_CHAT_MESSAGE_LENGTH.toLocaleString('es-CO')}
+                  </span>
+                ) : null}
+              </form>
+              <EmojiPickerButton
+                open={emojiPickerOpen}
+                onOpenChange={(next) => {
+                  setEmojiPickerOpen(next);
+                  if (next) {
+                    setGifOpen(false);
+                    setAttachOpen(false);
+                  }
+                }}
+                title="Emoji"
+                placement="above"
+                buttonClassName={`lb-chat-composer-tool${emojiPickerOpen ? ' is-on' : ''}`}
+                onPick={(id) => composerInputRef.current?.insertToken(id)}
+              />
               <button
                 type="button"
-                onClick={() => void toggleVoice()}
-                disabled={busy}
-                className="lb-chat-composer-send"
-                aria-label="Audio"
+                className={`lb-chat-composer-tool${gifOpen ? ' is-on' : ''}`}
+                aria-label="GIF"
+                title="GIF"
+                aria-pressed={gifOpen}
+                onClick={() => {
+                  setGifOpen((open) => !open);
+                  setEmojiPickerOpen(false);
+                  setAttachOpen(false);
+                }}
               >
-                <Mic size={16} />
+                <span className="lb-chat-composer-gif-mark">GIF</span>
               </button>
-            )}
-          </form>
+              {draft.trim() ? (
+                <button
+                  type="submit"
+                  form="lb-chat-composer-form"
+                  disabled={busy}
+                  className="lb-chat-composer-send"
+                  aria-label="Enviar"
+                >
+                  <Send size={15} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void toggleVoice()}
+                  disabled={busy}
+                  className="lb-chat-composer-send"
+                  aria-label="Audio"
+                >
+                  <Mic size={16} />
+                </button>
+              )}
             </>
           )}
         </div>
@@ -2155,6 +2326,23 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   const chatExtras = (
     <>
+      {peerDeletedNotice ? (
+        <div className="lb-chat-deleted-toast" role="status">
+          {peerDeletedNotice}
+        </div>
+      ) : null}
+      {manageOpen && activeFriend && chatId && profile ? (
+        <ConversationActionsModal
+          handle={activeFriend.username}
+          archived={Boolean(archivedMap[chatId])}
+          onClose={() => setManageOpen(false)}
+          onDelete={removeConversation}
+          onClear={emptyConversation}
+          onArchive={() => archiveConversationForUser(profile.firebaseUid, chatId)}
+          onUnarchive={() => unarchiveConversationForUser(profile.firebaseUid, chatId)}
+          onPdf={exportThreadPdf}
+        />
+      ) : null}
       <VideoNoteCapture
         open={videoNoteOpen}
         onClose={() => setVideoNoteOpen(false)}
@@ -2279,7 +2467,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   return (
     <>
-      <section className="flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)+var(--lb-safe-bottom))] lg:pb-0">
+      <section className="flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)+var(--lb-safe-bottom))] md:flex-row-reverse lg:pb-0">
         {listPane}
         {threadPane}
       </section>

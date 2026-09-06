@@ -3,8 +3,10 @@ import {
   deleteField,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   limit,
+  onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
@@ -37,6 +39,7 @@ export type PublicFsUser = {
   levelXp: number;
   levelXpOrganic?: number;
   levelXpPinned?: number | null;
+  updatedAtMs?: number;
 };
 
 export function readLevelXpFields(data: Record<string, unknown> | undefined) {
@@ -93,6 +96,71 @@ function asCoverType(value: unknown): 'image' | 'gif' | 'video' | null {
   return null;
 }
 
+function asUpdatedAtMs(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (
+    typeof value === 'object' &&
+    value &&
+    'toMillis' in value &&
+    typeof (value as { toMillis: () => number }).toMillis === 'function'
+  ) {
+    try {
+      return (value as { toMillis: () => number }).toMillis();
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+export function mapProfileSaveError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error || '');
+  const code =
+    typeof error === 'object' && error && 'code' in error
+      ? String((error as { code: unknown }).code)
+      : '';
+  const status =
+    typeof error === 'object' && error && 'status' in error
+      ? Number((error as { status: unknown }).status)
+      : 0;
+  if (status === 409 || /ya está en uso/i.test(raw)) {
+    return 'Ese nombre de usuario ya está en uso.';
+  }
+  if (/3-24 caracteres|a-z, 0-9/i.test(raw)) {
+    return 'El usuario debe tener 3-24 caracteres (a-z, 0-9, _).';
+  }
+  if (/caracteres no permitidos/i.test(raw)) {
+    return 'El nombre contiene caracteres no permitidos.';
+  }
+  if (/mayor de 18/i.test(raw)) return 'Debes ser mayor de 18 años para usar Liveboom.';
+  if (/fecha de nacimiento inválida/i.test(raw)) return 'Fecha de nacimiento inválida.';
+  if (/biografía es obligatoria/i.test(raw)) return raw;
+  if (/nombre es obligatorio/i.test(raw)) return raw;
+  if (/foto de perfil/i.test(raw)) return raw;
+  if (status === 401 || /no hay sesión/i.test(raw)) {
+    return 'Tu sesión expiró. Vuelve a entrar e intenta nuevamente.';
+  }
+  if (
+    code.includes('permission-denied') ||
+    /insufficient permissions|permission denied/i.test(raw)
+  ) {
+    return 'No se pudo guardar el perfil. Intenta nuevamente.';
+  }
+  if (status === 0 || /Failed to fetch|network|conectar con el servidor/i.test(raw)) {
+    return 'No se pudo guardar el perfil. Intenta nuevamente.';
+  }
+  if (/HTTP\s*\d|Firebase|stack|exception|Error \d{3}/i.test(raw)) {
+    return 'No se pudo guardar el perfil. Intenta nuevamente.';
+  }
+  if (raw && raw.length < 140 && !/\n|\bat\s+\w+/i.test(raw)) return raw;
+  return 'No se pudo guardar el perfil. Intenta nuevamente.';
+}
+
 function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
   const username = String(data.username || '');
   const avatarRaw = data.avatarUrl;
@@ -115,6 +183,7 @@ function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
     levelXp: xp.effective,
     levelXpOrganic: xp.organic,
     levelXpPinned: xp.pinned,
+    updatedAtMs: asUpdatedAtMs(data.updatedAt),
   };
 }
 
@@ -132,6 +201,7 @@ export function mapFirestoreUser(user: PublicFsUser): SessionUser {
     coins: user.coinsBalance,
     coinsBalance: user.coinsBalance,
     levelXp: user.levelXp,
+    profileUpdatedAtMs: user.updatedAtMs,
   };
 }
 
@@ -139,6 +209,29 @@ export async function fetchFirestoreProfile(uid: string): Promise<SessionUser | 
   const snap = await getDoc(doc(db, 'users', uid));
   if (!snap.exists()) return null;
   return mapFirestoreUser(mapDoc(snap.id, snap.data() as Record<string, unknown>));
+}
+
+async function fetchFirestoreProfileConfirmed(uid: string): Promise<SessionUser | null> {
+  try {
+    const snap = await getDocFromServer(doc(db, 'users', uid));
+    if (!snap.exists()) return null;
+    return mapFirestoreUser(mapDoc(snap.id, snap.data() as Record<string, unknown>));
+  } catch {
+    return fetchFirestoreProfile(uid);
+  }
+}
+
+/** Escucha el documento de usuario (fuente de verdad para nombre, @, foto, bio). */
+export function listenFirestoreProfile(
+  uid: string,
+  onChange: (profile: SessionUser) => void,
+): () => void {
+  const id = String(uid || '').trim();
+  if (!id) return () => undefined;
+  return onSnapshot(doc(db, 'users', id), (snap) => {
+    if (!snap.exists()) return;
+    onChange(mapFirestoreUser(mapDoc(snap.id, snap.data() as Record<string, unknown>)));
+  });
 }
 
 export async function setFirestoreCoins(uid: string, coins: number) {
@@ -428,29 +521,31 @@ export async function saveFirestoreProfile(input: {
       }
     }
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       firebaseUid: input.uid,
-      email: input.email,
       username,
       displayName: input.displayName.trim().slice(0, 48) || username,
       avatarUrl: input.avatarUrl,
       bio: input.bio.trim().slice(0, 280) || null,
       birthDate: input.birthDate,
       category: input.category,
-      coinsBalance: currentUser.exists()
-        ? Number((currentUser.data() as { coinsBalance?: number }).coinsBalance ?? 0)
-        : 0,
       updatedAt: serverTimestamp(),
-      createdAt: currentUser.exists()
-        ? (currentUser.data() as { createdAt?: unknown }).createdAt || serverTimestamp()
-        : serverTimestamp(),
     };
+    if (!currentUser.exists()) {
+      payload.email = input.email;
+      payload.createdAt = serverTimestamp();
+    } else if (
+      input.email &&
+      !String((currentUser.data() as { email?: string }).email || '').trim()
+    ) {
+      payload.email = input.email;
+    }
 
     tx.set(userRef, payload, { merge: true });
     tx.set(usernameRef, { uid: input.uid, username }, { merge: true });
   });
 
-  const saved = await fetchFirestoreProfile(input.uid);
+  const saved = await fetchFirestoreProfileConfirmed(input.uid);
   if (!saved) throw new Error('No se pudo leer el perfil guardado en Firebase.');
   void ensureUserStorageFolder(input.uid).catch(() => undefined);
   return saved;
@@ -496,6 +591,8 @@ export async function saveFirestoreCover(
   return url;
 }
 
+const PROFILE_FIELD_WHITELIST = ['avatarUrl', 'birthDate', 'displayName', 'bio', 'category'] as const;
+
 /** Actualiza campos del perfil sin requerir guardado completo. */
 export async function updateFirestoreProfileFields(
   uid: string,
@@ -503,13 +600,11 @@ export async function updateFirestoreProfileFields(
 ): Promise<void> {
   const id = String(uid || '').trim();
   if (!id) throw new Error('Usuario no válido.');
-  await setDoc(
-    doc(db, 'users', id),
-    {
-      firebaseUid: id,
-      ...fields,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
+  const patch: Record<string, unknown> = { firebaseUid: id, updatedAt: serverTimestamp() };
+  for (const key of PROFILE_FIELD_WHITELIST) {
+    if (Object.prototype.hasOwnProperty.call(fields, key)) {
+      patch[key] = fields[key];
+    }
+  }
+  await setDoc(doc(db, 'users', id), patch, { merge: true });
 }

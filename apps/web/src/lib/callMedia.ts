@@ -36,3 +36,59 @@ export function canShareScreen() {
     !/iPhone|iPad|iPod/i.test(navigator.userAgent)
   );
 }
+
+export type CallCameraFacing = 'user' | 'environment' | 'other';
+
+export async function listCallMediaDevices(): Promise<{
+  video: MediaDeviceInfo[];
+  audio: MediaDeviceInfo[];
+}> {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+    return { video: [], audio: [] };
+  }
+  try {
+    const list = await navigator.mediaDevices.enumerateDevices();
+    return {
+      video: list.filter((item) => item.kind === 'videoinput' && item.deviceId),
+      audio: list.filter((item) => item.kind === 'audioinput' && item.deviceId),
+    };
+  } catch {
+    return { video: [], audio: [] };
+  }
+}
+
+export function inferCallCameraFacing(label: string, facingMode?: string): CallCameraFacing {
+  const text = `${label} ${facingMode || ''}`.toLowerCase();
+  if (/front|user|frontal|face/.test(text)) return 'user';
+  if (/back|rear|environment|trasera|wide|ultra/.test(text)) return 'environment';
+  return 'other';
+}
+
+export function labelCallCamera(device: MediaDeviceInfo, index: number, compactFacing = false): string {
+  const facing = inferCallCameraFacing(device.label);
+  if (compactFacing) {
+    if (facing === 'user') return 'Cámara frontal';
+    if (facing === 'environment') return 'Cámara trasera';
+  }
+  if (device.label.trim()) return device.label;
+  if (facing === 'user') return 'Cámara frontal';
+  if (facing === 'environment') return 'Cámara trasera';
+  return `Cámara ${index + 1}`;
+}
+
+export function labelCallMicrophone(device: MediaDeviceInfo, index: number): string {
+  return device.label.trim() || `Micrófono ${index + 1}`;
+}
+
+export function callMediaDeniedMessage(error: unknown, video: boolean): string {
+  const name = error instanceof DOMException ? error.name : '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return video
+      ? 'LiveBoom necesita acceso a la cámara. Revisa los permisos del navegador.'
+      : 'LiveBoom necesita acceso al micrófono. Revisa los permisos del navegador.';
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return video ? 'No se encontró esa cámara.' : 'No se encontró ese micrófono.';
+  }
+  return video ? 'No se pudo cambiar la cámara.' : 'No se pudo cambiar el micrófono.';
+}

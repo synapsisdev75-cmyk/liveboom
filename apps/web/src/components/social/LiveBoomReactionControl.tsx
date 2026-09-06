@@ -7,12 +7,8 @@ import {
   type LiveBoomReaction,
 } from '../../lib/liveBoomReactionAssets';
 import {
-  listenReactionCounts,
-  setReaction,
-  type LiveBoomReactionStats,
   type LiveBoomReactionUser,
 } from '../../lib/liveBoomReactionService';
-import { useAuthStore } from '../../store/authStore';
 import { useT } from '../../i18n';
 
 type Size = 'xs' | 'sm' | 'md';
@@ -278,65 +274,10 @@ function ReactionPeople({
 
 export { ReactionPeople as LiveBoomReactionPeople };
 
-export function MessageReactionBar({
-  chatId,
-  messageId,
-  always,
-}: {
+export function MessageReactionBar(_props: {
   chatId: string;
   messageId: string;
   always?: boolean;
 }) {
-  const profile = useAuthStore((state) => state.profile);
-  const [stats, setStats] = useState<LiveBoomReactionStats>({
-    likeCount: 0,
-    dislikeCount: 0,
-    currentUserReaction: null,
-    likers: [],
-    dislikers: [],
-  });
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    return listenReactionCounts('message', messageId, profile?.firebaseUid, setStats, { chatId });
-  }, [chatId, messageId, profile?.firebaseUid]);
-
-  const hasCounts = stats.likeCount > 0 || stats.dislikeCount > 0 || Boolean(stats.currentUserReaction);
-
-  async function react(kind: 'like' | 'dislike') {
-    if (!profile) return;
-    setBusy(true);
-    try {
-      await setReaction('message', messageId, profile.firebaseUid, kind, {
-        chatId,
-        current: stats.currentUserReaction,
-        profile: {
-          username: profile.handle,
-          displayName: profile.displayName,
-          avatarUrl: profile.avatarUrl,
-        },
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div
-      className={`lb-reaction-chat ${always || hasCounts ? 'is-visible' : ''}`}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <LiveBoomReactionControl
-        currentUserReaction={stats.currentUserReaction}
-        likeCount={stats.likeCount}
-        dislikeCount={stats.dislikeCount}
-        likers={stats.likers}
-        dislikers={stats.dislikers}
-        busy={busy}
-        onReact={(kind) => void react(kind)}
-        size="xs"
-        layout="chat"
-      />
-    </div>
-  );
+  return null;
 }

@@ -14,7 +14,12 @@ import {
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { auth, googleProvider } from '../lib/firebase';
 import { api, getApiBase, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
-import { ensureFirestoreProfile, fetchFirestoreProfile, updateFirestoreProfileFields } from '../lib/profileFirestore';
+import {
+  ensureFirestoreProfile,
+  fetchFirestoreProfile,
+  listenFirestoreProfile,
+  updateFirestoreProfileFields,
+} from '../lib/profileFirestore';
 import { processGiftInbox } from '../lib/giftsFirestore';
 import { readPendingBirthDate, storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
@@ -34,6 +39,8 @@ type AuthState = {
   profile: SessionUser | null;
   error: string | null;
   busy: boolean;
+  /** Reloj local del último guardado de perfil (evita snapshots viejos). */
+  profileWriteAt: number;
   hydrate: () => () => void;
   syncProfile: () => Promise<void>;
   setCoins: (coins: number) => void;
@@ -173,6 +180,38 @@ async function syncWithBackend(user: FirebaseUser) {
   }
 }
 
+function applyRemoteProfile(
+  prev: SessionUser | null,
+  incoming: SessionUser,
+  writeAt: number,
+): SessionUser {
+  if (!prev || prev.firebaseUid !== incoming.firebaseUid) return incoming;
+  const snapMs = incoming.profileUpdatedAtMs || 0;
+  const localMs = prev.profileUpdatedAtMs || writeAt || 0;
+  const staleIdentity = Boolean(localMs) && (!snapMs || snapMs < localMs - 2000);
+  if (staleIdentity) {
+    return {
+      ...prev,
+      coins: incoming.coinsBalance,
+      coinsBalance: incoming.coinsBalance,
+      levelXp: incoming.levelXp ?? prev.levelXp,
+    };
+  }
+  return {
+    ...prev,
+    displayName: incoming.displayName,
+    handle: incoming.handle,
+    avatarUrl: incoming.avatarUrl,
+    bio: incoming.bio,
+    birthDate: incoming.birthDate,
+    category: incoming.category,
+    coins: incoming.coinsBalance,
+    coinsBalance: incoming.coinsBalance,
+    levelXp: incoming.levelXp ?? prev.levelXp,
+    profileUpdatedAtMs: incoming.profileUpdatedAtMs ?? prev.profileUpdatedAtMs,
+  };
+}
+
 function profileFromFirebase(user: FirebaseUser, pendingBirth?: string | null): SessionUser {
   const handle = user.email?.split('@')[0] ?? user.uid.slice(0, 8);
   return {
@@ -196,28 +235,53 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile: null,
   error: null,
   busy: false,
+  profileWriteAt: 0,
 
-  hydrate: () =>
-    onAuthStateChanged(auth, (user) => {
+  hydrate: () => {
+    let unsubDoc: (() => void) | null = null;
+    let cancelled = false;
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      unsubDoc?.();
+      unsubDoc = null;
       void (async () => {
         if (!user) {
-          set({ firebaseUser: null, profile: null, ready: true });
+          set({ firebaseUser: null, profile: null, ready: true, profileWriteAt: 0 });
           return;
         }
-        try {
-          const profile = await syncWithBackend(user);
-          set({ firebaseUser: user, profile, ready: true, error: null });
-        } catch (error) {
-          set({ firebaseUser: user, ready: true, error: mapAuthError(error) });
+        const sameUser =
+          get().firebaseUser?.uid === user.uid && get().profile?.firebaseUid === user.uid;
+        if (!sameUser) {
+          try {
+            const profile = await syncWithBackend(user);
+            if (cancelled) return;
+            set({ firebaseUser: user, profile, ready: true, error: null });
+          } catch (error) {
+            if (cancelled) return;
+            set({ firebaseUser: user, ready: true, error: mapAuthError(error) });
+          }
+        } else {
+          set({ firebaseUser: user });
         }
+        if (cancelled) return;
+        unsubDoc = listenFirestoreProfile(user.uid, (incoming) => {
+          const current = get().profile;
+          set({ profile: applyRemoteProfile(current, incoming, get().profileWriteAt) });
+        });
       })();
-    }),
+    });
+    return () => {
+      cancelled = true;
+      unsubDoc?.();
+      unsubAuth();
+    };
+  },
 
   syncProfile: async () => {
     const user = auth.currentUser;
     if (!user) return;
     const profile = await syncWithBackend(user);
-    set({ profile });
+    const prev = get().profile;
+    set({ profile: applyRemoteProfile(prev, profile, get().profileWriteAt) });
   },
 
   setCoins: (coins) => {
@@ -226,7 +290,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ profile: { ...profile, coins, coinsBalance: coins } });
   },
 
-  setProfile: (profile) => set({ profile }),
+  setProfile: (profile) =>
+    set({
+      profile: {
+        ...profile,
+        profileUpdatedAtMs: profile.profileUpdatedAtMs || Date.now(),
+      },
+      profileWriteAt: Date.now(),
+    }),
 
   signInEmail: async (email, password) => {
     set({ busy: true, error: null });

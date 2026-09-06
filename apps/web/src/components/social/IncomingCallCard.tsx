@@ -12,10 +12,14 @@ type Props = {
   accepting?: boolean;
   error?: string | null;
   ringMuted: boolean;
+  rateBlasts?: number;
+  giftName?: string | null;
+  giftEmoji?: string | null;
   onAccept: () => void;
   onDecline: () => void;
   onMuteRing: () => void;
   onMessage: () => void;
+  onRemindLater?: () => void;
 };
 
 function useCoarseLayout() {
@@ -105,15 +109,20 @@ export function IncomingCallCard({
   accepting,
   error,
   ringMuted,
+  rateBlasts = 0,
+  giftName,
+  giftEmoji,
   onAccept,
   onDecline,
   onMuteRing,
   onMessage,
+  onRemindLater,
 }: Props) {
   const t = useT();
   const mobile = useCoarseLayout();
   const title = name || (handle ? `@${handle}` : 'LiveBoom');
   const kind = video ? 'Videollamada' : 'Llamada de voz';
+  const paid = video && rateBlasts > 0;
 
   return (
     <article className={`lb-call-incoming${mobile ? ' is-mobile' : ''}`}>
@@ -132,8 +141,16 @@ export function IncomingCallCard({
             />
           </div>
           <h2 className="lb-call-incoming__name">{title}</h2>
-          <p className="lb-call-incoming__status">Te está llamando...</p>
-          <p className="lb-call-incoming__kind">{kind}</p>
+          <p className="lb-call-incoming__status">
+            {video ? `@${handle} te está llamando` : 'Te está llamando...'}
+          </p>
+          <p className="lb-call-incoming__kind">{paid ? 'Videollamada paga' : kind}</p>
+          {paid ? (
+            <p className="lb-video-rate-pill">
+              <span>{giftEmoji || '🎁'}</span>
+              {giftName || 'Regalo'} · {rateBlasts} Blasts / minuto
+            </p>
+          ) : null}
           {error ? <p className="lb-call-incoming__error">{error}</p> : null}
           {accepting ? <p className="lb-call-incoming__kind">Conectando...</p> : null}
         </div>
@@ -160,7 +177,7 @@ export function IncomingCallCard({
           type="button"
           className="lb-call-round lb-call-round--accept"
           onClick={onAccept}
-          aria-label={t('actions.reply')}
+          aria-label={video ? t('common.accept') : t('actions.reply')}
           disabled={accepting}
         >
           {video ? <Video size={22} /> : <Phone size={22} />}
@@ -168,34 +185,26 @@ export function IncomingCallCard({
       </div>
       <div className="lb-call-incoming__labels">
         <span>{t('common.reject')}</span>
-        <span>{t('actions.reply')}</span>
+        <span>{video ? t('common.accept') : t('actions.reply')}</span>
       </div>
 
       <AnswerSlider onAccept={onAccept} disabled={accepting} />
 
-      {mobile ? (
-        <div className="lb-call-incoming__extras">
-          <button type="button" className="lb-call-chip" onClick={onMuteRing}>
-            <BellOff size={14} />
-            {ringMuted ? 'Timbre silenciado' : 'Silenciar timbre'}
+      <div className="lb-call-incoming__extras">
+        <button type="button" className="lb-call-chip" onClick={onMuteRing}>
+          <BellOff size={14} />
+          {ringMuted ? 'Timbre silenciado' : 'Silenciar timbre'}
+        </button>
+        <button type="button" className="lb-call-chip" onClick={onMessage}>
+          <MessageSquare size={14} />
+          {video ? 'Mensaje' : 'Enviar mensaje'}
+        </button>
+        {video ? (
+          <button type="button" className="lb-call-chip" onClick={onRemindLater || onDecline}>
+            Recordar más tarde
           </button>
-          <button type="button" className="lb-call-chip" onClick={onMessage}>
-            <MessageSquare size={14} />
-            Enviar mensaje
-          </button>
-        </div>
-      ) : (
-        <div className="lb-call-incoming__extras">
-          <button type="button" className="lb-call-chip" onClick={onMuteRing}>
-            <BellOff size={14} />
-            {ringMuted ? 'Timbre silenciado' : 'Silenciar timbre'}
-          </button>
-          <button type="button" className="lb-call-chip" onClick={onMessage}>
-            <MessageSquare size={14} />
-            Enviar mensaje
-          </button>
-        </div>
-      )}
+        ) : null}
+      </div>
     </article>
   );
 }

@@ -33,8 +33,9 @@ function canMessage(fromUid, toUsername) {
   const target = findByUsername(toUsername);
   if (!me || !target) return { error: 'Usuario no encontrado' };
   if (target.firebaseUid === fromUid) return { error: 'No puedes enviarte mensajes a ti mismo' };
-  if (!social.areFriends(fromUid, target.firebaseUid)) {
-    return { error: 'Solo puedes chatear con amigos' };
+  const perms = social.getCommunicationPermissions(fromUid, target.firebaseUid);
+  if (!perms.canMessage) {
+    return { error: 'Solo puedes chatear con quienes sigues, te siguen o son tus amigos' };
   }
   return { me, target };
 }

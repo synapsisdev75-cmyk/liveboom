@@ -111,6 +111,8 @@ export type SessionUser = {
   coins: number;
   coinsBalance: number;
   levelXp?: number;
+  /** Epoch ms del último `updatedAt` de Firestore (concurrencia). */
+  profileUpdatedAtMs?: number;
 };
 
 type PostgresUser = {

@@ -85,6 +85,43 @@ export function stopCallRing() {
   callRingAudio = null;
 }
 
+let outgoingToneTimer = 0;
+
+export function startOutgoingCallTone() {
+  stopOutgoingCallTone();
+  playCallRingFallback();
+  outgoingToneTimer = window.setInterval(() => playCallRingFallback(), 2200);
+}
+
+export function stopOutgoingCallTone() {
+  if (outgoingToneTimer) {
+    window.clearInterval(outgoingToneTimer);
+    outgoingToneTimer = 0;
+  }
+}
+
+export function playCallConnectedSound() {
+  try {
+    const ac = ctx();
+    const t = ac.currentTime;
+    tone(t, 523.25, 0.1, 0.08, 'sine');
+    tone(t + 0.1, 783.99, 0.16, 0.07, 'triangle');
+  } catch {
+    /* autoplay bloqueado */
+  }
+}
+
+export function playCallEndedSound() {
+  try {
+    const ac = ctx();
+    const t = ac.currentTime;
+    tone(t, 392, 0.12, 0.08, 'sine');
+    tone(t + 0.1, 261.63, 0.18, 0.06, 'triangle');
+  } catch {
+    /* autoplay bloqueado */
+  }
+}
+
 function playCallRingFallback() {
   try {
     const ac = ctx();
