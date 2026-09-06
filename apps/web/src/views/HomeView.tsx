@@ -5,6 +5,7 @@ import {
   Gift,
   MapPin,
   MessageCircle,
+  Pencil,
   Play,
   Plus,
   Search,
@@ -16,9 +17,8 @@ import { TopLivesRail } from '../components/feed/TopLivesRail';
 import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { ReelsRow } from '../components/feed/ReelsRow';
 import { CategoryChips } from '../components/search/CategoryChips';
-import { BoomLikeButton } from '../components/social/BoomButtons';
 import { NotificationBell } from '../components/social/NotificationBell';
-import { ReactionList } from '../components/social/PostReactionButtons';
+import { PostReactionButtons } from '../components/social/PostReactionButtons';
 import { PostComments, PostVideoPlayer } from '../components/social/PostVideoPlayer';
 import { ShareContentButton } from '../components/social/ShareContentButton';
 import { ReelGiftControls } from '../components/feed/ReelGiftControls';
@@ -96,6 +96,7 @@ function toSocial(post: FsPost): SocialPost {
     overlays: post.overlays,
     edited: post.edited,
     updatedAt: post.updatedAt,
+    reconstruction3d: post.reconstruction3d,
   };
 }
 
@@ -149,7 +150,6 @@ function HomePublicationCard({
   const [viewerReaction, setViewerReaction] = useState<'like' | 'dislike' | null>(null);
   const [likers, setLikers] = useState<PostReactionUser[]>([]);
   const [dislikers, setDislikers] = useState<PostReactionUser[]>([]);
-  const [showLikers, setShowLikers] = useState(false);
   const [busy, setBusy] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [showComments, setShowComments] = useState(false);
@@ -168,26 +168,6 @@ function HomePublicationCard({
   useEffect(() => {
     return listenPostComments(post.id, (list) => setCommentCount(list.length));
   }, [post.id]);
-
-  async function toggleLike() {
-    if (!profile) return;
-    setBusy(true);
-    try {
-      markHomeFeedInteracted(profile.firebaseUid, post.id);
-      await setPostReaction(
-        post.id,
-        profile.firebaseUid,
-        viewerReaction === 'like' ? null : 'like',
-        {
-          username: profile.handle,
-          displayName: profile.displayName,
-          avatarUrl: profile.avatarUrl,
-        },
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function react(reaction: 'like' | 'dislike') {
     if (!profile) return;
@@ -210,7 +190,7 @@ function HomePublicationCard({
   }
 
   return (
-    <article className="lb-card lb-panel min-w-0 max-w-full overflow-hidden rounded-2xl">
+    <article className="lb-card lb-panel lb-pub-card min-w-0 max-w-full overflow-hidden rounded-2xl">
       <div className="flex min-w-0 items-center gap-3 px-3.5 pt-3.5 sm:px-4 sm:pt-4">
         <Link to={`/u/${encodeURIComponent(post.authorUsername)}`} className="shrink-0">
           <UserAvatar
@@ -241,8 +221,9 @@ function HomePublicationCard({
               title="Editar publicación"
               aria-label="Editar publicación"
               onClick={() => onEdit?.(post)}
-              className="text-[11px] font-semibold text-zinc-500 hover:text-cyan-300"
+              className="lb-action-pill lb-action-pill--edit"
             >
+              <Pencil size={12} strokeWidth={2.2} />
               Editar
             </button>
           ) : null}
@@ -321,35 +302,31 @@ function HomePublicationCard({
         </p>
       ) : null}
 
-      <div className="relative flex min-w-0 max-w-full flex-wrap items-center gap-1 border-t border-white/5 px-2 py-2.5 sm:gap-2 sm:px-3">
-        <span className="relative inline-flex items-center">
-          <BoomLikeButton
-            active={viewerReaction === 'like'}
-            busy={busy}
-            count={likes}
-            size="sm"
-            onToggle={() => void toggleLike()}
-            onShowWho={() => {
-              setShowLikers((v) => !v);
-            }}
-          />
-          {showLikers ? (
-            <ReactionList title="Les gustó (Boom)" users={likers} onClose={() => setShowLikers(false)} />
-          ) : null}
-        </span>
+      <div className="lb-pub-card__actions">
+        <div className="lb-pub-card__cluster">
+        <PostReactionButtons
+          likes={likes}
+          dislikes={dislikes}
+          viewerReaction={viewerReaction}
+          likers={likers}
+          dislikers={dislikers}
+          busy={busy}
+          onReact={(reaction) => void react(reaction)}
+          compact
+        />
         <button
           type="button"
           onClick={() => {
             if (profile) markHomeFeedInteracted(profile.firebaseUid, post.id);
             setShowComments((v) => !v);
           }}
-          className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold hover:bg-white/5 ${
-            showComments ? 'bg-white/10 text-white' : 'text-zinc-300'
-          }`}
+          className={`lb-action-pill lb-action-pill--comment${showComments ? ' is-on' : ''}`}
         >
-          <MessageCircle size={15} className="text-cyan-300" />
+          <MessageCircle size={15} />
           {commentCount > 0 ? commentCount : 'Comentar'}
         </button>
+        </div>
+        <div className="lb-pub-card__cluster">
         {post.authorUsername ? (
           <span
             onClick={() => {
@@ -365,7 +342,6 @@ function HomePublicationCard({
           </span>
         ) : null}
         <span
-          className="ml-auto"
           onClick={() => {
             if (profile) markHomeFeedInteracted(profile.firebaseUid, post.id);
           }}
@@ -379,8 +355,10 @@ function HomePublicationCard({
             postId={post.id}
             authorUid={post.authorUid}
             authorUsername={post.authorUsername}
+            buttonClassName="lb-action-pill lb-action-pill--share"
           />
         </span>
+        </div>
       </div>
 
       {!isTextOnlyPost(post) &&

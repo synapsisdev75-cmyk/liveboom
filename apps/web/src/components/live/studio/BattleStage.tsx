@@ -6,6 +6,7 @@ import type { AgoraBattleRemote } from '../../../lib/agoraBattle';
 import { resumeBattleRemoteAudio } from '../../../lib/agoraBattle';
 import { agoraUid } from '../../../lib/agoraBattleId';
 import { VsBattleIcon } from './VsBattleIcon';
+import { BattleAnimatedSkin } from './BattleAnimatedSkin';
 
 type Props = {
   battle: LiveBattle;
@@ -39,10 +40,10 @@ function Tile({
     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-zinc-950">
       <div ref={ref} className="absolute inset-0 [&_video]:h-full [&_video]:w-full [&_video]:object-cover" />
       {!track ? (
-        <div className="absolute inset-0 grid place-items-center text-xs text-zinc-500">Esperando cámara…</div>
+        <div className="absolute inset-0 z-[21] grid place-items-center text-xs text-zinc-500">Esperando cámara…</div>
       ) : null}
       <div
-        className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-2 pt-6 ${
+        className={`absolute inset-x-0 bottom-0 z-[21] bg-gradient-to-t from-black/80 to-transparent px-2 pb-2 pt-6 ${
           side === 'a' ? 'text-cyan-100' : 'text-fuchsia-100'
         }`}
       >
@@ -101,11 +102,12 @@ export function BattleStage({
     return remotes.find((item) => item.uid === uid)?.videoTrack ?? null;
   };
   const portrait = aspectRatio === '9:16';
+  const skinStatus = remainingMs <= 0 ? 'finished' : 'active';
 
   return (
     <div className="absolute inset-0 z-[6] flex min-h-0 flex-col bg-black">
       <div
-        className={`relative min-h-0 flex-1 ${portrait ? 'flex flex-col' : 'flex flex-row'} gap-0.5`}
+        className={`relative z-[10] min-h-0 flex-1 ${portrait ? 'flex flex-col' : 'flex flex-row'} gap-0.5`}
       >
         <Tile
           track={trackFor(uidA)}
@@ -119,11 +121,17 @@ export function BattleStage({
           score={battle.scoreB}
           side="b"
         />
-        <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 z-[20] -translate-x-1/2 -translate-y-1/2">
           <VsBattleIcon size={56} className="drop-shadow-[0_0_18px_rgba(168,85,247,0.65)]" />
         </div>
+        <BattleAnimatedSkin
+          battleStatus={skinStatus}
+          host1Score={battle.scoreA}
+          host2Score={battle.scoreB}
+          portrait={portrait}
+        />
       </div>
-      <div className="pointer-events-auto flex items-center justify-between gap-2 bg-zinc-950/90 px-3 py-2">
+      <div className="pointer-events-auto relative z-[30] flex items-center justify-between gap-2 bg-zinc-950/90 px-3 py-2">
         <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase text-fuchsia-200">
           <VsBattleIcon size={18} /> Batalla Boom
         </p>

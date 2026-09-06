@@ -117,6 +117,8 @@ export function ReelGiftControls({
     }
   }
 
+  if (isSelf) return null;
+
   return (
     <>
       <div className={`relative flex items-center ${inline ? 'gap-0' : 'flex-col gap-1'}`}>

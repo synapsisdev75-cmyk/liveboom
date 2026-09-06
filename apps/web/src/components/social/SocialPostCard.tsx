@@ -1,11 +1,14 @@
-import { Globe, Lock, MessageCircle, UserMinus, UserPlus, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Globe, Lock, Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2, UserMinus, UserPlus, UserX, Users } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import {
   followUser,
   isFollowing,
   listenPostComments,
   listenPostReactions,
+  removeFriendship,
   setPostReaction,
   type FriendChip,
   type PostReactionUser,
@@ -13,6 +16,7 @@ import {
 } from '../../lib/socialFirestore';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { useUiStore } from '../../store/uiStore';
 import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
 import { buildPostShareUrl } from '../../lib/shareContent';
@@ -28,6 +32,9 @@ import { ReelGiftControls } from '../feed/ReelGiftControls';
 import { isBoomClipPost, isPublicationPost } from '../../lib/contentType';
 import { RepostPostCard } from './RepostPostCard';
 import { isRepostPost } from '../../lib/socialFirestore';
+import type { Reconstruction3DPayload } from '../../lib/reconstruction3d/types';
+import { Reconstruction3DViewer } from './Reconstruction3DViewer';
+import { Reconstruction3DBadge } from './Reconstruction3DBadge';
 
 type Props = {
   username: string;
@@ -141,53 +148,290 @@ export function FollowListModal({
   title,
   users,
   onClose,
+  manageFriends = false,
+  followingUids = [],
 }: {
   title: string;
   users: UserChip[];
   onClose: () => void;
+  manageFriends?: boolean;
+  followingUids?: string[];
 }) {
-  return (
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useBodyScrollLock(true);
+
+  useEffect(() => {
+    const active = document.activeElement;
+    openerRef.current = active instanceof HTMLElement ? active : null;
+    dialogRef.current?.focus({ preventScroll: true });
+    listRef.current?.scrollTo({ top: 0 });
+
+    const locked: Array<{ el: HTMLElement; overflow: string }> = [];
+    document.querySelectorAll('main').forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      locked.push({ el: node, overflow: node.style.overflow });
+      node.style.overflow = 'hidden';
+    });
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCloseRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      locked.forEach(({ el, overflow }) => {
+        el.style.overflow = overflow;
+      });
+      openerRef.current?.focus({ preventScroll: true });
+    };
+  }, []);
+
+  const overlay = (
     <div
-      className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="lb-safe-sheet max-h-[80dvh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-zinc-950 p-4 sm:rounded-3xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-bold text-white">{title}</h3>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lb-follow-list-title"
+        tabIndex={-1}
+        className={`lb-safe-sheet flex max-h-[min(80dvh,36rem)] w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 p-4 outline-none ${
+          manageFriends ? 'max-w-xl' : 'max-w-md'
+        }`}
+      >
+        <div className="mb-4 flex shrink-0 items-center justify-between">
+          <h3 id="lb-follow-list-title" className="font-bold text-white">
+            {title}
+          </h3>
           <button type="button" onClick={onClose} className="text-sm text-zinc-500 hover:text-white">
             Cerrar
           </button>
         </div>
-        {users.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nadie aquí todavía.</p>
-        ) : (
-          <ul className="space-y-2">
-            {users.map((user) => (
-              <li key={user.uid || user.username}>
-                <Link
-                  to={profileHref(user.username, user.uid)}
-                  onClick={onClose}
-                  className="flex items-center gap-3 rounded-xl border border-white/5 px-3 py-2 hover:border-cyan-400/30"
-                >
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {users.length === 0 ? (
+            <p className="text-sm text-zinc-500">Nadie aquí todavía.</p>
+          ) : (
+            <ul className="space-y-2">
+              {users.map((user) => (
+                <li key={user.uid || user.username}>
+                  {manageFriends ? (
+                    <FriendManageRow
+                      user={user}
+                      initiallyFollowing={
+                        Boolean(user.uid && followingUids.includes(user.uid)) ||
+                        followingUids.includes(user.username)
+                      }
+                      onNavigate={onClose}
+                    />
                   ) : (
-                    <div className="grid h-10 w-10 place-items-center rounded-full bg-zinc-800 text-sm font-bold text-cyan-300">
-                      {user.username.slice(0, 1).toUpperCase()}
-                    </div>
+                    <Link
+                      to={profileHref(user.username, user.uid)}
+                      onClick={onClose}
+                      className="flex items-center gap-3 rounded-xl border border-white/5 px-3 py-2 hover:border-cyan-400/30"
+                    >
+                      <FriendIdentity user={user} />
+                    </Link>
                   )}
-                  <div>
-                    <p className="text-sm font-semibold text-white">@{user.username}</p>
-                    <p className="text-xs text-zinc-500">{user.displayName}</p>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : overlay;
+}
+
+function FriendIdentity({ user }: { user: UserChip }) {
+  return (
+    <>
+      {user.avatarUrl ? (
+        <img src={user.avatarUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+      ) : (
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-zinc-800 text-sm font-bold text-cyan-300">
+          {user.username.slice(0, 1).toUpperCase()}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-white">@{user.username}</p>
+        <p className="truncate text-xs text-zinc-500">{user.displayName}</p>
+      </div>
+    </>
+  );
+}
+
+function FriendManageRow({
+  user,
+  initiallyFollowing,
+  onNavigate,
+}: {
+  user: UserChip;
+  initiallyFollowing: boolean;
+  onNavigate: () => void;
+}) {
+  const profile = useAuthStore((state) => state.profile);
+  const setToast = useUiStore((state) => state.setToast);
+  const [following, setFollowing] = useState(initiallyFollowing);
+  const [busy, setBusy] = useState<'follow' | 'remove' | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setFollowing(initiallyFollowing);
+  }, [initiallyFollowing, user.uid, user.username]);
+
+  function flash(message: string, tone: 'success' | 'error') {
+    setToast(message, tone);
+    window.setTimeout(() => setToast(null), 2800);
+  }
+
+  async function toggleFollow() {
+    if (!profile || busy) return;
+    setBusy('follow');
+    setMenuOpen(false);
+    try {
+      const hint = { uid: user.uid, username: user.username, displayName: user.displayName, avatarUrl: user.avatarUrl };
+      if (following) {
+        await unfollowUser(profile.firebaseUid, user.username, user.uid, hint);
+        setFollowing(false);
+        flash(`Dejaste de seguir a @${user.username}`, 'success');
+      } else {
+        await followUser(
+          {
+            firebaseUid: profile.firebaseUid,
+            handle: profile.handle,
+            displayName: profile.displayName,
+            avatarUrl: profile.avatarUrl,
+          },
+          user.username,
+          user.uid,
+          hint,
+        );
+        setFollowing(true);
+        flash(`Ahora sigues a @${user.username}`, 'success');
+      }
+    } catch {
+      flash('No se pudo completar la acción. Intenta nuevamente.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmUnfriend() {
+    if (!profile || busy) return;
+    setBusy('remove');
+    try {
+      await removeFriendship(profile.firebaseUid, user.username);
+      flash(`@${user.username} fue eliminado de tus amigos`, 'success');
+      setConfirmRemove(false);
+      setMenuOpen(false);
+    } catch {
+      flash('No se pudo completar la acción. Intenta nuevamente.', 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const followLabel = following ? 'Dejar de seguir' : 'Seguir';
+  const followBusy = busy === 'follow';
+  const removeBusy = busy === 'remove';
+
+  const followBtn = (
+    <button
+      type="button"
+      disabled={Boolean(busy)}
+      onClick={() => void toggleFollow()}
+      className={`lb-friend-act ${following ? 'lb-friend-act--unfollow' : 'lb-friend-act--follow'}`}
+    >
+      {followBusy ? <Loader2 size={12} className="animate-spin" /> : following ? <UserMinus size={12} /> : <UserPlus size={12} />}
+      {followLabel}
+    </button>
+  );
+
+  const removeBtn = (
+    <button
+      type="button"
+      disabled={Boolean(busy)}
+      onClick={() => {
+        setMenuOpen(false);
+        setConfirmRemove(true);
+      }}
+      className="lb-friend-act lb-friend-act--unfriend"
+    >
+      {removeBusy ? <Loader2 size={12} className="animate-spin" /> : <UserX size={12} />}
+      Quitar amigo
+    </button>
+  );
+
+  return (
+    <div className="rounded-xl border border-white/5 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <Link
+          to={profileHref(user.username, user.uid)}
+          onClick={onNavigate}
+          className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-90"
+        >
+          <FriendIdentity user={user} />
+        </Link>
+        {confirmRemove ? null : (
+          <>
+            <div className="hidden shrink-0 items-center gap-1 sm:flex">
+              {followBtn}
+              {removeBtn}
+            </div>
+            <div className="relative shrink-0 sm:hidden">
+              <button
+                type="button"
+                className="lb-friend-act lb-friend-act--more"
+                aria-label="Acciones"
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {menuOpen ? (
+                <div className="absolute right-0 top-full z-10 mt-1 flex min-w-[10.5rem] flex-col gap-1 rounded-xl border border-white/10 bg-zinc-950 p-1.5 shadow-xl">
+                  {followBtn}
+                  {removeBtn}
+                </div>
+              ) : null}
+            </div>
+          </>
         )}
       </div>
+      {confirmRemove ? (
+        <div className="mt-2 rounded-lg border border-rose-400/20 bg-rose-500/5 px-2.5 py-2">
+          <p className="text-[11px] text-zinc-300">¿Quitar a @{user.username} de tus amigos?</p>
+          <div className="mt-2 flex justify-end gap-1.5">
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() => setConfirmRemove(false)}
+              className="lb-friend-act lb-friend-act--cancel"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() => void confirmUnfriend()}
+              className="lb-friend-act lb-friend-act--unfriend"
+            >
+              {removeBusy ? <Loader2 size={12} className="animate-spin" /> : <UserX size={12} />}
+              Quitar amigo
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -217,6 +461,7 @@ export type SocialPost = {
   overlays?: MediaOverlayItem[];
   updatedAt?: string;
   edited?: boolean;
+  reconstruction3d?: Reconstruction3DPayload;
 };
 
 /** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
@@ -456,9 +701,14 @@ function StandardPostCard({
     (isPublicationPost(contentKind) || isBoomClipPost(contentKind)) &&
     (post.type === 'photo' || post.type === 'video') &&
     Boolean(post.caption?.trim());
+  const pubChrome = isPublicationPost(contentKind);
 
   return (
-    <article className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-white/10 bg-zinc-950">
+    <article
+      className={`min-w-0 max-w-full overflow-hidden rounded-2xl border bg-zinc-950 ${
+        pubChrome ? 'lb-pub-card border-white/[0.12]' : 'border-white/10'
+      }`}
+    >
       {post.visibility ? (
         <p className="border-b border-white/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
           {post.visibility === 'public'
@@ -469,7 +719,10 @@ function StandardPostCard({
           {post.edited ? ' · Editado' : ''}
         </p>
       ) : null}
-      {post.type === 'photo' && postPhotoUrls(post).length > 1 ? (
+      {post.reconstruction3d && post.type === 'photo' && (post.reconstruction3d.frameUrls?.length || post.reconstruction3d.previewUrl) ? (
+        <Reconstruction3DViewer payload={post.reconstruction3d} />
+      ) : null}
+      {post.type === 'photo' && postPhotoUrls(post).length > 1 && !post.reconstruction3d ? (
         <PostMediaCarousel
           sources={postPhotoUrls(post)}
           caption={post.caption}
@@ -482,7 +735,7 @@ function StandardPostCard({
           overlays={post.overlays}
         />
       ) : null}
-      {post.type === 'photo' && post.mediaUrl && postPhotoUrls(post).length <= 1 ? (
+      {post.type === 'photo' && post.mediaUrl && postPhotoUrls(post).length <= 1 && !post.reconstruction3d ? (
         <PostPhotoViewer
           src={post.mediaUrl}
           caption={post.caption}
@@ -497,7 +750,11 @@ function StandardPostCard({
         />
       ) : null}
       {post.type === 'video' && post.mediaUrl ? (
-        <PostVideoPlayer
+        <div className="relative">
+          {post.reconstruction3d ? (
+            <Reconstruction3DBadge className="absolute left-2 top-2 z-[4]" compact />
+          ) : null}
+          <PostVideoPlayer
           src={post.mediaUrl}
           postId={post.id}
           authorUid={post.authorUid}
@@ -524,6 +781,7 @@ function StandardPostCard({
           publicationCaption
           overlays={post.overlays}
         />
+        </div>
       ) : null}
       {post.type === 'text' || isTextOnlyPost(post) ? (
         <TextNoteBody caption={post.caption} />
@@ -533,8 +791,8 @@ function StandardPostCard({
         </p>
       ) : null}
       {canChangeVisibility ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
-          <div className="flex items-center gap-1">
+        <div className={pubChrome ? 'lb-pub-card__meta' : 'flex flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2'}>
+          <div className={pubChrome ? 'lb-pub-card__cluster' : 'flex items-center gap-1'}>
             {(
               [
                 ['public', Globe, 'Público'],
@@ -547,26 +805,35 @@ function StandardPostCard({
                 type="button"
                 title={`Cambiar a ${label.toLowerCase()}`}
                 onClick={() => onChangeVisibility?.(value)}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold ${
-                  post.visibility === value
-                    ? 'bg-emerald-500/15 text-emerald-300'
-                    : 'text-zinc-500 hover:text-zinc-200'
-                }`}
+                className={
+                  pubChrome
+                    ? `lb-tab-chip${post.visibility === value ? ' is-on' : ''}`
+                    : `inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold ${
+                        post.visibility === value
+                          ? 'bg-emerald-500/15 text-emerald-300'
+                          : 'text-zinc-500 hover:text-zinc-200'
+                      }`
+                }
               >
                 <Icon size={12} />
                 {label}
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-3">
+          <div className={pubChrome ? 'lb-pub-card__cluster' : 'flex items-center gap-3'}>
           {canEdit ? (
             <button
               type="button"
               onClick={() => onEdit?.()}
               title="Editar publicación"
               aria-label="Editar publicación"
-              className="text-[11px] text-zinc-500 hover:text-cyan-300"
+              className={
+                pubChrome
+                  ? 'lb-action-pill lb-action-pill--edit'
+                  : 'text-[11px] text-zinc-500 hover:text-cyan-300'
+              }
             >
+              {pubChrome ? <Pencil size={12} strokeWidth={2.2} /> : null}
               Editar
             </button>
           ) : null}
@@ -576,16 +843,27 @@ function StandardPostCard({
               onClick={() => {
                 if (window.confirm('¿Estás seguro de borrar esta publicación?')) onDelete?.();
               }}
-              className="text-[11px] text-zinc-500 hover:text-fuchsia-400"
+              className={
+                pubChrome
+                  ? 'lb-action-pill lb-action-pill--delete'
+                  : 'text-[11px] text-zinc-500 hover:text-fuchsia-400'
+              }
             >
+              {pubChrome ? <Trash2 size={12} strokeWidth={2.2} /> : null}
               Eliminar
             </button>
           ) : null}
           </div>
         </div>
       ) : null}
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
+      <div
+        className={
+          pubChrome
+            ? 'lb-pub-card__actions'
+            : 'flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-white/5 px-3 py-2'
+        }
+      >
+        <div className={pubChrome ? 'lb-pub-card__cluster' : 'flex min-w-0 flex-wrap items-center gap-1'}>
           <PostReactionButtons
             likes={likes}
             dislikes={dislikes}
@@ -598,15 +876,19 @@ function StandardPostCard({
           <button
             type="button"
             onClick={() => setShowComments((value) => !value)}
-            className={`inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold hover:bg-white/5 ${
-              showComments ? 'bg-white/10 text-white' : 'text-zinc-300'
-            }`}
+            className={
+              pubChrome
+                ? `lb-action-pill lb-action-pill--comment${showComments ? ' is-on' : ''}`
+                : `inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold hover:bg-white/5 ${
+                    showComments ? 'bg-white/10 text-white' : 'text-zinc-300'
+                  }`
+            }
           >
-            <MessageCircle size={15} className="text-cyan-300" />
+            <MessageCircle size={15} className={pubChrome ? undefined : 'text-cyan-300'} />
             {commentCount > 0 ? commentCount : 'Comentar'}
           </button>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className={pubChrome ? 'lb-pub-card__cluster' : 'flex shrink-0 items-center gap-2'}>
           {post.authorUsername ? (
             <ReelGiftControls
               authorUsername={post.authorUsername}
@@ -624,16 +906,21 @@ function StandardPostCard({
             postId={post.id}
             authorUid={post.authorUid}
             authorUsername={post.authorUsername}
+            buttonClassName={pubChrome ? 'lb-action-pill lb-action-pill--share' : ''}
           />
-        </div>
         {canEdit && !canChangeVisibility ? (
           <button
             type="button"
             onClick={() => onEdit?.()}
             title="Editar publicación"
             aria-label="Editar publicación"
-            className="text-[11px] text-zinc-500 hover:text-cyan-300"
+            className={
+              pubChrome
+                ? 'lb-action-pill lb-action-pill--edit'
+                : 'text-[11px] text-zinc-500 hover:text-cyan-300'
+            }
           >
+            {pubChrome ? <Pencil size={12} strokeWidth={2.2} /> : null}
             Editar
           </button>
         ) : null}
@@ -643,11 +930,17 @@ function StandardPostCard({
             onClick={() => {
               if (window.confirm('¿Estás seguro de borrar esta publicación?')) onDelete?.();
             }}
-            className="text-[11px] text-zinc-500 hover:text-fuchsia-400"
+            className={
+              pubChrome
+                ? 'lb-action-pill lb-action-pill--delete'
+                : 'text-[11px] text-zinc-500 hover:text-fuchsia-400'
+            }
           >
+            {pubChrome ? <Trash2 size={12} strokeWidth={2.2} /> : null}
             Eliminar
           </button>
         ) : null}
+        </div>
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
       {showFeedCaption ? <PublicationCaption key={post.id} caption={post.caption || ''} /> : null}

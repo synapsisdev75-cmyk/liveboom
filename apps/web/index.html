@@ -10,6 +10,39 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
     />
     <title>Liveboom</title>
+    <style>
+      html, body { background: var(--bg-primary, #0a0a0b); color: var(--text-primary, #fafafa); }
+      html[data-lb-theme='light'], html[data-lb-theme='light'] body {
+        background: var(--bg-primary, #f3f4f7);
+        color: var(--text-primary, #18181b);
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('liveboom:appearance');
+          var prefs = raw ? JSON.parse(raw) : {};
+          var theme = prefs.themeMode === 'light' || prefs.theme === 'light' ? 'light' : 'dark';
+          var allowed = { default: 1, pink: 1, blue: 1, green: 1, orange: 1, red: 1, gold: 1, violet: 1 };
+          var accent = allowed[prefs.accentPalette] ? prefs.accentPalette : allowed[prefs.accent] ? prefs.accent : 'default';
+          var root = document.documentElement;
+          root.setAttribute('data-lb-theme', theme);
+          root.setAttribute('data-lb-accent', accent);
+          root.style.colorScheme = theme;
+          var css = prefs.css;
+          if (css && typeof css === 'object') {
+            for (var key in css) {
+              if (Object.prototype.hasOwnProperty.call(css, key) && key.indexOf('--') === 0) {
+                root.style.setProperty(key, String(css[key]));
+              }
+            }
+          }
+        } catch (e) {
+          document.documentElement.setAttribute('data-lb-theme', 'dark');
+          document.documentElement.setAttribute('data-lb-accent', 'default');
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { Ban, LogOut, MessageCircle, Plus, Share2 } from 'lucide-react';
+import { Ban, ChevronRight, LogOut, MessageCircle, Plus, Share2, User, Users } from 'lucide-react';
 import { ActivityHistory } from '../components/live/ActivityHistory';
 import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { CreatePostModal } from '../components/social/CreatePostModal';
@@ -14,6 +14,17 @@ import {
 import { ageFromIsoDate } from '../lib/birthDate';
 import { LevelAvatarFrame } from '../components/profile/LevelAvatarFrame';
 import { LevelInsignia } from '../components/profile/LevelInsignia';
+import { ProfileCoverBanner } from '../components/profile/ProfileCoverBanner';
+import { ProfileCoverEditor } from '../components/profile/ProfileCoverEditor';
+import {
+  COVER_ACCEPT,
+  coverKindFromMime,
+  isExactCoverSize,
+  probeCoverFile,
+  type CoverMediaKind,
+} from '../lib/profileCover';
+import { saveFirestoreCover, type PublicFsUser } from '../lib/profileFirestore';
+import { uploadUserCover } from '../lib/storage';
 import { levelFromXp, nextTierFromXp, xpProgressInTier, xpToNextLevel } from '../lib/userLevels';
 import {
   blockUser,
@@ -33,7 +44,6 @@ import {
 } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
-import type { PublicFsUser } from '../lib/profileFirestore';
 import { isBoomClipPost, isPublicationPost, canEditOwnedPublication } from '../lib/contentType';
 import { isStoryPost } from '../lib/storyLifecycle';
 import { BOOM_CLIP_LABEL } from '../lib/brand';
@@ -44,9 +54,9 @@ function LogoutProfileButton() {
     <button
       type="button"
       onClick={() => void logout()}
-      className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-400/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-200"
+      className="lb-profile-action lb-profile-action--logout"
     >
-      <LogOut size={16} />
+      <LogOut size={11} strokeWidth={2.25} />
       Cerrar sesión
     </button>
   );
@@ -56,6 +66,8 @@ type PublicProfile = {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  coverUrl: string | null;
+  coverType: CoverMediaKind | null;
   bio: string | null;
   uid: string;
   levelXp: number;
@@ -118,7 +130,11 @@ export function UserProfileView() {
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [createOpen, setCreateOpen] = useState(autoOpenCreate);
   const [feedTab, setFeedTab] = useState<'posts' | 'clips' | 'photos'>('posts');
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const highlightPostRef = useRef<HTMLDivElement | null>(null);
+  const friendsBtnRef = useRef<HTMLButtonElement>(null);
   const setToast = useUiStore((s) => s.setToast);
 
   const filteredPosts = useMemo(() => {
@@ -160,6 +176,18 @@ export function UserProfileView() {
       }),
     );
   }, [posts, feedTab]);
+
+  const reactionTotals = useMemo(
+    () =>
+      posts.reduce(
+        (acc, post) => ({
+          positive: acc.positive + Math.max(0, post.likes || 0),
+          negative: acc.negative + Math.max(0, post.dislikes || 0),
+        }),
+        { positive: 0, negative: 0 },
+      ),
+    [posts],
+  );
 
   const profileVideoPosts = useMemo(() => {
     return filteredPosts.filter((post) => post.type === 'video' && post.mediaUrl);
@@ -267,6 +295,8 @@ export function UserProfileView() {
               username: fsUser.username,
               displayName: fsUser.displayName,
               avatarUrl: fsUser.avatarUrl,
+              coverUrl: fsUser.coverUrl ?? null,
+              coverType: fsUser.coverType ?? null,
               bio: fsUser.bio,
               levelXp: Number(fsUser.levelXp ?? 0),
               followersCount: 0,
@@ -285,6 +315,8 @@ export function UserProfileView() {
               username: profile.handle,
               displayName: profile.displayName,
               avatarUrl: profile.avatarUrl,
+              coverUrl: null,
+              coverType: null,
               bio: profile.bio,
               levelXp: Number(profile.levelXp ?? 0),
               followersCount: 0,
@@ -345,6 +377,7 @@ export function UserProfileView() {
             overlays: item.overlays,
             edited: item.edited,
             updatedAt: item.updatedAt,
+            reconstruction3d: item.reconstruction3d,
           })),
         );
       },
@@ -394,8 +427,14 @@ export function UserProfileView() {
 
   async function openFriends() {
     if (!publicProfile) return;
+    const main = document.querySelector('main');
+    const scrollTop = main instanceof HTMLElement ? main.scrollTop : window.scrollY;
     setFriends(await listFriends(publicProfile.uid));
     setModal('friends');
+    requestAnimationFrame(() => {
+      if (main instanceof HTMLElement) main.scrollTop = scrollTop;
+      else window.scrollTo({ top: scrollTop });
+    });
   }
 
   async function deletePost(postId: string) {
@@ -408,6 +447,31 @@ export function UserProfileView() {
       setPosts((current) => current.filter((item) => item.id !== postId));
     } catch (err) {
       setLibraryError(err instanceof Error ? err.message : 'No se pudo eliminar la publicación');
+    }
+  }
+
+  async function onPickCover(file: File | undefined) {
+    if (!file || !publicProfile?.isOwnProfile) return;
+    try {
+      const probe = await probeCoverFile(file);
+      if (isExactCoverSize(probe.width, probe.height)) {
+        setCoverBusy(true);
+        const ext = (file.name.split('.').pop() || coverKindFromMime(file.type, file.name) || 'jpg').toLowerCase();
+        const url = await uploadUserCover(publicProfile.uid, file, ext, probe.kind);
+        await saveFirestoreCover(publicProfile.uid, url, probe.kind);
+        setPublicProfile((current) =>
+          current ? { ...current, coverUrl: url, coverType: probe.kind } : current,
+        );
+        setToast('Portada guardada.', 'success');
+        window.setTimeout(() => setToast(null), 2800);
+        return;
+      }
+      setCoverFile(file);
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'No se pudo leer la portada', 'error');
+      window.setTimeout(() => setToast(null), 3200);
+    } finally {
+      setCoverBusy(false);
     }
   }
 
@@ -441,8 +505,29 @@ export function UserProfileView() {
 
   return (
     <div className="lb-page mx-auto w-full max-w-3xl space-y-4 pb-2">
-      <section className="lb-panel relative overflow-hidden rounded-3xl p-4 sm:p-6">
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+      <section className="lb-panel lb-profile-hero relative overflow-hidden rounded-3xl p-0">
+        <ProfileCoverBanner
+          url={publicProfile.coverUrl}
+          type={publicProfile.coverType}
+          isOwner={publicProfile.isOwnProfile}
+          onEdit={() => {
+            if (coverBusy) return;
+            coverInputRef.current?.click();
+          }}
+        />
+        <input
+          ref={coverInputRef}
+          type="file"
+          accept={COVER_ACCEPT}
+          className="hidden"
+          onChange={(event) => {
+            const next = event.target.files?.[0];
+            event.target.value = '';
+            void onPickCover(next);
+          }}
+        />
+        <div className="lb-profile-identity relative z-[1] -mt-8 px-4 pb-2.5 sm:-mt-10 sm:px-6 sm:pb-3">
+        <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:gap-4">
           <div className="relative shrink-0">
             <LevelAvatarFrame
               levelXp={publicProfile.levelXp}
@@ -474,7 +559,7 @@ export function UserProfileView() {
                   const remaining = xpToNextLevel(publicProfile.levelXp);
                   const next = nextTierFromXp(publicProfile.levelXp);
                   return (
-                    <div className="mt-3">
+                    <div className="mt-2">
                       <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
                         <span className="font-semibold text-cyan-300">{info.title}</span>
                         <span className="text-[10px] text-zinc-500">· {info.rangeLabel}</span>
@@ -502,70 +587,68 @@ export function UserProfileView() {
               </div>
             </div>
             {publicProfile.isOwnProfile && profile?.birthDate ? (
-              <p className="mt-2 text-xs text-cyan-400">{ageFromIsoDate(profile.birthDate)} años</p>
+              <p className="mt-1.5 text-xs text-cyan-400">{ageFromIsoDate(profile.birthDate)} años</p>
             ) : null}
-            {publicProfile.bio ? <p className="mt-2 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
-            <div className="mt-4 flex flex-wrap justify-center gap-4 sm:justify-start">
-              <button
-                type="button"
-                onClick={() => void openFollowers()}
-                className="text-sm text-white hover:text-cyan-300"
-              >
-                <strong>{publicProfile.followersCount}</strong>{' '}
-                <span className="text-zinc-400">Seguidores</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void openFollowing()}
-                className="text-sm text-white hover:text-cyan-300"
-              >
-                <strong>{publicProfile.followingCount}</strong>{' '}
-                <span className="text-zinc-400">Siguiendo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void openFriends()}
-                className="text-sm text-white hover:text-cyan-300"
-              >
-                <strong>{publicProfile.friendsCount}</strong>{' '}
-                <span className="text-zinc-400">Amigos</span>
-              </button>
-            </div>
-            <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+            {publicProfile.bio ? <p className="mt-1 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
+            <div className="lb-profile-toolbar">
+              <div className="lb-profile-toolbar__stats">
+                <button type="button" onClick={() => void openFollowers()} className="lb-profile-stat is-followers">
+                  <Users size={11} strokeWidth={2.25} />
+                  <strong>{publicProfile.followersCount}</strong>
+                  <span>Seguidores</span>
+                  <ChevronRight size={10} strokeWidth={2.4} />
+                </button>
+                <button type="button" onClick={() => void openFollowing()} className="lb-profile-stat is-following">
+                  <User size={11} strokeWidth={2.25} />
+                  <strong>{publicProfile.followingCount}</strong>
+                  <span>Siguiendo</span>
+                  <ChevronRight size={10} strokeWidth={2.4} />
+                </button>
+                <button
+                  ref={friendsBtnRef}
+                  type="button"
+                  onClick={() => void openFriends()}
+                  className="lb-profile-stat is-friends"
+                >
+                  <Users size={11} strokeWidth={2.25} />
+                  <strong>{publicProfile.friendsCount}</strong>
+                  <span>Amigos</span>
+                  <ChevronRight size={10} strokeWidth={2.4} />
+                </button>
+              </div>
               {publicProfile.isOwnProfile ? (
-                <>
-                  <Link
-                    to="/perfil/editar"
-                    className="lb-gradient-btn rounded-full px-4 py-2 text-sm font-bold text-white"
-                  >
+                <div className="lb-profile-toolbar__actions">
+                  <Link to="/perfil/editar" className="lb-profile-action lb-profile-action--edit">
+                    <User size={11} strokeWidth={2.25} />
                     Editar perfil
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = `${window.location.origin}/u/${encodeURIComponent(publicProfile.username)}`;
-                      void navigator.clipboard?.writeText(url).catch(() => undefined);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-zinc-200"
-                  >
-                    <Share2 size={16} />
-                    Compartir perfil
-                  </button>
-                  <LogoutProfileButton />
                   <button
                     type="button"
                     onClick={() => {
                       setEditingPost(null);
                       setCreateOpen(true);
                     }}
-                    className="lb-new-post-btn"
+                    className="lb-profile-action lb-profile-action--post"
                   >
-                    <span className="lb-new-post-btn__shine" aria-hidden />
-                    <Plus size={14} strokeWidth={2.75} />
-                    <span>Nueva publicación</span>
+                    <Plus size={11} strokeWidth={2.5} />
+                    Nueva publicación
                   </button>
-                </>
-              ) : publicProfile.friendshipStatus === 'blocked' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `${window.location.origin}/u/${encodeURIComponent(publicProfile.username)}`;
+                      void navigator.clipboard?.writeText(url).catch(() => undefined);
+                    }}
+                    className="lb-profile-action lb-profile-action--share"
+                  >
+                    <Share2 size={11} strokeWidth={2.25} />
+                    Compartir perfil
+                  </button>
+                  <LogoutProfileButton />
+                </div>
+              ) : (
+                <div className="lb-profile-toolbar__actions">
+              {publicProfile.friendshipStatus === 'blocked' ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -676,13 +759,37 @@ export function UserProfileView() {
                   </button>
                 </>
               )}
+                </div>
+              )}
             </div>
           </div>
         </div>
+        </div>
       </section>
 
+      {coverFile && publicProfile.isOwnProfile ? (
+        <ProfileCoverEditor
+          uid={publicProfile.uid}
+          file={coverFile}
+          onClose={() => setCoverFile(null)}
+          onSaved={(coverUrl, coverType) => {
+            setPublicProfile((current) =>
+              current ? { ...current, coverUrl, coverType } : current,
+            );
+            setToast('Portada guardada.', 'success');
+            window.setTimeout(() => setToast(null), 2800);
+          }}
+        />
+      ) : null}
+
       {publicProfile.isOwnProfile ? (
-        <ActivityHistory username={publicProfile.username} limit={2} showAllLink />
+        <ActivityHistory
+          username={publicProfile.username}
+          limit={2}
+          showAllLink
+          positiveReactions={reactionTotals.positive}
+          negativeReactions={reactionTotals.negative}
+        />
       ) : null}
 
       <section className="lb-panel rounded-3xl p-4 sm:p-6">
@@ -827,7 +934,16 @@ export function UserProfileView() {
         <FollowListModal title="Seguidos" users={following} onClose={() => setModal(null)} />
       ) : null}
       {modal === 'friends' ? (
-        <FollowListModal title="Amigos" users={friends} onClose={() => setModal(null)} />
+        <FollowListModal
+          title="Amigos"
+          users={friends}
+          manageFriends={publicProfile.isOwnProfile}
+          followingUids={following.map((item) => item.uid).filter((id): id is string => Boolean(id))}
+          onClose={() => {
+            setModal(null);
+            friendsBtnRef.current?.focus({ preventScroll: true });
+          }}
+        />
       ) : null}
 
       {profileViewerIndex >= 0 ? (

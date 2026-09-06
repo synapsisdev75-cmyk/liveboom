@@ -1,9 +1,7 @@
-import { ThumbsDown } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { profileHref } from '../../lib/profileFirestore';
 import type { PostReactionUser } from '../../lib/socialFirestore';
-import { BoomLikeButton } from './BoomButtons';
+import { LiveBoomReactionControl } from './LiveBoomReactionControl';
 
 type Props = {
   likes: number;
@@ -26,77 +24,17 @@ export function PostReactionButtons({
   onReact,
   compact,
 }: Props) {
-  const [showLikers, setShowLikers] = useState(false);
-  const [showDislikers, setShowDislikers] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!showLikers && !showDislikers) return;
-    const onDoc = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) {
-        setShowLikers(false);
-        setShowDislikers(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [showLikers, showDislikers]);
-
-  const btn = compact ? 'h-9 px-2 text-[11px]' : 'px-2 py-1 text-xs';
-  const iconSize = compact ? 16 : 14;
-
   return (
-    <div ref={wrapRef} className="relative flex flex-wrap items-center gap-2">
-      <div className="relative inline-flex items-center">
-        <BoomLikeButton
-          active={viewerReaction === 'like'}
-          busy={busy}
-          count={likes}
-          size={compact ? 'sm' : 'md'}
-          onToggle={() => onReact('like')}
-          onShowWho={() => {
-            setShowDislikers(false);
-            setShowLikers((v) => !v);
-          }}
-        />
-        {showLikers ? (
-          <ReactionList title="Les gustó (Boom)" users={likers} onClose={() => setShowLikers(false)} />
-        ) : null}
-      </div>
-
-      <div className="relative inline-flex items-center rounded-lg ring-1 ring-white/5">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onReact('dislike')}
-          className={`inline-flex items-center gap-1 rounded-l-lg ${btn} font-semibold ${
-            viewerReaction === 'dislike'
-              ? 'bg-fuchsia-500/20 text-fuchsia-300'
-              : 'text-zinc-400 hover:text-fuchsia-300'
-          }`}
-          aria-label="No me gusta"
-        >
-          <ThumbsDown size={iconSize} />
-        </button>
-        <button
-          type="button"
-          disabled={busy || dislikes === 0}
-          onClick={() => {
-            setShowLikers(false);
-            setShowDislikers((v) => !v);
-          }}
-          className={`rounded-r-lg border-l border-white/10 ${btn} font-semibold tabular-nums ${
-            dislikes > 0 ? 'text-fuchsia-300 hover:bg-white/5' : 'text-zinc-600'
-          }`}
-          aria-label="Ver quién dio dislike"
-        >
-          {dislikes}
-        </button>
-        {showDislikers ? (
-          <ReactionList title="No les gustó" users={dislikers} onClose={() => setShowDislikers(false)} />
-        ) : null}
-      </div>
-    </div>
+    <LiveBoomReactionControl
+      currentUserReaction={viewerReaction}
+      likeCount={likes}
+      dislikeCount={dislikes}
+      likers={likers}
+      dislikers={dislikers}
+      busy={busy}
+      onReact={onReact}
+      size={compact ? 'sm' : 'md'}
+    />
   );
 }
 

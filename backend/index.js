@@ -64,6 +64,7 @@ mount('/api/users', () => require('./src/routes/users'));
 mount('/api/social', () => require('./src/routes/social'));
 mount('/api/messages', () => require('./src/routes/messages'));
 mount('/api/ads', () => require('./src/routes/ads'));
+mount('/api/reconstructions', () => require('./src/routes/reconstructions'));
 
 app.get('/api/wallet/:firebaseUid', async (req, res) => {
   const { firebaseUid } = req.params;
@@ -128,6 +129,10 @@ const isServerless = Boolean(
 );
 
 if (!isServerless && require.main === module) {
+  process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason || 'unknown');
+    console.warn('[liveboom] unhandledRejection', msg);
+  });
   try {
     const { initSocket } = require('./src/lib/socket');
     initSocket(httpServer);

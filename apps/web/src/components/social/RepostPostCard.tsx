@@ -17,13 +17,12 @@ import {
   type PostReactionUser,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
-import { BoomLikeButton } from './BoomButtons';
 import { EmojiText } from './EmojiText';
+import { PostReactionButtons } from './PostReactionButtons';
 import { PostMediaCarousel } from './PostMediaCarousel';
 import { PostPhotoViewer } from './PostPhotoViewer';
 import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
 import { PublicationCaption } from './PublicationCaption';
-import { ReactionList } from './PostReactionButtons';
 import { ShareContentButton } from './ShareContentButton';
 
 export type RepostSourcePost = {
@@ -89,7 +88,6 @@ function OriginalPostEmbed({
   const [viewerReaction, setViewerReaction] = useState<'like' | 'dislike' | null>(null);
   const [likers, setLikers] = useState<PostReactionUser[]>([]);
   const [dislikers, setDislikers] = useState<PostReactionUser[]>([]);
-  const [showLikers, setShowLikers] = useState(false);
   const [busy, setBusy] = useState(false);
   const [commentCount, setCommentCount] = useState(0);
   const [showComments, setShowComments] = useState(false);
@@ -248,19 +246,16 @@ function OriginalPostEmbed({
           ) : null}
 
           <div className="relative flex min-w-0 max-w-full flex-wrap items-center gap-1 border-t border-white/5 px-2 py-2 sm:gap-2 sm:px-3">
-            <span className="relative inline-flex items-center">
-              <BoomLikeButton
-                active={viewerReaction === 'like'}
-                busy={busy}
-                count={likes}
-                size="sm"
-                onToggle={() => void react('like')}
-                onShowWho={() => setShowLikers((v) => !v)}
-              />
-              {showLikers ? (
-                <ReactionList title="Les gustó (Boom)" users={likers} onClose={() => setShowLikers(false)} />
-              ) : null}
-            </span>
+            <PostReactionButtons
+              likes={likes}
+              dislikes={dislikes}
+              viewerReaction={viewerReaction}
+              likers={likers}
+              dislikers={dislikers}
+              busy={busy}
+              onReact={(reaction) => void react(reaction)}
+              compact
+            />
             <button
               type="button"
               onClick={() => {

@@ -33,6 +33,7 @@ import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { ChatVoiceRecorderBar } from './ChatVoiceRecorderBar';
 import { EmojiInput } from './EmojiInput';
 import { EmojiText } from './EmojiText';
+import { MessageReactionBar } from './LiveBoomReactionControl';
 import { GifPickerSheet } from './GifPickerSheet';
 import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
@@ -496,6 +497,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [newMsgOpen, setNewMsgOpen] = useState(false);
   const [menuMessageId, setMenuMessageId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const holdTimerRef = useRef(0);
   const lastMsgCount = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
@@ -1713,6 +1715,18 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       className={`group relative flex max-w-[min(85%,22rem)] flex-col ${
                         message.mine ? 'ml-auto items-end' : 'mr-auto items-start'
                       }`}
+                      onPointerDown={() => {
+                        window.clearTimeout(holdTimerRef.current);
+                        holdTimerRef.current = window.setTimeout(() => {
+                          setMenuMessageId(message.id);
+                        }, 480);
+                      }}
+                      onPointerUp={() => window.clearTimeout(holdTimerRef.current)}
+                      onPointerCancel={() => window.clearTimeout(holdTimerRef.current)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setMenuMessageId(message.id);
+                      }}
                     >
                       <div
                         className={`break-words ${
@@ -1827,6 +1841,9 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                           </>
                         )}
                       </div>
+                      {chatId && !message.deleted ? (
+                        <MessageReactionBar chatId={chatId} messageId={message.id} />
+                      ) : null}
                       <div className="mt-1 flex items-center gap-1.5 px-1">
                         {!message.deleted ? (
                           <span className="relative flex items-center gap-1 opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100">
@@ -1855,10 +1872,16 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                             </button>
                             {menuMessageId === message.id ? (
                               <div
-                                className={`absolute bottom-5 z-20 w-44 overflow-hidden rounded-xl border border-white/10 bg-zinc-950 py-1 shadow-xl ${
+                                className={`absolute bottom-5 z-20 w-48 overflow-hidden rounded-xl border border-white/10 bg-zinc-950 py-1 shadow-xl ${
                                   message.mine ? 'right-0' : 'left-0'
                                 }`}
                               >
+                                {chatId ? (
+                                  <div className="border-b border-white/10 px-2 py-1.5">
+                                    <p className="mb-1 text-[10px] font-semibold text-zinc-500">Reacciones</p>
+                                    <MessageReactionBar chatId={chatId} messageId={message.id} always />
+                                  </div>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => void removeMessage(message.id, 'me')}

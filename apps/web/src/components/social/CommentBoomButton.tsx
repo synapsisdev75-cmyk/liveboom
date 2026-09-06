@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  listenCommentBooms,
-  toggleCommentBoom,
-  type CommentBoomUser,
-} from '../../lib/commentBoomService';
+  listenReactionCounts,
+  setReaction,
+  type LiveBoomReaction,
+  type LiveBoomReactionStats,
+} from '../../lib/liveBoomReactionService';
 import { useAuthStore } from '../../store/authStore';
-import { BoomLikeButton } from './BoomButtons';
-import { ReactionList } from './PostReactionButtons';
+import { LiveBoomReactionControl } from './LiveBoomReactionControl';
 
 type Props = {
   postId: string;
@@ -23,8 +23,8 @@ function boomFailMessage(error: unknown): string {
   if (code === 'unavailable' || /network|offline|Failed to fetch/i.test(String(error))) {
     return 'Sin conexión. Intenta de nuevo.';
   }
-  if (code === 'permission-denied') return 'No se pudo guardar el Boom';
-  return 'No se pudo guardar el Boom';
+  if (code === 'permission-denied') return 'No se pudo guardar la reacción';
+  return 'No se pudo guardar la reacción';
 }
 
 export function CommentBoomReaction({
@@ -36,122 +36,94 @@ export function CommentBoomReaction({
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const uid = currentUserId || profile?.firebaseUid || null;
-  const [count, setCount] = useState(Math.max(0, boomCount ?? 0));
-  const [active, setActive] = useState(Boolean(hasBoomed));
-  const [users, setUsers] = useState<CommentBoomUser[]>([]);
+  const [stats, setStats] = useState<LiveBoomReactionStats>({
+    likeCount: Math.max(0, boomCount ?? 0),
+    dislikeCount: 0,
+    currentUserReaction: hasBoomed ? 'like' : null,
+    likers: [],
+    dislikers: [],
+  });
   const [busy, setBusy] = useState(false);
-  const [showWho, setShowWho] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
-  const latestRef = useRef<{ count: number; viewerBoom: boolean; users: CommentBoomUser[] } | null>(
-    null,
-  );
-
-  function applyStats(stats: { count: number; viewerBoom: boolean; users: CommentBoomUser[] }) {
-    setCount(Math.max(0, stats.count));
-    setActive(stats.viewerBoom);
-    setUsers(stats.users);
-  }
+  const latestRef = useRef<LiveBoomReactionStats | null>(null);
 
   useEffect(() => {
-    return listenCommentBooms(commentId, uid, (stats) => {
-      latestRef.current = stats;
+    return listenReactionCounts('comment', commentId, uid, (next) => {
+      latestRef.current = next;
       if (busyRef.current) return;
-      applyStats(stats);
-    });
-  }, [commentId, uid]);
+      setStats(next);
+    }, { postId });
+  }, [commentId, postId, uid]);
 
-  useEffect(() => {
-    if (!showWho) return;
-    const onDoc = (event: MouseEvent) => {
-      if (!wrapRef.current?.contains(event.target as Node)) setShowWho(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowWho(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [showWho]);
-
-  async function toggle() {
+  async function react(kind: 'like' | 'dislike') {
     if (!uid || !profile) {
       setError('Inicia sesión para reaccionar');
       return;
     }
     if (!commentId) {
-      console.error('Comment Boom failed', { commentId, userId: uid, error: 'commentId undefined' });
-      setError('No se pudo guardar el Boom');
+      setError('No se pudo guardar la reacción');
       return;
     }
     if (busyRef.current) return;
-    const currentlyActive = active;
-    const previous = { active, count, users };
-    const statsBeforeWrite = latestRef.current;
+    const previous = stats;
+    const next: LiveBoomReaction = previous.currentUserReaction === kind ? null : kind;
     busyRef.current = true;
     setBusy(true);
     setError(null);
-    setActive(!currentlyActive);
-    setCount((value) => Math.max(0, value + (currentlyActive ? -1 : 1)));
-    if (!currentlyActive) {
-      setUsers((current) => {
-        if (current.some((user) => user.uid === uid)) return current;
-        return [
-          {
-            uid,
-            username: profile.handle,
-            displayName: profile.displayName || profile.handle,
-            avatarUrl: profile.avatarUrl,
-          },
-          ...current,
-        ];
-      });
-    } else {
-      setUsers((current) => current.filter((user) => user.uid !== uid));
-    }
+    setStats({
+      ...previous,
+      currentUserReaction: next,
+      likeCount: Math.max(
+        0,
+        previous.likeCount +
+          (next === 'like' ? 1 : 0) -
+          (previous.currentUserReaction === 'like' ? 1 : 0),
+      ),
+      dislikeCount: Math.max(
+        0,
+        previous.dislikeCount +
+          (next === 'dislike' ? 1 : 0) -
+          (previous.currentUserReaction === 'dislike' ? 1 : 0),
+      ),
+    });
     try {
-      await toggleCommentBoom(commentId, uid, currentlyActive, {
-        username: profile.handle,
-        displayName: profile.displayName,
-        avatarUrl: profile.avatarUrl,
-      }, postId);
+      await setReaction('comment', commentId, uid, kind, {
+        postId,
+        current: previous.currentUserReaction,
+        profile: {
+          username: profile.handle,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+        },
+      });
     } catch (err) {
-      console.error('Comment Boom failed', { commentId, userId: uid, error: err });
-      setActive(previous.active);
-      setCount(previous.count);
-      setUsers(previous.users);
+      console.error('Comment reaction failed', { commentId, userId: uid, error: err });
+      setStats(previous);
       setError(boomFailMessage(err));
     } finally {
       busyRef.current = false;
       setBusy(false);
-      if (latestRef.current && latestRef.current !== statsBeforeWrite) {
-        applyStats(latestRef.current);
-      }
+      if (latestRef.current) setStats(latestRef.current);
     }
   }
 
   return (
     <div
-      ref={wrapRef}
       className="relative inline-flex min-h-11 min-w-0 items-center"
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <BoomLikeButton
-        size="sm"
-        active={active}
+      <LiveBoomReactionControl
+        currentUserReaction={stats.currentUserReaction}
+        likeCount={stats.likeCount}
+        dislikeCount={stats.dislikeCount}
+        likers={stats.likers}
+        dislikers={stats.dislikers}
         busy={busy}
-        count={count}
-        onToggle={() => void toggle()}
-        onShowWho={() => setShowWho((value) => !value)}
+        onReact={(kind) => void react(kind)}
+        size="sm"
       />
-      {showWho ? (
-        <ReactionList title="Personas que dieron Boom" users={users} onClose={() => setShowWho(false)} />
-      ) : null}
       {error ? (
         <span className="pointer-events-none absolute left-0 top-full z-20 whitespace-nowrap text-[10px] text-rose-300">
           {error}

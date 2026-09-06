@@ -23,21 +23,34 @@ import { GroupsView } from './views/GroupsView';
 import { SuperAdminView } from './views/SuperAdminView';
 import { SuperAdminRoute } from './components/auth/SuperAdminRoute';
 import { useLevelsConfigStore } from './store/levelsConfigStore';
+import { useAppearanceStore } from './store/appearanceStore';
+import { ThemeProvider } from './components/appearance/ThemeProvider';
 
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
   const hydrateLevels = useLevelsConfigStore((state) => state.hydrate);
+  const hydrateAppearance = useAppearanceStore((state) => state.hydrateFromCloud);
+  const uid = useAuthStore((state) => state.profile?.firebaseUid ?? null);
+  const ready = useAuthStore((state) => state.ready);
+
   useEffect(() => {
     const unsubLevels = hydrateLevels();
     hydrate();
     return () => unsubLevels();
   }, [hydrate, hydrateLevels]);
+
+  useEffect(() => {
+    if (!ready) return;
+    void hydrateAppearance(uid);
+  }, [ready, uid, hydrateAppearance]);
+
   return null;
 }
 
 /** Frontend + Firebase Auth sincronizado con PostgreSQL. */
 export default function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <AuthHydrator />
       <Routes>
@@ -73,5 +86,6 @@ export default function App() {
       <CallOverlay />
       <CookieBanner />
     </BrowserRouter>
+    </ThemeProvider>
   );
 }

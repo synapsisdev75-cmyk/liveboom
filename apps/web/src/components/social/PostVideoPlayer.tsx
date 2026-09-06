@@ -974,7 +974,7 @@ export function PostVideoPlayer({
             ) : null}
 
             {canChangeVisibility ? (
-              <div className="flex flex-wrap items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {(
                   [
                     ['public', Globe, 'Público'],
@@ -986,11 +986,15 @@ export function PostVideoPlayer({
                     key={value}
                     type="button"
                     onClick={() => onChangeVisibility?.(value)}
-                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold backdrop-blur-sm ${
-                      visibility === value
-                        ? 'bg-emerald-400 text-zinc-950'
-                        : 'bg-white/15 text-white'
-                    }`}
+                    className={
+                      publicationCaption
+                        ? `lb-tab-chip${visibility === value ? ' is-on' : ''}`
+                        : `inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold backdrop-blur-sm ${
+                            visibility === value
+                              ? 'bg-emerald-400 text-zinc-950'
+                              : 'bg-white/15 text-white'
+                          }`
+                    }
                   >
                     <Icon size={12} />
                     {label}
@@ -1002,7 +1006,11 @@ export function PostVideoPlayer({
                     onClick={onEdit}
                     title="Editar publicación"
                     aria-label="Editar publicación"
-                    className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-cyan-100 backdrop-blur-sm"
+                    className={
+                      publicationCaption
+                        ? 'lb-action-pill lb-action-pill--edit'
+                        : 'rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-cyan-100 backdrop-blur-sm'
+                    }
                   >
                     Editar
                   </button>
@@ -1011,7 +1019,11 @@ export function PostVideoPlayer({
                   <button
                     type="button"
                     onClick={onDelete}
-                    className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-rose-200 backdrop-blur-sm"
+                    className={
+                      publicationCaption
+                        ? 'lb-action-pill lb-action-pill--delete'
+                        : 'rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold text-rose-200 backdrop-blur-sm'
+                    }
                   >
                     Eliminar
                   </button>
@@ -1054,7 +1066,7 @@ export function PostVideoPlayer({
                       <button
                         type="button"
                         onClick={toggleMute}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
+                        className="lb-media-fab inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
                         aria-label={muted ? 'Activar sonido' : 'Silenciar'}
                       >
                         {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
@@ -1062,7 +1074,7 @@ export function PostVideoPlayer({
                       <button
                         type="button"
                         onClick={openExpand}
-                        className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
+                        className="lb-media-fab lb-media-fab--expand inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
                       >
                         <Maximize2 size={14} /> Expandir
                       </button>

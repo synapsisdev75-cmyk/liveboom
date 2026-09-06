@@ -241,7 +241,7 @@ export function PostMediaCarousel({
           {!expanded ? (
             <>
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
-              <span className="absolute bottom-2 right-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
+              <span className="lb-media-fab lb-media-fab--expand absolute bottom-2 right-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
                 <Maximize2 size={14} /> Expandir
               </span>
               {shareUrl ? (

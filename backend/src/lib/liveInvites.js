@@ -1,4 +1,4 @@
-const { getAdminDb } = require('./firestoreAdmin');
+const { getAdminDb, hasAdminCredentials } = require('./firestoreAdmin');
 const { FieldValue } = require('firebase-admin/firestore');
 
 const invitesByRoom = new Map();
@@ -83,6 +83,7 @@ function listBans(roomName) {
 }
 
 async function persistAdd(roomName, guestHandle) {
+  if (!hasAdminCredentials()) return;
   const room = normalize(roomName);
   const guest = normalize(guestHandle);
   if (!room || !guest) return;
@@ -97,6 +98,7 @@ async function persistAdd(roomName, guestHandle) {
 }
 
 async function persistRemove(roomName, guestHandle) {
+  if (!hasAdminCredentials()) return;
   const room = normalize(roomName);
   const guest = normalize(guestHandle);
   if (!room || !guest) return;
@@ -111,6 +113,7 @@ async function persistRemove(roomName, guestHandle) {
 }
 
 async function persistBanAdd(roomName, guestHandle) {
+  if (!hasAdminCredentials()) return;
   const room = normalize(roomName);
   const guest = normalize(guestHandle);
   if (!room || !guest) return;
@@ -131,6 +134,7 @@ async function persistBanAdd(roomName, guestHandle) {
 }
 
 async function persistClear(roomName) {
+  if (!hasAdminCredentials()) return;
   const room = normalize(roomName);
   if (!room) return;
   try {
@@ -144,6 +148,7 @@ async function persistClear(roomName) {
 }
 
 async function hasInvitePersisted(roomName, identities) {
+  if (!hasAdminCredentials()) return false;
   const room = normalize(roomName);
   const list = Array.isArray(identities) ? identities : [identities];
   const keys = list.map(normalize).filter(Boolean);
@@ -160,6 +165,7 @@ async function hasInvitePersisted(roomName, identities) {
 }
 
 async function hasBanPersisted(roomName, identities) {
+  if (!hasAdminCredentials()) return false;
   const room = normalize(roomName);
   const list = Array.isArray(identities) ? identities : [identities];
   const keys = list.map(normalize).filter(Boolean);

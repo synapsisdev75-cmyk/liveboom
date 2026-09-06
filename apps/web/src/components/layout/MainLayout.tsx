@@ -28,6 +28,7 @@ import { MessageInboxBadge, useUnreadMessageCount } from '../social/MessageInbox
 import { SideRailPanel } from './SideRailPanel';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { Logo } from '../brand/Logo';
+import { AppearanceControl } from '../appearance/AppearanceControl';
 
 function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
@@ -67,9 +68,9 @@ const mobileNavItems = [
 ];
 
 const activeClass =
-  'lb-nav-item lb-nav-active flex items-center gap-2.5 px-3 py-[7px] text-[13px] font-semibold leading-tight';
+  'lb-nav-item lb-nav-active flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold leading-tight tracking-[0.01em]';
 const idleClass =
-  'lb-nav-item flex items-center gap-2.5 rounded-xl px-3 py-[7px] text-[13px] font-medium leading-tight text-white/90 hover:bg-white/[0.04]';
+  'lb-nav-item flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-medium leading-tight tracking-[0.01em] text-white/88';
 
 type SidebarBodyProps = {
   profile: ReturnType<typeof useAuthStore.getState>['profile'];
@@ -81,15 +82,18 @@ type SidebarBodyProps = {
 function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <Link
-        to="/"
-        onClick={onNavigate}
-        className="mb-2 block shrink-0 px-0.5 transition hover:opacity-90"
-      >
-        <Logo compact className="!justify-start [&_img]:!h-[4.25rem] [&_img]:!max-w-[15rem]" />
-      </Link>
+      <div className="mb-2 flex shrink-0 items-center gap-1">
+        <Link
+          to="/"
+          onClick={onNavigate}
+          className="min-w-0 flex-1 px-0.5 transition hover:opacity-90"
+        >
+          <Logo compact className="!justify-start [&_img]:!h-[4.25rem] [&_img]:!max-w-[15rem]" />
+        </Link>
+        <AppearanceControl />
+      </div>
 
-      <nav className="flex shrink-0 flex-col gap-px">
+      <nav className="lb-side-nav flex shrink-0 flex-col">
         {sideNavItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -105,7 +109,7 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
                   <Icon
                     size={18}
                     strokeWidth={isActive ? 2.35 : 1.75}
-                    className={isActive ? 'lb-nav-icon shrink-0' : 'shrink-0 text-white'}
+                    className={isActive ? 'lb-nav-icon shrink-0' : 'lb-nav-icon lb-nav-icon--idle shrink-0'}
                     fill={isActive && item.to === '/' ? 'currentColor' : 'none'}
                   />
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
@@ -256,12 +260,15 @@ export function MainLayout() {
   const hideMobileChrome = onExplore && deviceLandscape;
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#0a0a0b] font-sans text-white lg:flex-row">
+    <div className="lb-shell flex h-[100dvh] w-full flex-col overflow-hidden font-sans lg:flex-row">
       {!hideMobileChrome ? (
-      <header className="flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 lg:hidden">
-        <Link to="/" className="min-w-0 shrink">
-          <Logo compact className="[&_img]:!h-14 [&_img]:!max-w-[12rem] sm:[&_img]:!h-16 sm:[&_img]:!max-w-[14rem]" />
-        </Link>
+      <header className="lb-shell-header flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 lg:hidden">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <Link to="/" className="min-w-0 shrink">
+            <Logo compact className="[&_img]:!h-14 [&_img]:!max-w-[12rem] sm:[&_img]:!h-16 sm:[&_img]:!max-w-[14rem]" />
+          </Link>
+          <AppearanceControl />
+        </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
           {profile ? <MessageInboxBadge /> : null}
           {profile ? <NotificationBell /> : null}
@@ -295,7 +302,7 @@ export function MainLayout() {
       </header>
       ) : null}
 
-      <aside className="hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/[0.06] bg-[#0a0b10] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex">
+      <aside className="lb-sidebar hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex">
         <SidebarBody profile={profile} onRecharge={() => setRechargeOpen(true)} />
       </aside>
 
@@ -336,7 +343,7 @@ export function MainLayout() {
       <SideRailPanel />
 
       {!hideMobileChrome ? (
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/5 bg-zinc-950/95 pb-[var(--lb-safe-bottom)] pl-[var(--lb-safe-left)] pr-[var(--lb-safe-right)] backdrop-blur-xl lg:hidden">
+      <nav className="lb-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-white/5 pb-[var(--lb-safe-bottom)] pl-[var(--lb-safe-left)] pr-[var(--lb-safe-right)] backdrop-blur-xl lg:hidden">
         <ul className="grid grid-cols-5 px-1 pt-1 sm:px-2">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
@@ -386,7 +393,7 @@ export function MainLayout() {
             aria-label="Cerrar menú"
             onClick={() => setMenuOpen(false)}
           />
-          <div className="absolute inset-y-0 right-0 flex h-[100dvh] w-[min(17.5rem,88vw)] flex-col overflow-hidden border-l border-zinc-800 bg-[#0a0b10] pb-[max(0.75rem,var(--lb-safe-bottom))] pl-3 pr-[max(0.75rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] shadow-2xl">
+          <div className="lb-mobile-drawer absolute inset-y-0 right-0 flex h-[100dvh] w-[min(17.5rem,88vw)] flex-col overflow-hidden border-l border-zinc-800 pb-[max(0.75rem,var(--lb-safe-bottom))] pl-3 pr-[max(0.75rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] shadow-2xl">
             <div className="mb-2 flex shrink-0 items-center justify-between">
               <p className="text-xs font-bold text-zinc-400">Menú</p>
               <button

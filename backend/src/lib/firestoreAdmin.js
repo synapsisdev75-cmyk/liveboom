@@ -46,6 +46,10 @@ function firestoreConfigured() {
   return Boolean(loadServiceAccount() || process.env.GCLOUD_PROJECT || process.env.FIREBASE_CONFIG);
 }
 
+function hasAdminCredentials() {
+  return Boolean(loadServiceAccount());
+}
+
 async function savePaymentOrder(order) {
   const db = getAdminDb();
   const ref = String(order.reference || '').trim();
@@ -193,6 +197,7 @@ async function readUserCoinsBalance(uid) {
 
 module.exports = {
   firestoreConfigured,
+  hasAdminCredentials,
   savePaymentOrder,
   readPaymentOrder,
   findPaymentOrderByLinkId,

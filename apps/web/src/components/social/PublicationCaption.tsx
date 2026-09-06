@@ -44,10 +44,6 @@ export function PublicationCaption({
 
   if (!text) return null;
 
-  const moreBg = overlay
-    ? 'bg-gradient-to-l from-black from-[18%] to-transparent'
-    : 'bg-gradient-to-l from-[#09090b] from-[12%] to-transparent';
-
   return (
     <div
       className={
@@ -57,15 +53,17 @@ export function PublicationCaption({
       }
     >
       <div
-        className={`relative min-w-0 ${
-          overlay && expanded ? 'publication-caption--overlay-scroll overflow-y-auto overscroll-contain pr-1' : ''
-        }`}
+        className={
+          overlay && expanded
+            ? 'publication-caption--overlay-scroll min-w-0 overflow-y-auto overscroll-contain pr-1'
+            : 'min-w-0'
+        }
       >
         <p
           ref={bodyRef}
-          className={`text-[clamp(0.8125rem,2.4vw,0.875rem)] leading-relaxed ${
-            overlay ? 'text-white/95 drop-shadow' : 'text-zinc-200'
-          } ${expanded ? '' : 'line-clamp-3'}`}
+          className={`publication-caption__body${overlay ? ' is-overlay' : ''}${
+            expanded ? ' is-open' : ' is-clamped'
+          }`}
         >
           <EmojiText text={text} size={POST_EMOJI_SIZE} />
           {expanded && overflows ? (
@@ -79,7 +77,7 @@ export function PublicationCaption({
                   event.stopPropagation();
                   setExpanded(false);
                 }}
-                className="publication-caption__more inline items-center font-bold text-white hover:underline"
+                className="publication-caption__more"
               >
                 Ver menos
               </button>
@@ -95,7 +93,7 @@ export function PublicationCaption({
               event.stopPropagation();
               setExpanded(true);
             }}
-            className={`publication-caption__more absolute bottom-0 right-0 inline-flex max-w-[min(100%,12rem)] items-end justify-end py-0.5 pl-[clamp(1.5rem,8vw,2.5rem)] text-right font-bold text-white hover:underline ${moreBg}`}
+            className="publication-caption__more"
           >
             Ver más
           </button>

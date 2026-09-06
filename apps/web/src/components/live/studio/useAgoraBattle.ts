@@ -21,6 +21,7 @@ import {
 import type { ILocalAudioTrack, ILocalVideoTrack } from 'agora-rtc-sdk-ng';
 import { fetchPublicUserByUsername } from '../../../lib/profileFirestore';
 import { roomKey } from '../../../lib/roomKey';
+import { preloadBattleSkinAssets } from '../../../lib/battleAnimatedSkin';
 
 type Args = {
   roomName: string;
@@ -55,6 +56,12 @@ export function useAgoraBattle({
   const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => listenRoomBattleState(roomName, setRoomState), [roomName]);
+
+  useEffect(() => {
+    if (roomState.incoming || battle?.status === 'pending' || battle?.status === 'live') {
+      preloadBattleSkinAssets();
+    }
+  }, [roomState.incoming, battle?.status]);
 
   useEffect(() => {
     const watchId = roomState.battleId || roomState.incoming?.battleId;

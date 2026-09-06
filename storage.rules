@@ -109,6 +109,16 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    match /users/{userId}/portada/{fileName} {
+      allow read: if true;
+      allow write: if isOwner(userId)
+        && request.resource.size < 50 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
     match /users/{userId}/posts/{fileName} {
       allow read: if canReadPostFile(userId);
       allow write: if isOwner(userId)
@@ -136,6 +146,17 @@ service firebase.storage {
       allow write: if isOwner(userId)
         && request.resource.size < 50 * 1024 * 1024
         && request.resource.contentType.matches('video/.*');
+    }
+
+    // Reconstrucción 3D — fotos fuente y derivados (solo el dueño)
+    match /users/{userId}/reconstruccion-3d/{jobId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+        && request.resource.size < 50 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
     }
 
     // Flash Boom — historias 24 h

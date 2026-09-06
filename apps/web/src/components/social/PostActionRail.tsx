@@ -1,11 +1,10 @@
-import { MessageCircle, ThumbsDown } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { MessageCircle } from 'lucide-react';
+import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { PostReactionUser } from '../../lib/socialFirestore';
 import { profileHref } from '../../lib/profileFirestore';
 import { UserAvatar } from '../profile/UserAvatar';
-import { BoomLikeButton } from './BoomButtons';
-import { ReactionList } from './PostReactionButtons';
+import { LiveBoomReactionControl } from './LiveBoomReactionControl';
 import { ShareContentButton } from './ShareContentButton';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
 
@@ -99,8 +98,6 @@ export function PostActionRail({
   anchor = 'viewport',
   layout = 'default',
 }: Props) {
-  const [showLikers, setShowLikers] = useState(false);
-  const [showDislikers, setShowDislikers] = useState(false);
   const profilePath =
     authorUsername || authorUid ? profileHref(authorUsername || 'user', authorUid) : null;
   const isAsideRail = layout === 'aside';
@@ -156,35 +153,17 @@ export function PostActionRail({
         </Link>
       ) : null}
 
-      <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.25rem)]">
-        <div className="lb-action-rail__boom grid place-items-center rounded-full bg-black/55 shadow-lg backdrop-blur-sm">
-          <BoomLikeButton
-            active={viewerReaction === 'like'}
-            busy={busy}
-            count={likes}
-            showCount={false}
-            size="md"
-            onToggle={() => onReact('like')}
-          />
-        </div>
-        <button
-          type="button"
-          disabled={likes === 0}
-          onClick={(event) => {
-            event.stopPropagation();
-            setShowDislikers(false);
-            setShowLikers((v) => !v);
-          }}
-          className="lb-action-rail__count text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
-        >
-          {likes}
-        </button>
-        {showLikers ? (
-          <div className="absolute bottom-full left-0 mb-2">
-            <ReactionList title="Les gustó (Boom)" users={likers} onClose={() => setShowLikers(false)} />
-          </div>
-        ) : null}
-      </div>
+      <LiveBoomReactionControl
+        currentUserReaction={viewerReaction}
+        likeCount={likes}
+        dislikeCount={dislikes}
+        likers={likers}
+        dislikers={dislikers}
+        busy={busy}
+        onReact={onReact}
+        size="md"
+        layout="rail"
+      />
 
       {showGifts && authorUsername ? (
         <div className="lb-action-rail__gift">
@@ -196,34 +175,6 @@ export function PostActionRail({
           />
         </div>
       ) : null}
-
-      <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.2rem)]">
-        <OverlayIconButton
-          active={viewerReaction === 'dislike'}
-          activeClass="bg-fuchsia-500 text-zinc-950"
-          onClick={() => onReact('dislike')}
-          disabled={busy}
-        >
-          <ThumbsDown className="lb-action-rail__icon" size={20} />
-        </OverlayIconButton>
-        <button
-          type="button"
-          disabled={dislikes === 0}
-          onClick={(event) => {
-            event.stopPropagation();
-            setShowLikers(false);
-            setShowDislikers((v) => !v);
-          }}
-          className="lb-action-rail__count text-[11px] font-bold text-white drop-shadow disabled:opacity-40"
-        >
-          {dislikes}
-        </button>
-        {showDislikers ? (
-          <div className="absolute bottom-full left-0 mb-2">
-            <ReactionList title="No les gustó" users={dislikers} onClose={() => setShowDislikers(false)} />
-          </div>
-        ) : null}
-      </div>
 
       <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.2rem)]">
         <OverlayIconButton

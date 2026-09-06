@@ -27,6 +27,8 @@ export type PublicFsUser = {
   email: string;
   displayName: string;
   avatarUrl: string | null;
+  coverUrl?: string | null;
+  coverType?: 'image' | 'gif' | 'video' | null;
   bio: string | null;
   birthDate: string | null;
   category: string | null;
@@ -81,6 +83,16 @@ function asIsoDate(value: unknown): string | null {
   return null;
 }
 
+function asCoverUrl(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function asCoverType(value: unknown): 'image' | 'gif' | 'video' | null {
+  const raw = String(value || '').trim();
+  if (raw === 'image' || raw === 'gif' || raw === 'video') return raw;
+  return null;
+}
+
 function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
   const username = String(data.username || '');
   const avatarRaw = data.avatarUrl;
@@ -94,6 +106,8 @@ function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
     email: String(data.email || ''),
     displayName: String(data.displayName || username),
     avatarUrl,
+    coverUrl: asCoverUrl(data.coverUrl),
+    coverType: asCoverType(data.coverType),
     bio: (data.bio as string | null) ?? null,
     birthDate: asIsoDate(data.birthDate),
     category: (data.category as string | null) ?? null,
@@ -457,6 +471,28 @@ export async function saveFirestoreAvatar(uid: string, avatarUrl: string): Promi
     { merge: true },
   );
   void ensureUserStorageFolder(id).catch(() => undefined);
+  return url;
+}
+
+/** Guarda la portada de perfil (1800×520) sin alterar el resto del perfil. */
+export async function saveFirestoreCover(
+  uid: string,
+  coverUrl: string,
+  coverType: 'image' | 'gif' | 'video',
+): Promise<string> {
+  const id = String(uid || '').trim();
+  const url = String(coverUrl || '').trim();
+  if (!id || !url) throw new Error('Portada inválida.');
+  await setDoc(
+    doc(db, 'users', id),
+    {
+      coverUrl: url,
+      coverType,
+      firebaseUid: id,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
   return url;
 }
 

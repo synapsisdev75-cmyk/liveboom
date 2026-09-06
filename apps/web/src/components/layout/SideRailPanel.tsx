@@ -1360,7 +1360,7 @@ function DiscoveryRail() {
 
   return (
     <>
-      <aside className="chat-scroll hidden w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem] lg:p-4">
+      <aside className="lb-side-rail chat-scroll hidden w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-l border-white/5 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem] lg:p-4">
         {/* Arrow 1: Crear tu grupo — arriba de Publicidad */}
         {onGroups ? (
           <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">

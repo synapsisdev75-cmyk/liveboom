@@ -52,6 +52,7 @@ import {
   listenCommentBooms as listenCommentBoomService,
   removeCommentBoom as removeCommentBoomService,
 } from './commentBoomService';
+import { parseReconstruction3d, type Reconstruction3DPayload } from './reconstruction3d/types';
 
 export type FriendshipStatus =
   | 'none'
@@ -155,6 +156,7 @@ export type FsPost = {
   overlays?: MediaOverlayItem[];
   updatedAt?: string;
   edited?: boolean;
+  reconstruction3d?: Reconstruction3DPayload;
 };
 
 type MeProfile = {
@@ -1157,6 +1159,7 @@ export async function sendChatMessage(
 
 function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
   const overlays = parseMediaOverlays(data.overlays);
+  const reconstruction3d = parseReconstruction3d(data.reconstruction3d);
   return {
     id,
     authorUid: String(data.authorUid || ''),
@@ -1187,6 +1190,7 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     ...(overlays.length ? { overlays } : {}),
     updatedAt: data.updatedAt ? asIso(data.updatedAt) : undefined,
     edited: Boolean(data.edited) || Boolean(data.updatedAt),
+    ...(reconstruction3d ? { reconstruction3d } : {}),
   };
 }
 
@@ -2023,6 +2027,7 @@ export async function createPost(input: {
   musicTrackId?: string;
   musicStartSec?: number;
   overlays?: MediaOverlayItem[];
+  reconstruction3d?: Reconstruction3DPayload;
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -2170,6 +2175,7 @@ export async function createPost(input: {
         }
       : {}),
     ...(overlayPayload.length ? { overlays: overlayPayload } : {}),
+    ...(input.reconstruction3d ? { reconstruction3d: input.reconstruction3d } : {}),
   });
   if (visibility === 'public' && input.caption.trim()) {
     void import('./trendsFirestore')

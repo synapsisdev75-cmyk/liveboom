@@ -33,6 +33,7 @@ function toSocial(post: FsPost): SocialPost {
     overlays: post.overlays,
     edited: post.edited,
     updatedAt: post.updatedAt,
+    reconstruction3d: post.reconstruction3d,
   };
 }
 

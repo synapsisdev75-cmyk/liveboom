@@ -39,6 +39,7 @@ export async function ensureUserStorageFolder(uid: string): Promise<void> {
   const base = userStorageFolder(uid);
   const paths = [
     `${base}/.keep`,
+    `${base}/portada/.keep`,
     ...Object.values(USER_MEDIA_FOLDERS).map((folder) => `${base}/${folder}/.keep`),
   ];
   const task = Promise.all(
@@ -296,6 +297,29 @@ export async function uploadUserAvatar(uid: string, blob: Blob, ext = 'jpg'): Pr
   await uploadBytes(objectRef, prepared, {
     contentType: prepared.type || 'image/jpeg',
   });
+  return getDownloadURL(objectRef);
+}
+
+/** Portada de perfil: 1800×520, sin re-escalar por presupuesto de red. */
+export async function uploadUserCover(
+  uid: string,
+  blob: Blob,
+  ext: string,
+  kind: 'image' | 'gif' | 'video',
+): Promise<string> {
+  if (blob.size > MAX_VIDEO_BYTES) {
+    throw new Error('La portada debe pesar menos de 50 MB.');
+  }
+  void ensureUserStorageFolder(uid);
+  const safeExt = ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || (kind === 'video' ? 'webm' : 'jpg');
+  const objectRef = ref(storage, `${userStorageFolder(uid)}/portada/cover.${safeExt}`);
+  const contentType =
+    kind === 'video'
+      ? blob.type || 'video/webm'
+      : kind === 'gif'
+        ? 'image/gif'
+        : blob.type || 'image/jpeg';
+  await uploadBytes(objectRef, blob, { contentType, customMetadata: { contentKind: 'portada' } });
   return getDownloadURL(objectRef);
 }
 

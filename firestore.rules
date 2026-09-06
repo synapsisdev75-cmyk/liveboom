@@ -228,6 +228,15 @@ service cloud.firestore {
         allow delete: if signedIn()
           && request.auth.uid in chatData().participants
           && resource.data.fromUid == request.auth.uid;
+
+        match /reactions/{reactorId} {
+          allow read: if signedIn() && request.auth.uid in chatData().participants;
+          allow create, update: if signedIn()
+            && request.auth.uid == reactorId
+            && request.auth.uid in chatData().participants
+            && request.resource.data.type in ['like', 'dislike'];
+          allow delete: if signedIn() && request.auth.uid == reactorId;
+        }
       }
     }
 
@@ -529,6 +538,14 @@ service cloud.firestore {
           && request.auth.uid == userId
           && resource.data.userId == request.auth.uid;
       }
+    }
+
+    match /threeDReconstructions/{jobId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.id == jobId;
+      allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /{document=**} {

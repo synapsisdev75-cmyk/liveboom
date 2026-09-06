@@ -1,4 +1,4 @@
-import { Bell, Camera, ChevronLeft, ChevronRight, Globe, Image, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
+import { Bell, Box, Camera, ChevronLeft, ChevronRight, Globe, Image, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
@@ -10,6 +10,7 @@ import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MA
 import { BOOM_CLIP_MAX_DURATION_SEC } from '../../lib/videoTrim';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/mediaFile';
+import { uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput } from './EmojiInput';
@@ -40,6 +41,19 @@ import {
   photoCssFilter,
   type PhotoEditValues,
 } from '../../lib/photoEdit';
+import {
+  clearReconstructionDraft,
+  getReconstructionDraft,
+  readReconstructionSessionMeta,
+  setReconstructionDraft,
+  subscribeReconstructionDraft,
+} from '../../lib/reconstruction3d/draftStore';
+import { reconstructionPreviewFile, renderOrbitVideo } from '../../lib/reconstruction3d/orbitRender';
+import { threeDReconstructionService } from '../../lib/reconstruction3d/service';
+import { DEFAULT_RECONSTRUCTION_EDIT, type ReconstructionDraft } from '../../lib/reconstruction3d/types';
+import { Reconstruction3DPanel } from './Reconstruction3DPanel';
+import { Reconstruction3DViewer } from './Reconstruction3DViewer';
+import { Reconstruction3DBadge } from './Reconstruction3DBadge';
 
 type PostComposerMode = 'create' | 'edit';
 
@@ -130,6 +144,8 @@ export function CreatePostModal({
   const [gifAttach, setGifAttach] = useState<ComposerGif | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
+  const [reconOpen, setReconOpen] = useState(false);
+  const [reconstruction, setReconstruction] = useState<ReconstructionDraft | null>(getReconstructionDraft());
   const [photoEditOpen, setPhotoEditOpen] = useState(false);
   const [photoEdits, setPhotoEdits] = useState<Record<number, PhotoEditValues>>({});
   const [editHistory, setEditHistory] = useState<PhotoEditValues[]>([DEFAULT_PHOTO_EDIT]);
@@ -209,6 +225,30 @@ export function CreatePostModal({
   useEffect(() => {
     if (autoOpen) setOpen(true);
   }, [autoOpen]);
+
+  useEffect(() => {
+    const cached = readReconstructionSessionMeta();
+    if (cached?.id && cached.result && !getReconstructionDraft()) {
+      setReconstructionDraft({
+        id: cached.id,
+        userId: profile?.firebaseUid || cached.userId || '',
+        kind: cached.kind || 'object',
+        status: cached.status || 'ready',
+        progress: 100,
+        stage: '',
+        captures: [],
+        missingSlots: [],
+        result: cached.result,
+        edit: cached.edit || { ...DEFAULT_RECONSTRUCTION_EDIT },
+        motion: cached.motion || 'orbit',
+        error: null,
+        personConsent: Boolean(cached.personConsent),
+        createdAt: cached.createdAt || Date.now(),
+        updatedAt: cached.updatedAt || Date.now(),
+      } as ReconstructionDraft);
+    }
+    return subscribeReconstructionDraft(setReconstruction);
+  }, [profile?.firebaseUid]);
 
   useEffect(() => {
     if (!isEditMode || !editPost) return;
@@ -355,7 +395,7 @@ export function CreatePostModal({
       const detected = mediaKindFromFile(file);
       if (detected) setKind(detected);
     }
-    if (tab === 'boomclip' && file && mediaKindFromFile(file) === 'photo') {
+    if (tab === 'boomclip' && file && mediaKindFromFile(file) === 'photo' && reconstruction?.status !== 'ready') {
       setError(
         `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
       );
@@ -967,7 +1007,7 @@ export function CreatePostModal({
       return;
     }
     if (isMediaTab) {
-      if (!mediaFile && !(isEditMode && previewUrl)) {
+      if (!mediaFile && !(isEditMode && previewUrl) && reconstruction?.status !== 'ready') {
         setError(`Elige una foto o video para tu ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}.`);
         return;
       }
@@ -977,7 +1017,8 @@ export function CreatePostModal({
       !mediaFiles.some(Boolean) &&
       !gifAttach &&
       !albumUrls.length &&
-      !previewUrl
+      !previewUrl &&
+      reconstruction?.status !== 'ready'
     ) {
       setError('Elige una foto, un video o escribe un post de texto.');
       return;
@@ -987,7 +1028,8 @@ export function CreatePostModal({
     setError(null);
     try {
       let durationSec = 0;
-      const publishKind = kind;
+      const reconReady = reconstruction?.status === 'ready' && Boolean(reconstruction.result);
+      let publishKind = reconReady ? (isBoomClip || isFlashBoom ? 'video' : 'photo') : kind;
       if (isBoomClip && publishKind !== 'video') {
         setError(
           `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
@@ -1027,9 +1069,62 @@ export function CreatePostModal({
       }
 
       let uploadFile = mediaFile;
+      let reconstructionPayload = reconReady && reconstruction?.result ? reconstruction.result : undefined;
+      if (reconReady && reconstruction?.result) {
+        let frames = reconstruction.result.frameUrls;
+        if (reconstruction.captures.some((item) => !item.remoteUrl) || frames.some((url) => url.startsWith('blob:'))) {
+          try {
+            const uploaded = await threeDReconstructionService.uploadCaptureImages(
+              profile.firebaseUid,
+              reconstruction.id,
+              reconstruction.captures,
+            );
+            frames = uploaded.map((item) => item.remoteUrl || '').filter((url) => url.startsWith('http'));
+          } catch {
+            const fallback = await Promise.all(
+              reconstruction.captures.map((item, index) =>
+                uploadUserMedia(
+                  profile.firebaseUid,
+                  item.file,
+                  `recon3d_${index + 1}.jpg`,
+                  visibility,
+                  'publication',
+                ),
+              ),
+            );
+            frames = fallback.map((item) => item.url);
+          }
+        }
+        const httpFrames = frames.filter((url) => url.startsWith('http'));
+        if (isBoomClip || isFlashBoom) {
+          durationSec = isFlashBoom ? 4 : 8;
+          uploadFile = await renderOrbitVideo({
+            frameUrls: httpFrames.length ? httpFrames : reconstruction.result.frameUrls,
+            durationSec,
+            aspect: '9:16',
+            motion: reconstruction.motion,
+            edit: reconstruction.edit,
+          });
+        } else {
+          const previewSrc = reconstruction.result.previewUrl || reconstruction.result.frameUrls[0];
+          if (!previewSrc) throw new Error('La reconstrucción no tiene vista previa.');
+          uploadFile = await reconstructionPreviewFile(previewSrc);
+        }
+        reconstructionPayload = {
+          ...reconstruction.result,
+          frameUrls: httpFrames,
+          previewUrl:
+            reconstruction.result.previewUrl && reconstruction.result.previewUrl.startsWith('http')
+              ? reconstruction.result.previewUrl
+              : httpFrames[0] || null,
+          motion: reconstruction.motion,
+          edit: reconstruction.edit,
+          captureCount: httpFrames.length || reconstruction.result.frameUrls.length,
+        };
+      }
       const createFiles = mediaFiles.filter((file): file is File => Boolean(file));
-      let albumForUpload = createFiles;
-      if (publishKind === 'photo') {
+      let albumForUpload = reconReady ? [] : createFiles;
+      if (!reconReady && publishKind === 'photo') {
         if (createFiles.length > 1) {
           albumForUpload = await Promise.all(
             createFiles.map(async (file, index) => {
@@ -1132,6 +1227,7 @@ export function CreatePostModal({
         musicTrackId: selectedMusic?.trackId,
         musicStartSec: selectedMusic?.startSec,
         overlays,
+        reconstruction3d: reconstructionPayload,
       });
 
       onCreated?.({
@@ -1149,7 +1245,9 @@ export function CreatePostModal({
         postFormat: publishPostFormat || null,
         durationSec: durationSec || null,
         overlays,
+        reconstruction3d: reconstructionPayload,
       });
+      if (reconReady) clearReconstructionDraft();
       reset();
       closeModal();
     } catch (err) {
@@ -1162,7 +1260,7 @@ export function CreatePostModal({
   const showVisibility = true;
   const showPanel = isInline || open;
   const isModalOpen = showPanel && !isInline;
-  useBodyScrollLock(isModalOpen || cameraCaptureOpen);
+  useBodyScrollLock(isModalOpen || cameraCaptureOpen || reconOpen);
   const modalTitle = isEditMode
     ? 'Editar publicación'
     : isFlashBoom
@@ -1302,6 +1400,18 @@ export function CreatePostModal({
                 </span>
               ) : null}
             </div>
+
+            {reconstruction?.status === 'ready' && reconstruction.result ? (
+              <div className="lb-recon3d-composer">
+                <div className="flex items-center justify-between gap-2 px-3 py-2">
+                  <Reconstruction3DBadge />
+                  <span className="text-[11px] text-zinc-400">
+                    Se mantiene al cambiar Publicación, Boom Clip o Flash Boom
+                  </span>
+                </div>
+                <Reconstruction3DViewer payload={reconstruction.result} edit={reconstruction.edit} compact />
+              </div>
+            ) : null}
 
             {previewSrc ? (
               <div
@@ -1631,6 +1741,16 @@ export function CreatePostModal({
                 <Smile size={14} />
                 Sticker
               </button>
+              <button
+                type="button"
+                onClick={() => setReconOpen(true)}
+                className={`lb-recon3d-btn ${reconstruction?.status === 'ready' ? 'is-active' : ''}`}
+                aria-label="Reconstrucción 3D"
+              >
+                <Box size={16} />
+                <span className="hidden sm:inline">Reconstrucción 3D</span>
+                <span className="sm:hidden">3D</span>
+              </button>
               {showVisibility ? (
                 <div
                   className="ml-auto flex min-h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-black/35 p-0.5"
@@ -1884,6 +2004,18 @@ export function CreatePostModal({
               : 180
         }
       />
+      {profile?.firebaseUid ? (
+        <Reconstruction3DPanel
+          open={reconOpen}
+          userId={profile.firebaseUid}
+          onClose={() => setReconOpen(false)}
+          onReady={() => setReconOpen(false)}
+          onSelectFormat={(tab) => {
+            switchTab(tab);
+            setReconOpen(false);
+          }}
+        />
+      ) : null}
       {musicPickerOpen ? (
         <MusicPickerModal
           initial={selectedMusic}

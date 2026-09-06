@@ -13,6 +13,7 @@ type Props = {
   authorUid?: string | null;
   authorUsername?: string | null;
   className?: string;
+  buttonClassName?: string;
   label?: string;
   iconOnly?: boolean;
   size?: 'sm' | 'md';
@@ -28,6 +29,7 @@ export function ShareContentButton({
   authorUid,
   authorUsername,
   className = '',
+  buttonClassName = '',
   label = 'Compartir',
   iconOnly = false,
   size = 'sm',
@@ -52,13 +54,15 @@ export function ShareContentButton({
       <button
         type="button"
         onClick={onShare}
-        className={`inline-flex items-center justify-center font-semibold text-zinc-400 transition hover:text-white ${
+        className={
           iconOnly
-            ? 'h-10 w-10 rounded-full bg-black/55 text-white backdrop-blur-sm hover:bg-black/70'
-            : size === 'md'
-              ? 'min-h-10 gap-1.5 rounded-lg px-2 py-1.5 text-xs hover:bg-white/5'
-              : 'min-h-10 gap-1.5 rounded-lg px-2 py-1.5 text-xs hover:bg-white/5'
-        }`}
+            ? `lb-media-fab lb-media-fab--share inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/70 ${buttonClassName}`
+            : buttonClassName.includes('lb-action-pill')
+              ? buttonClassName
+              : `inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-zinc-400 transition hover:bg-white/5 hover:text-white ${
+                  size === 'md' ? 'min-h-10' : 'min-h-10'
+                } ${buttonClassName}`
+        }
         aria-label={label}
         title={label}
       >
