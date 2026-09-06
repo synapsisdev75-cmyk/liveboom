@@ -1,5 +1,5 @@
-/** Logo oficial Liveboom (asset local sin fondo negro). */
-export const BRAND_LOGO_LOCAL = '/brand/logo.png';
+/** Logo oficial Liveboom (PNG con alpha; URL nueva para romper caché CDN). */
+export const BRAND_LOGO_LOCAL = '/brand/logo-clear.png';
 
 export const BRAND_LOGO_SRC = BRAND_LOGO_LOCAL;
 

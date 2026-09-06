@@ -144,6 +144,7 @@ router.post('/start', requireAuth, async (req, res) => {
       name: displayName,
       room: roomName,
       canPublish: true,
+      ensureRoom: true,
     });
     console.info('[LiveKit] token received', { callId, roomName, stage: 'start' });
     res.json({

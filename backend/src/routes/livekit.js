@@ -103,6 +103,7 @@ router.post('/token', requireAuth, async (req, res) => {
         name,
         room: roomName,
         canPublish: true,
+        ensureRoom: true,
       });
       console.info('[LiveKit] token received', { callId, roomName, stage: 'join' });
       res.json({

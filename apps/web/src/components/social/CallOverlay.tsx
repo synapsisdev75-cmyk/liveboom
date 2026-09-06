@@ -7,7 +7,7 @@ import {
   type TrackReference,
 } from '@livekit/components-react';
 import type { DeepAR } from 'deepar';
-import { LocalVideoTrack, RoomEvent, Track } from 'livekit-client';
+import { LocalVideoTrack, DisconnectReason, RoomEvent, Track } from 'livekit-client';
 import {
   ChevronDown,
   Gift,
@@ -88,6 +88,49 @@ function CallReconnectBanner() {
   const label = recovering ? 'Reconectando llamada...' : text;
   if (!label) return null;
   return <p className="lb-call-banner">{label}</p>;
+}
+
+/** Reconecta si LiveKit cae pero la llamada sigue activa en el store. */
+function CallAutoReconnect({ serverUrl, token }: { serverUrl: string; token: string }) {
+  const room = useRoomContext();
+
+  useEffect(() => {
+    let timer = 0;
+    let attempts = 0;
+
+    const onLost = (reason?: DisconnectReason) => {
+      const status = useCallStore.getState().status;
+      if (status !== 'active' && status !== 'ringing-out') return;
+      if (reason === DisconnectReason.CLIENT_INITIATED) return;
+      if (attempts >= 5) return;
+      attempts += 1;
+      console.warn('[LiveKit] disconnected — retry', { reason, attempts });
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (room.state === 'disconnected') {
+          void room.connect(serverUrl, token).catch((error) => {
+            console.error('[LiveKit ERROR]', { stage: 'reconnect', error });
+          });
+        }
+      }, 700 * attempts);
+    };
+
+    const onOk = () => {
+      attempts = 0;
+    };
+
+    room.on(RoomEvent.Disconnected, onLost);
+    room.on(RoomEvent.Connected, onOk);
+    room.on(RoomEvent.Reconnected, onOk);
+    return () => {
+      window.clearTimeout(timer);
+      room.off(RoomEvent.Disconnected, onLost);
+      room.off(RoomEvent.Connected, onOk);
+      room.off(RoomEvent.Reconnected, onOk);
+    };
+  }, [room, serverUrl, token]);
+
+  return null;
 }
 
 function useCallLinkState() {
@@ -1377,19 +1420,30 @@ export function CallOverlay() {
 
   useEffect(() => {
     if (!profile) return;
-    return listenConversations(profile.firebaseUid, (list) => {
+    let hangupTimer = 0;
+    const unsub = listenConversations(profile.firebaseUid, (list) => {
       const store = useCallStore.getState();
       if (store.recovering && store.status === 'idle') return;
       if (store.chatId) {
         const mine = list.find((item) => item.chatId === store.chatId);
         if (mine?.call?.status === 'active' && (store.status === 'ringing-out' || store.status === 'active')) {
+          window.clearTimeout(hangupTimer);
           markActive(connectedAtToMs(mine.call.connectedAt));
         }
+        // Debounce: un snapshot intermedio sin `call` no debe cortar la LiveKit mid-call.
         if (mine && mine.call == null && (store.status === 'ringing-out' || store.status === 'active')) {
-          if (!useCallStore.getState().recovering) {
+          window.clearTimeout(hangupTimer);
+          hangupTimer = window.setTimeout(() => {
+            const latest = useCallStore.getState();
+            if (latest.recovering) return;
+            if (latest.status !== 'ringing-out' && latest.status !== 'active') return;
+            if (latest.chatId !== store.chatId) return;
             void hangup(undefined, { skipHistory: true });
-          }
+          }, 2500);
           return;
+        }
+        if (mine?.call) {
+          window.clearTimeout(hangupTimer);
         }
       }
       if (store.status === 'active' || store.status === 'ringing-out') return;
@@ -1449,6 +1503,10 @@ export function CallOverlay() {
         },
       });
     });
+    return () => {
+      window.clearTimeout(hangupTimer);
+      unsub();
+    };
   }, [profile?.firebaseUid, hangup, markActive, setIncoming, selfBusyCallId]);
 
   useEffect(() => {
@@ -1614,8 +1672,14 @@ export function CallOverlay() {
         connect
         audio
         video={false}
+        connectOptions={{
+          autoSubscribe: true,
+          maxRetries: 5,
+          peerConnectionTimeout: 30_000,
+        }}
         className={isVideo ? 'lb-call-room' : 'lb-call-room lb-call-room--voice'}
       >
+        <CallAutoReconnect serverUrl={serverUrl} token={token} />
         {isVideo ? <CallReconnectBanner /> : null}
         <CallStage
           video={isVideo}

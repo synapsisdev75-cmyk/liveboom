@@ -36,12 +36,36 @@ function roomService() {
   return new RoomServiceClient(host, apiKey, apiSecret);
 }
 
-async function createLivekitToken({ identity, name, room, canPublish }) {
+async function ensureCallRoom(roomName) {
+  const svc = roomService();
+  if (!svc) return;
+  try {
+    await svc.createRoom({
+      name: String(roomName),
+      // Evita que LiveKit cierre la sala mientras uno llama y el otro aún no entra.
+      emptyTimeout: 1800,
+      departureTimeout: 60,
+      maxParticipants: 4,
+    });
+  } catch (error) {
+    // Ya existe u otro race: no es fatal.
+    const msg = error instanceof Error ? error.message : String(error || '');
+    if (!/already|exist/i.test(msg)) {
+      console.warn('[livekit] createRoom:', msg);
+    }
+  }
+}
+
+async function createLivekitToken({ identity, name, room, canPublish, ensureRoom = false }) {
   const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
   const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
+  if (ensureRoom) {
+    await ensureCallRoom(room);
+  }
   const token = new AccessToken(apiKey, apiSecret, {
     identity: String(identity),
     name: String(name || identity),
+    ttl: '6h',
   });
   token.addGrant({
     roomJoin: true,
@@ -50,7 +74,7 @@ async function createLivekitToken({ identity, name, room, canPublish }) {
     canSubscribe: true,
     canPublishData: true,
   });
-  return token.toJwt();
+  return Promise.resolve(token.toJwt());
 }
 
 async function listActiveLiveRooms() {
@@ -85,6 +109,7 @@ module.exports = {
   livekitMissing,
   livekitConfigError,
   createLivekitToken,
+  ensureCallRoom,
   listActiveLiveRooms,
   livekitHttpHost,
 };

@@ -540,9 +540,9 @@ export function UserProfileView() {
             void onPickCover(next);
           }}
         />
-        <div className="lb-profile-identity relative z-[1] -mt-8 px-4 pb-2.5 sm:-mt-10 sm:px-6 sm:pb-3">
-        <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:gap-4">
-          <div className="relative shrink-0">
+        <div className="lb-profile-identity relative z-[1] px-4 pb-2.5 sm:px-6 sm:pb-3">
+        <div className="lb-profile-identity__emblems">
+          <div className="lb-profile-identity__avatar">
             <LevelAvatarFrame
               levelXp={publicProfile.levelXp}
               avatarUrl={publicProfile.avatarUrl}
@@ -550,62 +550,61 @@ export function UserProfileView() {
               size="2xl"
             />
           </div>
-          <div className="min-w-0 flex-1 text-center sm:text-left">
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h1 className="text-xl font-bold text-white sm:text-2xl">
-                  {publicProfile.displayName !== publicProfile.username
-                    ? publicProfile.displayName
-                    : null}
-                  <span
-                    className={
-                      publicProfile.displayName !== publicProfile.username
-                        ? 'mt-0.5 block text-base font-medium text-zinc-400'
-                        : ''
-                    }
-                  >
-                    @{publicProfile.username}
+          <div className="lb-profile-identity__badge">
+            <LevelInsignia levelXp={publicProfile.levelXp} />
+          </div>
+        </div>
+        <div className="lb-profile-identity__info">
+          <h1 className="text-xl font-bold text-white sm:text-2xl">
+            {publicProfile.displayName !== publicProfile.username
+              ? publicProfile.displayName
+              : null}
+            <span
+              className={
+                publicProfile.displayName !== publicProfile.username
+                  ? 'mt-0.5 block text-base font-medium text-zinc-400'
+                  : ''
+              }
+            >
+              @{publicProfile.username}
+            </span>
+          </h1>
+          {(() => {
+            const info = levelFromXp(publicProfile.levelXp);
+            const progress = xpProgressInTier(publicProfile.levelXp);
+            const remaining = xpToNextLevel(publicProfile.levelXp);
+            const next = nextTierFromXp(publicProfile.levelXp);
+            return (
+              <div className="mt-2 w-full">
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <span className="font-semibold text-cyan-300">{info.title}</span>
+                  <span className="text-[10px] text-zinc-500">· {info.rangeLabel}</span>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-zinc-400">
+                  <span>{publicProfile.levelXp.toLocaleString('es-CO')} XP</span>
+                  <span>
+                    {next
+                      ? `${remaining.toLocaleString('es-CO')} XP para ${next.title}`
+                      : 'Nivel máximo PRO'}
                   </span>
-                </h1>
-                {(() => {
-                  const info = levelFromXp(publicProfile.levelXp);
-                  const progress = xpProgressInTier(publicProfile.levelXp);
-                  const remaining = xpToNextLevel(publicProfile.levelXp);
-                  const next = nextTierFromXp(publicProfile.levelXp);
-                  return (
-                    <div className="mt-2">
-                      <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                        <span className="font-semibold text-cyan-300">{info.title}</span>
-                        <span className="text-[10px] text-zinc-500">· {info.rangeLabel}</span>
-                      </div>
-                      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-zinc-400">
-                        <span>{publicProfile.levelXp.toLocaleString('es-CO')} XP</span>
-                        <span>
-                          {next
-                            ? `${remaining.toLocaleString('es-CO')} XP para ${next.title}`
-                            : 'Nivel máximo PRO'}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-800">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-cyan-400 transition-[width] duration-500"
-                          style={{ width: `${progress.pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
+                </div>
+                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-cyan-400 transition-[width] duration-500"
+                    style={{ width: `${progress.pct}%` }}
+                  />
+                </div>
               </div>
-              <div className="shrink-0 self-center sm:self-start">
-                <LevelInsignia levelXp={publicProfile.levelXp} />
-              </div>
-            </div>
-            {publicProfile.isOwnProfile && profile?.birthDate && ageFromIsoDate(profile.birthDate) != null ? (
-              <p className="mt-1.5 text-xs text-cyan-400">
-                {t('profile.yearsOld', { age: ageFromIsoDate(profile.birthDate) as number })}
-              </p>
-            ) : null}
-            {publicProfile.bio ? <p className="mt-1 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
+            );
+          })()}
+          {publicProfile.isOwnProfile && profile?.birthDate && ageFromIsoDate(profile.birthDate) != null ? (
+            <p className="mt-2 text-xs text-cyan-400">
+              {t('profile.yearsOld', { age: ageFromIsoDate(profile.birthDate) as number })}
+            </p>
+          ) : null}
+          {publicProfile.bio ? <p className="mt-1 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
+        </div>
+        <div className="lb-profile-identity__body">
             <div className="lb-profile-toolbar">
               <div className="lb-profile-toolbar__stats">
                 <button type="button" onClick={() => void openFollowers()} className="lb-profile-stat is-followers">
@@ -797,7 +796,6 @@ export function UserProfileView() {
                 </div>
               )}
             </div>
-          </div>
         </div>
         </div>
       </section>

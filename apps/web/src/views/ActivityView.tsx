@@ -338,7 +338,7 @@ export function ActivityView() {
         kind: 'system',
         name: 'LiveBoom',
         username: 'liveboom',
-        avatarUrl: '/brand/logo.png',
+        avatarUrl: '/brand/logo-clear.png',
         action: 'Bienvenido a tu centro de actividad',
         at: Date.now() - 86_400_000,
       });
