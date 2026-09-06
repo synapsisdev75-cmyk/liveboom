@@ -21,7 +21,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         heading: '3. Cuenta y conducta',
-        body: 'Eres responsable de la actividad en tu cuenta. Está prohibido el acoso, contenido ilegal, suplantación, spam, malware y cualquier uso que vulnere derechos de terceros. Podemos moderar, limitar o cerrar cuentas que incumplan estas reglas.',
+        body: 'Eres responsable de la actividad en tu cuenta. Está prohibido el acoso, contenido ilegal, abuso o explotación sexual infantil (CSAE), material de abuso sexual infantil (CSAM), suplantación, spam, malware y cualquier uso que vulnere derechos de terceros. Podemos moderar, limitar o cerrar cuentas que incumplan estas reglas. Ver Estándares de seguridad infantil: https://liveboomapp.com/legal/seguridad-infantil',
       },
       {
         heading: '4. Contenido y propiedad',
@@ -45,7 +45,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         heading: '9. Contacto',
-        body: 'Para consultas legales: legal@liveboom.app',
+        body: 'Para consultas legales y soporte: macroreal2026@gmail.com',
       },
     ],
   },
@@ -56,7 +56,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
     sections: [
       {
         heading: '1. Responsable del tratamiento',
-        body: 'Liveboom (“nosotros”) trata datos personales de usuarios de la plataforma web y servicios asociados. Contacto: privacidad@liveboom.app',
+        body: 'Liveboom (“nosotros”) trata datos personales de usuarios de la plataforma web y servicios asociados. Contacto: macroreal2026@gmail.com',
       },
       {
         heading: '2. Datos que recopilamos',
@@ -80,7 +80,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         heading: '7. Derechos del titular',
-        body: 'Puedes acceder, actualizar, rectificar, suprimir y oponerte al tratamiento, así como revocar consentimientos. Escríbenos a privacidad@liveboom.app. También puedes presentar reclamo ante la Superintendencia de Industria y Comercio (SIC).',
+        body: 'Puedes acceder, actualizar, rectificar, suprimir y oponerte al tratamiento, así como revocar consentimientos. Escríbenos a macroreal2026@gmail.com. También puedes presentar reclamo ante la Superintendencia de Industria y Comercio (SIC).',
       },
       {
         heading: '8. Seguridad',
@@ -88,7 +88,46 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         heading: '9. Menores',
-        body: 'Liveboom no está dirigido a menores de 18 años. Si detectamos una cuenta de menor, podremos eliminarla.',
+        body: 'Liveboom no está dirigido a menores de 18 años. Si detectamos una cuenta de menor, podremos eliminarla. Consulta también nuestros Estándares de seguridad infantil: https://liveboomapp.com/legal/seguridad-infantil',
+      },
+    ],
+  },
+  {
+    slug: 'seguridad-infantil',
+    title: 'Estándares de seguridad infantil',
+    updated: '4 de septiembre de 2026',
+    sections: [
+      {
+        heading: '1. Compromiso de Liveboom',
+        body: 'Liveboom es una red social de transmisiones en vivo, contenido corto y comunidad. Nos oponemos al abuso y explotación sexual infantil (CSAE, por sus siglas en inglés) y al material de abuso sexual infantil (CSAM). Está estrictamente prohibido crear, subir, transmitir, compartir, solicitar o almacenar CSAM o cualquier contenido o conducta que sexualmente explote, abuse o ponga en peligro a menores.',
+      },
+      {
+        heading: '2. Solo mayores de 18 años',
+        body: 'Liveboom está dirigido exclusivamente a personas de 18 años o más. No está diseñado para niños. Si detectamos una cuenta de un menor, podemos suspenderla y eliminar la información asociada, sin perjuicio de otras acciones legales.',
+      },
+      {
+        heading: '3. Contenido y conductas prohibidas',
+        body: 'Además de lo establecido en nuestros Términos, está prohibido: CSAM (fotos, videos u otras representaciones visuales); grooming o captación de menores; sextorsión; tráfico sexual de menores; y cualquier intento de eludir controles de edad o de ocultar la participación de menores en lives, clips, mensajes o perfiles.',
+      },
+      {
+        heading: '4. Cómo actuamos ante CSAM',
+        body: 'Cuando tengamos conocimiento efectivo de CSAM o de conductas CSAE en Liveboom: (a) retiramos o bloqueamos el contenido; (b) restringimos o cerramos las cuentas involucradas; (c) conservamos evidencia según la ley aplicable; y (d) cooperamos con autoridades competentes cuando corresponda. Actuamos conforme a estos estándares, a nuestros Términos y a la legislación aplicable.',
+      },
+      {
+        heading: '5. Cómo reportar',
+        body: 'Si ves contenido o conducta que pueda afectar la seguridad de menores, repórtalo de inmediato escribiendo a macroreal2026@gmail.com (asunto: “Seguridad infantil / CSAM”) e incluye enlaces, capturas y el usuario involucrado cuando sea posible. También puedes usar los canales de soporte o denuncia disponibles dentro de la app. No reenvíes archivos de CSAM; describe el hallazgo y facilita la ubicación en la plataforma.',
+      },
+      {
+        heading: '6. Cumplimiento legal',
+        body: 'Liveboom se compromete a cumplir las leyes aplicables en materia de protección de menores y prevención de CSAE/CSAM, incluidas las obligaciones de denuncia y cooperación con autoridades cuando la ley lo exija.',
+      },
+      {
+        heading: '7. Punto de contacto CSAM',
+        body: 'Contacto designado para prácticas de prevención de CSAM y cumplimiento de la política de estándares de seguridad infantil de Google Play: macroreal2026@gmail.com. Nombre de referencia del contacto: Equipo Legal Liveboom.',
+      },
+      {
+        heading: '8. Relación con otros documentos',
+        body: 'Estos estándares complementan los Términos y Condiciones y el Aviso de Privacidad de Liveboom. En caso de conflicto sobre seguridad infantil y CSAM, prevalecen estas normas de protección.',
       },
     ],
   },
@@ -119,7 +158,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         heading: '6. Contacto',
-        body: 'privacidad@liveboom.app',
+        body: 'macroreal2026@gmail.com',
       },
     ],
   },

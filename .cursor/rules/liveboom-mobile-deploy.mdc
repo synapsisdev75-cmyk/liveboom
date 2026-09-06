@@ -17,11 +17,10 @@ Ver también `liveboom-responsive-universal.mdc`: **una sola app** PC/tablet/mó
 - Thumb reach, botones ≥ ~44px (touch), texto legible, regalos/overlays sin tapar la cara del host.
 - No dar por terminado un cambio que solo se ve bien en escritorio.
 
-## Deploy (esta máquina = rama `jhonantan`)
+## Deploy (esta máquina = rama `main`)
 
-En esta máquina rige `liveboom-jhonantan-branch.mdc`: un “desplegar” **no** publica el sitio principal.
+En esta máquina rige `liveboom-jhonantan-branch.mdc` (política main): un “desplegar” publica el **sitio principal**.
 
-- Default: canal Firebase **`jhonantan`** (`hosting:channel:deploy jhonantan`). No `main`, no todas las ramas, no www.
-- Producción (`liveboomapp.com` / www / Functions / Vercel) **solo** si el usuario dice explícitamente “producción”, “www” o “principal”.
-
-No dar por “listo en www” un preview de `jhonantan`.
+- Default: rama **`main`** + Firebase Hosting live (`firebase deploy --only hosting --project liveboom-app`).
+- URLs: `liveboomapp.com` / `www` / `liveboom-app.web.app`.
+- No usar el canal preview `jhonantan` como flujo por defecto aquí.

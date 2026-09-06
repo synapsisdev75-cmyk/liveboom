@@ -161,8 +161,8 @@ export function ActivityHistory({
           </span>
           <span className="lb-activity-card__label">
             Lives
-            <span title="Total de transmisiones finalizadas">
-              <Info size={11} />
+            <span title="Total de transmisiones finalizadas" className="inline-flex">
+              <Info size={11} aria-hidden />
             </span>
           </span>
           {totalLives > 0 ? (
@@ -182,8 +182,8 @@ export function ActivityHistory({
           </span>
           <span className="lb-activity-card__label">
             Interacciones
-            <span title="Reacciones positivas y negativas en tu contenido">
-              <Info size={11} />
+            <span title="Reacciones positivas y negativas en tu contenido" className="inline-flex">
+              <Info size={11} aria-hidden />
             </span>
           </span>
           {hasInteractions ? (
@@ -219,8 +219,8 @@ export function ActivityHistory({
           </span>
           <span className="lb-activity-card__label">
             Blasts / Coins
-            <span title="Regalos y Blasts acumulados en tus lives">
-              <Info size={11} />
+            <span title="Regalos y Blasts acumulados en tus lives" className="inline-flex">
+              <Info size={11} aria-hidden />
             </span>
           </span>
           {hasBlasts ? (
