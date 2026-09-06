@@ -447,6 +447,8 @@ export function tokensToCssMap(tokens: SemanticTokens): Record<string, string> {
   }
   map['--lb-accent-glow'] = tokens['--accent-soft'];
   map['--text-on-accent'] = tokens['--text-inverse'];
+  /* Presence is a state, not a palette accent. */
+  map['--status-online'] = '#20e676';
   return map;
 }
 

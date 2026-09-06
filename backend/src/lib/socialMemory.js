@@ -112,6 +112,28 @@ function isFollowing(followerUid, targetUsername) {
   return followingSet(followerUid).has(target.firebaseUid);
 }
 
+function isFollowingUid(followerUid, targetUid) {
+  if (!followerUid || !targetUid) return false;
+  return followingSet(followerUid).has(String(targetUid));
+}
+
+function getCommunicationPermissions(currentUserId, targetUserId) {
+  const a = String(currentUserId || '').trim();
+  const b = String(targetUserId || '').trim();
+  if (!a || !b || a === b) {
+    return { relationship: 'none', canMessage: false, canVoiceCall: false, canVideoCall: false };
+  }
+  const friend = areFriends(a, b) && areFriends(b, a);
+  const follower = isFollowingUid(a, b) || isFollowingUid(b, a);
+  if (friend) {
+    return { relationship: 'friend', canMessage: true, canVoiceCall: true, canVideoCall: true };
+  }
+  if (follower) {
+    return { relationship: 'follower', canMessage: true, canVoiceCall: false, canVideoCall: false };
+  }
+  return { relationship: 'none', canMessage: false, canVoiceCall: false, canVideoCall: false };
+}
+
 function listFollowingUsernames(username) {
   const user = resolveByUsername(username);
   if (!user) return [];
@@ -414,6 +436,8 @@ module.exports = {
   follow,
   unfollow,
   isFollowing,
+  isFollowingUid,
+  getCommunicationPermissions,
   listFollowingUsernames,
   listFollowersUsernames,
   followCounts,

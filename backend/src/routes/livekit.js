@@ -4,6 +4,7 @@ const {
   bearerFromReq,
   canCallUser,
   callRoomName,
+  isActiveCall,
   loadChatCall,
   otherUidFromChatId,
 } = require('../lib/canCallUser');
@@ -49,16 +50,19 @@ router.post('/token', requireAuth, async (req, res) => {
     }
 
     try {
-      const allowed = await canCallUser(identity, otherUid, idToken);
-      if (!allowed) {
-        res.status(403).json({
-          error: 'Solo puedes llamar a tus amigos.',
-          code: 'CALL_NOT_ALLOWED',
-          stage: 'friendship',
-        });
-        return;
-      }
       const call = await loadChatCall(chatId, idToken);
+      const joiningActive = isActiveCall(call, callId, identity);
+      if (!joiningActive) {
+        const allowed = await canCallUser(identity, otherUid, idToken);
+        if (!allowed) {
+          res.status(403).json({
+            error: 'Solo puedes llamar a tus amigos.',
+            code: 'CALL_NOT_ALLOWED',
+            stage: 'friendship',
+          });
+          return;
+        }
+      }
       if (call && call.id && call.id !== callId) {
         res.status(409).json({
           error: 'La llamada ya no está activa',
@@ -71,6 +75,10 @@ router.post('/token', requireAuth, async (req, res) => {
       if (call && members.length > 0 && !members.includes(identity)) {
         res.status(403).json({ error: 'No perteneces a esta llamada', code: 'CALL_NOT_ALLOWED', stage: 'token' });
         return;
+      }
+      if (joiningActive) {
+        const { refreshCallBusy } = require('../lib/callBusy');
+        await refreshCallBusy(identity, callId).catch(() => undefined);
       }
     } catch (error) {
       console.error('[LiveKit ERROR]', {

@@ -1,4 +1,4 @@
-import { getDownloadURL, ref, updateMetadata, uploadBytes, uploadBytesResumable } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref, updateMetadata, uploadBytes, uploadBytesResumable } from 'firebase/storage';
 import { mimeFromFileName } from './chatAttachments';
 import { storage } from './firebase';
 
@@ -575,4 +575,33 @@ export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 
 export function isHttpUrl(value: string | null | undefined): value is string {
   return Boolean(value && /^https?:\/\//i.test(value));
+}
+
+/** Extrae la ruta de Storage de una URL de descarga de Firebase. */
+export function chatStoragePathFromUrl(url: string | null | undefined): string | null {
+  const value = String(url || '').trim();
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    const marker = '/o/';
+    const idx = parsed.pathname.indexOf(marker);
+    if (idx < 0) return null;
+    return decodeURIComponent(parsed.pathname.slice(idx + marker.length));
+  } catch {
+    return null;
+  }
+}
+
+export function isExclusiveChatAssetPath(path: string | null | undefined): boolean {
+  const value = String(path || '');
+  return /^users\/[^/]+\/chat\//.test(value) || /^chats\/[^/]+\/files\//.test(value);
+}
+
+export async function deleteChatAsset(path: string): Promise<boolean> {
+  try {
+    await deleteObject(ref(storage, path));
+    return true;
+  } catch {
+    return false;
+  }
 }

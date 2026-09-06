@@ -120,6 +120,13 @@ type Props = {
   disabled?: boolean;
   /** Packs unicode. Default true: mismo catálogo en todos los módulos. */
   showUnicode?: boolean;
+  /** Control opcional (composer de mensajes). Default: estado interno. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Oculta el botón; el ancla se usa solo para posición. */
+  hideTrigger?: boolean;
+  triggerRef?: { current: HTMLElement | null };
+  title?: string;
 };
 
 function filterLiveboom(list: readonly LiveboomEmoji[], query: string) {
@@ -236,8 +243,20 @@ export function EmojiPickerButton({
   buttonClassName,
   disabled = false,
   showUnicode = true,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
+  triggerRef,
+  title = 'Emoticones',
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? Boolean(openProp) : uncontrolledOpen;
+  function setOpen(next: boolean | ((prev: boolean) => boolean)) {
+    const resolved = typeof next === 'function' ? next(open) : next;
+    if (!controlled) setUncontrolledOpen(resolved);
+    onOpenChange?.(resolved);
+  }
   const [tab, setTab] = useState<Tab>('classic');
   const [query, setQuery] = useState('');
   const [coords, setCoords] = useState<{
@@ -253,7 +272,7 @@ export function EmojiPickerButton({
   const panelRef = useRef<HTMLDivElement>(null);
 
   const updatePosition = useCallback(() => {
-    const trigger = buttonRef.current;
+    const trigger = triggerRef?.current || buttonRef.current;
     const panel = panelRef.current;
     if (!trigger || !panel) return;
     const prevMax = panel.style.maxHeight;
@@ -281,13 +300,19 @@ export function EmojiPickerButton({
       }
       return next;
     });
-  }, [placement]);
+  }, [placement, triggerRef]);
 
   useEffect(() => {
     if (!open) return;
     function onDoc(event: Event) {
       const target = event.target as Node;
-      if (wrapRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      if (
+        wrapRef.current?.contains(target) ||
+        panelRef.current?.contains(target) ||
+        triggerRef?.current?.contains(target)
+      ) {
+        return;
+      }
       setOpen(false);
     }
     function onKey(event: KeyboardEvent) {
@@ -299,7 +324,7 @@ export function EmojiPickerButton({
       document.removeEventListener('pointerdown', onDoc);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, triggerRef]);
 
   useEffect(() => {
     if (!open) setQuery('');
@@ -528,24 +553,27 @@ export function EmojiPickerButton({
       : null;
 
   return (
-    <div ref={wrapRef} className={`relative shrink-0 ${className}`}>
-      <button
-        ref={buttonRef}
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        onMouseDown={(event) => event.preventDefault()}
-        className={
-          buttonClassName ||
-          `grid h-10 w-10 shrink-0 place-items-center rounded-xl transition ${
-            open ? 'bg-white/10 text-amber-300' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
-          }`
-        }
-        aria-label="Emoticones"
-        aria-expanded={open}
-      >
-        <Smile size={20} />
-      </button>
+    <div ref={wrapRef} className={hideTrigger ? `contents ${className}` : `relative shrink-0 ${className}`}>
+      {hideTrigger ? null : (
+        <button
+          ref={buttonRef}
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          onMouseDown={(event) => event.preventDefault()}
+          className={
+            buttonClassName ||
+            `grid h-10 w-10 shrink-0 place-items-center rounded-xl transition ${
+              open ? 'bg-white/10 text-amber-300' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+            }`
+          }
+          aria-label={title}
+          title={title}
+          aria-expanded={open}
+        >
+          <Smile size={20} />
+        </button>
+      )}
       {panel}
     </div>
   );

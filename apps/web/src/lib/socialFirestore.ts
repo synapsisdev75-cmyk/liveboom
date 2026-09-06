@@ -31,7 +31,13 @@ import {
 } from './reelLifecycle';
 import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from './contentType';
 import { isStoryActive, isStoryPost, storyExpiresAtFromNow } from './storyLifecycle';
+import { getCommunicationPermissions } from './communicationPermissions';
+import type { CallRateSnapshot } from './callPricing';
+import { readCallAuthorization } from './callSettingsFirestore';
 import {
+  chatStoragePathFromUrl,
+  deleteChatAsset,
+  isExclusiveChatAssetPath,
   updateStoredMediaVisibility,
   uploadUserMedia,
   uploadUserMediaMany,
@@ -90,12 +96,19 @@ export type ChatMessage = {
   status?: 'sent' | 'delivered' | 'read';
   editedAt?: string | null;
   deleted?: boolean;
+  /** true si este viewer lo ocultó solo para sí. */
+  hiddenForMe?: boolean;
+  deletedForEveryone?: boolean;
   /** Uids que ocultaron el mensaje solo para sí. */
   hiddenFor?: string[];
   callMeta?: {
     video: boolean;
     outcome: 'completed' | 'missed' | 'cancelled' | 'declined';
     durationSec: number;
+    giftName?: string | null;
+    rateBlasts?: number;
+    blocksCharged?: number;
+    totalBlasts?: number;
   } | null;
 };
 
@@ -112,6 +125,18 @@ export type PrivateCall = {
   createdAt: string;
   connectedAt?: string | null;
   answeredAt?: string | null;
+  rateSnapshot?: {
+    giftId: string;
+    giftName: string;
+    giftEmoji?: string;
+    rateBlasts: number;
+  } | null;
+  payerUid?: string | null;
+  maxBlasts?: number | null;
+  spentBlasts?: number;
+  blocksCharged?: number;
+  chargedBlocks?: Record<string, boolean>;
+  authorizationId?: string | null;
 };
 
 export type Conversation = FriendChip & {
@@ -121,6 +146,9 @@ export type Conversation = FriendChip & {
   call: PrivateCall | null;
   /** Mensajes no leídos para el viewer actual. */
   unread: number;
+  clearedAtMs?: number;
+  deletedAtMs?: number;
+  deletedBy?: string | null;
 };
 
 export type FsPost = {
@@ -201,6 +229,26 @@ function parseCall(value: unknown): PrivateCall | null {
     createdAt: asIso(data.createdAt),
     connectedAt: data.connectedAt ? asIso(data.connectedAt) : null,
     answeredAt: data.answeredAt ? asIso(data.answeredAt) : null,
+    rateSnapshot:
+      data.rateSnapshot && typeof data.rateSnapshot === 'object'
+        ? {
+            giftId: String((data.rateSnapshot as Record<string, unknown>).giftId || ''),
+            giftName: String((data.rateSnapshot as Record<string, unknown>).giftName || ''),
+            giftEmoji: String((data.rateSnapshot as Record<string, unknown>).giftEmoji || ''),
+            rateBlasts: Math.max(0, Math.floor(Number((data.rateSnapshot as Record<string, unknown>).rateBlasts) || 0)),
+          }
+        : null,
+    payerUid: data.payerUid ? String(data.payerUid) : null,
+    maxBlasts: data.maxBlasts == null ? null : Math.max(0, Math.floor(Number(data.maxBlasts) || 0)),
+    spentBlasts: Math.max(0, Math.floor(Number(data.spentBlasts) || 0)),
+    blocksCharged: Math.max(0, Math.floor(Number(data.blocksCharged) || 0)),
+    chargedBlocks:
+      data.chargedBlocks && typeof data.chargedBlocks === 'object'
+        ? Object.fromEntries(
+            Object.entries(data.chargedBlocks as Record<string, unknown>).map(([key, value]) => [key, Boolean(value)]),
+          )
+        : undefined,
+    authorizationId: data.authorizationId ? String(data.authorizationId) : null,
   };
 }
 
@@ -214,8 +262,31 @@ export async function startPrivateCall(
   friend: FriendChip,
   video: boolean,
   existingCallId?: string,
+  opts?: {
+    rateSnapshot?: CallRateSnapshot | null;
+    authorizationId?: string | null;
+    maxBlasts?: number | null;
+  },
 ) {
+  const perms = await getCommunicationPermissions(me.firebaseUid, friend.uid);
+  let allowed = video ? perms.canVideoCall : perms.canVoiceCall;
+  if (!allowed && opts?.authorizationId) {
+    const authz = await readCallAuthorization(friend.uid, opts.authorizationId, chatId);
+    allowed = Boolean(
+      authz &&
+        authz.callerId === me.firebaseUid &&
+        ((video && authz.callType === 'video') || (!video && authz.callType === 'audio')),
+    );
+  }
+  if (!allowed) {
+    throw new Error(
+      video
+        ? 'Las videollamadas están disponibles solo entre amigos.'
+        : 'Las llamadas de voz solo están disponibles entre amigos.',
+    );
+  }
   const id = existingCallId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const snapshot = opts?.rateSnapshot && opts.rateSnapshot.rateBlasts > 0 ? opts.rateSnapshot : null;
   await updateDoc(doc(db, 'chats', chatId), {
     call: {
       id,
@@ -233,6 +304,13 @@ export async function startPrivateCall(
       createdAt: serverTimestamp(),
       connectedAt: null,
       answeredAt: null,
+      rateSnapshot: snapshot,
+      payerUid: snapshot ? me.firebaseUid : null,
+      maxBlasts: snapshot ? opts?.maxBlasts ?? null : null,
+      spentBlasts: 0,
+      blocksCharged: 0,
+      chargedBlocks: {},
+      authorizationId: opts?.authorizationId || null,
     },
   });
   return id;
@@ -250,11 +328,31 @@ export async function endPrivateCall(chatId: string) {
   await updateDoc(doc(db, 'chats', chatId), { call: null }).catch(() => undefined);
 }
 
+/** Estado remoto de la llamada en el chat (para answered-elsewhere). */
+export async function peekPrivateCallStatus(chatId: string): Promise<string | null> {
+  const snap = await getDoc(doc(db, 'chats', chatId));
+  const status = (snap.data()?.call as { status?: unknown } | undefined)?.status;
+  return status ? String(status) : null;
+}
+
+export function isLivePrivateCallStatus(status: string | null | undefined): boolean {
+  return status === 'ringing' || status === 'active';
+}
+
+export async function peekPrivateCall(chatId: string): Promise<PrivateCall | null> {
+  const snap = await getDoc(doc(db, 'chats', chatId));
+  return parseCall(snap.data()?.call);
+}
+
 export async function beatPresence(uid: string) {
-  await setDoc(doc(db, 'users', uid, 'presence', 'now'), {
-    at: serverTimestamp(),
-    online: true,
-  });
+  await setDoc(
+    doc(db, 'users', uid, 'presence', 'now'),
+    {
+      at: serverTimestamp(),
+      online: true,
+    },
+    { merge: true },
+  );
 }
 
 export function listenPresence(uid: string, onChange: (online: boolean) => void): Unsubscribe {
@@ -800,6 +898,9 @@ export function listenConversations(
         lastAt?: unknown;
         call?: unknown;
         unread?: Record<string, number>;
+        clearedAtMs?: unknown;
+        deletedAtMs?: unknown;
+        deletedBy?: unknown;
       };
       const otherUid = (data.participants || []).find((value) => value !== uid) || '';
       const profile = data.profiles?.[otherUid] || {};
@@ -813,6 +914,9 @@ export function listenConversations(
         lastAt: data.lastAt ? asIso(data.lastAt) : null,
         call: parseCall(data.call),
         unread: Math.max(0, Number(data.unread?.[uid] || 0)),
+        clearedAtMs: Math.max(0, Math.floor(Number(data.clearedAtMs) || 0)),
+        deletedAtMs: Math.max(0, Math.floor(Number(data.deletedAtMs) || 0)),
+        deletedBy: data.deletedBy ? String(data.deletedBy) : null,
       };
     });
     list.sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
@@ -830,36 +934,44 @@ export function listenMessages(
     const list: ChatMessage[] = [];
     for (const item of snap.docs) {
       const data = item.data();
-      const deleted = Boolean(data.deleted);
+      const deletedForEveryone = Boolean(data.deleted) || Boolean(data.deletedForEveryone);
       const hiddenFor = Array.isArray(data.hiddenFor)
         ? (data.hiddenFor as string[]).map(String)
         : [];
-      if (hiddenFor.includes(viewerUid)) continue;
+      const hiddenForMe = hiddenFor.includes(viewerUid);
+      const tombstone = deletedForEveryone || hiddenForMe;
       const callMetaRaw = data.callMeta as ChatMessage['callMeta'] | undefined;
       list.push({
         id: item.id,
-        text: deleted ? '' : String(data.text || ''),
+        text: tombstone ? '' : String(data.text || ''),
         fromUid: String(data.fromUid || ''),
         mine: data.fromUid === viewerUid,
         createdAt: asIso(data.createdAt),
-        mediaUrl: deleted ? null : ((data.mediaUrl as string | null) ?? null),
-        mediaType: deleted ? null : ((data.mediaType as ChatMessage['mediaType']) ?? null),
-        linkUrl: deleted ? null : ((data.linkUrl as string | null) ?? null),
-        fileName: deleted ? null : String(data.fileName || '').trim() || null,
-        fileSize: deleted ? null : Number(data.fileSize) || null,
-        giftId: deleted ? null : String(data.giftId || '').trim() || null,
+        mediaUrl: tombstone ? null : ((data.mediaUrl as string | null) ?? null),
+        mediaType: tombstone ? null : ((data.mediaType as ChatMessage['mediaType']) ?? null),
+        linkUrl: tombstone ? null : ((data.linkUrl as string | null) ?? null),
+        fileName: tombstone ? null : String(data.fileName || '').trim() || null,
+        fileSize: tombstone ? null : Number(data.fileSize) || null,
+        giftId: tombstone ? null : String(data.giftId || '').trim() || null,
         status: (data.status as ChatMessage['status']) || 'sent',
-        editedAt: data.editedAt ? asIso(data.editedAt) : null,
-        deleted,
+        editedAt: tombstone ? null : data.editedAt ? asIso(data.editedAt) : null,
+        deleted: deletedForEveryone,
+        deletedForEveryone,
+        hiddenForMe,
         hiddenFor,
-        callMeta:
-          callMetaRaw && typeof callMetaRaw === 'object'
+        callMeta: tombstone
+          ? null
+          : callMetaRaw && typeof callMetaRaw === 'object'
             ? {
                 video: Boolean(callMetaRaw.video),
                 outcome:
                   (callMetaRaw.outcome as NonNullable<ChatMessage['callMeta']>['outcome']) ||
                   'completed',
                 durationSec: Math.max(0, Number(callMetaRaw.durationSec) || 0),
+                giftName: callMetaRaw.giftName || null,
+                rateBlasts: Math.max(0, Number(callMetaRaw.rateBlasts) || 0),
+                blocksCharged: Math.max(0, Number(callMetaRaw.blocksCharged) || 0),
+                totalBlasts: Math.max(0, Number(callMetaRaw.totalBlasts) || 0),
               }
             : null,
       });
@@ -868,8 +980,10 @@ export function listenMessages(
   });
 }
 
+export const MAX_CHAT_MESSAGE_LENGTH = 4000;
+
 export async function editChatMessage(chatId: string, messageId: string, text: string) {
-  const body = text.trim().slice(0, 2000);
+  const body = text.trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
   if (!body) throw new Error('El mensaje no puede quedar vacío');
   await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
     text: body,
@@ -878,15 +992,77 @@ export async function editChatMessage(chatId: string, messageId: string, text: s
 }
 
 /** Elimina el mensaje para todos (soft-delete visible). Solo el autor. */
-export async function deleteChatMessageForEveryone(chatId: string, messageId: string) {
-  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
+export async function deleteChatMessageForEveryone(
+  chatId: string,
+  messageId: string,
+  actorUid?: string,
+) {
+  const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+  const snap = await getDoc(messageRef);
+  if (!snap.exists()) return;
+  const data = snap.data() as Record<string, unknown>;
+  const actor = String(actorUid || auth.currentUser?.uid || '').trim();
+  if (actor && String(data.fromUid || '') !== actor) {
+    throw new Error('Solo el remitente puede eliminar este mensaje para todos.');
+  }
+  if (data.deleted === true || data.deletedForEveryone === true) return;
+
+  const mediaUrl = typeof data.mediaUrl === 'string' ? data.mediaUrl : null;
+  const storedPath = typeof data.storagePath === 'string' ? data.storagePath : null;
+  const path = storedPath || chatStoragePathFromUrl(mediaUrl);
+  let exclusive = Boolean(path && isExclusiveChatAssetPath(path));
+  if (exclusive && path) {
+    const recent = await getDocs(
+      query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'desc'), limit(200)),
+    );
+    exclusive = !recent.docs.some((item) => {
+      if (item.id === messageId) return false;
+      const other = item.data();
+      if (other.deleted === true || other.deletedForEveryone === true) return false;
+      return (
+        (typeof other.storagePath === 'string' && other.storagePath === path) ||
+        (mediaUrl && other.mediaUrl === mediaUrl)
+      );
+    });
+  }
+
+  await updateDoc(messageRef, {
     deleted: true,
-    text: 'Mensaje eliminado',
+    deletedForEveryone: true,
+    deletedAt: serverTimestamp(),
+    deletedBy: actor || String(data.fromUid || ''),
+    text: 'Mensaje eliminado para todos',
     mediaUrl: null,
     mediaType: null,
     linkUrl: null,
-    editedAt: serverTimestamp(),
+    fileName: null,
+    fileSize: null,
+    giftId: null,
+    mimeType: null,
+    callMeta: null,
+    storagePath: null,
+    deletedStoragePath: path || null,
+    storageCleanupPending: Boolean(exclusive && path),
   });
+
+  const chatRef = doc(db, 'chats', chatId);
+  const chatSnap = await getDoc(chatRef).catch(() => null);
+  const last = String(chatSnap?.data()?.lastMessage || '');
+  const previousText = String(data.text || '');
+  const previousFile = String(data.fileName || '');
+  if (
+    last &&
+    (last === previousText || last === previousFile || last === 'GIF' || last === 'Adjunto' || last === '🎁 Regalo')
+  ) {
+    await updateDoc(chatRef, { lastMessage: 'Mensaje eliminado para todos' }).catch(() => undefined);
+  }
+
+  if (exclusive && path) {
+    const removed = await deleteChatAsset(path);
+    if (removed) {
+      await updateDoc(messageRef, { storageCleanupPending: false }).catch(() => undefined);
+    }
+  }
 }
 
 /** @deprecated usa deleteChatMessageForEveryone */
@@ -894,11 +1070,16 @@ export async function deleteChatMessage(chatId: string, messageId: string) {
   return deleteChatMessageForEveryone(chatId, messageId);
 }
 
-/** Oculta el mensaje solo para el viewer actual. */
+/** Oculta el mensaje solo para el viewer actual. No altera la vista del otro. */
 export async function deleteChatMessageForMe(chatId: string, messageId: string, viewerUid: string) {
   const uid = String(viewerUid || '').trim();
   if (!uid) throw new Error('Sesión inválida');
-  await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
+  const messageRef = doc(db, 'chats', chatId, 'messages', messageId);
+  const snap = await getDoc(messageRef);
+  if (!snap.exists()) return;
+  const hiddenFor = Array.isArray(snap.data()?.hiddenFor) ? (snap.data()?.hiddenFor as string[]) : [];
+  if (hiddenFor.includes(uid)) return;
+  await updateDoc(messageRef, {
     hiddenFor: arrayUnion(uid),
   });
 }
@@ -913,6 +1094,27 @@ function formatCallDuration(sec: number) {
 }
 
 /** Guarda en el chat un evento de llamada (hecha / perdida / rechazada). Idempotente por callId. */
+export async function readCallBillingSnapshot(chatId: string) {
+  const snap = await getDoc(doc(db, 'chats', chatId));
+  const call = parseCall(snap.data()?.call);
+  if (!call?.rateSnapshot?.rateBlasts) {
+    return {
+      giftName: null as string | null,
+      rateBlasts: 0,
+      blocksCharged: 0,
+      totalBlasts: 0,
+      payerUid: call?.payerUid || call?.fromUid || null,
+    };
+  }
+  return {
+    giftName: call.rateSnapshot.giftName || null,
+    rateBlasts: call.rateSnapshot.rateBlasts,
+    blocksCharged: call.blocksCharged || 0,
+    totalBlasts: call.spentBlasts || 0,
+    payerUid: call.payerUid || call.fromUid || null,
+  };
+}
+
 export async function postCallHistoryMessage(
   chatId: string,
   fromUid: string,
@@ -921,20 +1123,42 @@ export async function postCallHistoryMessage(
     video: boolean;
     outcome: 'completed' | 'missed' | 'cancelled' | 'declined';
     durationSec: number;
+    giftName?: string | null;
+    rateBlasts?: number;
+    blocksCharged?: number;
+    totalBlasts?: number;
   },
 ) {
   const id = `call_${String(input.callId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`;
   if (!chatId || !fromUid || id === 'call_') return;
 
+  const billed =
+    input.outcome === 'completed' &&
+    Number(input.totalBlasts) > 0 &&
+    Number(input.rateBlasts) > 0;
+  const billSuffix = billed
+    ? ` · ${input.giftName || 'Regalo'} · ${input.rateBlasts} Blasts/min · ${input.blocksCharged || 0} bloques · ${input.totalBlasts} Blasts`
+    : '';
+
   let text: string;
-  if (input.outcome === 'completed') {
-    text = `${input.video ? 'Videollamada' : 'Llamada'} · ${formatCallDuration(input.durationSec)}`;
+  if (input.video) {
+    if (input.outcome === 'completed') {
+      text = `📹 Videollamada · ${formatCallDuration(input.durationSec)}${billSuffix}`;
+    } else if (input.outcome === 'declined') {
+      text = 'Videollamada rechazada';
+    } else if (input.outcome === 'cancelled') {
+      text = 'Videollamada cancelada';
+    } else {
+      text = 'Videollamada perdida';
+    }
+  } else if (input.outcome === 'completed') {
+    text = `📞 Llamada · ${formatCallDuration(input.durationSec)}${billSuffix}`;
   } else if (input.outcome === 'declined') {
-    text = `${input.video ? 'Videollamada' : 'Llamada'} rechazada`;
+    text = '📞 Llamada rechazada';
   } else if (input.outcome === 'cancelled') {
-    text = `${input.video ? 'Videollamada' : 'Llamada'} cancelada`;
+    text = '📞 Llamada cancelada';
   } else {
-    text = `${input.video ? 'Videollamada' : 'Llamada'} perdida`;
+    text = '📞 Llamada perdida';
   }
 
   await setDoc(
@@ -950,6 +1174,10 @@ export async function postCallHistoryMessage(
         video: Boolean(input.video),
         outcome: input.outcome,
         durationSec: Math.max(0, Math.floor(input.durationSec)),
+        giftName: input.giftName || null,
+        rateBlasts: Math.max(0, Math.floor(Number(input.rateBlasts) || 0)),
+        blocksCharged: Math.max(0, Math.floor(Number(input.blocksCharged) || 0)),
+        totalBlasts: Math.max(0, Math.floor(Number(input.totalBlasts) || 0)),
       },
     },
     { merge: true },
@@ -1030,37 +1258,90 @@ export async function markInboxDelivered(uid: string, chatIds: string[]) {
   }
 }
 
+async function purgeChatMessageAssets(chatId: string, actorUid: string) {
+  const col = collection(db, 'chats', chatId, 'messages');
+  for (;;) {
+    const msgs = await getDocs(query(col, limit(400)));
+    if (msgs.empty) break;
+    const batch = writeBatch(db);
+    let deletes = 0;
+    for (const item of msgs.docs) {
+      const data = item.data();
+      const path =
+        (typeof data.storagePath === 'string' && data.storagePath) ||
+        chatStoragePathFromUrl(typeof data.mediaUrl === 'string' ? data.mediaUrl : null);
+      if (path && isExclusiveChatAssetPath(path)) {
+        await deleteChatAsset(path);
+      }
+      if (String(data.fromUid || '') === actorUid) {
+        batch.delete(item.ref);
+        deletes += 1;
+      }
+    }
+    if (deletes > 0) await batch.commit();
+    if (deletes === 0) break;
+  }
+}
+
+export async function clearConversationForEveryone(chatId: string, uid: string) {
+  const ref = doc(db, 'chats', chatId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+  const participants = (snap.data().participants as string[]) || [];
+  if (!participants.includes(uid)) throw new Error('No puedes vaciar esta conversación');
+  await purgeChatMessageAssets(chatId, uid);
+  await updateDoc(ref, {
+    lastMessage: null,
+    lastAt: serverTimestamp(),
+    clearedAtMs: Date.now(),
+    call: null,
+  });
+}
+
 export async function deleteConversation(chatId: string, uid: string) {
   const ref = doc(db, 'chats', chatId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const participants = (snap.data().participants as string[]) || [];
   if (!participants.includes(uid)) throw new Error('No puedes borrar esta conversación');
-  for (;;) {
-    const msgs = await getDocs(query(collection(db, 'chats', chatId, 'messages'), limit(400)));
-    if (msgs.empty) break;
-    const batch = writeBatch(db);
-    msgs.docs.forEach((item) => batch.delete(item.ref));
-    await batch.commit();
-  }
-  await deleteDoc(ref);
+  await purgeChatMessageAssets(chatId, uid);
+  const now = Date.now();
+  await updateDoc(ref, {
+    lastMessage: null,
+    lastAt: serverTimestamp(),
+    clearedAtMs: now,
+    deletedAtMs: now,
+    deletedBy: uid,
+    call: null,
+  });
 }
 
-async function assertAreFriends(meUid: string, friendUid: string) {
-  const blocked = await getDoc(doc(db, 'users', meUid, 'blocked', friendUid));
-  if (blocked.exists()) throw new Error('Desbloquea a este usuario para chatear.');
-  const blockedBy = await getDoc(doc(db, 'users', friendUid, 'blocked', meUid));
-  if (blockedBy.exists()) throw new Error('No puedes enviar mensajes a este usuario.');
-  const mine = await getDoc(doc(db, 'users', meUid, 'friends', friendUid));
-  if (mine.exists()) return;
-  const theirs = await getDoc(doc(db, 'users', friendUid, 'friends', meUid));
-  if (theirs.exists()) return;
-  throw new Error('Solo puedes enviar mensajes privados a tus amigos');
+export function listenChatMeta(
+  chatId: string,
+  onChange: (meta: { clearedAtMs: number; deletedAtMs: number; deletedBy: string | null }) => void,
+): Unsubscribe {
+  return onSnapshot(doc(db, 'chats', chatId), (snap) => {
+    const data = snap.data() || {};
+    onChange({
+      clearedAtMs: Math.max(0, Math.floor(Number(data.clearedAtMs) || 0)),
+      deletedAtMs: Math.max(0, Math.floor(Number(data.deletedAtMs) || 0)),
+      deletedBy: data.deletedBy ? String(data.deletedBy) : null,
+    });
+  });
+}
+
+async function assertCanMessage(meUid: string, otherUid: string) {
+  const perms = await getCommunicationPermissions(meUid, otherUid);
+  if (perms.canMessage) return;
+  if (perms.relationship === 'blocked') {
+    throw new Error('Desbloquea a este usuario para chatear.');
+  }
+  throw new Error('Solo puedes enviar mensajes a quienes sigues, te siguen o son tus amigos');
 }
 
 export async function ensureChat(me: MeProfile, friend: FriendChip) {
   if (!friend.uid) throw new Error('Amigo inválido');
-  await assertAreFriends(me.firebaseUid, friend.uid);
+  await assertCanMessage(me.firebaseUid, friend.uid);
 
   const id = chatIdFor(me.firebaseUid, friend.uid);
   const ref = doc(db, 'chats', id);
@@ -1094,7 +1375,23 @@ export async function ensureChat(me: MeProfile, friend: FriendChip) {
       createdAt: serverTimestamp(),
     });
   } else {
-    await setDoc(ref, { participants, profiles }, { merge: true });
+    const current = await getDoc(ref);
+    const deletedAtMs = Math.max(0, Math.floor(Number(current.data()?.deletedAtMs) || 0));
+    await setDoc(
+      ref,
+      {
+        participants,
+        profiles,
+        ...(deletedAtMs
+          ? {
+              deletedAtMs: deleteField(),
+              deletedBy: deleteField(),
+              lastMessage: null,
+            }
+          : {}),
+      },
+      { merge: true },
+    );
   }
   return id;
 }
@@ -1114,12 +1411,12 @@ export async function sendChatMessage(
     giftId?: string | null;
   },
 ) {
-  const body = text.trim().slice(0, 2000);
+  const body = text.trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
   const mediaUrl = extras?.mediaUrl || null;
   const linkUrl = extras?.linkUrl?.trim() || null;
   const giftId = extras?.giftId?.trim() || null;
   if (!body && !mediaUrl && !linkUrl && !giftId) throw new Error('Escribe un mensaje o adjunta algo');
-  await assertAreFriends(me.firebaseUid, friend.uid);
+  await assertCanMessage(me.firebaseUid, friend.uid);
   const id = await ensureChat(me, friend);
   const payload: Record<string, unknown> = {
     text: body || (giftId ? '🎁 Regalo' : mediaUrl ? '📎 Adjunto' : linkUrl || '🔗'),

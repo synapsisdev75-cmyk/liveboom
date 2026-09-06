@@ -22,17 +22,6 @@ export type LiveActivity = {
   topGifters?: { uid?: string; name: string; coins: number }[];
 };
 
-function formatWhen(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('es-CO', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function formatDuration(ms?: number) {
   const total = Math.max(0, Math.floor(Number(ms || 0) / 1000));
   const h = Math.floor(total / 3600);
@@ -172,7 +161,9 @@ export function ActivityHistory({
           </span>
           <span className="lb-activity-card__label">
             Lives
-            <Info size={11} title="Total de transmisiones finalizadas" />
+            <span title="Total de transmisiones finalizadas">
+              <Info size={11} />
+            </span>
           </span>
           {totalLives > 0 ? (
             <>
@@ -191,7 +182,9 @@ export function ActivityHistory({
           </span>
           <span className="lb-activity-card__label">
             Interacciones
-            <Info size={11} title="Reacciones positivas y negativas en tu contenido" />
+            <span title="Reacciones positivas y negativas en tu contenido">
+              <Info size={11} />
+            </span>
           </span>
           {hasInteractions ? (
             <span className="lb-activity-card__split">
@@ -226,7 +219,9 @@ export function ActivityHistory({
           </span>
           <span className="lb-activity-card__label">
             Blasts / Coins
-            <Info size={11} title="Regalos y Blasts acumulados en tus lives" />
+            <span title="Regalos y Blasts acumulados en tus lives">
+              <Info size={11} />
+            </span>
           </span>
           {hasBlasts ? (
             <span className="lb-activity-card__split">

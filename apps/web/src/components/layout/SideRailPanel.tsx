@@ -228,7 +228,7 @@ export function SideRailPanel() {
     return <LiveRail host={decodeURIComponent(liveMatch.params.username)} />;
   }
   if (locationPath.startsWith('/mensajes')) {
-    return <MessagesRail />;
+    return null;
   }
   if (locationPath.startsWith('/actividad')) {
     return <ActivityRail />;
@@ -880,8 +880,8 @@ function formatRelative(ms: number) {
   return `Hace ${Math.round(hours / 24)} d`;
 }
 
-/** Rail exclusivo de /mensajes (mockup): personas, grupos, actividad. */
-function MessagesRail() {
+/** Conservado para reutilizar el rail de sugerencias de Mensajes si se vuelve a montar. */
+export function MessagesRail() {
   const profile = useAuthStore((state) => state.profile);
   const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5);
   const [publicGroups, setPublicGroups] = useState<LiveGroup[]>([]);

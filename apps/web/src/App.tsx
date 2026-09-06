@@ -35,8 +35,11 @@ function AuthHydrator() {
 
   useEffect(() => {
     const unsubLevels = hydrateLevels();
-    hydrate();
-    return () => unsubLevels();
+    const unsubAuth = hydrate();
+    return () => {
+      unsubLevels();
+      unsubAuth();
+    };
   }, [hydrate, hydrateLevels]);
 
   useEffect(() => {

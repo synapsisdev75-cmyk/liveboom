@@ -43,6 +43,7 @@ import {
   updatePostVisibility,
 } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
+import { getCommunicationPermissions } from '../lib/communicationPermissions';
 import { useUiStore } from '../store/uiStore';
 import { isBoomClipPost, isPublicationPost, canEditOwnedPublication } from '../lib/contentType';
 import { isStoryPost } from '../lib/storyLifecycle';
@@ -77,6 +78,7 @@ type PublicProfile = {
   isFollowing: boolean;
   isOwnProfile: boolean;
   friendshipStatus: FriendshipStatus;
+  canMessage: boolean;
 };
 
 type UserChip = {
@@ -280,6 +282,7 @@ export function UserProfileView() {
         if (fsUser) {
           let friendshipStatus: FriendshipStatus = 'none';
           let followingNow = false;
+          let canMessage = false;
           if (profile) {
             friendshipStatus = await getFriendshipStatusByUid(
               profile.firebaseUid,
@@ -287,6 +290,13 @@ export function UserProfileView() {
             );
             if (friendshipStatus !== 'self') {
               followingNow = await isFollowingUid(profile.firebaseUid, fsUser.firebaseUid);
+              if (friendshipStatus !== 'blocked') {
+                const perms = await getCommunicationPermissions(
+                  profile.firebaseUid,
+                  fsUser.firebaseUid,
+                );
+                canMessage = perms.canMessage;
+              }
             }
           }
           if (!cancelled) {
@@ -305,6 +315,7 @@ export function UserProfileView() {
               isFollowing: followingNow,
               isOwnProfile: Boolean(profile && profile.firebaseUid === fsUser.firebaseUid),
               friendshipStatus,
+              canMessage,
             });
             setError(null);
           }
@@ -325,6 +336,7 @@ export function UserProfileView() {
               isFollowing: false,
               isOwnProfile: true,
               friendshipStatus: 'self',
+              canMessage: false,
             });
             setError(null);
           }
@@ -655,7 +667,7 @@ export function UserProfileView() {
                     if (!profile) return;
                     void unblockUser(profile.firebaseUid, publicProfile.uid).then(() => {
                       setPublicProfile((current) =>
-                        current ? { ...current, friendshipStatus: 'none' } : current,
+                        current ? { ...current, friendshipStatus: 'none', canMessage: false } : current,
                       );
                     });
                   }}
@@ -677,21 +689,30 @@ export function UserProfileView() {
                     }}
                     initialFollowing={publicProfile.isFollowing}
                     isOwnProfile={publicProfile.isOwnProfile}
-                    onChange={(followingNow) =>
+                    onChange={(followingNow) => {
                       setPublicProfile((current) => {
-                        if (!current || current.isFollowing === followingNow) return current;
+                        if (!current) return current;
                         return {
                           ...current,
                           isFollowing: followingNow,
+                          canMessage: current.friendshipStatus === 'friends' || followingNow,
                           followersCount: Math.max(
                             0,
                             current.followersCount + (followingNow ? 1 : -1),
                           ),
                         };
-                      })
-                    }
+                      });
+                      if (!profile) return;
+                      void getCommunicationPermissions(profile.firebaseUid, publicProfile.uid).then(
+                        (perms) => {
+                          setPublicProfile((current) =>
+                            current ? { ...current, canMessage: perms.canMessage } : current,
+                          );
+                        },
+                      );
+                    }}
                   />
-                  {publicProfile.friendshipStatus === 'friends' ? (
+                  {publicProfile.canMessage ? (
                     <Link
                       to={`/mensajes?con=${encodeURIComponent(publicProfile.username)}`}
                       className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-400/30"
@@ -699,18 +720,20 @@ export function UserProfileView() {
                       <MessageCircle size={16} />
                       Mensaje
                     </Link>
-                  ) : (
+                  ) : null}
+                  {publicProfile.friendshipStatus !== 'friends' ? (
                     <FriendRequestButton
                       username={publicProfile.username}
                       uid={publicProfile.uid}
                       initialStatus={publicProfile.friendshipStatus}
                       isOwnProfile={publicProfile.isOwnProfile}
-                      onChange={(status) =>
+                      onChange={(status) => {
                         setPublicProfile((current) =>
                           current
                             ? {
                                 ...current,
                                 friendshipStatus: status,
+                                canMessage: status === 'friends' || current.isFollowing,
                                 friendsCount:
                                   status === 'friends'
                                     ? current.friendsCount + 1
@@ -719,10 +742,18 @@ export function UserProfileView() {
                                       : current.friendsCount,
                               }
                             : current,
-                        )
-                      }
+                        );
+                        if (!profile) return;
+                        void getCommunicationPermissions(profile.firebaseUid, publicProfile.uid).then(
+                          (perms) => {
+                            setPublicProfile((current) =>
+                              current ? { ...current, canMessage: perms.canMessage } : current,
+                            );
+                          },
+                        );
+                      }}
                     />
-                  )}
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => {
@@ -747,7 +778,7 @@ export function UserProfileView() {
                       ).then(() => {
                         setPublicProfile((current) =>
                           current
-                            ? { ...current, friendshipStatus: 'blocked', isFollowing: false }
+                            ? { ...current, friendshipStatus: 'blocked', isFollowing: false, canMessage: false }
                             : current,
                         );
                       });

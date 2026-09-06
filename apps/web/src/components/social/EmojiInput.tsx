@@ -46,10 +46,11 @@ type BaseProps = {
    */
   growToMaxScroll?: boolean;
   /**
-   * Autoaltura. `comment` = crecimiento moderado para la barra de comentarios.
+   * Autoaltura. `comment` = barra de comentarios.
+   * `message` = composer de Mensajes (1 línea → tope visual → scroll interno).
    * Si no se pasa, `growToMaxScroll` sigue mapeando a `publication`.
    */
-  growMode?: 'none' | 'publication' | 'comment';
+  growMode?: 'none' | 'publication' | 'comment' | 'message';
   /** Enter envía (Shift+Enter = salto de línea en multiline). */
   onEnterSubmit?: () => void;
 };
@@ -93,6 +94,16 @@ function commentComposerMaxPx() {
 
 function commentComposerMinPx() {
   return 2.5 * 16;
+}
+
+function messageComposerMaxPx(lineHeight: number) {
+  const width = window.innerWidth;
+  const viewH = window.visualViewport?.height ?? window.innerHeight;
+  const lines = width < 768 ? 8 : width < 1024 ? 10 : 12;
+  const lineCap = Math.max(lineHeight, lines * lineHeight);
+  const viewCap =
+    viewH < 520 ? viewH * 0.26 : width < 768 ? viewH * 0.32 : viewH * 0.45;
+  return Math.round(Math.min(lineCap, Math.max(lineHeight, viewCap)));
 }
 
 function visualCaretBox(
@@ -252,13 +263,24 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       if (!field || !(field instanceof HTMLTextAreaElement)) return;
 
       const applySize = () => {
-        const cap = resolvedGrow === 'comment' ? commentComposerMaxPx() : publicationComposerMaxPx();
-        const minH = resolvedGrow === 'comment' ? commentComposerMinPx() : publicationComposerMinPx();
+        const cap =
+          resolvedGrow === 'message'
+            ? messageComposerMaxPx(lineHeightPx)
+            : resolvedGrow === 'comment'
+              ? commentComposerMaxPx()
+              : publicationComposerMaxPx();
+        const minH =
+          resolvedGrow === 'message'
+            ? lineHeightPx
+            : resolvedGrow === 'comment'
+              ? commentComposerMinPx()
+              : publicationComposerMinPx();
         field.style.height = 'auto';
         const next = Math.min(Math.max(field.scrollHeight, minH), cap);
         field.style.height = `${next}px`;
         field.style.maxHeight = `${cap}px`;
         field.style.overflowY = field.scrollHeight > cap + 1 ? 'auto' : 'hidden';
+        field.style.overflowX = 'hidden';
         const atEnd = field.selectionStart >= value.length;
         if (atEnd) field.scrollTop = field.scrollHeight;
         const mirror = mirrorRef.current;
@@ -276,7 +298,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         window.removeEventListener('orientationchange', onResize);
         window.visualViewport?.removeEventListener('resize', onResize);
       };
-    }, [value, resolvedGrow, multiline, refreshCaret]);
+    }, [value, resolvedGrow, multiline, refreshCaret, lineHeightPx]);
 
     useEffect(() => {
       if (!focused) return;
@@ -623,7 +645,9 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                   ? 'publication-composer-field min-h-[4.5rem] overflow-y-auto'
                   : resolvedGrow === 'comment'
                     ? 'lb-comment-composer-field overflow-y-auto'
-                    : ''
+                    : resolvedGrow === 'message'
+                      ? 'lb-chat-composer-input overflow-y-auto'
+                      : ''
               }`}
               style={fieldStyle}
             />

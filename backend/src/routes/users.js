@@ -8,6 +8,26 @@ const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
 const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
+const PROFILE_ALLOWED = new Set(['username', 'displayName', 'bio', 'avatarUrl', 'birthDate', 'category']);
+const PROFILE_PROTECTED = new Set([
+  'id',
+  'userId',
+  'firebaseUid',
+  'email',
+  'coins',
+  'coinsBalance',
+  'level',
+  'levelXp',
+  'xp',
+  'role',
+  'roles',
+  'permissions',
+  'verified',
+  'wallet',
+  'blasts',
+  'createdAt',
+  'updatedAt',
+]);
 
 function serializeUser(user) {
   const birth =
@@ -91,50 +111,112 @@ function buildProfilePayload(uid, req, fields) {
 }
 
 async function updateProfile(req, res) {
-  const username = parseUsername(req.body?.username);
-  const displayName =
-    typeof req.body?.displayName === 'string' ? req.body.displayName.trim().slice(0, 48) : '';
-  const bio = typeof req.body?.bio === 'string' ? req.body.bio.trim().slice(0, 280) : '';
-  const avatarUrl =
-    typeof req.body?.avatarUrl === 'string' ? req.body.avatarUrl.trim().slice(0, 350000) : '';
-  const birthDateRaw = typeof req.body?.birthDate === 'string' ? req.body.birthDate.trim() : '';
-  const category =
-    typeof req.body?.category === 'string' ? req.body.category.trim().toLowerCase() : '';
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const incoming = {};
+  let sawAllowed = false;
+  let sawProtected = false;
+  for (const key of Object.keys(body)) {
+    if (PROFILE_PROTECTED.has(key)) {
+      sawProtected = true;
+      continue;
+    }
+    if (!PROFILE_ALLOWED.has(key)) continue;
+    sawAllowed = true;
+    incoming[key] = body[key];
+  }
 
-  if (!USERNAME_RE.test(username)) {
-    res.status(400).json({ error: 'El usuario debe tener 3-24 caracteres (a-z, 0-9, _).' });
-    return;
-  }
-  if (!birthDateRaw) {
-    res.status(400).json({ error: 'La fecha de nacimiento es obligatoria.' });
-    return;
-  }
-  const age = yearsOld(birthDateRaw);
-  if (age == null) {
-    res.status(400).json({ error: 'Fecha de nacimiento inválida.' });
-    return;
-  }
-  if (age < 18) {
-    res.status(400).json({ error: 'Debes ser mayor de 18 años para usar Liveboom.' });
+  if (!sawAllowed) {
+    res.status(400).json({
+      error: sawProtected
+        ? 'No se puede modificar ese dato.'
+        : 'No hay cambios permitidos para guardar.',
+    });
     return;
   }
 
   const uid = req.user.uid;
+  const memory = getProfile(uid);
+  const current = {
+    username: parseUsername(memory?.username || req.dbUser?.username || ''),
+    displayName: String(memory?.displayName || req.dbUser?.displayName || '').trim(),
+    bio: typeof memory?.bio === 'string' ? memory.bio : req.dbUser?.bio || '',
+    avatarUrl: memory?.avatarUrl || req.dbUser?.avatarUrl || req.user.picture || '',
+    birthDate:
+      (typeof memory?.birthDate === 'string' && memory.birthDate.slice(0, 10)) ||
+      (req.dbUser?.birthDate
+        ? String(req.dbUser.birthDate).slice(0, 10)
+        : ''),
+    category: memory?.category || req.dbUser?.category || '',
+  };
+
+  const username =
+    incoming.username !== undefined ? parseUsername(incoming.username) : current.username;
+  const displayName =
+    incoming.displayName !== undefined
+      ? String(incoming.displayName || '').trim().slice(0, 48)
+      : current.displayName;
+  const bio =
+    incoming.bio !== undefined ? String(incoming.bio || '').trim().slice(0, 280) : current.bio;
+  const avatarUrl =
+    incoming.avatarUrl !== undefined
+      ? String(incoming.avatarUrl || '').trim().slice(0, 350000)
+      : current.avatarUrl;
+  const birthDateRaw =
+    incoming.birthDate !== undefined
+      ? String(incoming.birthDate || '').trim()
+      : current.birthDate;
+  const category =
+    incoming.category !== undefined
+      ? String(incoming.category || '').trim().toLowerCase()
+      : current.category;
+
+  if (incoming.username !== undefined && !USERNAME_RE.test(username)) {
+    res.status(400).json({ error: 'El usuario debe tener 3-24 caracteres (a-z, 0-9, _).' });
+    return;
+  }
+  if (incoming.displayName !== undefined) {
+    if (!displayName) {
+      res.status(400).json({ error: 'El nombre es obligatorio.' });
+      return;
+    }
+    if (/[<>]/.test(displayName)) {
+      res.status(400).json({ error: 'El nombre contiene caracteres no permitidos.' });
+      return;
+    }
+  }
+  if (incoming.birthDate !== undefined) {
+    if (!birthDateRaw) {
+      res.status(400).json({ error: 'La fecha de nacimiento es obligatoria.' });
+      return;
+    }
+    const age = yearsOld(birthDateRaw);
+    if (age == null) {
+      res.status(400).json({ error: 'Fecha de nacimiento inválida.' });
+      return;
+    }
+    if (age < 18) {
+      res.status(400).json({ error: 'Debes ser mayor de 18 años para usar Liveboom.' });
+      return;
+    }
+  }
+
   const profileFields = {
     username,
     displayName: displayName || username,
     bio: bio || null,
     category: category || null,
     avatarUrl: avatarUrl || req.dbUser?.avatarUrl || req.user.picture || null,
-    birthDate: birthDateRaw,
+    birthDate: birthDateRaw || null,
   };
 
   try {
     if (!hasDatabase || !prisma) {
-      const existing = findByUsername(username);
-      if (existing && existing.firebaseUid !== uid) {
-        res.status(409).json({ error: 'Ese nombre de usuario ya está en uso.' });
-        return;
+      if (incoming.username !== undefined) {
+        const existing = findByUsername(username);
+        if (existing && existing.firebaseUid !== uid) {
+          res.status(409).json({ error: 'Ese nombre de usuario ya está en uso.' });
+          return;
+        }
       }
       const saved = saveProfile(uid, buildProfilePayload(uid, req, profileFields));
       res.json(serializeUser(saved));
@@ -151,53 +233,63 @@ async function updateProfile(req, res) {
       'ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "category" TEXT',
     ).catch(() => undefined);
 
-    const taken = await prisma.user.findFirst({
-      where: {
-        username,
-        NOT: { firebaseUid: uid },
-      },
-      select: { id: true },
-    });
-    if (taken) {
-      res.status(409).json({ error: 'Ese nombre de usuario ya está en uso.' });
-      return;
+    if (incoming.username !== undefined) {
+      const taken = await prisma.user.findFirst({
+        where: {
+          username,
+          NOT: { firebaseUid: uid },
+        },
+        select: { id: true },
+      });
+      if (taken) {
+        res.status(409).json({ error: 'Ese nombre de usuario ya está en uso.' });
+        return;
+      }
+    }
+
+    const update = {};
+    if (incoming.username !== undefined) update.username = username;
+    if (incoming.bio !== undefined) update.bio = bio || null;
+    if (incoming.avatarUrl !== undefined) update.avatarUrl = avatarUrl || undefined;
+    if (incoming.birthDate !== undefined && birthDateRaw) {
+      update.birthDate = new Date(`${birthDateRaw}T00:00:00.000Z`);
     }
 
     const user = await prisma.user.upsert({
       where: { firebaseUid: uid },
-      update: {
-        username,
-        bio: bio || null,
-        avatarUrl: avatarUrl || undefined,
-        birthDate: new Date(`${birthDateRaw}T00:00:00.000Z`),
-        email: req.user.email || undefined,
-      },
+      update,
       create: {
         firebaseUid: uid,
         email: req.user.email || `${uid}@users.liveboom.local`,
-        username,
+        username: username || `user_${uid.slice(0, 8)}`,
         bio: bio || null,
         avatarUrl: avatarUrl || null,
-        birthDate: new Date(`${birthDateRaw}T00:00:00.000Z`),
+        birthDate: birthDateRaw ? new Date(`${birthDateRaw}T00:00:00.000Z`) : undefined,
         coinsBalance: 0,
       },
     });
 
-    try {
-      const { Prisma } = require('@prisma/client');
-      await prisma.$executeRaw(
-        Prisma.sql`UPDATE "User" SET "displayName" = ${profileFields.displayName}, "category" = ${profileFields.category} WHERE "firebaseUid" = ${uid}`,
-      );
-    } catch {
-      // columnas opcionales según migración
+    if (incoming.displayName !== undefined || incoming.category !== undefined) {
+      try {
+        const { Prisma } = require('@prisma/client');
+        await prisma.$executeRaw(
+          Prisma.sql`UPDATE "User" SET "displayName" = ${profileFields.displayName}, "category" = ${profileFields.category} WHERE "firebaseUid" = ${uid}`,
+        );
+      } catch {
+        // columnas opcionales según migración
+      }
     }
 
     const saved = saveProfile(uid, buildProfilePayload(uid, req, { ...profileFields, id: user.id }));
     res.json(serializeUser(saved));
   } catch (error) {
     console.error('[users/profile]', error);
-    const saved = saveProfile(uid, buildProfilePayload(uid, req, profileFields));
-    res.json(serializeUser(saved));
+    if (!hasDatabase || !prisma) {
+      const saved = saveProfile(uid, buildProfilePayload(uid, req, profileFields));
+      res.json(serializeUser(saved));
+      return;
+    }
+    res.status(500).json({ error: 'No se pudo guardar el perfil. Intenta nuevamente.' });
   }
 }
 

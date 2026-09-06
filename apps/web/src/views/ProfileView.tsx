@@ -21,8 +21,9 @@ import {
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
+import { CallSettingsPanel } from '../components/social/CallSettingsPanel';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
-import { api, mapPostgresUser, type SessionUser } from '../lib/api';
+import { api, type SessionUser } from '../lib/api';
 import { isOwnerEmail, isSuperAdminEmail } from '../lib/superAdmin';
 import { listenSuperAdmins } from '../lib/superAdminsFirestore';
 import {
@@ -33,7 +34,12 @@ import {
 } from '../lib/birthDate';
 import { LIVE_CATEGORIES } from '../lib/categories';
 import { auth } from '../lib/firebase';
-import { fetchFirestoreProfile, saveFirestoreAvatar, saveFirestoreProfile, updateFirestoreProfileFields } from '../lib/profileFirestore';
+import {
+  mapProfileSaveError,
+  saveFirestoreAvatar,
+  saveFirestoreProfile,
+  updateFirestoreProfileFields,
+} from '../lib/profileFirestore';
 import { dataUrlToBlob, isHttpUrl, uploadUserAvatar } from '../lib/storage';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
@@ -48,22 +54,54 @@ type SettingsTab =
 
 type EditField = 'displayName' | 'username' | null;
 
-type ProfilePayload = {
-  id: string;
-  firebaseUid: string;
-  email: string;
+const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
+const NAME_MAX = 48;
+const BIO_MAX = 280;
+
+type ProfileFormSnapshot = {
+  displayName: string;
   username: string;
-  displayName?: string;
-  avatarUrl: string | null;
-  bio: string | null;
-  birthDate: string | null;
-  category?: string | null;
-  coinsBalance: number;
-  createdAt: string;
-  updatedAt: string;
+  bio: string;
+  birthDate: string;
+  category: string;
+  avatarUrl: string;
 };
 
-const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
+function sanitizeDisplayName(value: string) {
+  return value
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, NAME_MAX);
+}
+
+function snapshotFromProfile(profile: SessionUser, firebasePhoto?: string | null): ProfileFormSnapshot {
+  return {
+    displayName: sanitizeDisplayName(profile.displayName || ''),
+    username: String(profile.handle || '')
+      .trim()
+      .replace(/^@/, '')
+      .toLowerCase(),
+    bio: (profile.bio ?? '').trim(),
+    birthDate: profile.birthDate ?? '',
+    category: profile.category ?? 'musica',
+    avatarUrl: profile.avatarUrl?.trim() || firebasePhoto?.trim() || '',
+  };
+}
+
+function formEqualsSnapshot(
+  form: ProfileFormSnapshot,
+  saved: ProfileFormSnapshot,
+) {
+  return (
+    form.displayName === saved.displayName &&
+    form.username === saved.username &&
+    form.bio === saved.bio &&
+    form.birthDate === saved.birthDate &&
+    form.category === saved.category &&
+    form.avatarUrl === saved.avatarUrl
+  );
+}
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof User }> = [
   { id: 'cuenta', label: 'Cuenta', icon: User },
@@ -200,10 +238,31 @@ export function ProfileView() {
   const galleryAvatarRef = useRef<HTMLInputElement>(null);
   const cameraAvatarRef = useRef<HTMLInputElement>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
+  const dirtyRef = useRef(false);
+  const busyRef = useRef(false);
   const maxBirthDate = useMemo(() => adultCutoffDate(), []);
   const calculatedAge = useMemo(() => (birthDate ? ageFromIsoDate(birthDate) : null), [birthDate]);
   const [superAllowlist, setSuperAllowlist] = useState<string[]>([]);
   const showSuperAdminLink = isSuperAdminEmail(profile?.email, superAllowlist);
+
+  const currentForm = useMemo<ProfileFormSnapshot>(
+    () => ({
+      displayName: sanitizeDisplayName(displayName),
+      username: username.trim().replace(/^@/, '').toLowerCase(),
+      bio: bio.trim(),
+      birthDate,
+      category,
+      avatarUrl: avatarUrl.trim(),
+    }),
+    [displayName, username, bio, birthDate, category, avatarUrl],
+  );
+  const savedForm = useMemo(
+    () => (profile ? snapshotFromProfile(profile, firebaseUser?.photoURL) : currentForm),
+    [profile, firebaseUser?.photoURL, currentForm],
+  );
+  const hasChanges = Boolean(profile) && !formEqualsSnapshot(currentForm, savedForm);
+  dirtyRef.current = hasChanges;
+  busyRef.current = busy;
 
   useEffect(() => {
     if (!profile?.email || isOwnerEmail(profile.email)) {
@@ -220,19 +279,28 @@ export function ProfileView() {
 
   useEffect(() => {
     if (!profile) return;
-    setDisplayName(profile.displayName || firebaseUser?.displayName || '');
-    setUsername(profile.handle);
-    setBio(profile.bio ?? '');
+    if (busyRef.current || dirtyRef.current) return;
+    const next = snapshotFromProfile(profile, firebaseUser?.photoURL);
+    setDisplayName(next.displayName);
+    setUsername(next.username);
+    setBio(next.bio);
     setBirthDate(
-      profile.birthDate ||
+      next.birthDate ||
         (firebaseUser ? readPendingBirthDate(firebaseUser.uid) : null) ||
         '',
     );
-    setCategory(profile.category ?? 'musica');
-    setAvatarUrl(
-      profile.avatarUrl?.trim() || firebaseUser?.photoURL?.trim() || '',
-    );
-  }, [profile, firebaseUser?.photoURL, firebaseUser?.displayName, firebaseUser?.uid]);
+    setCategory(next.category);
+    setAvatarUrl(next.avatarUrl);
+  }, [
+    profile?.firebaseUid,
+    profile?.displayName,
+    profile?.handle,
+    profile?.bio,
+    profile?.birthDate,
+    profile?.category,
+    profile?.avatarUrl,
+    firebaseUser?.photoURL,
+  ]);
 
   useEffect(() => {
     if (!firebaseUser || !profile) return;
@@ -250,48 +318,6 @@ export function ProfileView() {
       }
     })();
   }, [firebaseUser?.uid, firebaseUser?.photoURL, profile?.avatarUrl, profile?.firebaseUid, setProfile]);
-
-  useEffect(() => {
-    if (!profile) return;
-    void (async () => {
-      try {
-        const fsUser = await fetchFirestoreProfile(profile.firebaseUid);
-        let user: ProfilePayload | null = null;
-        if (fsUser) {
-          user = {
-            id: fsUser.id,
-            firebaseUid: fsUser.firebaseUid,
-            email: fsUser.email,
-            username: fsUser.handle,
-            displayName: fsUser.displayName,
-            avatarUrl: fsUser.avatarUrl,
-            bio: fsUser.bio,
-            birthDate: fsUser.birthDate,
-            category: fsUser.category,
-            coinsBalance: fsUser.coinsBalance,
-            createdAt: '',
-            updatedAt: '',
-          };
-        } else {
-          user = await api<ProfilePayload>('/api/users/profile');
-        }
-        const next: SessionUser = mapPostgresUser(user);
-        setProfile({ ...next, coins: profile.coins, coinsBalance: profile.coinsBalance });
-        setDisplayName(user.displayName || user.username);
-        setUsername(user.username);
-        setBio(user.bio ?? '');
-        setBirthDate(user.birthDate ?? readPendingBirthDate(profile.firebaseUid) ?? '');
-        setCategory(user.category ?? 'musica');
-        setAvatarUrl(
-          (user.avatarUrl && String(user.avatarUrl).trim()) ||
-            firebaseUser?.photoURL?.trim() ||
-            '',
-        );
-      } catch {
-        // ignore
-      }
-    })();
-  }, [profile?.firebaseUid, setProfile]);
 
   useEffect(() => {
     if (!avatarMenuOpen) return;
@@ -321,7 +347,7 @@ export function ProfileView() {
       setToast('Foto de perfil guardada.', 'success');
       window.setTimeout(() => setToast(null), 2800);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar la foto');
+      setError(mapProfileSaveError(err));
     } finally {
       setAvatarBusy(false);
     }
@@ -351,7 +377,7 @@ export function ProfileView() {
       setToast('Fecha de nacimiento guardada.', 'success');
       window.setTimeout(() => setToast(null), 2800);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar la fecha');
+      setError(mapProfileSaveError(err));
     } finally {
       setBusy(false);
     }
@@ -362,11 +388,16 @@ export function ProfileView() {
     if (!firebaseUser || !profile) return;
 
     const handle = username.trim().replace(/^@/, '').toLowerCase();
-    const name = displayName.trim();
+    const name = sanitizeDisplayName(displayName);
+    const nextBio = bio.trim().slice(0, BIO_MAX);
     setError(null);
 
     if (!name) {
       setError('El nombre es obligatorio.');
+      return;
+    }
+    if (/[<>]/.test(name)) {
+      setError('El nombre contiene caracteres no permitidos.');
       return;
     }
     let avatarToSave =
@@ -379,7 +410,7 @@ export function ProfileView() {
       setError('El usuario debe tener 3-24 caracteres (a-z, 0-9, _).');
       return;
     }
-    if (forceComplete && !bio.trim()) {
+    if (forceComplete && !nextBio) {
       setError('La biografía es obligatoria para completar tu perfil.');
       return;
     }
@@ -393,6 +424,26 @@ export function ProfileView() {
       return;
     }
 
+    const prevHandle = String(profile.handle || '')
+      .trim()
+      .replace(/^@/, '')
+      .toLowerCase();
+    const changed: Record<string, string | null> = {};
+    if (name !== sanitizeDisplayName(profile.displayName || '')) changed.displayName = name;
+    if (handle !== prevHandle) changed.username = handle;
+    if (nextBio !== (profile.bio ?? '').trim()) changed.bio = nextBio;
+    if (birthDate !== (profile.birthDate ?? '')) changed.birthDate = birthDate;
+    if ((category || 'musica') !== (profile.category ?? 'musica')) changed.category = category;
+    const prevAvatar = profile.avatarUrl?.trim() || '';
+    if (isHttpUrl(avatarToSave) && avatarToSave !== prevAvatar) changed.avatarUrl = avatarToSave;
+
+    if (Object.keys(changed).length === 0 && isHttpUrl(avatarToSave)) {
+      setToast('Perfil actualizado correctamente.', 'success');
+      window.setTimeout(() => setToast(null), 2800);
+      setEditing(null);
+      return;
+    }
+
     setBusy(true);
     try {
       if (avatarToSave && !isHttpUrl(avatarToSave)) {
@@ -400,65 +451,86 @@ export function ProfileView() {
         avatarToSave = await uploadUserAvatar(firebaseUser.uid, blob);
         setAvatarUrl(avatarToSave);
         await saveFirestoreAvatar(firebaseUser.uid, avatarToSave);
+        changed.avatarUrl = avatarToSave;
       }
 
-      const fsSaved = await saveFirestoreProfile({
-        uid: firebaseUser.uid,
-        email: profile.email,
-        username: handle,
-        displayName: name,
-        avatarUrl: avatarToSave || null,
-        bio: bio.trim(),
-        birthDate,
-        category,
-      });
+      let fsSaved;
+      if (changed.username) {
+        fsSaved = await saveFirestoreProfile({
+          uid: firebaseUser.uid,
+          email: profile.email,
+          username: handle,
+          displayName: name,
+          avatarUrl: avatarToSave || null,
+          bio: nextBio,
+          birthDate,
+          category,
+        });
+      } else {
+        const fieldPatch: Parameters<typeof updateFirestoreProfileFields>[1] = {};
+        if (changed.displayName != null) fieldPatch.displayName = name;
+        if (changed.bio != null) fieldPatch.bio = nextBio;
+        if (changed.birthDate != null) fieldPatch.birthDate = birthDate;
+        if (changed.category != null) fieldPatch.category = category;
+        if (changed.avatarUrl != null) fieldPatch.avatarUrl = avatarToSave;
+        if (Object.keys(fieldPatch).length > 0) {
+          await updateFirestoreProfileFields(firebaseUser.uid, fieldPatch);
+        }
+        fsSaved = {
+          ...profile,
+          displayName: name,
+          handle,
+          avatarUrl: avatarToSave || profile.avatarUrl,
+          bio: nextBio,
+          birthDate,
+          category,
+        };
+      }
 
-      let next = {
-        ...fsSaved,
-        displayName: name,
-        birthDate,
-        category,
+      const persisted: SessionUser = {
+        ...profile,
+        displayName: fsSaved.displayName || name,
+        handle: fsSaved.handle || handle,
+        avatarUrl: fsSaved.avatarUrl ?? avatarToSave ?? profile.avatarUrl,
+        bio: fsSaved.bio ?? nextBio,
+        birthDate: fsSaved.birthDate ?? birthDate,
+        category: fsSaved.category ?? category,
+        coins: profile.coinsBalance,
+        coinsBalance: profile.coinsBalance,
+        levelXp: profile.levelXp,
+        profileUpdatedAtMs: Date.now(),
       };
 
+      const apiPatch: Record<string, string | null> = { ...changed };
+      if (apiPatch.username == null) apiPatch.username = handle;
+      if (apiPatch.birthDate == null) apiPatch.birthDate = birthDate;
+      if (apiPatch.displayName == null) apiPatch.displayName = name;
+
       try {
-        const updated = await api<ProfilePayload>('/api/users/profile', {
+        await api('/api/users/profile', {
           method: 'PATCH',
-          body: JSON.stringify({
-            username: handle,
-            displayName: name,
-            bio: bio.trim(),
-            avatarUrl: avatarToSave,
-            birthDate,
-            category,
-          }),
+          body: JSON.stringify(apiPatch),
         });
-        next = {
-          ...mapPostgresUser(updated),
-          handle: fsSaved.handle,
-          displayName: name,
-          avatarUrl: fsSaved.avatarUrl ?? updated.avatarUrl,
-          bio: fsSaved.bio ?? updated.bio,
-          birthDate: fsSaved.birthDate ?? updated.birthDate ?? birthDate,
-          category: fsSaved.category ?? updated.category ?? category,
-        };
       } catch {
-        // Firestore ya guardó
+        // Firestore ya es la fuente de verdad; el API es complementario.
       }
 
-      setProfile({
-        ...next,
-        coins: next.coinsBalance,
-        coinsBalance: next.coinsBalance,
-      });
+      setProfile(persisted);
+      setDisplayName(persisted.displayName);
+      setUsername(persisted.handle);
+      setBio(persisted.bio ?? '');
+      setBirthDate(persisted.birthDate ?? '');
+      setCategory(persisted.category ?? 'musica');
+      setAvatarUrl(persisted.avatarUrl ?? '');
       clearPendingBirth(firebaseUser.uid);
       const firebasePatch: { displayName: string; photoURL?: string } = { displayName: name };
       if (avatarToSave.startsWith('http')) firebasePatch.photoURL = avatarToSave;
       await updateProfile(firebaseUser, firebasePatch).catch(() => undefined);
       setEditing(null);
-      setToast('Perfil guardado.', 'success');
+      setToast('Perfil actualizado correctamente.', 'success');
       window.setTimeout(() => setToast(null), 2800);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar el perfil');
+      setError(mapProfileSaveError(err));
     } finally {
       setBusy(false);
     }
@@ -642,6 +714,7 @@ export function ProfileView() {
                     <input
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
+                      maxLength={NAME_MAX}
                       className="h-9 w-full rounded-lg border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-500"
                     />
                   </InfoRow>
@@ -658,6 +731,7 @@ export function ProfileView() {
                       <input
                         value={username.replace(/^@/, '')}
                         onChange={(e) => setUsername(e.target.value.replace(/^@/, ''))}
+                        maxLength={24}
                         className="h-9 min-w-0 flex-1 bg-transparent pr-3 text-sm text-white outline-none"
                       />
                     </div>
@@ -706,11 +780,11 @@ export function ProfileView() {
                   {editing ? (
                     <button
                       type="button"
-                      disabled={busy || avatarBusy}
+                      disabled={busy || avatarBusy || !hasChanges}
                       onClick={() => void save()}
                       className="h-10 w-full rounded-xl bg-violet-600 text-sm font-bold text-white disabled:opacity-50"
                     >
-                      {busy ? 'Guardando…' : 'Guardar cambios'}
+                      {busy ? 'Guardando...' : 'Guardar cambios'}
                     </button>
                   ) : null}
                 </div>
@@ -718,11 +792,11 @@ export function ProfileView() {
 
               <button
                 type="button"
-                disabled={busy || avatarBusy}
+                disabled={busy || avatarBusy || !hasChanges}
                 onClick={() => void save()}
                 className="mt-4 h-11 w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-sm font-bold text-white disabled:opacity-50"
               >
-                {busy ? 'Guardando perfil…' : avatarBusy ? 'Subiendo foto…' : 'Guardar perfil'}
+                {busy ? 'Guardando...' : avatarBusy ? 'Subiendo foto…' : 'Guardar perfil'}
               </button>
             </Card>
 
@@ -894,6 +968,9 @@ export function ProfileView() {
               />
             </div>
           </Card>
+          <Card title="Llamadas" subtitle="Quién puede llamarte y cuánto cuesta cada minuto.">
+            <CallSettingsPanel />
+          </Card>
         </div>
       ) : null}
 
@@ -958,10 +1035,10 @@ export function ProfileView() {
               </label>
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || avatarBusy || !hasChanges}
                 className="h-11 w-full rounded-xl bg-violet-600 text-sm font-bold text-white disabled:opacity-50"
               >
-                {busy ? 'Guardando…' : 'Guardar preferencias'}
+                {busy ? 'Guardando...' : 'Guardar preferencias'}
               </button>
             </form>
           </Card>

@@ -29,6 +29,8 @@
   --link-default: #67e8f9;
   --link-hover: #a5f3fc;
   --success: #34d399;
+  --status-online: #20e676;
+  --status-offline: #71717a;
   --warning: #fbbf24;
   --error: #f87171;
   --info: #22d3ee;
@@ -60,6 +62,7 @@
 
 html[data-lb-theme='light'] {
   color-scheme: light;
+  --status-offline: #9ca3af;
 }
 
 html,
@@ -136,6 +139,14 @@ html[data-lb-theme] .text-emerald-300,
 html[data-lb-theme] .text-emerald-400,
 html[data-lb-theme] .text-green-400 {
   color: var(--success);
+}
+
+html[data-lb-theme] .lb-status-online {
+  color: var(--status-online);
+}
+
+html[data-lb-theme] .lb-status-offline {
+  color: var(--status-offline);
 }
 
 html[data-lb-theme] .text-amber-300,

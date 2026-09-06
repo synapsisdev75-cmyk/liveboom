@@ -152,6 +152,32 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['processed', 'processedAtMs']);
       }
 
+      match /callSettings/{docId} {
+        allow read: if signedIn();
+        allow write: if isSelf(userId);
+      }
+
+      match /freeCallContacts/{contactId} {
+        allow get: if isSelf(userId) || isSelf(contactId);
+        allow list: if isSelf(userId);
+        allow write: if isSelf(userId);
+      }
+
+      match /callRequests/{requestId} {
+        allow read: if isSelf(userId)
+          || (signedIn() && resource.data.callerId == request.auth.uid);
+        allow create: if signedIn()
+          && request.resource.data.callerId == request.auth.uid;
+        allow update: if isSelf(userId)
+          || (signedIn() && resource.data.callerId == request.auth.uid);
+      }
+
+      match /callAuthorizations/{authId} {
+        allow read: if isSelf(userId)
+          || (signedIn() && resource.data.callerId == request.auth.uid);
+        allow create, update: if isSelf(userId);
+      }
+
       // Ubicación solo del dueño (targeting interno de ads; no se revela a otros).
       match /private/{docId} {
         allow read, write: if isSelf(userId);
@@ -191,20 +217,55 @@ service cloud.firestore {
       function friendshipExists(a, b) {
         return exists(/databases/$(database)/documents/users/$(a)/friends/$(b));
       }
-      function friendsEitherWay(a, b) {
-        return friendshipExists(a, b) || friendshipExists(b, a);
+      function mutualFriends(a, b) {
+        return friendshipExists(a, b) && friendshipExists(b, a);
+      }
+      function followingExists(a, b) {
+        return exists(/databases/$(database)/documents/users/$(a)/following/$(b));
+      }
+      function followEitherWay(a, b) {
+        return followingExists(a, b) || followingExists(b, a);
+      }
+      function blockedEitherWay(a, b) {
+        return exists(/databases/$(database)/documents/users/$(a)/blocked/$(b))
+          || exists(/databases/$(database)/documents/users/$(b)/blocked/$(a));
+      }
+      function canMessageUser(a, b) {
+        return !blockedEitherWay(a, b) && (mutualFriends(a, b) || followEitherWay(a, b));
+      }
+      function otherOnExisting() {
+        return request.auth.uid == resource.data.participants[0]
+          ? resource.data.participants[1]
+          : resource.data.participants[0];
+      }
+      function startingNewCall() {
+        return request.resource.data.call is map
+          && request.resource.data.call.status == 'ringing'
+          && request.resource.data.call.fromUid == request.auth.uid
+          && (
+            !('call' in resource.data)
+            || resource.data.call == null
+            || resource.data.call.id != request.resource.data.call.id
+          );
+      }
+      function authorizedFollowerStart() {
+        return request.resource.data.call is map
+          && request.resource.data.call.authorizationId is string
+          && exists(/databases/$(database)/documents/users/$(otherOnExisting())/callAuthorizations/$(request.resource.data.call.authorizationId))
+          && get(/databases/$(database)/documents/users/$(otherOnExisting())/callAuthorizations/$(request.resource.data.call.authorizationId)).data.callerId == request.auth.uid;
       }
 
       allow read: if isChatParticipant() || isSuperAdmin();
-      allow update: if isChatParticipant();
+      allow update: if isChatParticipant()
+        && (!startingNewCall() || mutualFriends(request.auth.uid, otherOnExisting()) || authorizedFollowerStart());
       allow create: if isCreatingParticipant()
-        && friendsEitherWay(request.auth.uid, otherOnCreate());
+        && canMessageUser(request.auth.uid, otherOnCreate());
       allow delete: if isChatParticipant();
 
       match /messages/{messageId} {
         allow read: if isSuperAdmin()
           || (signedIn() && request.auth.uid in chatData().participants);
-        // Si ya eres participante del chat, puedes enviar (la amistad se exige al crear el chat).
+        // Si ya eres participante del chat, puedes enviar (la relación se exige al crear el chat).
         allow create: if signedIn()
           && request.auth.uid in chatData().participants
           && request.resource.data.fromUid == request.auth.uid
@@ -224,6 +285,7 @@ service cloud.firestore {
               && request.resource.data.fromUid == resource.data.fromUid
               && request.resource.data.text == resource.data.text
             )
+            || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hiddenFor'])
           );
         allow delete: if signedIn()
           && request.auth.uid in chatData().participants
@@ -237,6 +299,17 @@ service cloud.firestore {
             && request.resource.data.type in ['like', 'dislike'];
           allow delete: if signedIn() && request.auth.uid == reactorId;
         }
+      }
+
+      match /callBlocks/{blockId} {
+        allow read: if signedIn() && request.auth.uid in chatData().participants;
+        allow create: if signedIn()
+          && request.auth.uid in chatData().participants
+          && request.resource.data.payerUid == request.auth.uid
+          && request.resource.data.rateBlasts is number
+          && request.resource.data.rateBlasts > 0
+          && request.resource.data.rateBlasts <= 150;
+        allow update, delete: if false;
       }
     }
 
