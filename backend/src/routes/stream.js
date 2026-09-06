@@ -569,6 +569,7 @@ router.post('/chat/:roomName', requireAuth, (req, res) => {
     author: req.body?.author,
     text: req.body?.text,
     gift: req.body?.gift || null,
+    sourceLang: req.body?.sourceLang || null,
   });
   res.status(201).json({ message });
 });

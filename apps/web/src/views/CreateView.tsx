@@ -4,8 +4,10 @@ import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../lib/brand';
 import { MAX_CLIP_DURATION_SECONDS } from '../lib/contentType';
 import { STORY_MAX_DURATION_SEC } from '../lib/storyLifecycle';
 import { useAuthStore } from '../store/authStore';
+import { useT } from '../i18n';
 
 export function CreateView() {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
 
@@ -14,9 +16,9 @@ export function CreateView() {
       <div className="grid min-h-full place-items-center rounded-2xl bg-zinc-900 p-6">
         <p className="text-center text-sm text-zinc-400">
           <Link to="/login" className="text-cyan-400 underline">
-            Inicia sesión
+            {t('common.signIn')}
           </Link>{' '}
-          para crear contenido.
+          {t('create.signInToCreate')}
         </p>
       </div>
     );
@@ -27,9 +29,9 @@ export function CreateView() {
   return (
     <div className="lb-page mx-auto flex min-h-full max-w-lg flex-col gap-5 rounded-2xl bg-zinc-900 p-4 sm:p-6">
       <div className="min-w-0">
-        <h1 className="text-xl font-bold text-white sm:text-2xl">Crear</h1>
+        <h1 className="text-xl font-bold text-white sm:text-2xl">{t('create.title')}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          {FLASH_BOOM_LABEL}, {BOOM_CLIP_LABEL} o un LIVE. Elige qué quieres compartir.
+          {t('create.subtitle', { flash: FLASH_BOOM_LABEL, clip: BOOM_CLIP_LABEL })}
         </p>
       </div>
 

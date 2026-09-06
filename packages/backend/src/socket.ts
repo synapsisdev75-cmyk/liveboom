@@ -11,6 +11,7 @@ export type ChatPayload = {
   isHost?: boolean;
   donation?: number;
   createdAt: string;
+  sourceLang?: string;
 };
 
 export type GiftPayload = {
@@ -55,7 +56,7 @@ export function attachSocket(httpServer: HttpServer, origin: string): Server {
       socket.emit('room:joined', streamId);
     });
 
-    socket.on('chat:send', (input: { streamId: string; text: string }) => {
+    socket.on('chat:send', (input: { streamId: string; text: string; sourceLang?: string }) => {
       const user = socket.data.user as { displayName: string; avatarUrl: string | null; id: string };
       const text = input.text?.trim().slice(0, 280);
       if (!text || !input.streamId) return;
@@ -66,6 +67,7 @@ export function attachSocket(httpServer: HttpServer, origin: string): Server {
         avatar: user.avatarUrl,
         text,
         createdAt: new Date().toISOString(),
+        sourceLang: typeof input.sourceLang === 'string' ? input.sourceLang.slice(0, 8) : undefined,
       };
       io.to(input.streamId).emit('chat:message', payload);
     });

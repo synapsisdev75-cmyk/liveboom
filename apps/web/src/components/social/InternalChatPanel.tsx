@@ -32,7 +32,8 @@ import { VideoNoteBubble, VideoNoteCapture } from './ChatVideoNote';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { ChatVoiceRecorderBar } from './ChatVoiceRecorderBar';
 import { EmojiInput } from './EmojiInput';
-import { EmojiText } from './EmojiText';
+import { TranslatedText } from '../i18n/TranslatedText';
+import { useT } from '../../i18n';
 import { MessageReactionBar } from './LiveBoomReactionControl';
 import { GifPickerSheet } from './GifPickerSheet';
 import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
@@ -444,6 +445,7 @@ function Avatar({
 }
 
 export function InternalChatPanel({ compact = false, page = false, fullscreen = false }: Props) {
+  const t = useT();
   const isPage = page || fullscreen;
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
@@ -1312,7 +1314,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         <div className="flex items-center justify-between gap-2">
           <h1 className="flex items-center gap-2 text-xl font-bold text-white">
             <MessageCircle size={22} className="text-violet-400" />
-            Mensajes
+            {t('chat.messages')}
           </h1>
           <div className="flex items-center gap-1.5">
             <button
@@ -1339,7 +1341,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           <input
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
-            placeholder="Buscar conversaciones..."
+            placeholder={t('chat.searchConversations')}
             className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
           />
         </label>
@@ -1832,9 +1834,14 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                               </div>
                             ) : plainText ? (
                               <p className="whitespace-pre-wrap">
-                                <EmojiText text={message.text || ''} size={CHAT_EMOJI_SIZE} />
+                                <TranslatedText
+                                  text={message.text || ''}
+                                  sourceLang={message.sourceLang}
+                                  mine={message.mine}
+                                  emojiSize={CHAT_EMOJI_SIZE}
+                                />
                                 {message.editedAt ? (
-                                  <span className="ml-1 text-[9px] opacity-60">(editado)</span>
+                                  <span className="ml-1 text-[9px] opacity-60">{t('chat.edited')}</span>
                                 ) : null}
                               </p>
                             ) : null}
@@ -1855,7 +1862,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                                   setEditDraft(message.text);
                                 }}
                                 className="text-zinc-500 hover:text-cyan-300"
-                                aria-label="Editar"
+                                aria-label={t('chat.edit')}
                               >
                                 <Pencil size={11} />
                               </button>
@@ -2104,7 +2111,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             <EmojiInput
               value={draft}
               onChange={setDraft}
-              placeholder="Escribe un mensaje..."
+              placeholder={t('chat.writeMessage')}
               emojiSize={CHAT_EMOJI_SIZE}
               fieldClassName="min-w-0 flex-1"
               padClassName="py-1.5"
@@ -2115,7 +2122,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 type="submit"
                 disabled={busy}
                 className="lb-chat-composer-send"
-                aria-label="Enviar"
+                aria-label={t('chat.send')}
               >
                 <Send size={15} />
               </button>

@@ -29,6 +29,11 @@
           root.setAttribute('data-lb-theme', theme);
           root.setAttribute('data-lb-accent', accent);
           root.style.colorScheme = theme;
+          try {
+            var loc = localStorage.getItem('liveboom:locale');
+            if (loc === 'zh') root.lang = 'zh-CN';
+            else if (loc === 'es' || loc === 'en' || loc === 'fr' || loc === 'it' || loc === 'pt') root.lang = loc;
+          } catch (langErr) {}
           var css = prefs.css;
           if (css && typeof css === 'object') {
             for (var key in css) {

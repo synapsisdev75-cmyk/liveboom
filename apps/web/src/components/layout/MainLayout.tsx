@@ -15,7 +15,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { sweepAuthorReelLifecycle } from '../../lib/socialFirestore';
@@ -29,6 +29,9 @@ import { SideRailPanel } from './SideRailPanel';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { Logo } from '../brand/Logo';
 import { AppearanceControl } from '../appearance/AppearanceControl';
+import { LanguageControl } from '../i18n/LanguageControl';
+import { bcp47For, useT } from '../../i18n';
+import { useLocaleStore } from '../../store/localeStore';
 
 function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
@@ -47,25 +50,37 @@ function SidebarUnreadHint() {
 }
 
 /** Orden exacto del mockup de barra lateral. */
-const sideNavItems = [
-  { label: 'Inicio', icon: Home, to: '/' as const },
-  { label: 'Explorar', icon: Compass, to: '/explorar' as const },
-  { label: 'Grupos', icon: Users, to: '/grupos' as const },
-  { label: 'Mi Billetera', icon: Wallet, to: '/billetera' as const },
-  { label: 'Mensajes', icon: MessageCircle, to: '/mensajes' as const },
-  { label: 'Actividad', icon: Clock, to: '/actividad' as const },
-  { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
-  { label: 'Buscar amigos', icon: Search, to: '/buscar' as const },
-  { label: 'Configuración', icon: Settings, to: '/perfil/editar' as const },
-];
+function useSideNavItems() {
+  const t = useT();
+  return useMemo(
+    () => [
+      { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
+      { id: 'explore', label: t('nav.explore'), icon: Compass, to: '/explorar' as const },
+      { id: 'groups', label: t('nav.groups'), icon: Users, to: '/grupos' as const },
+      { id: 'wallet', label: t('nav.wallet'), icon: Wallet, to: '/billetera' as const },
+      { id: 'messages', label: t('nav.messages'), icon: MessageCircle, to: '/mensajes' as const },
+      { id: 'activity', label: t('nav.activity'), icon: Clock, to: '/actividad' as const },
+      { id: 'profile', label: t('nav.profile'), icon: UserRound, to: '/perfil' as const },
+      { id: 'search', label: t('nav.searchFriends'), icon: Search, to: '/buscar' as const },
+      { id: 'settings', label: t('nav.settings'), icon: Settings, to: '/perfil/editar' as const },
+    ],
+    [t],
+  );
+}
 
-const mobileNavItems = [
-  { label: 'Inicio', icon: Home, to: '/' as const },
-  { label: 'Explorar', icon: Compass, to: '/explorar' as const },
-  { label: 'Crear', icon: Plus, to: '/crear' as const, accent: true },
-  { label: 'Mensajes', icon: MessageCircle, to: '/mensajes' as const },
-  { label: 'Perfil', icon: UserRound, to: '/perfil' as const },
-];
+function useMobileNavItems() {
+  const t = useT();
+  return useMemo(
+    () => [
+      { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
+      { id: 'explore', label: t('nav.explore'), icon: Compass, to: '/explorar' as const },
+      { id: 'create', label: t('nav.create'), icon: Plus, to: '/crear' as const, accent: true },
+      { id: 'messages', label: t('nav.messages'), icon: MessageCircle, to: '/mensajes' as const },
+      { id: 'profile', label: t('nav.profile'), icon: UserRound, to: '/perfil' as const },
+    ],
+    [t],
+  );
+}
 
 const activeClass =
   'lb-nav-item lb-nav-active flex items-center gap-2.5 px-3 py-2 text-[13px] font-semibold leading-tight tracking-[0.01em]';
@@ -80,6 +95,10 @@ type SidebarBodyProps = {
 
 /** Sidebar compacto: 100% alto viewport, sin scroll, todos los ítems visibles. */
 function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
+  const t = useT();
+  const locale = useLocaleStore((state) => state.locale);
+  const sideNavItems = useSideNavItems();
+  const numberLocale = bcp47For(locale);
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="mb-2 flex shrink-0 items-center gap-1">
@@ -90,6 +109,7 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
         >
           <Logo compact className="!justify-start [&_img]:!h-[4.25rem] [&_img]:!max-w-[15rem]" />
         </Link>
+        <LanguageControl />
         <AppearanceControl />
       </div>
 
@@ -98,7 +118,7 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
           const Icon = item.icon;
           return (
             <NavLink
-              key={item.label}
+              key={item.id}
               to={item.to}
               end={item.to === '/'}
               onClick={onNavigate}
@@ -133,34 +153,34 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
           }
         >
           <Radio size={17} strokeWidth={2.5} className="text-black" />
-          Transmitir
+          {t('nav.goLive')}
         </NavLink>
 
         <div className="rounded-[18px] border border-white/[0.08] bg-[#15161e] px-3.5 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            MI BILLETERA
+            {t('nav.myWallet')}
           </p>
           {profile ? (
             <>
               <p className="mt-2 flex items-baseline gap-1.5 leading-none">
                 <span className="text-[28px] font-black tracking-tight text-[#00E5FF]">
-                  {profile.coinsBalance.toLocaleString('es-CO')}
+                  {profile.coinsBalance.toLocaleString(numberLocale)}
                 </span>
-                <span className="text-[15px] font-semibold text-white">coins</span>
+                <span className="text-[15px] font-semibold text-white">{t('nav.coins')}</span>
               </p>
               <button
                 type="button"
                 onClick={onRecharge}
                 className="mt-3 flex h-10 w-full items-center justify-center rounded-full bg-[linear-gradient(to_right,#EC4899,#06B6D4)] text-[13px] font-bold text-white shadow-[0_4px_16px_rgba(236,72,153,0.25)] transition hover:brightness-110"
               >
-                Recargar Coins
+                {t('nav.recharge')}
               </button>
               <Link
                 to="/billetera"
                 onClick={onNavigate}
                 className="mt-2 flex h-10 w-full items-center justify-center rounded-full border-[1.5px] border-[#10B981] bg-transparent text-[13px] font-semibold text-[#10B981] transition hover:bg-[#10B981]/10"
               >
-                Retirar
+                {t('nav.withdraw')}
               </Link>
             </>
           ) : (
@@ -170,14 +190,14 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
                 onClick={onNavigate}
                 className="text-sm font-medium text-cyan-400 hover:text-white"
               >
-                Iniciar sesión
+                {t('nav.signIn')}
               </Link>
               <Link
                 to="/registro"
                 onClick={onNavigate}
                 className="flex h-10 items-center justify-center rounded-full bg-[linear-gradient(to_right,#EC4899,#06B6D4)] text-sm font-bold text-black"
               >
-                Crear cuenta
+                {t('nav.signUp')}
               </Link>
             </div>
           )}
@@ -207,7 +227,7 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
               <span className="block truncate text-[13px] font-semibold text-white">
                 @{profile.handle}
               </span>
-              <span className="block text-[12px] text-zinc-500">Ver perfil</span>
+              <span className="block text-[12px] text-zinc-500">{t('nav.viewProfile')}</span>
             </span>
             <ChevronRight size={18} strokeWidth={2} className="shrink-0 text-zinc-500" />
           </Link>
@@ -217,7 +237,11 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
   );
 }
 
+
 export function MainLayout() {
+  const t = useT();
+  const locale = useLocaleStore((state) => state.locale);
+  const mobileNavItems = useMobileNavItems();
   const profile = useAuthStore((state) => state.profile);
   const logout = useAuthStore((state) => state.logout);
   const toast = useUiStore((state) => state.toast);
@@ -267,6 +291,7 @@ export function MainLayout() {
           <Link to="/" className="min-w-0 shrink">
             <Logo compact className="[&_img]:!h-14 [&_img]:!max-w-[12rem] sm:[&_img]:!h-16 sm:[&_img]:!max-w-[14rem]" />
           </Link>
+          <LanguageControl />
           <AppearanceControl />
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
@@ -278,15 +303,15 @@ export function MainLayout() {
               onClick={() => setRechargeOpen(true)}
               className="max-w-[7.5rem] truncate rounded-full bg-zinc-900 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-400 ring-1 ring-cyan-500/30 sm:max-w-none sm:px-3 sm:text-xs"
             >
-              {profile.coinsBalance.toLocaleString('es-CO')} coins
+              {profile.coinsBalance.toLocaleString(bcp47For(locale))} {t('nav.coins')}
             </button>
           ) : (
             <>
               <Link to="/login" className="text-xs font-medium text-cyan-400">
-                Entrar
+                {t('nav.enter')}
               </Link>
               <Link to="/registro" className="text-xs font-medium text-zinc-400 hover:text-white">
-                Registro
+                {t('nav.register')}
               </Link>
             </>
           )}
@@ -294,7 +319,7 @@ export function MainLayout() {
             type="button"
             onClick={() => setMenuOpen(true)}
             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-zinc-900 text-zinc-300"
-            aria-label="Abrir menú"
+            aria-label={t('nav.openMenu')}
           >
             <Menu size={18} />
           </button>
@@ -350,7 +375,7 @@ export function MainLayout() {
             const accent = 'accent' in item && item.accent;
             const messages = item.to === '/mensajes';
             return (
-              <li key={item.label}>
+              <li key={item.id}>
                 <NavLink
                   to={item.to}
                   end={item.to === '/'}
@@ -390,12 +415,12 @@ export function MainLayout() {
           <button
             type="button"
             className="absolute inset-0 bg-black/70"
-            aria-label="Cerrar menú"
+            aria-label={t('common.close')}
             onClick={() => setMenuOpen(false)}
           />
           <div className="lb-mobile-drawer absolute inset-y-0 right-0 flex h-[100dvh] w-[min(17.5rem,88vw)] flex-col overflow-hidden border-l border-zinc-800 pb-[max(0.75rem,var(--lb-safe-bottom))] pl-3 pr-[max(0.75rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] shadow-2xl">
             <div className="mb-2 flex shrink-0 items-center justify-between">
-              <p className="text-xs font-bold text-zinc-400">Menú</p>
+              <p className="text-xs font-bold text-zinc-400">{t('nav.openMenu')}</p>
               <button
                 type="button"
                 onClick={() => setMenuOpen(false)}
@@ -424,7 +449,7 @@ export function MainLayout() {
                 className="mt-2 inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-fuchsia-400/40 text-xs font-semibold text-fuchsia-200"
               >
                 <LogOut size={14} />
-                Cerrar sesión
+                {t('settings.logOut')}
               </button>
             ) : null}
           </div>

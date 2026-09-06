@@ -67,6 +67,7 @@ import { canEditOwnedPublication, isPublicationPost } from '../lib/contentType';
 import { fetchPrivateLocation } from '../lib/userLocation';
 import { isStoryActive, isStoryPost } from '../lib/storyLifecycle';
 import { useAuthStore } from '../store/authStore';
+import { useT } from '../i18n';
 
 type FeedTab = 'para_ti' | 'siguiendo' | 'cerca';
 
@@ -379,6 +380,7 @@ function HomePublicationCard({
 }
 
 export function HomeView() {
+  const t = useT();
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
   const [streams, setStreams] = useState<ActiveLiveFeedItem[]>([]);
@@ -670,9 +672,9 @@ export function HomeView() {
   }, [featured, streams]);
 
   const tabs: { id: FeedTab; label: string }[] = [
-    { id: 'para_ti', label: 'Para ti' },
-    { id: 'siguiendo', label: 'Siguiendo' },
-    { id: 'cerca', label: 'Cerca de ti' },
+    { id: 'para_ti', label: t('feed.forYou') },
+    { id: 'siguiendo', label: t('feed.following') },
+    { id: 'cerca', label: t('feed.nearby') },
   ];
 
   return (

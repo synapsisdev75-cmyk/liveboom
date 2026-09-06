@@ -33,6 +33,7 @@ import {
 import { profileHref } from '../lib/profileFirestore';
 import { ignoreSuggestedCreator, readIgnoredSuggestionUids } from '../lib/ignoredSuggestions';
 import { useAuthStore } from '../store/authStore';
+import { useT } from '../i18n';
 
 type SearchUser = {
   uid?: string;
@@ -119,6 +120,7 @@ function Avatar({
 }
 
 export function SearchView() {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
@@ -336,7 +338,7 @@ export function SearchView() {
               Comunidad
             </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Buscar amigos
+              {t('search.title')}
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-zinc-500">
               Encuentra creadores por @usuario, nombre, biografía o categoría. Abajo ves las
@@ -462,7 +464,7 @@ export function SearchView() {
       {/* Search results when typing */}
       {searching ? (
         <section className="rounded-2xl border border-white/[0.06] bg-[#14151c] p-4">
-          <h2 className="text-sm font-bold text-white">Resultados</h2>
+          <h2 className="text-sm font-bold text-white">{t('search.results')}</h2>
           {busy ? <p className="mt-2 text-xs text-zinc-500">Buscando…</p> : null}
           {!busy && results.length === 0 ? (
             <p className="mt-2 text-xs text-zinc-500">
@@ -522,7 +524,7 @@ export function SearchView() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Bell size={16} className="text-violet-400" />
-            <h2 className="text-sm font-bold text-white">Solicitudes de amistad</h2>
+            <h2 className="text-sm font-bold text-white">{t('search.friendRequests')}</h2>
             {incoming.length > 0 ? (
               <span className="rounded-full bg-fuchsia-500/90 px-2 py-0.5 text-[10px] font-black text-white">
                 {incoming.length} nueva{incoming.length === 1 ? '' : 's'}
@@ -677,7 +679,7 @@ export function SearchView() {
         <section>
           <div className="mb-1 flex items-end justify-between gap-2">
             <div>
-              <h2 className="text-sm font-bold text-white">Personas que podrían gustarte</h2>
+              <h2 className="text-sm font-bold text-white">{t('search.suggestions')}</h2>
               <p className="mt-0.5 text-xs text-zinc-500">
                 Sugerencias basadas en tus intereses, grupos y actividad.
               </p>

@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { api, apiPublic } from './api';
 import { db, auth } from './firebase';
+import { getLocale } from '../store/localeStore';
 import { fetchPublicUserByUsername, fetchPublicUserByUid, type PublicFsUser } from './profileFirestore';
 import { readIgnoredSuggestionUids } from './ignoredSuggestions';
 import {
@@ -80,6 +81,7 @@ export type ChatMessage = {
   fromUid: string;
   mine: boolean;
   createdAt: string;
+  sourceLang?: string | null;
   mediaUrl?: string | null;
   mediaType?: 'image' | 'audio' | 'video' | 'file' | 'call' | 'gif' | null;
   linkUrl?: string | null;
@@ -842,6 +844,7 @@ export function listenMessages(
         fromUid: String(data.fromUid || ''),
         mine: data.fromUid === viewerUid,
         createdAt: asIso(data.createdAt),
+        sourceLang: typeof data.sourceLang === 'string' ? data.sourceLang : null,
         mediaUrl: deleted ? null : ((data.mediaUrl as string | null) ?? null),
         mediaType: deleted ? null : ((data.mediaType as ChatMessage['mediaType']) ?? null),
         linkUrl: deleted ? null : ((data.linkUrl as string | null) ?? null),
@@ -874,6 +877,7 @@ export async function editChatMessage(chatId: string, messageId: string, text: s
   await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
     text: body,
     editedAt: serverTimestamp(),
+    sourceLang: getLocale(),
   });
 }
 
@@ -1127,6 +1131,7 @@ export async function sendChatMessage(
     createdAt: serverTimestamp(),
     status: 'sent',
     deleted: false,
+    sourceLang: getLocale(),
   };
   if (mediaUrl) {
     payload.mediaUrl = mediaUrl;

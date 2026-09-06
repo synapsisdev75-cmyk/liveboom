@@ -34,6 +34,7 @@ function appendMessage(room, message) {
     author: String(message.author || ''),
     text: String(message.text || '').slice(0, 500),
     gift: message.gift || null,
+    sourceLang: typeof message.sourceLang === 'string' ? message.sourceLang.slice(0, 8) : null,
     createdAt: message.createdAt || new Date().toISOString(),
   };
   list.push(row);

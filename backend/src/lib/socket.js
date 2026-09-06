@@ -76,6 +76,7 @@ function initSocket(httpServer) {
         id: `${Date.now()}-${socket.id}`,
         author: user?.name || user?.email || 'Liveboomer',
         text,
+        sourceLang: typeof payload?.sourceLang === 'string' ? String(payload.sourceLang).slice(0, 8) : null,
         at: new Date().toISOString(),
       });
     });

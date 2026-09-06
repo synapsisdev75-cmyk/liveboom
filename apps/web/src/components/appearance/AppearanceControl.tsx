@@ -6,10 +6,13 @@ import { clampIntensity } from '../../lib/appearanceTokens';
 import { useAppearanceStore } from '../../store/appearanceStore';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { Logo } from '../brand/Logo';
+import { useT } from '../../i18n';
+import type { MessageKey } from '../../i18n/es';
 
 const LONG_PRESS_MS = 500;
 
 export function AppearanceControl() {
+  const t = useT();
   const theme = useAppearanceStore((s) => s.theme);
   const accent = useAppearanceStore((s) => s.accent);
   const darkIntensity = useAppearanceStore((s) => s.darkIntensity);
@@ -76,7 +79,7 @@ export function AppearanceControl() {
     };
   }, [open, panelId]);
 
-  const nextLabel = isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+  const nextLabel = isDark ? t('appearance.switchToLight') : t('appearance.switchToDark');
 
   return (
     <div ref={clusterRef} className="lb-appearance-cluster relative shrink-0">
@@ -99,10 +102,10 @@ export function AppearanceControl() {
       <button
         type="button"
         className="lb-appearance-palette-btn"
-        aria-label="Abrir opciones de apariencia"
+        aria-label={t('appearance.open')}
         aria-expanded={open}
         aria-controls={panelId}
-        title="Apariencia"
+        title={t('appearance.title')}
         onClick={() => setOpen((value) => !value)}
       >
         <Palette size={11} strokeWidth={2.4} />
@@ -161,6 +164,7 @@ function AppearancePopover({
   onReset: () => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const style = !sheet && anchor
     ? {
         top: Math.min(anchor.bottom + 10, window.innerHeight - 24),
@@ -171,23 +175,23 @@ function AppearancePopover({
   return (
     <div className={sheet ? 'lb-appearance-sheet-root' : 'lb-appearance-pop-root'} role="presentation">
       {sheet ? (
-        <button type="button" className="lb-appearance-sheet-backdrop" aria-label="Cerrar apariencia" onClick={onClose} />
+        <button type="button" className="lb-appearance-sheet-backdrop" aria-label={t('appearance.close')} onClick={onClose} />
       ) : null}
       <div
         id={id}
         role="dialog"
-        aria-label="Apariencia"
+        aria-label={t('appearance.title')}
         className={sheet ? 'lb-appearance-sheet' : 'lb-appearance-popover'}
         style={style}
       >
         <div className="lb-appearance-popover__head">
-          <p>Apariencia</p>
-          <button type="button" onClick={onClose} aria-label="Cerrar" className="lb-appearance-close">
+          <p>{t('appearance.title')}</p>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} className="lb-appearance-close">
             <X size={14} />
           </button>
         </div>
 
-        <p className="lb-appearance-kicker">Modo</p>
+        <p className="lb-appearance-kicker">{t('appearance.mode')}</p>
         <div className="lb-appearance-modes">
           <div className={`lb-appearance-mode-block${theme === 'dark' ? ' is-on' : ''}`}>
             <button
@@ -196,18 +200,18 @@ function AppearancePopover({
               onClick={() => onTheme('dark')}
             >
               <Moon size={16} />
-              <span>Modo oscuro</span>
-              {theme === 'dark' ? <em>Tema actual</em> : null}
+              <span>{t('appearance.dark')}</span>
+              {theme === 'dark' ? <em>{t('appearance.currentTheme')}</em> : null}
             </button>
             <label className={`lb-intensity${theme === 'dark' ? ' is-on' : ' is-off'}`}>
-              <span>Intensidad {darkIntensity}</span>
+              <span>{t('appearance.intensity')} {darkIntensity}</span>
               <input
                 type="range"
                 min={0}
                 max={100}
                 step={1}
                 value={darkIntensity}
-                aria-label="Intensidad oscura"
+                aria-label={t('appearance.darkIntensity')}
                 onPointerDown={(event) => event.stopPropagation()}
                 onChange={(event) => onDarkIntensity(clampIntensity(event.target.value))}
               />
@@ -220,18 +224,18 @@ function AppearancePopover({
               onClick={() => onTheme('light')}
             >
               <Sun size={16} />
-              <span>Modo claro</span>
-              {theme === 'light' ? <em>Tema actual</em> : null}
+              <span>{t('appearance.light')}</span>
+              {theme === 'light' ? <em>{t('appearance.currentTheme')}</em> : null}
             </button>
             <label className={`lb-intensity${theme === 'light' ? ' is-on' : ' is-off'}`}>
-              <span>Intensidad {lightIntensity}</span>
+              <span>{t('appearance.intensity')} {lightIntensity}</span>
               <input
                 type="range"
                 min={0}
                 max={100}
                 step={1}
                 value={lightIntensity}
-                aria-label="Intensidad clara"
+                aria-label={t('appearance.lightIntensity')}
                 onPointerDown={(event) => event.stopPropagation()}
                 onChange={(event) => onLightIntensity(clampIntensity(event.target.value))}
               />
@@ -239,38 +243,38 @@ function AppearancePopover({
           </div>
         </div>
 
-        <p className="lb-appearance-kicker">Color de acento</p>
-        <p className="lb-appearance-hint">Personaliza el color principal de tu experiencia.</p>
+        <p className="lb-appearance-kicker">{t('appearance.accent')}</p>
+        <p className="lb-appearance-hint">{t('appearance.accentHint')}</p>
         <div className="lb-accent-grid">
           {ACCENT_OPTIONS.map((option) => (
             <button
               key={option.id}
               type="button"
               className={`lb-accent-swatch${accent === option.id ? ' is-on' : ''}`}
-              aria-label={option.label}
+              aria-label={t(`appearance.${option.id}` as MessageKey)}
               aria-pressed={accent === option.id}
-              title={option.label}
+              title={t(`appearance.${option.id}` as MessageKey)}
               onClick={() => onAccent(option.id)}
             >
               <span style={{ background: option.swatch }} />
-              <b>{option.label}</b>
+              <b>{t(`appearance.${option.id}` as MessageKey)}</b>
             </button>
           ))}
         </div>
 
-        <p className="lb-appearance-kicker">Vista previa</p>
+        <p className="lb-appearance-kicker">{t('appearance.preview')}</p>
         <div className="lb-appearance-preview">
           <Logo compact className="[&_img]:!h-8 [&_img]:!max-w-[7.5rem]" />
           <div className="lb-appearance-preview__row">
-            <span className="lb-appearance-preview__btn">Botón</span>
-            <span className="lb-appearance-preview__tab">Tab</span>
-            <span className="lb-appearance-preview__link">Enlace</span>
+            <span className="lb-appearance-preview__btn">{t('appearance.button')}</span>
+            <span className="lb-appearance-preview__tab">{t('appearance.tab')}</span>
+            <span className="lb-appearance-preview__link">{t('appearance.link')}</span>
           </div>
         </div>
 
         <button type="button" className="lb-appearance-reset" onClick={onReset}>
           <RotateCcw size={13} />
-          Restablecer al predeterminado
+          {t('appearance.reset')}
         </button>
       </div>
     </div>

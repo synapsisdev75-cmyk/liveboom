@@ -18,6 +18,7 @@ import { ensureFirestoreProfile, fetchFirestoreProfile, updateFirestoreProfileFi
 import { processGiftInbox } from '../lib/giftsFirestore';
 import { readPendingBirthDate, storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
+import { t } from '../i18n';
 
 type NativeGoogleAuthPlugin = {
   signInWithGoogle: () => Promise<{ credential?: { idToken?: string | null } | null }>;
@@ -46,22 +47,22 @@ type AuthState = {
 
 function mapAuthError(error: unknown): string {
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
-  if (code.includes('email-already-in-use')) return 'Ese correo ya tiene una cuenta.';
+  if (code.includes('email-already-in-use')) return t('auth.emailInUse');
   if (code.includes('invalid-credential') || code.includes('wrong-password')) {
-    return 'Correo o contraseña incorrectos.';
+    return t('auth.badCredentials');
   }
-  if (code.includes('weak-password')) return 'La contraseña debe tener al menos 6 caracteres.';
-  if (code.includes('popup-closed')) return 'Se cerró la ventana de Google.';
+  if (code.includes('weak-password')) return t('auth.weakPassword');
+  if (code.includes('popup-closed')) return t('auth.googleClosed');
   if (code.includes('cancelled') || /cancel/i.test(String((error as Error)?.message || ''))) {
-    return 'Inicio de sesión con Google cancelado.';
+    return t('auth.googleCancelled');
   }
   if (code.includes('unauthorized-domain')) {
-    return 'Este dominio no está autorizado en Firebase Auth.';
+    return t('auth.unauthorizedDomain');
   }
   if (code.includes('permission-denied') || /insufficient permissions/i.test(String((error as Error)?.message || ''))) {
-    return 'Firebase bloqueó el acceso. Cierra sesión, vuelve a entrar o espera unos segundos e intenta de nuevo.';
+    return t('auth.permissionDenied');
   }
-  return error instanceof Error ? error.message : 'No se pudo autenticar.';
+  return error instanceof Error ? error.message : t('auth.authFailed');
 }
 
 async function syncWithBackend(user: FirebaseUser) {

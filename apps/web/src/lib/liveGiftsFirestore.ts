@@ -20,6 +20,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { getLocale } from '../store/localeStore';
 import { LIVE_BOOM_ROUND_GOAL } from './liveBoomRound';
 import { roomKey } from './roomKey';
 
@@ -636,6 +637,7 @@ export type LiveChatMessage = {
   author: string;
   authorUid: string;
   text: string;
+  sourceLang?: string | null;
   gift?: { giftId: string; emoji: string; name: string } | null;
   createdAtMs: number;
 };
@@ -656,6 +658,7 @@ export function listenLiveChat(
           author: String(data.author || 'Liveboomer'),
           authorUid: String(data.authorUid || ''),
           text: String(data.text || ''),
+          sourceLang: typeof data.sourceLang === 'string' ? data.sourceLang : null,
           gift: giftRaw
             ? {
                 giftId: String(giftRaw.giftId || ''),
@@ -695,6 +698,7 @@ export async function publishLiveChatMessage(
     authorUid: string;
     author: string;
     text: string;
+    sourceLang?: string | null;
     gift?: { giftId: string; emoji: string; name: string } | null;
   },
 ) {
@@ -703,6 +707,7 @@ export async function publishLiveChatMessage(
     authorUid: message.authorUid,
     author: message.author,
     text: message.text.slice(0, 500),
+    sourceLang: message.sourceLang || getLocale(),
     gift: message.gift || null,
     createdAt: serverTimestamp(),
     createdAtMs: Date.now(),

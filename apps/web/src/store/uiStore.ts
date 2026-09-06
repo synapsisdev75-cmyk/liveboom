@@ -10,6 +10,7 @@ export type ChatMessage = {
   text: string;
   isHost?: boolean;
   donation?: number;
+  sourceLang?: string | null;
 };
 
 export type GiftBurst = {

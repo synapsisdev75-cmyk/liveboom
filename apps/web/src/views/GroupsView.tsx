@@ -45,7 +45,8 @@ import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { useAuthStore } from '../store/authStore';
 import { EmojiPickerButton } from '../components/social/EmojiPicker';
 import { EmojiInput } from '../components/social/EmojiInput';
-import { EmojiText } from '../components/social/EmojiText';
+import { TranslatedText } from '../components/i18n/TranslatedText';
+import { useT } from '../i18n';
 
 type Tab = 'descubrir' | 'mios' | 'invitaciones' | 'crear' | 'chat';
 
@@ -183,6 +184,7 @@ function MemberStack({
 }
 
 export function GroupsView() {
+  const t = useT();
   const profile = useAuthStore((s) => s.profile);
   const [searchParams, setSearchParams] = useSearchParams();
   const [mine, setMine] = useState<LiveGroup[]>([]);
@@ -621,7 +623,7 @@ export function GroupsView() {
             <div>
               <h1 className="flex items-center gap-2 text-2xl font-bold text-white sm:text-3xl">
                 <Users className="text-violet-400" size={26} />
-                Grupos
+                {t('groups.title')}
               </h1>
               <p className="mt-1 max-w-lg text-sm text-zinc-400">
                 Únete a comunidades, comparte, participa y crece con otros Boomers.
@@ -1166,7 +1168,12 @@ export function GroupsView() {
                               ) : null}
                               {msg.text && msg.text !== '📷 Foto' && msg.text !== '🔗 Enlace' ? (
                                 <p className="whitespace-pre-wrap break-words">
-                                  <EmojiText text={msg.text} size={CHAT_EMOJI_SIZE} />
+                                  <TranslatedText
+                                    text={msg.text}
+                                    sourceLang={msg.sourceLang}
+                                    mine={msg.fromUid === profile?.firebaseUid}
+                                    emojiSize={CHAT_EMOJI_SIZE}
+                                  />
                                 </p>
                               ) : msg.text === '📷 Foto' && !msg.mediaUrl ? (
                                 <p>{msg.text}</p>
@@ -1199,8 +1206,8 @@ export function GroupsView() {
                         disabled={busy}
                         onClick={() => chatImageRef.current?.click()}
                         className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
-                        aria-label="Enviar foto"
-                        title="Enviar foto"
+                        aria-label={t('groups.sendPhoto')}
+                        title={t('groups.sendPhoto')}
                       >
                         <Paperclip size={18} />
                       </button>
@@ -1208,15 +1215,15 @@ export function GroupsView() {
                         type="button"
                         onClick={onShareLink}
                         className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
-                        aria-label="Compartir enlace"
-                        title="Compartir enlace"
+                        aria-label={t('groups.shareLink')}
+                        title={t('groups.shareLink')}
                       >
                         <Link2 size={18} />
                       </button>
                       <EmojiInput
                         value={draft}
                         onChange={setDraft}
-                        placeholder="Escribe en el grupo…"
+                        placeholder={t('chat.writeGroup')}
                         emojiSize={CHAT_EMOJI_SIZE}
                         fieldClassName="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 focus-within:border-cyan-500"
                         mirrorTextClassName="text-white"

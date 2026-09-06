@@ -25,11 +25,13 @@ import { SuperAdminRoute } from './components/auth/SuperAdminRoute';
 import { useLevelsConfigStore } from './store/levelsConfigStore';
 import { useAppearanceStore } from './store/appearanceStore';
 import { ThemeProvider } from './components/appearance/ThemeProvider';
+import { useLocaleStore } from './store/localeStore';
 
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
   const hydrateLevels = useLevelsConfigStore((state) => state.hydrate);
   const hydrateAppearance = useAppearanceStore((state) => state.hydrateFromCloud);
+  const hydrateLocale = useLocaleStore((state) => state.hydrateFromCloud);
   const uid = useAuthStore((state) => state.profile?.firebaseUid ?? null);
   const ready = useAuthStore((state) => state.ready);
 
@@ -42,7 +44,8 @@ function AuthHydrator() {
   useEffect(() => {
     if (!ready) return;
     void hydrateAppearance(uid);
-  }, [ready, uid, hydrateAppearance]);
+    void hydrateLocale(uid);
+  }, [ready, uid, hydrateAppearance, hydrateLocale]);
 
   return null;
 }

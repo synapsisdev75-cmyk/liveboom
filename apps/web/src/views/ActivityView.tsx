@@ -24,6 +24,7 @@ import { listenLiveActivity, listenLiveAlerts, type LiveActivityEntry } from '..
 import { listenMyGroups, type LiveGroup } from '../lib/groupsFirestore';
 import { profileHref } from '../lib/profileFirestore';
 import { useAuthStore } from '../store/authStore';
+import { useT } from '../i18n';
 
 type TabId = 'todo' | 'interacciones' | 'amigos' | 'grupos' | 'live' | 'regalos' | 'sistema';
 
@@ -205,6 +206,7 @@ function tabMatches(tab: TabId, kind: FeedKind) {
 }
 
 export function ActivityView() {
+  const tr = useT();
   const profile = useAuthStore((state) => state.profile);
   const ready = useAuthStore((state) => state.ready);
   const [tab, setTab] = useState<TabId>('todo');
@@ -367,7 +369,7 @@ export function ActivityView() {
     <div className="lb-page mx-auto flex w-full max-w-3xl flex-col gap-4 pb-2 sm:gap-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Actividad</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{tr('activity.title')}</h1>
           <p className="mt-1 text-sm text-zinc-500">Todo lo que pasa en LiveBoom y lo que te interesa.</p>
         </div>
         <button
@@ -396,10 +398,22 @@ export function ActivityView() {
                   : 'bg-transparent text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
               }`}
             >
-              {t.label}
+              {t.id === 'todo'
+                ? tr('activity.all')
+                : t.id === 'interacciones'
+                  ? tr('activity.interactions')
+                  : t.id === 'amigos'
+                    ? tr('activity.friends')
+                    : t.id === 'grupos'
+                      ? tr('activity.groups')
+                      : t.id === 'live'
+                        ? tr('activity.live')
+                        : t.id === 'regalos'
+                          ? tr('activity.gifts')
+                          : tr('activity.system')}
               {t.badge ? (
                 <span className="rounded-full bg-violet-400 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-950">
-                  {t.badge}
+                  {tr('activity.new')}
                 </span>
               ) : null}
             </button>

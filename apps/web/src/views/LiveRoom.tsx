@@ -151,6 +151,9 @@ import {
 } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
+import { getLocale } from '../store/localeStore';
+import { TranslatedText } from '../components/i18n/TranslatedText';
+import { useT } from '../i18n';
 
 type LockInfo = {
   giftId: string;
@@ -203,6 +206,7 @@ type ChatMessage = {
   author: string;
   authorUid?: string;
   text: string;
+  sourceLang?: string | null;
   gift?: { giftId: string; emoji: string; name: string };
   levelBadge?: string;
 };
@@ -225,7 +229,7 @@ type SuggestedLive = {
 };
 
 type RoomPayload =
-  | { type: 'chat'; id: string; author: string; text: string }
+  | { type: 'chat'; id: string; author: string; text: string; sourceLang?: string | null }
   | {
       type: 'gift';
       id: string;
@@ -3702,6 +3706,7 @@ function ChatPanel({
   onAcceptInvite?: () => void;
   onDeclineInvite?: () => void;
 }) {
+  const t = useT();
   const room = useRoomContext();
   const profile = useAuthStore((state) => state.profile);
   const coins = profile?.coinsBalance ?? 0;
@@ -3788,6 +3793,7 @@ function ChatPanel({
         author: msg.author,
         authorUid: msg.authorUid || undefined,
         text: msg.text,
+        sourceLang: msg.sourceLang || undefined,
         gift: msg.gift || undefined,
       }));
       setMessages((current) => {
@@ -3801,6 +3807,7 @@ function ChatPanel({
         id: string;
         author: string;
         text: string;
+        sourceLang?: string;
         gift?: ChatMessage['gift'];
       }>;
     }>(`/api/stream/chat/${encodeURIComponent(roomName)}`)
@@ -3815,6 +3822,7 @@ function ChatPanel({
               id: msg.id,
               author: msg.author,
               text: msg.text,
+              sourceLang: msg.sourceLang,
               gift: msg.gift,
             })),
           );
@@ -3845,7 +3853,7 @@ function ChatPanel({
       const data = parseRoomData(payload);
       if (!data) return;
       if (data.type === 'chat') {
-        pushMessage({ id: data.id, author: data.author, text: data.text });
+        pushMessage({ id: data.id, author: data.author, text: data.text, sourceLang: data.sourceLang });
         return;
       }
       if (data.type === 'gift') {
@@ -3890,6 +3898,7 @@ function ChatPanel({
       author,
       authorUid: profile.firebaseUid,
       text: value,
+      sourceLang: getLocale(),
     };
     pushMessage(message);
     setText('');
@@ -3899,6 +3908,7 @@ function ChatPanel({
       authorUid: profile.firebaseUid,
       author,
       text: value,
+      sourceLang: message.sourceLang,
     }).catch((error) => console.error('[chat] firestore', error));
     try {
       await publishRoomData(room, { type: 'chat', ...message });
@@ -4213,7 +4223,8 @@ function ChatPanel({
                   ) : (
                     <span className={nameClass}>{message.author}</span>
                   )}
-                  {' envió '}
+                  {' '}
+                  {t('live.sentGift')}{' '}
                   {message.gift.name}
                 </p>
               </div>
@@ -4237,11 +4248,15 @@ function ChatPanel({
                   )}
                   {isHostMsg ? (
                     <span className="ml-1 rounded bg-violet-500 px-1 py-0.5 text-[9px] font-black text-white">
-                      HOST
+                      {t('live.host')}
                     </span>
                   ) : null}
                   {': '}
-                  {message.text}
+                  <TranslatedText
+                    text={message.text}
+                    sourceLang={message.sourceLang}
+                    mine={Boolean(profile?.firebaseUid && message.authorUid === profile.firebaseUid)}
+                  />
                 </p>
               </div>
             );
@@ -4256,7 +4271,7 @@ function ChatPanel({
             }}
             className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-cyan-500/90 px-3 py-1 text-[10px] font-bold text-zinc-950 shadow"
           >
-            Ir al final · historial
+            {t('live.jumpToEnd')}
           </button>
         ) : null}
       </div>
@@ -4428,7 +4443,7 @@ function ChatPanel({
             onKeyDown={(event) => {
               if (event.key === 'Enter') void sendMessage();
             }}
-            placeholder="Escribe un mensaje..."
+            placeholder={t('chat.writeMessage')}
             className="h-11 flex-1 rounded-xl bg-zinc-900 px-3 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-400"
           />
           <button

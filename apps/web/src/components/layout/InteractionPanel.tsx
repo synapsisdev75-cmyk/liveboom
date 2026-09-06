@@ -7,8 +7,11 @@ import { sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { getSocket } from '../../lib/socket';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
+import { TranslatedText } from '../i18n/TranslatedText';
+import { getLocale, useT } from '../../i18n';
 
 export function InteractionPanel() {
+  const t = useT();
   const messages = useUiStore((s) => s.messages);
   const draft = useUiStore((s) => s.draft);
   const giftOpen = useUiStore((s) => s.giftOpen);
@@ -33,7 +36,7 @@ export function InteractionPanel() {
     if (!text || !stream) return;
     setDraft('');
     const socket = await getSocket();
-    socket.emit('chat:send', { streamId: stream.id, text });
+    socket.emit('chat:send', { streamId: stream.id, text, sourceLang: getLocale() });
   }
 
   async function sendGift(giftId: string) {
@@ -64,20 +67,20 @@ export function InteractionPanel() {
     <aside className="hidden h-full w-[22%] min-w-[300px] max-w-[360px] flex-col border-l border-white/5 bg-zinc-800/45 px-4 py-4 backdrop-blur-xl lg:flex">
       <div>
         <p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-          Top Donadores
+          {t('live.topGifters')}
         </p>
         <div className="mt-3 flex items-end justify-center gap-3">
           {second ? <DonorAvatar donor={second} size="sm" /> : null}
           {first ? <DonorAvatar donor={first} size="lg" /> : null}
           {third ? <DonorAvatar donor={third} size="sm" /> : null}
           {donors.length === 0 ? (
-            <p className="text-xs text-zinc-500">Sé el primero en enviar un regalo</p>
+            <p className="text-xs text-zinc-500">{t('live.firstGift')}</p>
           ) : null}
         </div>
       </div>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col rounded-2xl border border-white/5 bg-boom-panel/80">
-        <div className="border-b border-white/5 px-3 py-2 text-xs font-semibold text-zinc-400">Mensajes</div>
+        <div className="border-b border-white/5 px-3 py-2 text-xs font-semibold text-zinc-400">{t('chat.messages')}</div>
         <ul className="chat-scroll flex-1 space-y-3 overflow-y-auto px-3 py-3">
           {messages.map((msg) => (
             <li key={msg.id} className="flex gap-2">
@@ -98,7 +101,7 @@ export function InteractionPanel() {
                   {msg.author}
                 </p>
                 <p className="text-xs leading-snug text-white">
-                  {msg.text}
+                  <TranslatedText text={msg.text} sourceLang={msg.sourceLang} />
                   {msg.donation ? (
                     <span className="ml-1 font-semibold text-yellow-300">+{msg.donation}</span>
                   ) : null}
@@ -133,10 +136,10 @@ export function InteractionPanel() {
             <input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Envía un mensaje..."
+              placeholder={t('live.sendMessage')}
               className="h-8 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
             />
-            <button type="submit" className="text-boom-cyan" aria-label="Enviar">
+            <button type="submit" className="text-boom-cyan" aria-label={t('chat.send')}>
               <Send size={16} />
             </button>
           </div>

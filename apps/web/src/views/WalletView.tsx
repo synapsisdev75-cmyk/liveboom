@@ -24,6 +24,7 @@ import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { useAuthStore } from '../store/authStore';
+import { useT } from '../i18n';
 
 type WithdrawalRow = {
   id: string;
@@ -59,6 +60,7 @@ function BlastArt({ artUrl, blast }: { artUrl: string; blast: number }) {
 }
 
 export function WalletView() {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const error = useAuthStore((state) => state.error);
   const [openTopup, setOpenTopup] = useState(false);
@@ -140,9 +142,9 @@ export function WalletView() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-400">
-            Mi Billetera
+            {t('nav.walletShort')}
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Blast Liveboom</h1>
+          <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">{t('wallet.title')}</h1>
         </div>
         <button
           type="button"
@@ -327,7 +329,7 @@ export function WalletView() {
 
           {showHistory ? (
             <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
-              <h2 className="text-sm font-semibold text-zinc-200">Historial de transacciones</h2>
+              <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
               {withdrawals.length === 0 ? (
                 <p className="mt-3 text-sm text-zinc-500">
                   Aún no hay retiros. Las recargas aparecen en tu saldo al instante.

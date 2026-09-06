@@ -17,6 +17,7 @@ import {
   User,
   Users,
   Wallet,
+  Languages,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -37,6 +38,8 @@ import { fetchFirestoreProfile, saveFirestoreAvatar, saveFirestoreProfile, updat
 import { dataUrlToBlob, isHttpUrl, uploadUserAvatar } from '../lib/storage';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
+import { LanguageSelector } from '../components/i18n/LanguageSelector';
+import { categoryMessageKey, useT } from '../i18n';
 
 type SettingsTab =
   | 'cuenta'
@@ -44,7 +47,8 @@ type SettingsTab =
   | 'notificaciones'
   | 'preferencias'
   | 'billetera'
-  | 'apariencia';
+  | 'apariencia'
+  | 'idioma';
 
 type EditField = 'displayName' | 'username' | null;
 
@@ -65,13 +69,14 @@ type ProfilePayload = {
 
 const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
 
-const TABS: Array<{ id: SettingsTab; label: string; icon: typeof User }> = [
-  { id: 'cuenta', label: 'Cuenta', icon: User },
-  { id: 'privacidad', label: 'Privacidad y seguridad', icon: Shield },
-  { id: 'notificaciones', label: 'Notificaciones', icon: Bell },
-  { id: 'preferencias', label: 'Preferencias', icon: Eye },
-  { id: 'billetera', label: 'Billetera', icon: Wallet },
-  { id: 'apariencia', label: 'Apariencia', icon: Palette },
+const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabAppearance' | 'settings.tabLanguage'; icon: typeof User }> = [
+  { id: 'cuenta', labelKey: 'settings.tabAccount', icon: User },
+  { id: 'privacidad', labelKey: 'settings.tabPrivacy', icon: Shield },
+  { id: 'notificaciones', labelKey: 'settings.tabNotifications', icon: Bell },
+  { id: 'preferencias', labelKey: 'settings.tabPreferences', icon: Eye },
+  { id: 'idioma', labelKey: 'settings.tabLanguage', icon: Languages },
+  { id: 'billetera', labelKey: 'settings.tabWallet', icon: Wallet },
+  { id: 'apariencia', labelKey: 'settings.tabAppearance', icon: Palette },
 ];
 
 function cropToAvatar(file: File) {
@@ -172,6 +177,7 @@ function RowLink({
 }
 
 export function ProfileView() {
+  const t = useT();
   const firebaseUser = useAuthStore((state) => state.firebaseUser);
   const profile = useAuthStore((state) => state.profile);
   const setProfile = useAuthStore((state) => state.setProfile);
@@ -513,10 +519,10 @@ export function ProfileView() {
   if (!profile && !firebaseUser) {
     return (
       <div className="lb-panel rounded-2xl p-6 text-center text-sm text-zinc-400">
-        <Link to="/login" className="text-cyan-400 underline">
-          Inicia sesión
-        </Link>{' '}
-        para administrar tu cuenta.
+          <Link to="/login" className="text-cyan-400 underline">
+            {t('common.signIn')}
+          </Link>{' '}
+          {t('settings.signInToManage')}
       </div>
     );
   }
@@ -526,8 +532,8 @@ export function ProfileView() {
   return (
     <div className="lb-page mx-auto w-full max-w-5xl space-y-5 pb-2">
       <header>
-        <h1 className="text-2xl font-bold text-white sm:text-3xl">Configuración</h1>
-        <p className="mt-1 text-sm text-zinc-400">Administra tu cuenta, privacidad y preferencias.</p>
+        <h1 className="text-2xl font-bold text-white sm:text-3xl">{t('settings.title')}</h1>
+        <p className="mt-1 text-sm text-zinc-400">{t('settings.subtitle')}</p>
       </header>
 
       <nav className="chat-scroll -mx-1 flex gap-1 overflow-x-auto border-b border-white/[0.06] px-1 pb-px">
@@ -544,7 +550,7 @@ export function ProfileView() {
               }`}
             >
               <Icon size={16} className={active ? 'text-violet-400' : ''} />
-              <span className="whitespace-nowrap">{item.label}</span>
+              <span className="whitespace-nowrap">{t(item.labelKey)}</span>
               {active ? (
                 <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-violet-500" />
               ) : null}
@@ -555,7 +561,7 @@ export function ProfileView() {
 
       {forceComplete && tab === 'cuenta' ? (
         <p className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-50">
-          Completa tu @usuario y fecha de nacimiento, luego guarda los cambios.
+          {t('settings.completeProfile')}
         </p>
       ) : null}
 
@@ -565,8 +571,8 @@ export function ProfileView() {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="space-y-4">
             <Card
-              title="Información de la cuenta"
-              subtitle="Actualiza tu información personal y de contacto."
+              title={t('settings.accountInfo')}
+              subtitle={t('settings.accountInfoSub')}
             >
               <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
                 <div className="relative mx-auto shrink-0 sm:mx-0" ref={avatarMenuRef}>
@@ -584,7 +590,7 @@ export function ProfileView() {
                     onClick={() => setAvatarMenuOpen((value) => !value)}
                     disabled={avatarBusy}
                     className="absolute bottom-0 right-0 grid h-8 w-8 place-items-center rounded-full bg-violet-600 text-white shadow-lg ring-2 ring-[#14151c] disabled:opacity-60"
-                    aria-label="Cambiar foto"
+                    aria-label={t('settings.changePhoto')}
                   >
                     <Camera size={14} />
                   </button>
@@ -599,7 +605,7 @@ export function ProfileView() {
                         className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
                       >
                         <ImageIcon size={14} className="text-cyan-300" />
-                        Galería
+                        {t('settings.gallery')}
                       </button>
                       <button
                         type="button"
@@ -610,7 +616,7 @@ export function ProfileView() {
                         className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs font-semibold text-zinc-200 hover:bg-white/5"
                       >
                         <Camera size={14} className="text-violet-300" />
-                        Cámara
+                        {t('settings.camera')}
                       </button>
                     </div>
                   ) : null}
@@ -633,7 +639,7 @@ export function ProfileView() {
 
                 <div className="min-w-0 flex-1 space-y-3">
                   <InfoRow
-                    label="Nombre"
+                    label={t('settings.name')}
                     value={displayName || '—'}
                     editing={editing === 'displayName'}
                     onEdit={() => setEditing('displayName')}
@@ -778,7 +784,7 @@ export function ProfileView() {
                 <Users size={18} />
               </span>
               <div>
-                <h2 className="text-base font-bold text-white">Programa de referidos</h2>
+                <h2 className="text-base font-bold text-white">{t('settings.referral')}</h2>
                 <p className="text-[11px] text-zinc-500">Invita amigos y gana coins juntos.</p>
               </div>
             </header>
@@ -922,9 +928,15 @@ export function ProfileView() {
         </Card>
       ) : null}
 
+      {tab === 'idioma' ? (
+        <Card title={t('language.title')} subtitle={t('language.subtitle')}>
+          <LanguageSelector />
+        </Card>
+      ) : null}
+
       {tab === 'preferencias' && profile ? (
         <div className="space-y-4">
-          <Card title="Preferencias" subtitle="Biografía, categoría y contenido.">
+          <Card title={t('settings.preferencesTitle')} subtitle={t('settings.preferencesSub')}>
             <form
               className="space-y-4"
               onSubmit={(e) => {
@@ -933,7 +945,7 @@ export function ProfileView() {
               }}
             >
               <label className="grid gap-1.5 text-sm">
-                <span className="font-medium text-zinc-300">Biografía</span>
+                <span className="font-medium text-zinc-300">{t('settings.bio')}</span>
                 <textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
@@ -943,7 +955,7 @@ export function ProfileView() {
                 />
               </label>
               <label className="grid gap-1.5 text-sm">
-                <span className="font-medium text-zinc-300">Categoría principal</span>
+                <span className="font-medium text-zinc-300">{t('settings.mainCategory')}</span>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -951,7 +963,7 @@ export function ProfileView() {
                 >
                   {LIVE_CATEGORIES.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.emoji} {item.label}
+                      {item.emoji} {t(categoryMessageKey(item.id))}
                     </option>
                   ))}
                 </select>
@@ -961,7 +973,7 @@ export function ProfileView() {
                 disabled={busy}
                 className="h-11 w-full rounded-xl bg-violet-600 text-sm font-bold text-white disabled:opacity-50"
               >
-                {busy ? 'Guardando…' : 'Guardar preferencias'}
+                {busy ? t('settings.saving') : t('settings.savePreferences')}
               </button>
             </form>
           </Card>
@@ -970,7 +982,7 @@ export function ProfileView() {
       ) : null}
 
       {tab === 'billetera' && profile ? (
-        <Card title="Billetera" subtitle="Saldo y movimientos de coins.">
+        <Card title={t('settings.tabWallet')} subtitle={t('settings.walletSub')}>
           <p className="text-3xl font-bold text-cyan-300">
             {profile.coinsBalance.toLocaleString('es-CO')}{' '}
             <span className="text-base font-semibold text-zinc-400">coins</span>
@@ -980,20 +992,20 @@ export function ProfileView() {
               to="/billetera"
               className="inline-flex h-11 items-center rounded-xl bg-violet-600 px-4 text-sm font-bold text-white"
             >
-              Abrir billetera
+              {t('settings.openWallet')}
             </Link>
             <Link
               to="/billetera"
               className="inline-flex h-11 items-center rounded-xl border border-emerald-500/40 px-4 text-sm font-bold text-emerald-300"
             >
-              Retirar
+              {t('nav.withdraw')}
             </Link>
           </div>
         </Card>
       ) : null}
 
       {tab === 'apariencia' ? (
-        <Card title="Apariencia" subtitle="Tema visual de LiveBoom.">
+        <Card title={t('settings.tabAppearance')} subtitle={t('settings.appearanceSub')}>
           <p className="text-sm text-zinc-400">
             Por ahora LiveBoom usa el tema oscuro oficial del mockup. Pronto podrás ajustar acentos.
           </p>
@@ -1020,7 +1032,7 @@ export function ProfileView() {
               className="mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-fuchsia-400/40 bg-fuchsia-500/10 text-sm font-semibold text-fuchsia-200"
             >
               <LogOut size={16} />
-              Cerrar sesión
+              {t('settings.logOut')}
             </button>
           ) : null}
         </Card>
@@ -1029,7 +1041,7 @@ export function ProfileView() {
       {profile ? (
         <p className="text-center text-xs text-zinc-600">
           <Link to={`/u/${encodeURIComponent(profile.handle)}`} className="text-cyan-400 hover:underline">
-            Ver mi perfil público
+            {t('settings.viewPublicProfile')}
           </Link>
           {showSuperAdminLink ? (
             <>

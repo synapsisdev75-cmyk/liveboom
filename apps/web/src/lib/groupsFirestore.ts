@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 import { firebaseApp } from './firebase';
+import { getLocale } from '../store/localeStore';
 import { fetchFirestoreProfile } from './profileFirestore';
 
 const db = getFirestore(firebaseApp);
@@ -56,6 +57,7 @@ export type GroupMessage = {
   username: string;
   text: string;
   createdAtMs: number;
+  sourceLang?: string | null;
   mediaUrl?: string | null;
   mediaType?: 'image' | null;
   linkUrl?: string | null;
@@ -297,6 +299,7 @@ export function listenGroupMessages(
             username: String(data.username || ''),
             text: String(data.text || ''),
             createdAtMs: Number(data.createdAtMs || 0),
+            sourceLang: typeof data.sourceLang === 'string' ? data.sourceLang : null,
             mediaUrl: typeof data.mediaUrl === 'string' ? data.mediaUrl : null,
             mediaType: data.mediaType === 'image' ? 'image' : null,
             linkUrl: typeof data.linkUrl === 'string' ? data.linkUrl : null,
@@ -336,6 +339,7 @@ export async function sendGroupMessage(
     text: text || (mediaUrl ? '📷 Foto' : linkUrl ? '🔗 Enlace' : ''),
     createdAt: serverTimestamp(),
     createdAtMs: Date.now(),
+    sourceLang: getLocale(),
   };
   if (mediaUrl) {
     payload.mediaUrl = mediaUrl;

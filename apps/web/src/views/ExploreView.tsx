@@ -28,14 +28,11 @@ import {
 import { isStoryPost } from '../lib/storyLifecycle';
 import { listenExploreVideoPool, listenFollowing, type FsPost } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
+import { useT } from '../i18n';
 
 type ExploreTab = ExploreTabId;
 
-const TABS: { id: ExploreTab; label: string }[] = [
-  { id: 'para_ti', label: 'Para ti' },
-  { id: 'virales', label: 'Virales' },
-  { id: 'recientes', label: 'Recientes' },
-];
+const TABS: ExploreTab[] = ['para_ti', 'virales', 'recientes'];
 
 const EMPTY_QUEUES: Record<ExploreTab, string[]> = {
   para_ti: [],
@@ -80,6 +77,7 @@ function parseTab(value: string | null): ExploreTab {
 }
 
 export function ExploreView() {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const ready = useAuthStore((state) => state.ready);
   const uid = profile?.firebaseUid || '';
@@ -344,16 +342,20 @@ export function ExploreView() {
           <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-black/55 px-1.5 py-1 backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {TABS.map((item) => (
               <button
-                key={item.id}
+                key={item}
                 type="button"
-                onClick={() => selectTab(item.id)}
+                onClick={() => selectTab(item)}
                 className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-                  tab === item.id
+                  tab === item
                     ? 'bg-white text-zinc-950'
                     : 'text-white/75 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                {item.label}
+                {item === 'para_ti'
+                  ? t('explore.forYou')
+                  : item === 'virales'
+                    ? t('explore.viral')
+                    : t('explore.recent')}
               </button>
             ))}
           </div>
