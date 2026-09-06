@@ -2,19 +2,30 @@ import { create } from 'zustand';
 import {
   createUserWithEmailAndPassword,
   deleteUser,
+  GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   updateProfile,
   type User as FirebaseUser,
 } from 'firebase/auth';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { auth, googleProvider } from '../lib/firebase';
 import { api, getApiBase, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
 import { ensureFirestoreProfile, fetchFirestoreProfile, updateFirestoreProfileFields } from '../lib/profileFirestore';
 import { processGiftInbox } from '../lib/giftsFirestore';
 import { readPendingBirthDate, storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
+
+type NativeGoogleAuthPlugin = {
+  signInWithGoogle: () => Promise<{ credential?: { idToken?: string | null } | null }>;
+  signOut: () => Promise<void>;
+};
+
+/** Bridge nativo (@capacitor-firebase/authentication). En web no se usa. */
+const FirebaseAuthentication = registerPlugin<NativeGoogleAuthPlugin>('FirebaseAuthentication');
 
 type AuthState = {
   ready: boolean;
@@ -41,6 +52,9 @@ function mapAuthError(error: unknown): string {
   }
   if (code.includes('weak-password')) return 'La contraseña debe tener al menos 6 caracteres.';
   if (code.includes('popup-closed')) return 'Se cerró la ventana de Google.';
+  if (code.includes('cancelled') || /cancel/i.test(String((error as Error)?.message || ''))) {
+    return 'Inicio de sesión con Google cancelado.';
+  }
   if (code.includes('unauthorized-domain')) {
     return 'Este dominio no está autorizado en Firebase Auth.';
   }
@@ -246,12 +260,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signInGoogle: async (birthYear) => {
     set({ busy: true, error: null });
     try {
-      const cred = await signInWithPopup(auth, googleProvider);
-      if (birthYear && Number.isFinite(birthYear)) {
-        storePendingBirthYear(cred.user.uid, birthYear);
+      let user: FirebaseUser;
+      if (Capacitor.isNativePlatform()) {
+        // WebView no soporta signInWithPopup: tras elegir la cuenta Google queda en blanco.
+        const native = await FirebaseAuthentication.signInWithGoogle();
+        const idToken = native.credential?.idToken;
+        if (!idToken) {
+          throw new Error('Google no devolvió un token de acceso.');
+        }
+        const cred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+        user = cred.user;
+      } else {
+        const cred = await signInWithPopup(auth, googleProvider);
+        user = cred.user;
       }
-      const profile = await syncWithBackend(cred.user);
-      set({ firebaseUser: cred.user, profile });
+      if (birthYear && Number.isFinite(birthYear)) {
+        storePendingBirthYear(user.uid, birthYear);
+      }
+      const profile = await syncWithBackend(user);
+      set({ firebaseUser: user, profile });
     } catch (error) {
       set({ error: mapAuthError(error) });
       throw error;
@@ -262,6 +289,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     disconnectSocket();
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await FirebaseAuthentication.signOut();
+      } catch {
+        // ignore native sign-out errors
+      }
+    }
     await signOut(auth);
     set({ firebaseUser: null, profile: null });
   },

@@ -1,29 +1,29 @@
 ---
-description: Esta máquina trabaja y despliega solo la rama jhonantan, nunca main ni otras ramas
+description: Esta máquina trabaja y despliega la rama main (principal / producción), no jhonantan
 alwaysApply: true
 ---
 
-# LiveBoom: solo rama jhonantan (esta máquina)
+# LiveBoom: rama main (esta máquina)
 
 Repo: `https://github.com/synapsisdev75-cmyk/liveboom`  
-Rama única: **`jhonantan`**
+Rama de trabajo: **`main`** (principal / producción)
 
 ## Git
 
-- Trabajar, commitear y hacer push **solo** a `origin/jhonantan`.
-- **Nunca** push, merge, rebase ni deploy hacia `main` / principal ni hacia otras ramas (`cursor/workspace`, etc.).
-- Antes de cualquier git push o deploy: `git branch --show-current` debe ser `jhonantan`. Si no, parar y cambiar a esa rama.
+- Trabajar, commitear y hacer push a **`origin/main`**.
+- Antes de cualquier git push o deploy: `git branch --show-current` debe ser `main`. Si no, cambiar a esa rama.
+- No usar la rama `jhonantan` ni canales de preview como flujo por defecto en esta máquina.
 
 ## Cuando el usuario pida desplegar
 
-Desplegar **solo el código de `jhonantan`**, nada más:
+Desplegar el código de **`main`** al sitio principal:
 
-1. Confirmar que HEAD es `jhonantan` y está al día con `origin/jhonantan` (o push primero a esa rama).
-2. Hosting: canal de preview de Firebase **`jhonantan`**, no el canal live.
+1. Confirmar que HEAD es `main` (y push a `origin/main` si el usuario lo pide).
+2. Hosting producción (live / www):
    - `npm run build -w apps/web`
-   - `npx firebase hosting:channel:deploy jhonantan --project liveboom-app`
-3. **No** usar `firebase deploy --only hosting` ni `deploy:prod` / `deploy:hosting` (eso publica **liveboomapp.com** / www = principal).
-4. **No** desplegar Functions, Vercel, rules ni indexes al entorno de producción salvo que el usuario diga explícitamente “producción”, “www” o “principal”.
-5. **No** desplegar otras ramas ni “todas”.
+   - `npx firebase deploy --only hosting --project liveboom-app`
+   - (o `npm run deploy:hosting` / `deploy:prod` según el script del repo)
+3. Functions / API cuando el cambio lo requiera: `npm run deploy:api` o `deploy:prod`.
+4. URLs de entrega: **https://liveboomapp.com** / **https://www.liveboomapp.com** / **https://liveboom-app.web.app**
 
-Entregar la URL del canal `jhonantan`, no dar por listo www.
+No dar por listo un preview de canal `jhonantan` cuando el usuario pidió desplegar en esta máquina.

@@ -23,6 +23,10 @@ export function LegalFooter({ compact = false }: { compact?: boolean }) {
         <Link to="/legal/cookies" className="hover:text-boom-cyan">
           Cookies
         </Link>
+        <span aria-hidden="true">·</span>
+        <Link to="/legal/seguridad-infantil" className="hover:text-boom-cyan">
+          Seguridad infantil
+        </Link>
       </div>
     </footer>
   );

@@ -2,8 +2,7 @@
 
 **Última actualización:** 2 de septiembre de 2026  
 **Sitio:** [liveboomapp.com](https://liveboomapp.com)  
-**Contacto privacidad:** privacidad@liveboom.app  
-**Contacto legal:** legal@liveboom.app
+**Contacto privacidad / legal / soporte:** macroreal2026@gmail.com
 
 ---
 
@@ -175,7 +174,7 @@ Solo con **encargados del tratamiento** necesarios para operar LiveBoom, bajo co
 - Los datos se conservan mientras la cuenta esté activa.
 - El contenido publicado puede permanecer en copias de respaldo durante un periodo limitado tras eliminación.
 - Flash Boom expira automáticamente a las 24 h.
-- Puedes solicitar acceso, rectificación o eliminación escribiendo a **privacidad@liveboom.app**, salvo datos que debamos conservar por ley o disputas.
+- Puedes solicitar acceso, rectificación o eliminación escribiendo a **macroreal2026@gmail.com**, salvo datos que debamos conservar por ley o disputas.
 
 ---
 
