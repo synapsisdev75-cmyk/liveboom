@@ -18,6 +18,7 @@ import { buildPostShareUrl, shareContent, type ShareMediaType } from '../../lib/
 import { createRepost, getPostById } from '../../lib/socialFirestore';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { useAuthStore } from '../../store/authStore';
+import { useT, type MessageKey } from '../../i18n';
 import { UserAvatar } from '../profile/UserAvatar';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { EmojiPickerButton } from './EmojiPicker';
@@ -141,6 +142,7 @@ export function ShareModal({
   onCopied,
   onReposted,
 }: Props) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [caption, setCaption] = useState('');
   const [privacy, setPrivacy] = useState<ShareVisibility>('public');
@@ -363,13 +365,13 @@ export function ShareModal({
         <div className="flex shrink-0 items-center border-b border-white/10 px-2 py-2">
           <span className="h-11 w-11 shrink-0" aria-hidden />
           <h3 id="share-modal-title" className="flex-1 text-center text-base font-bold text-white">
-            Compartir
+            {t('share.title')}
           </h3>
           <button
             type="button"
             onClick={onClose}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/15"
-            aria-label="Cerrar"
+            aria-label={t('common.close')}
           >
             <X size={18} />
           </button>
@@ -390,7 +392,7 @@ export function ShareModal({
                   <p className="truncate text-sm font-semibold text-white">@{profile.handle}</p>
                   {origin.handle ? (
                     <p className="truncate text-[11px] text-zinc-400">
-                      Publicación de{' '}
+                      {t('share.postBy')}{' '}
                       {originalPostHref ? (
                         <Link to={originalPostHref} className="font-semibold text-cyan-300 hover:underline">
                           @{origin.handle}
@@ -405,9 +407,9 @@ export function ShareModal({
             ) : (
               <p className="mb-3 text-sm text-zinc-300">
                 <Link to="/login" className="font-semibold text-cyan-300 hover:underline">
-                  Inicia sesión
+                  {t('common.signIn')}
                 </Link>{' '}
-                para republicar en tu feed.
+                {t('share.loginToRepost')}
               </p>
             )}
 
@@ -428,7 +430,7 @@ export function ShareModal({
                     }`}
                   >
                     <Icon size={14} />
-                    {option.label}
+                    {t(`common.${option.id}` as MessageKey)}
                   </button>
                 );
               })}
@@ -467,7 +469,7 @@ export function ShareModal({
                 onClick={() => void handleRepost()}
                 className="inline-flex min-h-11 min-w-[min(100%,9.5rem)] items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-5 text-sm font-bold text-zinc-950 disabled:opacity-50"
               >
-                {busy ? 'Compartiendo…' : 'Compartir ahora'}
+                {busy ? t('actions.sharing') : t('actions.shareNow')}
               </button>
             </div>
           </section>
@@ -477,13 +479,23 @@ export function ShareModal({
           <section>
             <div className="mb-3 flex items-center gap-2">
               <Link2 size={14} className="text-zinc-500" />
-              <h4 className="text-sm font-semibold text-white">Compartir en</h4>
+              <h4 className="text-sm font-semibold text-white">{t('actions.shareOn')}</h4>
             </div>
             <div className="flex flex-wrap justify-start gap-x-1 gap-y-3 sm:gap-x-2">
               {SHARE_DESTINATIONS.map((item) => (
                 <DestinationButton
                   key={item.id}
-                  label={item.id === 'copy' && copied ? 'Copiado' : item.label}
+                  label={
+                    item.id === 'copy' && copied
+                      ? t('actions.copyLink')
+                      : item.id === 'copy'
+                        ? t('share.copyLink')
+                        : item.id === 'groups'
+                          ? t('share.group')
+                          : item.id === 'more'
+                            ? t('common.more')
+                            : item.label
+                  }
                   active={item.id === 'groups' && showGroups}
                   onClick={() => onDestination(item.id)}
                 >
@@ -527,7 +539,7 @@ export function ShareModal({
                           )}
                           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{group.name}</span>
                           <span className="text-[11px] text-zinc-500">
-                            {sendingGroupId === group.id ? 'Enviando…' : 'Enviar'}
+                            {sendingGroupId === group.id ? t('common.sending') : t('common.send')}
                           </span>
                         </button>
                       </li>

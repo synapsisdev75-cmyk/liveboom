@@ -43,6 +43,7 @@ import {
   updatePostVisibility,
 } from '../lib/socialFirestore';
 import { useAuthStore } from '../store/authStore';
+import { useT } from '../i18n';
 import { useUiStore } from '../store/uiStore';
 import { isBoomClipPost, isPublicationPost, canEditOwnedPublication } from '../lib/contentType';
 import { isStoryPost } from '../lib/storyLifecycle';
@@ -102,6 +103,7 @@ function postToReel(post: SocialPost): ReelFeedItem {
 }
 
 export function UserProfileView() {
+  const t = useT();
   const { username: usernameParam } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const username = usernameParam
@@ -586,8 +588,10 @@ export function UserProfileView() {
                 <LevelInsignia levelXp={publicProfile.levelXp} />
               </div>
             </div>
-            {publicProfile.isOwnProfile && profile?.birthDate ? (
-              <p className="mt-1.5 text-xs text-cyan-400">{ageFromIsoDate(profile.birthDate)} años</p>
+            {publicProfile.isOwnProfile && profile?.birthDate && ageFromIsoDate(profile.birthDate) != null ? (
+              <p className="mt-1.5 text-xs text-cyan-400">
+                {t('profile.yearsOld', { age: ageFromIsoDate(profile.birthDate) as number })}
+              </p>
             ) : null}
             {publicProfile.bio ? <p className="mt-1 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
             <div className="lb-profile-toolbar">
@@ -595,13 +599,13 @@ export function UserProfileView() {
                 <button type="button" onClick={() => void openFollowers()} className="lb-profile-stat is-followers">
                   <Users size={11} strokeWidth={2.25} />
                   <strong>{publicProfile.followersCount}</strong>
-                  <span>Seguidores</span>
+                  <span>{t('profile.followers')}</span>
                   <ChevronRight size={10} strokeWidth={2.4} />
                 </button>
                 <button type="button" onClick={() => void openFollowing()} className="lb-profile-stat is-following">
                   <User size={11} strokeWidth={2.25} />
                   <strong>{publicProfile.followingCount}</strong>
-                  <span>Siguiendo</span>
+                  <span>{t('profile.following')}</span>
                   <ChevronRight size={10} strokeWidth={2.4} />
                 </button>
                 <button
@@ -612,7 +616,7 @@ export function UserProfileView() {
                 >
                   <Users size={11} strokeWidth={2.25} />
                   <strong>{publicProfile.friendsCount}</strong>
-                  <span>Amigos</span>
+                  <span>{t('profile.friends')}</span>
                   <ChevronRight size={10} strokeWidth={2.4} />
                 </button>
               </div>
@@ -620,7 +624,7 @@ export function UserProfileView() {
                 <div className="lb-profile-toolbar__actions">
                   <Link to="/perfil/editar" className="lb-profile-action lb-profile-action--edit">
                     <User size={11} strokeWidth={2.25} />
-                    Editar perfil
+                    {t('actions.editProfile')}
                   </Link>
                   <button
                     type="button"
@@ -631,7 +635,7 @@ export function UserProfileView() {
                     className="lb-profile-action lb-profile-action--post"
                   >
                     <Plus size={11} strokeWidth={2.5} />
-                    Nueva publicación
+                    {t('actions.newPost')}
                   </button>
                   <button
                     type="button"
@@ -642,7 +646,7 @@ export function UserProfileView() {
                     className="lb-profile-action lb-profile-action--share"
                   >
                     <Share2 size={11} strokeWidth={2.25} />
-                    Compartir perfil
+                    {t('actions.shareProfile')}
                   </button>
                   <LogoutProfileButton />
                 </div>

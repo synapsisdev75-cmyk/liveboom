@@ -1,6 +1,7 @@
 import { BellOff, MessageSquare, Phone, PhoneOff, Smartphone, Video } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { UserAvatar } from '../profile/UserAvatar';
+import { useT } from '../../i18n';
 
 type Props = {
   name: string;
@@ -109,6 +110,7 @@ export function IncomingCallCard({
   onMuteRing,
   onMessage,
 }: Props) {
+  const t = useT();
   const mobile = useCoarseLayout();
   const title = name || (handle ? `@${handle}` : 'LiveBoom');
   const kind = video ? 'Videollamada' : 'Llamada de voz';
@@ -149,7 +151,7 @@ export function IncomingCallCard({
           type="button"
           className="lb-call-round lb-call-round--decline"
           onClick={onDecline}
-          aria-label="Rechazar"
+          aria-label={t('common.reject')}
           disabled={accepting}
         >
           <PhoneOff size={22} />
@@ -158,15 +160,15 @@ export function IncomingCallCard({
           type="button"
           className="lb-call-round lb-call-round--accept"
           onClick={onAccept}
-          aria-label="Responder"
+          aria-label={t('actions.reply')}
           disabled={accepting}
         >
           {video ? <Video size={22} /> : <Phone size={22} />}
         </button>
       </div>
       <div className="lb-call-incoming__labels">
-        <span>Rechazar</span>
-        <span>Responder</span>
+        <span>{t('common.reject')}</span>
+        <span>{t('actions.reply')}</span>
       </div>
 
       <AnswerSlider onAccept={onAccept} disabled={accepting} />

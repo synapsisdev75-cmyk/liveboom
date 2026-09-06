@@ -9,6 +9,7 @@ import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { EmojiPickerButton } from './EmojiPicker';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { GifPickerSheet } from './GifPickerSheet';
+import { useT } from '../../i18n';
 
 const COMMENT_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
 const COMMENT_VIDEO_MAX_SEC = 60;
@@ -42,8 +43,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
     onPublish,
     disabled = false,
     busy = false,
-    placeholder = 'Escribe un comentario...',
-    overlay = false,
+  placeholder,
+  overlay = false,
     avatarSrc,
     avatarUid,
     username,
@@ -51,6 +52,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
   },
   ref,
 ) {
+  const t = useT();
+  const resolvedPlaceholder = placeholder ?? t('comments.write');
   const [attach, setAttach] = useState<CommentDraftAttachment | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false);
@@ -173,7 +176,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           growMode="comment"
           value={value}
           onChange={onChange}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           disabled={disabled || busy}
           maxLength={280}
           emojiSize={COMMENT_EMOJI_SIZE}
@@ -205,7 +208,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
               type="button"
               className={`lb-comment-bar__tool ${mediaMenuOpen ? 'is-active' : ''}`}
               disabled={disabled || busy}
-              aria-label="Foto o video"
+              aria-label={t('comments.photoOrVideo')}
               aria-expanded={mediaMenuOpen}
               title="Cámara o galería"
               onClick={() => {
@@ -231,8 +234,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
                 >
                   <Image size={16} />
                   <span>
-                    <strong>Galería</strong>
-                    <em>Foto o video</em>
+                    <strong>{t('comments.gallery')}</strong>
+                    <em>{t('comments.photoOrVideo')}</em>
                   </span>
                 </button>
                 <button
@@ -248,8 +251,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
                 >
                   <Camera size={16} />
                   <span>
-                    <strong>Tomar foto</strong>
-                    <em>Cámara del dispositivo</em>
+                    <strong>{t('comments.takePhoto')}</strong>
+                    <em>{t('comments.takePhotoHint')}</em>
                   </span>
                 </button>
                 <button
@@ -265,8 +268,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
                 >
                   <Video size={16} />
                   <span>
-                    <strong>Grabar video</strong>
-                    <em>Si el dispositivo lo permite</em>
+                    <strong>{t('comments.recordVideo')}</strong>
+                    <em>{t('comments.recordVideoHint')}</em>
                   </span>
                 </button>
               </div>
@@ -277,8 +280,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
             type="button"
             className="lb-comment-bar__tool lb-comment-bar__gif"
             disabled={disabled || busy}
-            aria-label="GIF"
-            title="GIF"
+            aria-label={t('common.gif')}
+            title={t('common.gif')}
             onClick={() => {
               setLocalError(null);
               setCameraOpen(false);
@@ -293,8 +296,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
             type="submit"
             className="lb-comment-bar__send"
             disabled={!canSend}
-            aria-label="Enviar"
-            title="Enviar"
+            aria-label={t('comments.send')}
+            title={t('comments.send')}
           >
             <Send size={16} />
           </button>
@@ -324,7 +327,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           setCameraOpen(false);
           applyFile(file);
         }}
-        title={cameraMode === 'video' ? 'Grabar video' : 'Tomar foto'}
+        title={cameraMode === 'video' ? t('comments.recordVideo') : t('comments.takePhoto')}
         allowPhoto
         defaultMode={cameraMode}
         maxDurationSec={COMMENT_VIDEO_MAX_SEC}

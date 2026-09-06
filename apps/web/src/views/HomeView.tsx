@@ -145,6 +145,7 @@ function HomePublicationCard({
   live: ActiveLiveFeedItem | null;
   onEdit?: (post: SocialPost) => void;
 }) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [likes, setLikes] = useState(post.likes || 0);
   const [dislikes, setDislikes] = useState(0);
@@ -324,7 +325,7 @@ function HomePublicationCard({
           className={`lb-action-pill lb-action-pill--comment${showComments ? ' is-on' : ''}`}
         >
           <MessageCircle size={15} />
-          {commentCount > 0 ? commentCount : 'Comentar'}
+          {commentCount > 0 ? commentCount : t('actions.comment')}
         </button>
         </div>
         <div className="lb-pub-card__cluster">

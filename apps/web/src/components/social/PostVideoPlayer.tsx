@@ -55,6 +55,7 @@ import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { useT } from '../../i18n';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 
@@ -181,6 +182,7 @@ export function PostVideoPlayer({
   originalHref = null,
   overlays = [],
 }: Props) {
+  const t = useT();
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
   const isDesktop = useIsDesktop();
@@ -892,7 +894,7 @@ export function PostVideoPlayer({
                 type="button"
                 onClick={toggleMute}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
-                aria-label={muted ? 'Activar sonido' : 'Silenciar'}
+                aria-label={muted ? t('actions.unmute') : t('actions.mute')}
               >
                 {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
               </button>
@@ -907,12 +909,12 @@ export function PostVideoPlayer({
               onWheel={stopCommentTouch}
             >
               <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
-                <p className="text-sm font-semibold text-white">Comentarios</p>
+                <p className="text-sm font-semibold text-white">{t('comments.title')}</p>
                 <button
                   type="button"
                   onClick={() => setCommentsPanelOpen(false)}
                   className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white"
-                  aria-label="Cerrar comentarios"
+                  aria-label={t('comments.close')}
                 >
                   <X size={16} />
                 </button>
@@ -1067,7 +1069,7 @@ export function PostVideoPlayer({
                         type="button"
                         onClick={toggleMute}
                         className="lb-media-fab inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
-                        aria-label={muted ? 'Activar sonido' : 'Silenciar'}
+                        aria-label={muted ? t('actions.unmute') : t('actions.mute')}
                       >
                         {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                       </button>
@@ -1076,7 +1078,7 @@ export function PostVideoPlayer({
                         onClick={openExpand}
                         className="lb-media-fab lb-media-fab--expand inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
                       >
-                        <Maximize2 size={14} /> Expandir
+                        <Maximize2 size={14} /> {t('actions.expand')}
                       </button>
                       {shareUrl ? (
                         <ShareContentButton
@@ -1157,6 +1159,7 @@ export function PostComments({
   /** Sin cabecera propia (panel lateral del visor). */
   embedded?: boolean;
 }) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [comments, setComments] = useState<PostComment[]>([]);
   const [text, setText] = useState('');
@@ -1202,8 +1205,8 @@ export function PostComments({
 
   async function submit(attachment: CommentDraftAttachment | null = null) {
     if (!profile) {
-      setError('Inicia sesión para comentar');
-      throw new Error('Inicia sesión para comentar');
+      setError(t('comments.loginToComment'));
+      throw new Error(t('comments.loginToComment'));
     }
     const body = text.trim();
     if (!body && !attachment) return;
@@ -1345,7 +1348,7 @@ export function PostComments({
               overlay ? 'text-white/70 hover:text-white' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            Responder
+            {t('actions.reply')}
           </button>
         </div>
       </div>
@@ -1374,13 +1377,13 @@ export function PostComments({
           }`}
         >
           <MessageCircle size={12} className="shrink-0" />
-          <span className="truncate">Comentarios</span>
+          <span className="truncate">{t('comments.title')}</span>
           {comments.length > 0 ? (
             <span className={overlay ? 'text-white/50' : 'text-zinc-400'}>{comments.length}</span>
           ) : null}
           {threads.length > 2 ? (
             <span className={`normal-case ${overlay ? 'text-cyan-300' : 'text-cyan-400'}`}>
-              {expanded ? '· ocultar' : '· ver todos'}
+              {expanded ? `· ${t('common.hide')}` : `· ${t('common.seeAll')}`}
             </span>
           ) : null}
         </button>
@@ -1390,7 +1393,7 @@ export function PostComments({
             onClick={() => setExpanded(true)}
             className={`shrink-0 text-[11px] font-semibold ${overlay ? 'text-cyan-300' : 'text-cyan-400'}`}
           >
-            Comentar…
+            {t('actions.commentEllipsis')}
           </button>
         ) : null}
       </div>
@@ -1436,7 +1439,7 @@ export function PostComments({
           <ul ref={listRef} className={listClass}>
             {comments.length === 0 ? (
               <li className={`text-[11px] ${overlay ? 'text-white/45' : 'text-zinc-600'}`}>
-                Sé el primero en comentar.
+                {t('comments.first')}
               </li>
             ) : (
               visibleThreads.map(({ root, replies }) => (
@@ -1465,14 +1468,14 @@ export function PostComments({
                     overlay ? 'bg-cyan-400/20 text-cyan-200' : 'bg-cyan-500/15 text-cyan-300'
                   }`}
                 >
-                  Respondiendo a @{replyTo.username}
+                  {t('comments.replyingTo', { name: replyTo.username })}
                 </span>
                 <button
                   type="button"
                   onClick={() => setReplyTo(null)}
                   className={`shrink-0 text-[11px] font-semibold ${overlay ? 'text-white/55 hover:text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
                 >
-                  Cancelar
+                  {t('common.cancel')}
                 </button>
               </div>
             ) : null}
@@ -1486,10 +1489,10 @@ export function PostComments({
               overlay={overlay}
               placeholder={
                 !profile
-                  ? 'Inicia sesión para comentar'
+                  ? t('comments.loginToComment')
                   : replyTo
-                    ? `Responde a @${replyTo.username}…`
-                    : 'Escribe un comentario...'
+                    ? t('comments.replyTo', { name: replyTo.username })
+                    : t('comments.write')
               }
               avatarSrc={profile?.avatarUrl}
               avatarUid={profile?.firebaseUid}

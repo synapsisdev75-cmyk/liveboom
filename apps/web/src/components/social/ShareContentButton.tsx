@@ -2,6 +2,7 @@ import { Share2 } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import type { ShareMediaType } from '../../lib/shareContent';
 import { ShareModal } from './ShareModal';
+import { useT } from '../../i18n';
 
 type Props = {
   url: string;
@@ -30,10 +31,12 @@ export function ShareContentButton({
   authorUsername,
   className = '',
   buttonClassName = '',
-  label = 'Compartir',
+  label,
   iconOnly = false,
   size = 'sm',
 }: Props) {
+  const t = useT();
+  const resolvedLabel = label ?? t('actions.share');
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const iconSize = size === 'md' ? 18 : 15;
@@ -63,11 +66,11 @@ export function ShareContentButton({
                   size === 'md' ? 'min-h-10' : 'min-h-10'
                 } ${buttonClassName}`
         }
-        aria-label={label}
-        title={label}
+        aria-label={resolvedLabel}
+        title={resolvedLabel}
       >
         <Share2 size={iconSize} />
-        {iconOnly ? null : label}
+        {iconOnly ? null : resolvedLabel}
       </button>
       {note ? <span className="text-[10px] font-semibold text-cyan-300">{note}</span> : null}
       {open ? (
@@ -82,8 +85,8 @@ export function ShareContentButton({
           postId={postId}
           authorUid={authorUid}
           authorUsername={authorUsername}
-          onCopied={() => showNote('Enlace copiado')}
-          onReposted={() => showNote('Publicado en tu feed')}
+          onCopied={() => showNote(t('actions.copyLink'))}
+          onReposted={() => showNote(t('actions.publishedFeed'))}
         />
       ) : null}
     </span>

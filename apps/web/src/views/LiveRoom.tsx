@@ -794,6 +794,7 @@ function CreatorStage({
   onAcceptSalaInvite?: () => void;
   onDeclineSalaInvite?: () => void;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const room = useRoomContext();
   const liveViewport = useLiveViewport();
@@ -1968,8 +1969,8 @@ function CreatorStage({
     const url = `${window.location.origin}/stream/${encodeURIComponent(username)}`;
     const result = await shareContent({
       url,
-      title: `LIVE de @${username} en LiveBoom`,
-      text: 'Mira este LIVE en LiveBoom',
+      title: t('share.liveOf', { name: username }),
+      text: t('share.lookAtLive'),
     });
     setShareNote(
       result === 'shared' ? 'LIVE compartido' : result === 'copied' ? 'Enlace del LIVE copiado' : 'No se pudo compartir',
@@ -1982,8 +1983,8 @@ function CreatorStage({
     const url = `${window.location.origin}${path}`;
     const result = await shareContent({
       url,
-      title: `Perfil de @${username} en LiveBoom`,
-      text: `Mira el perfil de @${username} en LiveBoom`,
+      title: t('share.profileOf', { name: username }),
+      text: t('share.lookAtProfile', { name: username }),
     });
     setShareNote(
       result === 'shared'
@@ -2460,7 +2461,7 @@ function CreatorStage({
                         onDeclineSalaInvite?.();
                       }}
                     >
-                      Rechazar
+                      {t('common.reject')}
                     </button>
                   </div>
                 </div>
@@ -2508,8 +2509,8 @@ function CreatorStage({
             ))}
             {liveEnded && !isHost ? (
               <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-zinc-950/95 px-4 text-center backdrop-blur-sm">
-                <p className="text-lg font-bold text-white sm:text-xl">Dejó de transmitir</p>
-                <p className="text-sm text-zinc-400">Sigue a tus amigos u otros lives:</p>
+                <p className="text-lg font-bold text-white sm:text-xl">{t('liveUi.ended')}</p>
+                <p className="text-sm text-zinc-400">{t('liveUi.followFriendsLives')}</p>
                 {suggestions.length > 0 ? (
                   <div className="mt-1 grid w-full max-w-sm grid-cols-1 gap-2 sm:grid-cols-2">
                     {suggestions.map((stream) => (
@@ -2533,7 +2534,7 @@ function CreatorStage({
                           <span className="block truncate text-sm font-semibold text-white">
                             {stream.displayName || `@${stream.username}`}
                             {'_friend' in stream && stream._friend ? (
-                              <span className="ml-1 text-[10px] font-bold text-cyan-300">Amigo</span>
+                              <span className="ml-1 text-[10px] font-bold text-cyan-300">{t('liveUi.friend')}</span>
                             ) : null}
                           </span>
                           <span className="block truncate text-[11px] text-zinc-400">
@@ -2599,7 +2600,7 @@ function CreatorStage({
                 type="button"
                 onClick={() => void shareLive()}
                 className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur hover:bg-black/75"
-                aria-label="Compartir"
+                aria-label={t('actions.share')}
               >
                 <Share2 size={15} />
               </button>
@@ -2612,7 +2613,7 @@ function CreatorStage({
                     : 'bg-black/55 text-white hover:bg-black/75'
                 }`}
               >
-                <MonitorUp size={14} /> Pantalla
+                <MonitorUp size={14} /> {t('actions.screen')}
               </button>
               <button
                 type="button"
@@ -2686,7 +2687,7 @@ function CreatorStage({
                 type="button"
                 onClick={() => void shareLive()}
                 className="grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
-                aria-label="Compartir"
+                aria-label={t('actions.share')}
               >
                 <Share2 size={15} />
               </button>
@@ -4047,7 +4048,7 @@ function ChatPanel({
               }}
               className="ml-1 rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-200"
             >
-              Rechazar
+              {t('common.reject')}
             </button>
           </div>
         ) : null}
@@ -4060,7 +4061,7 @@ function ChatPanel({
             }}
             className="inline-flex items-center gap-1.5 rounded-full bg-black/65 px-3 py-2 text-xs font-semibold text-white backdrop-blur ring-1 ring-white/15"
           >
-            <MessageCircle size={14} /> Comentario
+            <MessageCircle size={14} /> {t('actions.commentLive')}
           </button>
           <button
             type="button"
@@ -4070,7 +4071,7 @@ function ChatPanel({
             }}
             className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-3 py-2 text-xs font-bold text-zinc-950"
           >
-            <Gift size={14} /> Regalos
+            <Gift size={14} /> {t('actions.gifts')}
           </button>
         </div>
       </div>
@@ -4153,7 +4154,7 @@ function ChatPanel({
               }}
               className="shrink-0 rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold text-zinc-200"
             >
-              Rechazar
+              {t('common.reject')}
             </button>
           </div>
         ) : null}

@@ -13,6 +13,7 @@ import {
   type LiveBoomReactionUser,
 } from '../../lib/liveBoomReactionService';
 import { useAuthStore } from '../../store/authStore';
+import { useT } from '../../i18n';
 
 type Size = 'xs' | 'sm' | 'md';
 
@@ -138,6 +139,7 @@ function ReactionChip({
   onTap: () => void;
   onWho: () => void;
 }) {
+  const t = useT();
   const like = kind === 'like';
   const src = like
     ? active
@@ -148,7 +150,7 @@ function ReactionChip({
       : LIVEBOOM_REACTION_ASSETS.dislikeOff;
   const rail = layout === 'rail';
   const chat = layout === 'chat';
-  const label = like ? 'Me gusta' : 'No me gusta';
+  const label = like ? t('actions.like') : t('actions.dislike');
 
   return (
     <span className={`relative inline-flex ${rail ? 'flex-col items-center' : 'items-center gap-0.5'}`}>
@@ -159,7 +161,7 @@ function ReactionChip({
           event.stopPropagation();
           onTap();
         }}
-        aria-label={active ? `Quitar ${label}` : label}
+        aria-label={active ? t('actions.removeLike') : label}
         aria-pressed={active}
         className={`lb-reaction-chip ${SIZE_CLASS[size]} ${like ? 'is-like' : 'is-dislike'} ${
           active ? 'is-active' : ''
@@ -191,7 +193,7 @@ function ReactionChip({
                   active ? (like ? 'text-amber-300' : 'text-rose-300') : count > 0 ? 'text-zinc-300' : 'text-zinc-600'
                 }`
         }`}
-        aria-label={`Ver quién dio ${label}`}
+        aria-label={t('actions.whoReacted', { label })}
       >
         {count}
       </button>
@@ -212,6 +214,7 @@ function ReactionPeople({
   focus: 'like' | 'dislike';
   onClose: () => void;
 }) {
+  const t = useT();
   const [tab, setTab] = useState<'like' | 'dislike'>(focus);
   const users = tab === 'like' ? likeUsers : dislikeUsers;
   return (
@@ -219,7 +222,7 @@ function ReactionPeople({
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-400">{title}</p>
         <button type="button" onClick={onClose} className="text-[10px] text-zinc-500 hover:text-white">
-          Cerrar
+          {t('common.close')}
         </button>
       </div>
       <div className="mb-1.5 grid grid-cols-2 gap-1">
@@ -230,7 +233,7 @@ function ReactionPeople({
             tab === 'like' ? 'bg-amber-500/20 text-amber-200' : 'text-zinc-400'
           }`}
         >
-          Me gusta · {likeUsers.length}
+          {t('actions.like')} · {likeUsers.length}
         </button>
         <button
           type="button"
@@ -239,7 +242,7 @@ function ReactionPeople({
             tab === 'dislike' ? 'bg-rose-500/20 text-rose-200' : 'text-zinc-400'
           }`}
         >
-          No me gusta · {dislikeUsers.length}
+          {t('actions.dislike')} · {dislikeUsers.length}
         </button>
       </div>
       <ul className="max-h-40 space-y-1 overflow-y-auto">

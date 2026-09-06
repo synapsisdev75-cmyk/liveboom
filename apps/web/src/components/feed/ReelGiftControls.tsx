@@ -9,6 +9,7 @@ import { FloatingGift } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
 import { CoinModal } from '../wallet/CoinModal';
+import { useT } from '../../i18n';
 
 type FloatItem = { id: string; giftId: string; left: number; senderName?: string };
 
@@ -29,6 +30,7 @@ export function ReelGiftControls({
   inline = false,
   onOpenChange,
 }: Props) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
   const coins = profile?.coinsBalance ?? 0;
@@ -110,7 +112,7 @@ export function ReelGiftControls({
       pushFloat(catalog.id, senderName);
       setOpenGifts(false);
     } catch (error) {
-      setGiftError(error instanceof Error ? error.message : 'No se pudo enviar el regalo');
+      setGiftError(error instanceof Error ? error.message : t('live.giftFailed'));
       setOpenGifts(true);
     } finally {
       setSendingGift(null);
@@ -144,14 +146,14 @@ export function ReelGiftControls({
                     : 'bg-black/55 text-amber-300'
                 }`
           }
-          aria-label="Regalar"
-          title={isSelf ? 'No puedes enviarte regalos a ti mismo' : 'Enviar regalo'}
+          aria-label={t('actions.gift')}
+          title={isSelf ? t('actions.noSelfGift') : t('actions.sendGift')}
         >
           <Gift size={inline ? 15 : 20} />
-          {inline ? 'Regalar' : null}
+          {inline ? t('actions.gift') : null}
         </button>
         {!inline ? (
-          <span className="text-[11px] font-bold text-white drop-shadow">Regalar</span>
+          <span className="text-[11px] font-bold text-white drop-shadow">{t('actions.gift')}</span>
         ) : null}
       </div>
 

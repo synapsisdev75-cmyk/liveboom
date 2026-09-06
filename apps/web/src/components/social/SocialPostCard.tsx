@@ -35,6 +35,7 @@ import { isRepostPost } from '../../lib/socialFirestore';
 import type { Reconstruction3DPayload } from '../../lib/reconstruction3d/types';
 import { Reconstruction3DViewer } from './Reconstruction3DViewer';
 import { Reconstruction3DBadge } from './Reconstruction3DBadge';
+import { useT } from '../../i18n';
 
 type Props = {
   username: string;
@@ -58,6 +59,7 @@ export function FollowButton({
   variant = 'default',
   size = 'md',
 }: Props) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [following, setFollowing] = useState(initialFollowing);
   const [busy, setBusy] = useState(false);
@@ -102,7 +104,7 @@ export function FollowButton({
         onChange?.(true);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo actualizar');
+      setError(err instanceof Error ? err.message : t('common.actionFailed'));
     } finally {
       setBusy(false);
     }
@@ -130,7 +132,7 @@ export function FollowButton({
         }`}
       >
         {outline ? null : following ? <UserMinus size={16} /> : <UserPlus size={16} />}
-        {following ? 'Siguiendo' : 'Seguir'}
+        {following ? t('actions.following') : t('actions.follow')}
       </button>
       {error ? <p className="text-[10px] text-fuchsia-300">{error}</p> : null}
     </div>
@@ -279,6 +281,7 @@ function FriendManageRow({
   initiallyFollowing: boolean;
   onNavigate: () => void;
 }) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const setToast = useUiStore((state) => state.setToast);
   const [following, setFollowing] = useState(initiallyFollowing);
@@ -318,10 +321,10 @@ function FriendManageRow({
           hint,
         );
         setFollowing(true);
-        flash(`Ahora sigues a @${user.username}`, 'success');
+        flash(t('actions.nowFollowing', { name: user.username }), 'success');
       }
     } catch {
-      flash('No se pudo completar la acción. Intenta nuevamente.', 'error');
+      flash(t('common.actionFailed'), 'error');
     } finally {
       setBusy(null);
     }
@@ -332,17 +335,17 @@ function FriendManageRow({
     setBusy('remove');
     try {
       await removeFriendship(profile.firebaseUid, user.username);
-      flash(`@${user.username} fue eliminado de tus amigos`, 'success');
+      flash(t('profile.removedFriend', { name: user.username }), 'success');
       setConfirmRemove(false);
       setMenuOpen(false);
     } catch {
-      flash('No se pudo completar la acción. Intenta nuevamente.', 'error');
+      flash(t('common.actionFailed'), 'error');
     } finally {
       setBusy(null);
     }
   }
 
-  const followLabel = following ? 'Dejar de seguir' : 'Seguir';
+  const followLabel = following ? t('actions.unfollow') : t('actions.follow');
   const followBusy = busy === 'follow';
   const removeBusy = busy === 'remove';
 
@@ -626,6 +629,7 @@ function StandardPostCard({
   onClosePhotoExpand?: () => void;
   onVideoExpand?: () => void;
 }) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [busy, setBusy] = useState(false);
   const [reactError, setReactError] = useState<string | null>(null);
@@ -850,7 +854,7 @@ function StandardPostCard({
               }
             >
               {pubChrome ? <Trash2 size={12} strokeWidth={2.2} /> : null}
-              Eliminar
+              {t('common.delete')}
             </button>
           ) : null}
           </div>
@@ -885,7 +889,7 @@ function StandardPostCard({
             }
           >
             <MessageCircle size={15} className={pubChrome ? undefined : 'text-cyan-300'} />
-            {commentCount > 0 ? commentCount : 'Comentar'}
+            {commentCount > 0 ? commentCount : t('actions.comment')}
           </button>
         </div>
         <div className={pubChrome ? 'lb-pub-card__cluster' : 'flex shrink-0 items-center gap-2'}>
@@ -921,7 +925,7 @@ function StandardPostCard({
             }
           >
             {pubChrome ? <Pencil size={12} strokeWidth={2.2} /> : null}
-            Editar
+            {t('common.edit')}
           </button>
         ) : null}
         {canDelete && !canChangeVisibility ? (
@@ -937,7 +941,7 @@ function StandardPostCard({
             }
           >
             {pubChrome ? <Trash2 size={12} strokeWidth={2.2} /> : null}
-            Eliminar
+            {t('common.delete')}
           </button>
         ) : null}
         </div>

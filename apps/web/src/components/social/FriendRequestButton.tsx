@@ -11,6 +11,7 @@ import {
   type FriendshipStatus,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { useT } from '../../i18n';
 
 export type { FriendshipStatus };
 
@@ -31,6 +32,7 @@ export function FriendRequestButton({
   compact,
   onChange,
 }: Props) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [status, setStatus] = useState(initialStatus);
   const [busy, setBusy] = useState(false);
@@ -64,7 +66,7 @@ export function FriendRequestButton({
       setStatus(next);
       onChange?.(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo completar la acción');
+      setError(err instanceof Error ? err.message : t('common.actionFailed'));
     } finally {
       setBusy(false);
     }
@@ -73,7 +75,7 @@ export function FriendRequestButton({
   const body = (() => {
     if (status === 'blocked') {
       return (
-        <span className={`${className} border border-zinc-700 text-zinc-500`}>Bloqueado</span>
+        <span className={`${className} border border-zinc-700 text-zinc-500`}>{t('actions.blocked')}</span>
       );
     }
 
@@ -85,14 +87,14 @@ export function FriendRequestButton({
             className={`${className} border border-white/15 bg-zinc-800 text-zinc-100`}
           >
             <UserRound size={compact ? 14 : 16} />
-            Ver perfil
+            {t('actions.viewProfile')}
           </Link>
           <Link
             to={`/mensajes?con=${encodeURIComponent(username)}`}
             className={`${className} border border-cyan-500/40 bg-cyan-500/15 text-cyan-200`}
           >
             <MessageCircle size={compact ? 14 : 16} />
-            Mensaje
+            {t('actions.message')}
           </Link>
         </div>
       );
@@ -111,7 +113,7 @@ export function FriendRequestButton({
           }
           className={`${className} border border-zinc-600 bg-zinc-800 text-zinc-300`}
         >
-          {compact ? 'Pendiente' : 'Solicitud enviada'}
+          {compact ? t('common.pending') : t('actions.requestSent')}
         </button>
       );
     }
@@ -130,7 +132,7 @@ export function FriendRequestButton({
             }
             className={`${className} bg-emerald-500/20 text-emerald-300`}
           >
-            <UserCheck size={compact ? 14 : 16} /> Aceptar
+            <UserCheck size={compact ? 14 : 16} /> {t('common.accept')}
           </button>
           <button
             type="button"
@@ -143,7 +145,7 @@ export function FriendRequestButton({
             }
             className={`${className} border border-zinc-600 text-zinc-400`}
           >
-            <UserX size={compact ? 14 : 16} /> Rechazar
+            <UserX size={compact ? 14 : 16} /> {t('common.reject')}
           </button>
         </div>
       );
@@ -172,7 +174,7 @@ export function FriendRequestButton({
         className={`${className} bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-zinc-950`}
       >
         <UserPlus size={compact ? 14 : 16} className={compact ? '' : 'inline'} />{' '}
-        {compact ? 'Amistad' : 'Solicitud de amistad'}
+        {compact ? t('actions.friendship') : t('actions.friendRequest')}
       </button>
     );
   })();

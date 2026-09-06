@@ -507,10 +507,10 @@ export function SearchView() {
                     }`}
                   >
                     {user.friendshipStatus === 'friends'
-                      ? 'Amigos'
+                      ? t('common.friends')
                       : user.friendshipStatus === 'pending_sent'
-                        ? 'Pendiente'
-                        : 'Seguir'}
+                        ? t('common.pending')
+                        : t('actions.follow')}
                   </button>
                 </li>
               ))}
@@ -527,7 +527,7 @@ export function SearchView() {
             <h2 className="text-sm font-bold text-white">{t('search.friendRequests')}</h2>
             {incoming.length > 0 ? (
               <span className="rounded-full bg-fuchsia-500/90 px-2 py-0.5 text-[10px] font-black text-white">
-                {incoming.length} nueva{incoming.length === 1 ? '' : 's'}
+                        {incoming.length} {incoming.length === 1 ? t('search.newOne') : t('search.newMany')}
               </span>
             ) : null}
           </div>
@@ -537,7 +537,7 @@ export function SearchView() {
               disabled={reqPage <= 0}
               onClick={() => setReqPage((p) => Math.max(0, p - 1))}
               className="grid h-8 w-8 place-items-center rounded-full text-zinc-500 hover:bg-white/5 disabled:opacity-30"
-              aria-label="Anterior"
+              aria-label={t('search.previous')}
             >
               <ChevronLeft size={16} />
             </button>
@@ -546,7 +546,7 @@ export function SearchView() {
               disabled={reqPage >= maxPage}
               onClick={() => setReqPage((p) => Math.min(maxPage, p + 1))}
               className="grid h-8 w-8 place-items-center rounded-full text-zinc-500 hover:bg-white/5 disabled:opacity-30"
-              aria-label="Siguiente"
+              aria-label={t('search.next')}
             >
               <ChevronRight size={16} />
             </button>
@@ -563,7 +563,7 @@ export function SearchView() {
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            Recibidas ({incoming.length})
+            {t('search.received', { count: incoming.length })}
           </button>
           <button
             type="button"
@@ -574,7 +574,7 @@ export function SearchView() {
                 : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            Enviadas ({outgoing.length})
+            {t('search.sent', { count: outgoing.length })}
           </button>
         </div>
 
@@ -585,8 +585,8 @@ export function SearchView() {
         {pageItems.length === 0 ? (
           <p className="mt-4 rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-xs text-zinc-500">
             {reqTab === 'incoming'
-              ? 'Nadie te ha enviado solicitud todavía.'
-              : 'No has enviado solicitudes pendientes.'}
+              ? t('search.noIncoming')
+              : t('search.noOutgoing')}
           </p>
         ) : (
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -733,7 +733,7 @@ export function SearchView() {
                         <span className="h-4 w-4 rounded-full bg-zinc-700 ring-1 ring-[#14151c]" />
                         <span className="h-4 w-4 rounded-full bg-zinc-600 ring-1 ring-[#14151c]" />
                       </span>
-                      en común
+                      {t('search.inCommon')}
                     </p>
                     <button
                       type="button"
@@ -741,7 +741,7 @@ export function SearchView() {
                       onClick={() => void followSuggestion(user)}
                       className={`mt-3 flex h-9 w-full items-center justify-center rounded-full text-[11px] font-bold disabled:opacity-60 ${GRADIENT_BTN}`}
                     >
-                      {user.friendshipStatus === 'pending_sent' ? 'Pendiente' : 'Seguir'}
+                      {user.friendshipStatus === 'pending_sent' ? t('common.pending') : t('actions.follow')}
                     </button>
                   </article>
                 );

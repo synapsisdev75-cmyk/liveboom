@@ -1,5 +1,6 @@
 import { Coins, Eye, Gift, Heart, MapPin, Radio, Timer } from 'lucide-react';
 import { GiftIcon } from '../FloatingGift';
+import { useT } from '../../../i18n';
 
 export type HostLiveStatSnapshot = {
   startedAt?: string;
@@ -240,6 +241,7 @@ export function ViewerLiveInfoBar({
   coins = 0,
   isSelf,
 }: ViewerMetaProps) {
+  const t = useT();
   return (
     <div className="lb-viewer-info pointer-events-auto mt-2 hidden w-full gap-3 lg:flex">
       <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -281,7 +283,7 @@ export function ViewerLiveInfoBar({
                 }`}
               >
                 <Heart size={12} fill={following ? 'currentColor' : 'none'} />
-                {following ? 'Siguiendo' : 'Seguir'}
+                {following ? t('actions.following') : t('actions.follow')}
               </button>
             </div>
           ) : null}

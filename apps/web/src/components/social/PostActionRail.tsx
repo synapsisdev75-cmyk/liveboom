@@ -7,6 +7,7 @@ import { UserAvatar } from '../profile/UserAvatar';
 import { LiveBoomReactionControl } from './LiveBoomReactionControl';
 import { ShareContentButton } from './ShareContentButton';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
+import { useT } from '../../i18n';
 
 export function OverlayIconButton({
   children,
@@ -89,7 +90,7 @@ export function PostActionRail({
   onToggleComments,
   shareUrl,
   shareTitle = 'LiveBoom',
-  shareText = 'Mira esto en LiveBoom',
+  shareText,
   mediaUrl,
   mediaType = 'photo',
   commentsPanelOpen = false,
@@ -98,8 +99,10 @@ export function PostActionRail({
   anchor = 'viewport',
   layout = 'default',
 }: Props) {
+  const t = useT();
   const profilePath =
     authorUsername || authorUid ? profileHref(authorUsername || 'user', authorUid) : null;
+  const resolvedShareText = shareText ?? t('share.lookAtThis');
   const isAsideRail = layout === 'aside';
   const isCornerRail = layout === 'corner' && anchor === 'media';
   const isMediaRail = anchor === 'media' || isCornerRail || isAsideRail;
@@ -140,8 +143,8 @@ export function PostActionRail({
           to={profilePath}
           onClick={(e) => e.stopPropagation()}
           className="lb-action-rail__avatar-wrap mb-0.5"
-          aria-label={authorUsername ? `Perfil @${authorUsername}` : 'Ver perfil'}
-          title={authorUsername ? `@${authorUsername}` : 'Perfil'}
+          aria-label={authorUsername ? t('actions.profileOf', { name: authorUsername }) : t('actions.viewProfile')}
+          title={authorUsername ? `@${authorUsername}` : t('nav.profile')}
         >
           <UserAvatar
             uid={authorUid}
@@ -185,7 +188,7 @@ export function PostActionRail({
           <MessageCircle className="lb-action-rail__icon" size={20} />
         </OverlayIconButton>
         <span className="lb-action-rail__label min-h-[14px] font-bold text-white drop-shadow">
-          {commentCount > 0 ? commentCount : 'Comentar'}
+          {commentCount > 0 ? commentCount : t('actions.comment')}
         </span>
       </div>
 
@@ -193,7 +196,7 @@ export function PostActionRail({
         <ShareContentButton
           url={shareUrl}
           title={shareTitle}
-          text={shareText}
+          text={resolvedShareText}
           mediaUrl={mediaUrl}
           mediaType={mediaType}
           postId={postId}

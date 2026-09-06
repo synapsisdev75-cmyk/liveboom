@@ -17,6 +17,7 @@ import {
   type PostReactionUser,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { useT } from '../../i18n';
 import { EmojiText } from './EmojiText';
 import { PostReactionButtons } from './PostReactionButtons';
 import { PostMediaCarousel } from './PostMediaCarousel';
@@ -81,6 +82,7 @@ function OriginalPostEmbed({
   fallbackUid?: string | null;
   onInteracted?: () => void;
 }) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const [origin, setOrigin] = useState<FsPost | null | undefined>(undefined);
   const [likes, setLikes] = useState(0);
@@ -267,7 +269,7 @@ function OriginalPostEmbed({
               }`}
             >
               <MessageCircle size={15} className="text-cyan-300" />
-              {commentCount > 0 ? commentCount : 'Comentar'}
+              {commentCount > 0 ? commentCount : t('actions.comment')}
             </button>
             {origin.username ? (
               <span onClick={() => onInteracted?.()}>

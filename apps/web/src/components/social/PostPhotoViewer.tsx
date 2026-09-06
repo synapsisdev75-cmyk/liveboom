@@ -22,6 +22,7 @@ import { StorySegmentBar } from './StorySegmentBar';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 import { STORY_PHOTO_DURATION_SEC } from '../../lib/storyLifecycle';
+import { useT } from '../../i18n';
 import {
   classifyStoryGesture,
   STORY_WHEEL_COOLDOWN_MS,
@@ -96,6 +97,7 @@ export function PostPhotoViewer({
   originalHref = null,
   overlays = [],
 }: Props) {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const isDesktop = useIsDesktop();
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
@@ -471,12 +473,12 @@ export function PostPhotoViewer({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
-              <p className="text-sm font-semibold text-white">Comentarios</p>
+              <p className="text-sm font-semibold text-white">{t('comments.title')}</p>
               <button
                 type="button"
                 onClick={() => setCommentsOpen(false)}
                 className="grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white"
-                aria-label="Cerrar comentarios"
+                aria-label={t('comments.close')}
               >
                 <X size={16} />
               </button>
@@ -501,7 +503,7 @@ export function PostPhotoViewer({
           type="button"
           onClick={openExpand}
           className="block w-full"
-          aria-label="Expandir imagen"
+          aria-label={t('actions.expandImage')}
         >
           <PublicationMedia
             src={src}
@@ -512,7 +514,7 @@ export function PostPhotoViewer({
               <>
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
                 <span className="lb-media-fab lb-media-fab--expand absolute bottom-2 right-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
-                  <Maximize2 size={14} /> Expandir
+                  <Maximize2 size={14} /> {t('actions.expand')}
                 </span>
                 {shareUrl ? (
                   <span className="absolute bottom-2 left-2">

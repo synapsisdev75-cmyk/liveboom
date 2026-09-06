@@ -10,22 +10,23 @@ import {
 import { Logo } from '../brand/Logo';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore, type NavId } from '../../store/uiStore';
-
-const navItems: { id: NavId; label: string; icon: typeof Home }[] = [
-  { id: 'home', label: 'Inicio', icon: Home },
-  { id: 'explore', label: 'Explorar Lives', icon: Compass },
-  { id: 'messages', label: 'Mensajes', icon: MessageCircle },
-  { id: 'wallet', label: 'Mi Billetera', icon: Wallet },
-  { id: 'profile', label: 'Perfil', icon: UserRound },
-];
+import { useT } from '../../i18n';
 
 export function Sidebar() {
+  const t = useT();
   const nav = useUiStore((s) => s.nav);
   const setNav = useUiStore((s) => s.setNav);
   const streams = useUiStore((s) => s.streams);
   const openStream = useUiStore((s) => s.openStream);
   const profile = useAuthStore((s) => s.profile);
   const logout = useAuthStore((s) => s.logout);
+  const navItems: { id: NavId; label: string; icon: typeof Home }[] = [
+    { id: 'home', label: t('nav.home'), icon: Home },
+    { id: 'explore', label: t('nav.explore'), icon: Compass },
+    { id: 'messages', label: t('nav.messages'), icon: MessageCircle },
+    { id: 'wallet', label: t('nav.wallet'), icon: Wallet },
+    { id: 'profile', label: t('nav.profile'), icon: UserRound },
+  ];
 
   return (
     <aside className="flex h-full w-full max-w-[300px] flex-col border-r border-white/5 bg-[#0A0A0B] px-4 py-5 lg:w-[20%] lg:min-w-[250px]">
@@ -57,7 +58,7 @@ export function Sidebar() {
 
       <div className="mt-8 flex-1 overflow-hidden">
         <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-          En vivo
+          {t('actions.liveNow')}
         </p>
         <ul className="mt-3 space-y-2">
           {streams.slice(0, 6).map((stream) => (
@@ -77,7 +78,7 @@ export function Sidebar() {
                   <span className="text-xs text-zinc-500">{stream.creator.handle}</span>
                 </span>
                 <span className="rounded-md bg-boom-fuchsia/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-boom-fuchsia">
-                  EN VIVO
+                  {t('actions.liveNow')}
                 </span>
               </button>
             </li>
@@ -95,7 +96,7 @@ export function Sidebar() {
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-boom-cyan to-[#7B5CFF] py-3 text-sm font-bold text-zinc-950 shadow-glow transition hover:brightness-110"
       >
         <Radio size={16} />
-        Transmitir
+        {t('nav.goLive')}
       </button>
       <button
         type="button"
@@ -103,7 +104,7 @@ export function Sidebar() {
         className="mt-2 flex items-center justify-center gap-2 py-2 text-xs text-zinc-500 hover:text-white"
       >
         <LogOut size={12} />
-        Cerrar sesión
+        {t('settings.logOut')}
       </button>
     </aside>
   );

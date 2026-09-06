@@ -27,6 +27,7 @@ import { MyPromotionsModal } from '../ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../ads/PublicidadSidebarCard';
 import { FollowButton } from '../social/SocialPostCard';
+import { useT } from '../../i18n';
 import {
   joinGroup,
   listenMyGroups,
@@ -150,10 +151,11 @@ function SuggestedCreatorActions({
   variant?: 'outline' | 'default';
   loginClassName?: string;
 }) {
+  const t = useT();
   if (!profile) {
     return (
       <Link to="/login" className={loginClassName}>
-        Seguir
+        {t('actions.follow')}
       </Link>
     );
   }
@@ -175,7 +177,7 @@ function SuggestedCreatorActions({
         onClick={() => onIgnore(user.uid)}
         className="min-h-8 rounded-full border border-rose-500/70 bg-rose-600/25 px-2.5 text-[10px] font-bold text-rose-300 transition hover:bg-rose-600/40 hover:text-white"
       >
-        Ignorar
+        {t('common.ignore')}
       </button>
     </div>
   );
@@ -1274,6 +1276,7 @@ function SettingsRail() {
 }
 
 function DiscoveryRail() {
+  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const locationPath = useLocation().pathname;
   const onGroups = locationPath.startsWith('/grupos');
@@ -1407,7 +1410,7 @@ function DiscoveryRail() {
                 onClick={() => void shareLocation()}
                 className="mt-2 min-h-9 w-full rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-200"
               >
-                {locBusy ? '…' : 'Compartir ubicación'}
+                {locBusy ? '…' : t('actions.shareLocation')}
               </button>
             ) : (
               <button

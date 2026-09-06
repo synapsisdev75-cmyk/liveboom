@@ -605,7 +605,7 @@ export function ActivityView() {
                     to={profileHref(item.username, item.uid)}
                     className="shrink-0 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 px-3 py-1.5 text-[11px] font-bold text-white"
                   >
-                    Seguir también
+                    {tr('actions.followAlso')}
                   </Link>
                 ) : item.thumbUrl ? (
                   <img

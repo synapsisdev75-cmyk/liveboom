@@ -5,8 +5,10 @@ import { getSocket } from '../../lib/socket';
 import { useUiStore, type Donor } from '../../store/uiStore';
 import { FloatingGift } from './FloatingGift';
 import { LivePlayer } from './LivePlayer';
+import { useT } from '../../i18n';
 
 export function LiveRoom() {
+  const t = useT();
   const stream = useUiStore((s) => s.activeStream);
   const bursts = useUiStore((s) => s.bursts);
   const dismissBurst = useUiStore((s) => s.dismissBurst);
@@ -74,7 +76,7 @@ export function LiveRoom() {
 
         <div className="absolute left-4 top-4 flex items-center gap-3">
           <span className="live-dot flex items-center gap-1.5 rounded-md bg-boom-fuchsia px-2 py-1 text-[11px] font-bold text-white">
-            <Radio size={11} /> EN VIVO
+            <Radio size={11} /> {t('actions.liveNow')}
           </span>
           <div className="flex items-center gap-2 rounded-full bg-black/50 px-2 py-1 backdrop-blur-md">
             <img src={stream.creator.avatar} alt="" className="h-8 w-8 rounded-full object-cover" />
@@ -83,14 +85,14 @@ export function LiveRoom() {
               <p className="text-[11px] text-zinc-400">{stream.creator.handle}</p>
             </div>
             <button type="button" className="rounded-full bg-boom-cyan px-3 py-1 text-xs font-bold text-zinc-950">
-              Seguir
+              {t('actions.follow')}
             </button>
           </div>
         </div>
 
         <div className="absolute right-4 top-4 flex items-center gap-2">
           <span className="flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
-            <Eye size={13} /> {stream.creator.viewers} VIENDO
+            <Eye size={13} /> {stream.creator.viewers} {t('actions.watching')}
           </span>
           <span
             className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold backdrop-blur-md ${
@@ -98,12 +100,12 @@ export function LiveRoom() {
             }`}
           >
             {stream.isPrivate ? <Lock size={12} /> : <Unlock size={12} />}
-            {stream.isPrivate ? `Privado · ${stream.lockPrice}` : 'Público'}
+            {stream.isPrivate ? `Privado · ${stream.lockPrice}` : t('common.public')}
           </span>
           <button
             type="button"
             className="grid h-8 w-8 place-items-center rounded-full bg-black/50 text-zinc-200 backdrop-blur-md"
-            aria-label="Compartir"
+            aria-label={t('actions.share')}
           >
             <Share2 size={14} />
           </button>
@@ -111,7 +113,7 @@ export function LiveRoom() {
             type="button"
             onClick={backToFeed}
             className="grid h-8 w-8 place-items-center rounded-full bg-black/50 text-zinc-200 backdrop-blur-md"
-            aria-label="Cerrar"
+            aria-label={t('common.close')}
           >
             <X size={14} />
           </button>

@@ -22,7 +22,7 @@ export function Logo({ compact = false, iconOnly = false, large = false, classNa
       <img
         src={BRAND_LOGO_SRC}
         alt="Liveboom"
-        className={`object-contain ${sizeClass}`}
+        className={`bg-transparent object-contain ${sizeClass}`}
         draggable={false}
       />
     </div>
