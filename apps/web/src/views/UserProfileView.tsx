@@ -518,8 +518,11 @@ export function UserProfileView() {
   }
 
   return (
-    <div className="lb-page mx-auto w-full max-w-3xl space-y-4 pb-2">
-      <section className="lb-panel lb-profile-hero relative overflow-hidden rounded-3xl p-0">
+    <div className="lb-page lb-profile-page mx-auto w-full max-w-3xl space-y-4 pb-2">
+      <section
+        className="lb-panel lb-profile-hero relative overflow-hidden rounded-3xl p-0"
+        data-lb-surface="dark"
+      >
         <ProfileCoverBanner
           url={publicProfile.coverUrl}
           type={publicProfile.coverType}
@@ -872,7 +875,7 @@ export function UserProfileView() {
           />
         ) : null}
         <div className={`flex flex-wrap items-center gap-3 ${publicProfile.isOwnProfile ? 'mb-3' : 'mb-4'}`}>
-          <div className="flex flex-wrap gap-1 rounded-full border border-white/10 bg-black/20 p-1">
+          <div className="lb-profile-feed-tabs flex flex-wrap gap-1 rounded-full border border-white/10 bg-black/20 p-1">
             {(
               [
                 { id: 'posts' as const, label: 'Publicaciones' },

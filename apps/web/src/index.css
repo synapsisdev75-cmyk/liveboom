@@ -1486,6 +1486,10 @@ input[type='date'] {
   margin-right: 0;
 }
 
+.lb-profile-hero .lb-insignia__img {
+  filter: drop-shadow(0 6px 16px rgba(var(--ins-glow), 0.42));
+}
+
 .lb-profile-identity__info {
   /* Sube el nombre/@/XP hacia la portada, entre foto e insignia. */
   margin-top: clamp(-3.25rem, -9vw, -1.75rem);
@@ -1522,6 +1526,21 @@ input[type='date'] {
   height: 100%;
   object-fit: cover;
   object-position: center;
+}
+
+.lb-profile-cover:not(.is-empty)::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 58%;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(8, 10, 15, 0.42) 48%,
+    rgba(8, 10, 15, 0.92) 100%
+  );
 }
 
 .lb-profile-cover__placeholder {
