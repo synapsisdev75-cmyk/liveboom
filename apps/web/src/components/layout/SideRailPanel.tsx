@@ -1394,7 +1394,7 @@ function DiscoveryRail() {
         />
 
         {profile ? (
-          <section className="lb-panel rounded-2xl p-3">
+          <section className="lb-panel lb-zone-card rounded-2xl p-3">
             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
               <MapPin size={12} /> Tu zona
             </p>
@@ -1597,7 +1597,10 @@ function DiscoveryRail() {
           )}
         </section>
 
-        <section className="lb-card rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/20 via-violet-600/15 to-fuchsia-500/10 p-3.5">
+        <section
+          className="lb-card lb-promo-banner rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/20 via-violet-600/15 to-fuchsia-500/10 p-3.5"
+          data-lb-surface="dark"
+        >
           <p className="flex items-center gap-1.5 text-xs font-bold text-white">
             <Sparkles size={14} className="text-cyan-300" /> Gana premios en cada LIVE
           </p>

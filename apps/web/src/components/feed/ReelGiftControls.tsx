@@ -137,7 +137,7 @@ export function ReelGiftControls({
           }}
           className={
             inline
-              ? `inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition disabled:opacity-45 ${
+              ? `lb-gift-action inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition disabled:opacity-45 ${
                   openGifts ? 'bg-white/10 text-amber-200' : 'text-amber-200 hover:bg-white/5'
                 }`
               : `grid h-12 w-12 place-items-center rounded-full shadow-lg backdrop-blur-sm transition disabled:opacity-45 ${

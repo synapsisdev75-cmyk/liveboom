@@ -59,6 +59,7 @@ type CallState = {
   recovering: boolean;
   endedSummary: VideoCallEndedSummary | null;
   callBilling: CallBillingLive | null;
+  lastError: string | null;
   setCallBilling: (value: CallBillingLive | null) => void;
   setRecovering: (value: boolean) => void;
   clearEndedSummary: () => void;
@@ -80,7 +81,7 @@ type CallState = {
     serverUrl: string;
   }) => void;
   markActive: (connectedAtMs?: number) => void;
-  hangup: (outcome?: 'completed' | 'missed' | 'cancelled' | 'declined', opts?: { skipHistory?: boolean }) => Promise<void>;
+  hangup: (outcome?: 'completed' | 'missed' | 'cancelled' | 'declined', opts?: { skipHistory?: boolean; error?: string | null }) => Promise<void>;
 };
 
 let hangupBusy = false;
@@ -98,6 +99,7 @@ export const useCallStore = create<CallState>((set, get) => ({
   recovering: false,
   endedSummary: null,
   callBilling: null,
+  lastError: null,
   setCallBilling: (value) => set({ callBilling: value }),
   setRecovering: (value) => set({ recovering: value }),
   clearEndedSummary: () => set({ endedSummary: null }),
@@ -155,6 +157,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       serverUrl,
       incoming: null,
       activeStartedAt: null,
+      lastError: null,
     });
   },
 
@@ -186,6 +189,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       serverUrl,
       incoming: null,
       activeStartedAt: Date.now(),
+      lastError: null,
     });
   },
 
@@ -248,6 +252,7 @@ export const useCallStore = create<CallState>((set, get) => ({
           activeStartedAt: null,
           recovering: false,
           callBilling: null,
+          lastError: prev.lastError,
         });
         return;
       }
@@ -299,6 +304,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       recovering: false,
       callBilling: null,
       endedSummary: summary,
+      lastError: opts?.error || null,
     });
 
     let outcome = forcedOutcome;

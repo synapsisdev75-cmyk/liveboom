@@ -78,6 +78,12 @@ import {
 import { useBoomGesture } from '../components/live/studio/useBoomGesture';
 import { useLiveBoomBursts } from '../components/live/studio/useLiveBoomBursts';
 import type { ConnectionQuality } from '../components/live/studio/liveStudioTypes';
+import {
+  labelLiveCamera,
+  labelLiveMicrophone,
+  listLiveMediaDevices,
+  liveCameraFacing,
+} from '../lib/liveMediaDevices';
 import { followUser, isFollowing, unfollowUser } from '../lib/socialFirestore';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
@@ -198,6 +204,10 @@ type LiveLaunchState = {
   goalCoins?: number;
   goalLabel?: string;
   aspectRatio?: LiveAspectRatio;
+  cameraId?: string | null;
+  microphoneId?: string | null;
+  mirror?: boolean;
+  micOn?: boolean;
 };
 
 type LiveSessionStats = {
@@ -854,8 +864,18 @@ function CreatorStage({
   const [faceGift, setFaceGift] = useState<ActiveFaceGift | null>(null);
   const giftComboRef = useRef<{ key: string; count: number; at: number }>({ key: '', count: 0, at: 0 });
   const stageVideoRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const launch = (location.state as LiveLaunchState | null) || {};
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
-  const [mirrorMode, setMirrorMode] = useState(() => loadLiveMirrorPref() ?? true);
+  const [mirrorMode, setMirrorMode] = useState(() =>
+    typeof launch.mirror === 'boolean' ? launch.mirror : loadLiveMirrorPref() ?? true,
+  );
+  const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
+  const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
+  const [cameraDeviceId, setCameraDeviceId] = useState(() => String(launch.cameraId || ''));
+  const [micDeviceId, setMicDeviceId] = useState(() => String(launch.microphoneId || ''));
+  const [cameraPickerOpen, setCameraPickerOpen] = useState(false);
+  const [micPickerOpen, setMicPickerOpen] = useState(false);
   const [flipping, setFlipping] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -1043,10 +1063,23 @@ function CreatorStage({
 
   useEffect(() => {
     if (!canPublish) return;
-    void navigator.mediaDevices
-      ?.enumerateDevices()
-      .then((devices) => setVideoInputs(devices.filter((d) => d.kind === 'videoinput')))
-      .catch(() => undefined);
+    let cancelled = false;
+    const refresh = () => {
+      void listLiveMediaDevices()
+        .then((list) => {
+          if (cancelled) return;
+          setVideoInputs(list.video);
+          setAudioInputs(list.audio);
+        })
+        .catch(() => undefined);
+    };
+    refresh();
+    const devices = navigator.mediaDevices;
+    devices?.addEventListener?.('devicechange', refresh);
+    return () => {
+      cancelled = true;
+      devices?.removeEventListener?.('devicechange', refresh);
+    };
   }, [canPublish]);
 
   const switchCameraDevice = useCallback(
@@ -1061,14 +1094,65 @@ function CreatorStage({
         await track.restartTrack({ deviceId: { exact: deviceId } });
         cameraTrackRef.current = track;
         setCameraDeviceId(deviceId);
+        const selected = videoInputs.find((item) => item.deviceId === deviceId);
+        const nextFacing = liveCameraFacing(selected?.label || '');
+        if (nextFacing === 'user' || nextFacing === 'environment') setFacing(nextFacing);
         setCameraPickerOpen(false);
       } catch (error) {
         console.error('[live] switch camera device', error);
         setInviteNote('No se pudo cambiar a esa cámara.');
       }
     },
+    [canPublish, room, videoInputs],
+  );
+
+  const switchMicrophoneDevice = useCallback(
+    async (deviceId: string) => {
+      if (!canPublish || !deviceId) return;
+      const pub = Array.from(room.localParticipant.audioTrackPublications.values()).find(
+        (item) => item.source === Track.Source.Microphone,
+      );
+      const track = pub?.track as LocalAudioTrack | undefined;
+      if (!track) {
+        try {
+          await room.localParticipant.setMicrophoneEnabled(true, { deviceId });
+          setMicDeviceId(deviceId);
+          setMicPickerOpen(false);
+        } catch (error) {
+          console.error('[live] switch microphone device', error);
+          setInviteNote('No se pudo cambiar a ese micrófono.');
+        }
+        return;
+      }
+      try {
+        await track.restartTrack({ deviceId: { exact: deviceId } });
+        setMicDeviceId(deviceId);
+        setMicPickerOpen(false);
+      } catch (error) {
+        console.error('[live] switch microphone device', error);
+        setInviteNote('No se pudo cambiar a ese micrófono.');
+      }
+    },
     [canPublish, room],
   );
+
+  useEffect(() => {
+    if (!canPublish || videoInputs.length === 0) return;
+    if (cameraDeviceId && videoInputs.some((item) => item.deviceId === cameraDeviceId)) return;
+    const next = videoInputs[0]?.deviceId;
+    if (!next) return;
+    if (cameraDeviceId) void switchCameraDevice(next);
+    else setCameraDeviceId(next);
+  }, [canPublish, videoInputs, cameraDeviceId, switchCameraDevice]);
+
+  useEffect(() => {
+    if (!canPublish || audioInputs.length === 0) return;
+    if (micDeviceId && audioInputs.some((item) => item.deviceId === micDeviceId)) return;
+    const next = audioInputs[0]?.deviceId;
+    if (!next) return;
+    if (micDeviceId) void switchMicrophoneDevice(next);
+    else setMicDeviceId(next);
+  }, [canPublish, audioInputs, micDeviceId, switchMicrophoneDevice]);
 
   useEffect(() => {
     try {
@@ -1146,9 +1230,6 @@ function CreatorStage({
     });
   }, [username, isHost]);
   const [batallaOpen, setBatallaOpen] = useState(false);
-  const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
-  const [cameraDeviceId, setCameraDeviceId] = useState('');
-  const [cameraPickerOpen, setCameraPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!isHost) return;
@@ -1245,7 +1326,6 @@ function CreatorStage({
     }
   }, [localCamera]);
 
-  const location = useLocation();
   const [liveHosts, setLiveHosts] = useState<Array<{ username: string; displayName: string }>>([]);
   const battle = useAgoraBattle({
     roomName: username,
@@ -2570,9 +2650,14 @@ function CreatorStage({
                 lockActive={Boolean(lock)}
                 cameraDevices={videoInputs.map((device, index) => ({
                   deviceId: device.deviceId,
-                  label: device.label || `Cámara ${index + 1}`,
+                  label: labelLiveCamera(device, index),
                 }))}
                 cameraDeviceId={cameraDeviceId}
+                micDevices={audioInputs.map((device, index) => ({
+                  deviceId: device.deviceId,
+                  label: labelLiveMicrophone(device, index),
+                }))}
+                micDeviceId={micDeviceId}
                 onInvite={() => {
                   setBatallaOpen(false);
                   setSalaBoomOpen(true);
@@ -2585,6 +2670,7 @@ function CreatorStage({
                   else void flipCamera();
                 }}
                 onSelectCamera={(id) => void switchCameraDevice(id)}
+                onSelectMic={(id) => void switchMicrophoneDevice(id)}
                 onMirror={toggleMirror}
                 onNotify={() => void notifyFollowers()}
                 onWishlist={() => {
@@ -2630,6 +2716,9 @@ function CreatorStage({
               canPublish={canPublish}
               hostUid={hostUid}
               facing={facing}
+              preferredCameraId={cameraDeviceId || String(launch.cameraId || '')}
+              preferredMicrophoneId={micDeviceId || String(launch.microphoneId || '')}
+              preferredMicOn={launch.micOn !== false}
               cameraTrackRef={cameraTrackRef}
               frameLayout={effectiveFrameLayout}
               frameAspect={aspectRatio}
@@ -3006,14 +3095,32 @@ function CreatorStage({
         <HostVideoToolbar
           micOn={isMicrophoneEnabled}
           screenSharing={screenSharing}
+          cameraDevices={videoInputs.map((device, index) => ({
+            deviceId: device.deviceId,
+            label: labelLiveCamera(device, index),
+          }))}
+          cameraDeviceId={cameraDeviceId}
+          cameraPickerOpen={cameraPickerOpen}
+          audioDevices={audioInputs.map((device, index) => ({
+            deviceId: device.deviceId,
+            label: labelLiveMicrophone(device, index),
+          }))}
+          audioDeviceId={micDeviceId}
+          micPickerOpen={micPickerOpen}
           onInvite={() => {
             setBatallaOpen(false);
             setSalaBoomOpen(true);
           }}
           onReel={() => void recordReel()}
           onScreen={() => void toggleScreenCapture()}
-          onMic={() => void toggleMic()}
+          onMic={() => {
+            if (audioInputs.length > 1) setMicPickerOpen((v) => !v);
+            else void toggleMic();
+          }}
+          onSelectMic={(id) => void switchMicrophoneDevice(id)}
+          onMuteMic={() => void toggleMic()}
           onCamera={() => setCameraPickerOpen((v) => !v)}
+          onSelectCamera={(id) => void switchCameraDevice(id)}
           onMore={() => setHostMoreOpen((v) => !v)}
         />
       ) : null}
@@ -3030,6 +3137,9 @@ function CreatorStage({
           videoInputs={videoInputs}
           cameraDeviceId={cameraDeviceId}
           cameraPickerOpen={cameraPickerOpen}
+          audioInputs={audioInputs}
+          micDeviceId={micDeviceId}
+          micPickerOpen={micPickerOpen}
           onNotify={() => void notifyFollowers()}
           onWishlist={() => {
             setLockPicker(false);
@@ -3051,6 +3161,11 @@ function CreatorStage({
           }}
           onCameraPickerToggle={() => setCameraPickerOpen((v) => !v)}
           onSelectCamera={(id) => void switchCameraDevice(id)}
+          onMicPickerToggle={() => {
+            if (audioInputs.length > 1) setMicPickerOpen((v) => !v);
+            else void toggleMic();
+          }}
+          onSelectMic={(id) => void switchMicrophoneDevice(id)}
           onRecordReel={() => void recordReel()}
           onScreenShare={() => void toggleScreenCapture()}
         />
@@ -3640,6 +3755,9 @@ function CreatorVideo({
   canPublish,
   hostUid,
   facing,
+  preferredCameraId,
+  preferredMicrophoneId,
+  preferredMicOn = true,
   cameraTrackRef,
   frameLayout,
   frameAspect,
@@ -3660,6 +3778,9 @@ function CreatorVideo({
   canPublish: boolean;
   hostUid?: string;
   facing: 'user' | 'environment';
+  preferredCameraId?: string;
+  preferredMicrophoneId?: string;
+  preferredMicOn?: boolean;
   cameraTrackRef: React.MutableRefObject<LocalVideoTrack | null>;
   frameLayout: LiveFrameLayout;
   frameAspect: LiveAspectRatio;
@@ -3686,6 +3807,12 @@ function CreatorVideo({
   const [camBusy, setCamBusy] = useState(false);
   const [retry, setRetry] = useState(0);
   const [trackEpoch, setTrackEpoch] = useState(0);
+  const preferredCameraIdRef = useRef(preferredCameraId);
+  const preferredMicrophoneIdRef = useRef(preferredMicrophoneId);
+  const preferredMicOnRef = useRef(preferredMicOn);
+  preferredCameraIdRef.current = preferredCameraId;
+  preferredMicrophoneIdRef.current = preferredMicrophoneId;
+  preferredMicOnRef.current = preferredMicOn;
 
   const targetIdentity = canPublish
     ? room.localParticipant.identity
@@ -3825,8 +3952,13 @@ function CreatorVideo({
 
         const alreadyOn = room.localParticipant.isCameraEnabled;
         if (alreadyOn && retry === 0) {
-          if (!room.localParticipant.isMicrophoneEnabled) {
-            await room.localParticipant.setMicrophoneEnabled(true);
+          if (preferredMicOnRef.current && !room.localParticipant.isMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(true, preferredMicrophoneIdRef.current
+              ? { deviceId: preferredMicrophoneIdRef.current }
+              : undefined);
+          }
+          if (!preferredMicOnRef.current && room.localParticipant.isMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
           }
           await attachCameraRef();
           return;
@@ -3834,14 +3966,19 @@ function CreatorVideo({
 
         setCamBusy(true);
         setCamError(null);
-        await room.localParticipant.setCameraEnabled(true, {
-          facingMode: facing,
-        });
-        await room.localParticipant.setMicrophoneEnabled(true);
+        const cameraId = preferredCameraIdRef.current;
+        await room.localParticipant.setCameraEnabled(
+          true,
+          cameraId ? { deviceId: cameraId } : { facingMode: facing },
+        );
+        const micId = preferredMicrophoneIdRef.current;
+        await room.localParticipant.setMicrophoneEnabled(
+          preferredMicOnRef.current !== false,
+          micId ? { deviceId: micId } : undefined,
+        );
         await attachCameraRef();
-        // Refuerza mic por si el navegador lo dejó muted al aceptar invitación
-        if (!room.localParticipant.isMicrophoneEnabled) {
-          await room.localParticipant.setMicrophoneEnabled(true);
+        if (preferredMicOnRef.current !== false && !room.localParticipant.isMicrophoneEnabled) {
+          await room.localParticipant.setMicrophoneEnabled(true, micId ? { deviceId: micId } : undefined);
         }
         if (!cancelled) setCamError(null);
       } catch (err) {

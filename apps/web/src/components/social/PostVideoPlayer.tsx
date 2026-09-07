@@ -1,7 +1,6 @@
 import {
   Globe,
   Lock,
-  Maximize2,
   MessageCircle,
   Pause,
   Play,
@@ -35,7 +34,6 @@ import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster } from '../../lib/videoPoster';
 import { uploadUserMedia } from '../../lib/storage';
-import { ShareContentButton } from './ShareContentButton';
 import { type EmojiInputHandle } from './EmojiInput';
 import { EmojiText } from './EmojiText';
 import { CommentComposerBar, type CommentDraftAttachment } from './CommentComposerBar';
@@ -135,6 +133,29 @@ type Props = {
 };
 
 const SEEK_STEP_SEC = 10;
+
+function MediaMuteFab({
+  muted,
+  unmuteLabel,
+  muteLabel,
+  onToggle,
+}: {
+  muted: boolean;
+  unmuteLabel: string;
+  muteLabel: string;
+  onToggle: (event: MouseEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="lb-media-mute-fab"
+      aria-label={muted ? unmuteLabel : muteLabel}
+    >
+      {muted ? <VolumeX size={16} strokeWidth={2.25} /> : <Volume2 size={16} strokeWidth={2.25} />}
+    </button>
+  );
+}
 
 export function PostVideoPlayer({
   src,
@@ -597,13 +618,7 @@ export function PostVideoPlayer({
       preload={expanded || overlayOnly ? 'auto' : 'metadata'}
       onClick={
         !expanded && !overlayOnly
-          ? (event) => {
-              event.stopPropagation();
-              const el = videoRef.current;
-              if (!el) return;
-              if (el.paused) void el.play().catch(() => undefined);
-              else el.pause();
-            }
+          ? openExpand
           : undefined
       }
       onLoadedMetadata={(event) => {
@@ -675,6 +690,12 @@ export function PostVideoPlayer({
           mediaOverlay={
             <>
               <MediaOverlayLayer overlays={overlays} />
+              <MediaMuteFab
+                muted={muted}
+                unmuteLabel={t('actions.unmute')}
+                muteLabel={t('actions.mute')}
+                onToggle={toggleMute}
+              />
               {itemSideNav && reelNavigation && !storyHeld ? (
               <>
                 <button
@@ -890,14 +911,6 @@ export function PostVideoPlayer({
               >
                 <RotateCw size={17} />
               </button>
-              <button
-                type="button"
-                onClick={toggleMute}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
-                aria-label={muted ? t('actions.unmute') : t('actions.mute')}
-              >
-                {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-              </button>
             </div>
           </div>
 
@@ -933,13 +946,14 @@ export function PostVideoPlayer({
 
           {!commentsPanelOpen ? (
           <div
-            className={`pointer-events-auto relative z-20 mt-auto min-w-0 max-w-full shrink-0 space-y-2 px-3 ${
+            className={`pointer-events-none relative z-20 mt-auto min-w-0 max-w-full shrink-0 space-y-2 px-3 ${
               embedded || overlayOnly
                 ? 'pb-[max(0.75rem,var(--lb-safe-bottom))] pl-[4.25rem] sm:pl-[4.75rem] lg:pl-3'
-                : 'pb-[max(0.75rem,var(--lb-safe-bottom))]'
+                : 'pb-[max(0.75rem,var(--lb-safe-bottom))] pl-[3.5rem]'
             }`}
             style={{ paddingRight: 'max(0.75rem, env(safe-area-inset-right))' }}
           >
+            <div className="pointer-events-auto space-y-2">
             {contentBadge ? (
               <span className="inline-flex rounded-md bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-200 ring-1 ring-white/15">
                 {contentBadge}
@@ -1032,6 +1046,7 @@ export function PostVideoPlayer({
                 ) : null}
               </div>
             ) : null}
+            </div>
           </div>
           ) : null}
         </div>
@@ -1053,7 +1068,7 @@ export function PostVideoPlayer({
           {expanded ? (
             <div className="relative w-full min-w-0 lb-feed-media-frame" style={{ aspectRatio: pubW && pubH ? `${pubW} / ${pubH}` : '4 / 5', maxHeight: 'min(720px, 72dvh)' }} aria-hidden />
           ) : null}
-          <div ref={wrapRef} className="relative w-full min-w-0">
+          <div ref={wrapRef} className="relative w-full min-w-0 cursor-pointer" onClick={openExpand}>
             {!expanded ? (
               <PublicationMedia
                 src={src}
@@ -1061,45 +1076,16 @@ export function PostVideoPlayer({
                 width={pubW}
                 height={pubH}
                 posterUrl={resolvedPoster}
-                overlay={
-                  <>
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/70 to-transparent" />
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={toggleMute}
-                        className="lb-media-fab inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
-                        aria-label={muted ? t('actions.unmute') : t('actions.mute')}
-                      >
-                        {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={openExpand}
-                        className="lb-media-fab lb-media-fab--expand inline-flex min-h-10 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
-                      >
-                        <Maximize2 size={14} /> {t('actions.expand')}
-                      </button>
-                      {shareUrl ? (
-                        <ShareContentButton
-                          url={shareUrl}
-                          title={shareTitle}
-                          text={shareText}
-                          mediaUrl={src}
-                          mediaType="video"
-                          postId={postId}
-                          authorUid={authorUid}
-                          authorUsername={authorUsername}
-                          iconOnly
-                        />
-                      ) : null}
-                    </div>
-                  </>
-                }
               >
                 <div className="relative h-full w-full">
                   {videoNode}
                   <MediaOverlayLayer overlays={overlays} />
+                  <MediaMuteFab
+                    muted={muted}
+                    unmuteLabel={t('actions.unmute')}
+                    muteLabel={t('actions.mute')}
+                    onToggle={toggleMute}
+                  />
                 </div>
               </PublicationMedia>
             ) : null}
@@ -1282,7 +1268,7 @@ export function PostComments({
   const mute = overlay ? 'text-white/40 hover:text-rose-300' : 'text-zinc-600 hover:text-rose-400';
   const nameClass = overlay ? 'text-cyan-300' : 'text-cyan-400';
   const bodyClass = overlay ? 'text-white/90' : 'text-zinc-200';
-  const cardClass = overlay ? 'rounded-xl bg-white/10 px-2.5 py-2' : 'rounded-xl bg-zinc-900/80 px-2.5 py-2';
+  const cardClass = overlay ? 'rounded-xl bg-white/10 px-2.5 py-2' : 'rounded-xl px-2.5 py-2';
 
   function renderComment(comment: PostComment, rootId: string, isReply: boolean) {
     const canRemove =
@@ -1290,7 +1276,7 @@ export function PostComments({
       (profile!.firebaseUid === comment.authorUid ||
         (authorUid && profile!.firebaseUid === authorUid));
     return (
-      <div className={`min-w-0 max-w-full ${cardClass} ${isReply ? 'rounded-lg' : ''}`}>
+      <div className={`lb-comment-card min-w-0 max-w-full ${cardClass} ${isReply ? 'rounded-lg' : ''}`}>
         <div className="flex min-w-0 items-start justify-between gap-2">
           <Link
             to={profileHref(comment.username, comment.authorUid)}
@@ -1360,12 +1346,13 @@ export function PostComments({
       className={
         overlay
           ? scrollable
-            ? `flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${embedded ? 'px-3 pb-3' : 'px-3 py-2.5'}`
+            ? `lb-comments lb-comments--overlay flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden ${embedded ? 'px-3 pb-3' : 'px-3 py-2.5'}`
             : embedded
-              ? 'min-w-0 overflow-x-hidden px-3 pb-3'
-              : 'min-w-0 overflow-x-hidden px-3 py-2.5'
-          : 'min-w-0 overflow-x-hidden border-t border-white/5 px-3 py-3'
+              ? 'lb-comments lb-comments--overlay min-w-0 overflow-x-hidden px-3 pb-3'
+              : 'lb-comments lb-comments--overlay min-w-0 overflow-x-hidden px-3 py-2.5'
+          : 'lb-comments lb-comments--feed min-w-0 overflow-x-hidden border-t border-white/5 px-3 py-3'
       }
+      {...(overlay ? { 'data-lb-surface': 'dark' as const } : {})}
     >
       {!embedded ? (
       <div className="mb-2 flex w-full min-w-0 items-center justify-between gap-2">
@@ -1404,7 +1391,11 @@ export function PostComments({
           {preview.map(({ root }) => (
             <li
               key={root.id}
-              className={overlay ? 'rounded-lg bg-white/10 px-2 py-1.5' : 'rounded-lg bg-zinc-900/60 px-2 py-1.5'}
+              className={
+                overlay
+                  ? 'lb-comment-card rounded-lg bg-white/10 px-2 py-1.5'
+                  : 'lb-comment-card rounded-lg px-2 py-1.5'
+              }
             >
               <p className={`flex min-w-0 items-center gap-2 text-[11px] ${overlay ? 'text-white/90' : 'text-zinc-300'}`}>
                 <span className={overlay ? 'font-semibold text-cyan-300' : 'font-semibold text-cyan-400'}>

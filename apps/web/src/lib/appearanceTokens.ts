@@ -456,6 +456,13 @@ export function tokensToCssMap(tokens: SemanticTokens): Record<string, string> {
   map['--accent-gold'] = relativeLuminance(tokens['--bg-primary']) > 0.45 ? '#a16207' : '#f5c84c';
   map['--button-primary-text'] = tokens['--text-inverse'];
   map['--button-secondary-text'] = tokens['--text-primary'];
+  map['--surface-page'] = tokens['--bg-primary'];
+  map['--surface-card'] = tokens['--surface-primary'];
+  map['--surface-post'] = tokens['--surface-primary'];
+  map['--surface-comment'] = tokens['--surface-secondary'];
+  map['--surface-input'] = tokens['--bg-elevated'];
+  map['--text-on-dark'] = '#f4f4f5';
+  map['--text-on-light'] = '#18181b';
   /* Presence is a state, not a palette accent. */
   map['--status-online'] = '#20e676';
   return map;

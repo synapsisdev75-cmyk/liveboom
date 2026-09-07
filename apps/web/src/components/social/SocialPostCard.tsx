@@ -481,18 +481,16 @@ export function TextNoteBody({
 
   if (!text) {
     return (
-      <div className={`px-3.5 py-5 text-sm text-zinc-500 sm:px-4 ${className}`}>
+      <div className={`lb-text-note px-3.5 py-5 text-sm sm:px-4 ${className}`}>
         Sin texto
       </div>
     );
   }
 
   return (
-    <div
-      className={`bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900 px-3.5 py-4 sm:px-5 sm:py-5 ${className}`}
-    >
+    <div className={`lb-text-note px-3.5 py-4 sm:px-5 sm:py-5 ${className}`}>
       <div
-        className={`text-sm leading-relaxed text-white sm:text-[15px] ${
+        className={`lb-text-note__body text-sm leading-relaxed sm:text-[15px] ${
           expanded || !long ? '' : 'line-clamp-5'
         }`}
       >
@@ -502,7 +500,7 @@ export function TextNoteBody({
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-3 inline-flex min-h-10 items-center rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-cyan-200 hover:bg-white/15"
+          className="lb-text-note__more mt-3 inline-flex min-h-10 items-center rounded-full px-3 py-1.5 text-xs font-bold"
         >
           {expanded ? 'Ver menos' : 'Desplegar'}
         </button>

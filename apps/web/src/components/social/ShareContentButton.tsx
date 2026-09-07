@@ -17,6 +17,7 @@ type Props = {
   buttonClassName?: string;
   label?: string;
   iconOnly?: boolean;
+  overlay?: boolean;
   size?: 'sm' | 'md';
 };
 
@@ -33,6 +34,7 @@ export function ShareContentButton({
   buttonClassName = '',
   label,
   iconOnly = false,
+  overlay = false,
   size = 'sm',
 }: Props) {
   const t = useT();
@@ -58,7 +60,9 @@ export function ShareContentButton({
         type="button"
         onClick={onShare}
         className={
-          iconOnly
+          overlay
+            ? `lb-media-control-overlay lb-media-control-overlay--share lb-media-fab lb-media-fab--share ${buttonClassName}`
+            : iconOnly
             ? `lb-media-fab lb-media-fab--share inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/70 ${buttonClassName}`
             : buttonClassName.includes('lb-action-pill')
               ? buttonClassName
@@ -69,8 +73,8 @@ export function ShareContentButton({
         aria-label={resolvedLabel}
         title={resolvedLabel}
       >
-        <Share2 size={iconSize} />
-        {iconOnly ? null : resolvedLabel}
+        <Share2 size={overlay ? 14 : iconSize} />
+        {overlay ? <span className="lb-media-control-overlay__label">{resolvedLabel}</span> : iconOnly ? null : resolvedLabel}
       </button>
       {note ? <span className="text-[10px] font-semibold text-cyan-300">{note}</span> : null}
       {open ? (

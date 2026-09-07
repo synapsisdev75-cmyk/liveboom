@@ -45,6 +45,18 @@ export function peekLiveKitGrant(token: string | null | undefined): LiveKitGrant
   }
 }
 
+export function normalizeLiveKitUrl(raw: string | null | undefined): string {
+  let url = String(raw || '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '')
+    .replace(/\/+$/, '');
+  if (!url) return '';
+  if (/^https:/i.test(url)) url = url.replace(/^https:/i, 'wss:');
+  else if (/^http:/i.test(url)) url = url.replace(/^http:/i, 'ws:');
+  else if (!/^wss?:\/\//i.test(url)) url = `wss://${url}`;
+  return url;
+}
+
 export function logCallConnect(stage: string, extra: Record<string, unknown> = {}) {
   const token = typeof extra.token === 'string' ? extra.token : '';
   const grant = peekLiveKitGrant(token);
@@ -69,35 +81,77 @@ export function describeLiveKitError(error: unknown) {
     message?: string;
     reason?: string | number;
     code?: string | number;
+    status?: number;
+    stack?: string;
     cause?: { message?: string; name?: string };
   };
+  const httpStatus =
+    typeof err?.status === 'number'
+      ? err.status
+      : error instanceof ApiError
+        ? error.status
+        : null;
   return {
     name: String(err?.name || 'Error'),
     message: String(err?.message || (typeof error === 'string' ? error : '')),
     reason: err?.reason != null ? String(err.reason) : null,
     code: err?.code != null ? String(err.code) : null,
+    status: httpStatus,
     cause: err?.cause?.message || err?.cause?.name || null,
+    stack: typeof err?.stack === 'string' ? err.stack.split('\n').slice(0, 6).join('\n') : null,
   };
 }
 
-export function shouldHangupOnLiveKitError(error: unknown): boolean {
+export type CallConnectErrorKind = 'permission' | 'camera' | 'media' | 'cancelled' | 'connection';
+
+export function classifyCallConnectError(error: unknown): CallConnectErrorKind {
   const info = describeLiveKitError(error);
-  const blob = `${info.name} ${info.message} ${info.reason || ''} ${info.code || ''}`.toLowerCase();
-  if (/cancel|cancelled|canceled|clientinitiated|duplicate/.test(blob)) return false;
+  const blob = `${info.name} ${info.message} ${info.reason || ''} ${info.code || ''} ${info.status || ''}`.toLowerCase();
   if (
-    /microphone|camera|device|notallowederror|notfounderror|notreadableerror|overconstrained|media device/.test(
+    /cancel|cancelled|canceled|clientinitiated|client initiated|already connected|connection already|abort/.test(
       blob,
     )
   ) {
-    return false;
+    return 'cancelled';
   }
-  return (
-    info.name === 'ConnectionError' ||
-    info.name === 'ConnectError' ||
-    /websocket|invalid token|unauthorized|not allowed to join|server url|could not connect|failed to connect|connectionerror|establish pc|peerconnection|\bice\b|dtls/.test(
+  if (/notallowederror|permissiondenied|permission denied|permission/.test(blob)) return 'permission';
+  if (/camera/.test(blob) && !/websocket|invalid token|unauthorized|ice|dtls/.test(blob)) return 'camera';
+  if (
+    /microphone|audio source|getusermedia|device|notfounderror|notreadableerror|overconstrained|media device/.test(
       blob,
     )
-  );
+  ) {
+    return 'media';
+  }
+  if (
+    info.name === 'ConnectionError' ||
+    info.name === 'ConnectError' ||
+    /websocket|invalid token|unauthorized|not allowed to join|server url|could not connect|failed to connect|connectionerror|establish pc|peerconnection|\bice\b|dtls|\b401\b|\b403\b|room not found|participant identity/.test(
+      blob,
+    )
+  ) {
+    return 'connection';
+  }
+  return 'media';
+}
+
+export function shouldHangupOnLiveKitError(error: unknown): boolean {
+  return classifyCallConnectError(error) === 'connection';
+}
+
+export function callConnectUserMessage(kind: CallConnectErrorKind, video: boolean) {
+  if (kind === 'permission') {
+    return video
+      ? 'LiveBoom necesita acceso a la cámara y al micrófono. Revisa los permisos del navegador.'
+      : 'LiveBoom necesita acceso al micrófono. Revisa los permisos del navegador.';
+  }
+  if (kind === 'camera') return 'Cámara no disponible';
+  if (kind === 'media') {
+    return video
+      ? 'No se pudo acceder a la cámara o al micrófono.'
+      : 'No se pudo acceder al micrófono.';
+  }
+  return 'No se pudo conectar la llamada.';
 }
 
 function assertCallTokenSession(
@@ -107,7 +161,8 @@ function assertCallTokenSession(
   if (typeof session.token !== 'string' || session.token.split('.').length < 3) {
     throw new Error('Token LiveKit inválido');
   }
-  if (!String(session.serverUrl || '').trim()) {
+  session.serverUrl = normalizeLiveKitUrl(session.serverUrl);
+  if (!session.serverUrl) {
     throw new Error('LIVEKIT_URL ausente');
   }
   const grant = peekLiveKitGrant(session.token);
@@ -136,13 +191,17 @@ function assertCallTokenSession(
 }
 
 function logLiveKitError(stage: string, error: unknown, extra?: Record<string, unknown>) {
+  const info = describeLiveKitError(error);
   const err = error instanceof ApiError ? error : null;
-  console.error('[LiveKit ERROR]', {
+  console.error('[ERROR]', {
     stage,
-    errorCode: err?.status || err?.data?.code || 'UNKNOWN',
+    name: info.name,
+    message: info.message,
+    stack: info.stack,
+    status: info.status ?? err?.status ?? null,
+    code: err?.data?.code || info.code,
     callId: extra?.callId || null,
     roomName: extra?.roomName || null,
-    message: err?.message || (error instanceof Error ? error.message : 'error'),
   });
 }
 
@@ -222,6 +281,17 @@ export async function createCall(
       roomName: session.roomName,
       identity: me || undefined,
     });
+    console.info('[CALL CREATE]', {
+      callId: session.callId,
+      callerId: me,
+      receiverId: targetUid,
+      type,
+    });
+    console.info('[TOKEN]', {
+      roomName: session.roomName || grant?.room || null,
+      identity: grant?.identity || me,
+      tokenGenerated: true,
+    });
     logCallConnect('tokenGenerated', {
       callId: session.callId,
       roomName: session.roomName || grant?.room,
@@ -261,6 +331,11 @@ export async function requestCallToken(callId: string, chatId: string): Promise<
       callId,
       roomName: session.roomName || roomName,
       identity: me || undefined,
+    });
+    console.info('[TOKEN]', {
+      roomName: session.roomName || grant?.room || roomName,
+      identity: grant?.identity || me,
+      tokenGenerated: true,
     });
     logCallConnect('tokenGenerated', {
       callId: session.callId || callId,

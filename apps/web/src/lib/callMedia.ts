@@ -1,32 +1,50 @@
 /** Pide permiso de micrófono (y cámara si es video) antes de conectar la llamada. */
 
+function stopStream(stream: MediaStream) {
+  stream.getTracks().forEach((track) => track.stop());
+}
+
+function micDeniedMessage(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return 'LiveBoom necesita acceso al micrófono. Revisa los permisos del navegador.';
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return 'No se encontró micrófono en este dispositivo.';
+  }
+  return 'No se pudo acceder al micrófono.';
+}
+
+/** Micrófono es obligatorio. La cámara de videollamada no debe abortar la conexión. */
 export async function ensureCallMediaPermission(video: boolean): Promise<string | null> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     return 'Este dispositivo no puede iniciar llamadas desde el navegador.';
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: video ? { facingMode: 'user' } : false,
-    });
-    stream.getTracks().forEach((track) => track.stop());
-    return null;
+    const audio = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    stopStream(audio);
   } catch (error) {
-    const name = error instanceof DOMException ? error.name : '';
-    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-      return video
-        ? 'LiveBoom necesita acceso a la cámara y al micrófono para realizar la videollamada.'
-        : 'LiveBoom necesita acceso al micrófono para realizar la llamada.';
-    }
-    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-      return video
-        ? 'No se encontró cámara o micrófono en este dispositivo.'
-        : 'No se encontró micrófono en este dispositivo.';
-    }
-    return video
-      ? 'No se pudo acceder a la cámara o al micrófono.'
-      : 'No se pudo acceder al micrófono.';
+    console.error('[ERROR]', {
+      name: error instanceof Error ? error.name : 'Error',
+      message: error instanceof Error ? error.message : String(error),
+      stage: 'microphone-permission',
+    });
+    return micDeniedMessage(error);
   }
+  if (!video) return null;
+  try {
+    const camera = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: 'user' },
+    });
+    stopStream(camera);
+  } catch (error) {
+    console.warn('[CALL MEDIA] Cámara no disponible; la llamada continúa con audio', {
+      name: error instanceof Error ? error.name : 'Error',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return null;
 }
 
 export function canShareScreen() {

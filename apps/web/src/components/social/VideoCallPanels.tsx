@@ -1,8 +1,9 @@
-import { AlertTriangle, Bell, Heart, MessageSquare, Minimize2, Video, X } from 'lucide-react';
+import { AlertTriangle, Bell, Heart, MessageSquare, Video, X } from 'lucide-react';
 import { UserAvatar } from '../profile/UserAvatar';
 import { formatCallClock, type VideoCallEndedSummary } from '../../store/callStore';
 import { openRechargeCoins } from '../../lib/giftsFirestore';
 import { findLiveGift } from '../../lib/liveboomGifts';
+import { CallWinBar } from './FloatingCallFrame';
 
 type Person = {
   name: string;
@@ -85,14 +86,21 @@ export function VideoCallOutgoing({
   person,
   onCancel,
   onMinimize,
+  onMaximize,
+  onClose,
+  maximized,
 }: {
   person: Person;
   onCancel: () => void;
   onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
+  maximized?: boolean;
 }) {
   const handle = handleOf(person.handle);
   return (
     <div className="lb-video-outgoing">
+      <CallWinBar onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} maximized={maximized} />
       <div className="lb-video-avatar-ring is-lg">
         <UserAvatar
           src={person.avatar}
@@ -103,14 +111,9 @@ export function VideoCallOutgoing({
           ringClassName="ring-0"
         />
       </div>
-      <p className="lb-video-outgoing__title">Videollamando...</p>
-      <p className="lb-video-outgoing__sub">Esperando que @{handle || 'usuario'} responda...</p>
+      <p className="lb-video-outgoing__title">Videollamada</p>
+      <p className="lb-video-outgoing__sub">Llamando a @{handle || 'usuario'}...</p>
       <div className="lb-video-outgoing__actions">
-        {onMinimize ? (
-          <button type="button" className="lb-video-chip" onClick={onMinimize}>
-            <Minimize2 size={14} /> Minimizar
-          </button>
-        ) : null}
         <button type="button" className="lb-video-chip is-danger" onClick={onCancel}>
           Cancelar
         </button>

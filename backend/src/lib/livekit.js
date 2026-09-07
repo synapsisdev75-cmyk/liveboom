@@ -1,8 +1,20 @@
 const { AccessToken, RoomServiceClient } = require('livekit-server-sdk');
 
+function normalizeLiveKitUrl(raw) {
+  let url = String(raw || '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '')
+    .replace(/\/+$/, '');
+  if (!url) return '';
+  if (/^https:/i.test(url)) url = url.replace(/^https:/i, 'wss:');
+  else if (/^http:/i.test(url)) url = url.replace(/^http:/i, 'ws:');
+  else if (!/^wss?:\/\//i.test(url)) url = `wss://${url}`;
+  return url;
+}
+
 function livekitMissing() {
   const missing = [];
-  if (!String(process.env.LIVEKIT_URL || '').trim()) missing.push('LIVEKIT_URL');
+  if (!normalizeLiveKitUrl(process.env.LIVEKIT_URL)) missing.push('LIVEKIT_URL');
   if (!String(process.env.LIVEKIT_API_KEY || '').trim()) missing.push('LIVEKIT_API_KEY');
   if (!String(process.env.LIVEKIT_API_SECRET || '').trim()) missing.push('LIVEKIT_API_SECRET');
   return missing;
@@ -22,8 +34,12 @@ function livekitConfigError() {
   };
 }
 
+function publicLiveKitUrl() {
+  return normalizeLiveKitUrl(process.env.LIVEKIT_URL);
+}
+
 function livekitHttpHost() {
-  const raw = String(process.env.LIVEKIT_URL || '').trim();
+  const raw = publicLiveKitUrl();
   if (!raw) return '';
   return raw.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:');
 }
@@ -48,11 +64,14 @@ async function ensureCallRoom(roomName) {
       maxParticipants: 4,
     });
   } catch (error) {
-    // Ya existe u otro race: no es fatal.
     const msg = error instanceof Error ? error.message : String(error || '');
-    if (!/already|exist/i.test(msg)) {
-      console.warn('[livekit] createRoom:', msg);
+    const code = error && typeof error === 'object' ? error.status || error.code : '';
+    if (/already|exist/i.test(msg)) return;
+    if (/unauthor|invalid|forbidden|401|403/i.test(`${msg} ${code}`)) {
+      console.error('[ERROR]', { name: 'LiveKitRoomAuth', message: msg, status: code || null });
+      throw error;
     }
+    console.warn('[livekit] createRoom:', msg);
   }
 }
 
@@ -84,7 +103,7 @@ async function createLivekitToken({ identity, name, room, canPublish, ensureRoom
     roomName: String(room),
     canPublish: Boolean(canPublish),
     tokenGenerated: true,
-    liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+    liveKitUrlPresent: Boolean(publicLiveKitUrl()),
   });
   return jwt;
 }
@@ -124,4 +143,6 @@ module.exports = {
   ensureCallRoom,
   listActiveLiveRooms,
   livekitHttpHost,
+  publicLiveKitUrl,
+  normalizeLiveKitUrl,
 };

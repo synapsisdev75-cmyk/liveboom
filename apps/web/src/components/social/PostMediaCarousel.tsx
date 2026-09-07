@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Maximize2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { publicationFeedPlaceholderStyle } from '../../lib/publicationMedia';
@@ -10,7 +10,6 @@ import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
-import { ShareContentButton } from './ShareContentButton';
 import { PublicationCaptionOverlay } from './PublicationCaption';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import {
@@ -193,8 +192,7 @@ export function PostMediaCarousel({
       height={frameH}
       style={!frameSize ? publicationFeedPlaceholderStyle() : undefined}
       overlay={
-        <>
-          {total > 1 ? (
+        total > 1 ? (
             <>
               {index > 0 ? (
                 <button
@@ -236,32 +234,7 @@ export function PostMediaCarousel({
                 {index + 1}/{total}
               </span>
             </>
-          ) : null}
-
-          {!expanded ? (
-            <>
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
-              <span className="lb-media-fab lb-media-fab--expand absolute bottom-2 right-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
-                <Maximize2 size={14} /> Expandir
-              </span>
-              {shareUrl ? (
-                <span className="absolute bottom-2 left-2">
-                  <ShareContentButton
-                    url={shareUrl}
-                    title={shareTitle}
-                    text={shareText}
-                    mediaUrl={sources[index]}
-                    mediaType="photo"
-                    postId={postId}
-                    authorUid={authorUid}
-                    authorUsername={authorUsername}
-                    iconOnly
-                  />
-                </span>
-              ) : null}
-            </>
-          ) : null}
-        </>
+        ) : undefined
       }
     >
       <div className="relative h-full w-full">

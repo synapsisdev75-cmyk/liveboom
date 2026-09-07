@@ -1,4 +1,4 @@
-import { Maximize2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
@@ -16,7 +16,6 @@ import { PostActionRail } from './PostActionRail';
 import { ImmersiveMediaStage } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
-import { ShareContentButton } from './ShareContentButton';
 import { PublicationCaptionOverlay } from './PublicationCaption';
 import { StorySegmentBar } from './StorySegmentBar';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
@@ -510,29 +509,6 @@ export function PostPhotoViewer({
             mediaKind="image"
             width={pubW}
             height={pubH}
-            overlay={
-              <>
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
-                <span className="lb-media-fab lb-media-fab--expand absolute bottom-2 right-2 inline-flex min-h-9 items-center gap-1.5 rounded-full bg-black/55 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm">
-                  <Maximize2 size={14} /> {t('actions.expand')}
-                </span>
-                {shareUrl ? (
-                  <span className="absolute bottom-2 left-2">
-                    <ShareContentButton
-                      url={shareUrl}
-                      title={shareTitle}
-                      text={shareText}
-                      mediaUrl={src}
-                      mediaType="photo"
-                      postId={postId}
-                      authorUid={authorUid}
-                      authorUsername={authorUsername}
-                      iconOnly
-                    />
-                  </span>
-                ) : null}
-              </>
-            }
           >
             <div className="relative h-full w-full">
               <img

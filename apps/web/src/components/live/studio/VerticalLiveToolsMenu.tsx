@@ -41,12 +41,15 @@ type Props = {
   lockActive: boolean;
   cameraDevices: CameraDevice[];
   cameraDeviceId: string;
+  micDevices?: CameraDevice[];
+  micDeviceId?: string;
   onInvite: () => void;
   onReel: () => void;
   onScreen: () => void;
   onMic: () => void;
   onCamera: () => void;
   onSelectCamera: (deviceId: string) => void;
+  onSelectMic?: (deviceId: string) => void;
   onMirror: () => void;
   onNotify: () => void;
   onWishlist: () => void;
@@ -115,12 +118,15 @@ export function VerticalLiveToolsMenu({
   lockActive,
   cameraDevices,
   cameraDeviceId,
+  micDevices = [],
+  micDeviceId,
   onInvite,
   onReel,
   onScreen,
   onMic,
   onCamera,
   onSelectCamera,
+  onSelectMic,
   onMirror,
   onNotify,
   onWishlist,
@@ -250,6 +256,23 @@ export function VerticalLiveToolsMenu({
                   className={cameraDeviceId === device.deviceId ? 'is-on' : ''}
                 >
                   {device.label || `Cámara ${index + 1}`}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {micDevices.length > 1 ? (
+            <div className="lb-live-vtools-cams">
+              {micDevices.map((device, index) => (
+                <button
+                  key={device.deviceId || `mic-${index}`}
+                  type="button"
+                  onClick={() => {
+                    onSelectMic?.(device.deviceId);
+                    setOpen(false);
+                  }}
+                  className={micDeviceId === device.deviceId ? 'is-on' : ''}
+                >
+                  {device.label || `Micrófono ${index + 1}`}
                 </button>
               ))}
             </div>

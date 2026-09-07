@@ -1,11 +1,49 @@
+import { Maximize2, Minimize2, X } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
+import { BRAND_LOGO_SRC } from '../../lib/brand';
 
 type Pos = { x: number; y: number };
+type Size = { w: number; h: number };
 
 let sessionPos: Pos | null = null;
+let sessionSize: Size | null = null;
+let expandedPos: Pos | null = null;
+
+export type CallChrome = 'normal' | 'minimized' | 'maximized' | 'hidden';
+
+const CHROME_KEY = 'lb.floatCall.chrome';
+
+export function readCallChrome(): CallChrome {
+  try {
+    const value = sessionStorage.getItem(CHROME_KEY);
+    if (value === 'minimized' || value === 'maximized' || value === 'normal') return value;
+    if (value === 'floating') return 'normal';
+  } catch {
+    /* ignore */
+  }
+  return 'normal';
+}
+
+export function writeCallChrome(value: CallChrome) {
+  try {
+    sessionStorage.setItem(CHROME_KEY, value === 'hidden' ? 'normal' : value);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearCallChrome() {
+  try {
+    sessionStorage.removeItem(CHROME_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function clearFloatingCallPosition() {
   sessionPos = null;
+  sessionSize = null;
+  expandedPos = null;
 }
 
 function viewBox() {
@@ -23,10 +61,11 @@ function margins() {
   const safeRight = Number.parseFloat(root.getPropertyValue('--lb-safe-right')) || 0;
   const safeBottom = Number.parseFloat(root.getPropertyValue('--lb-safe-bottom')) || 0;
   const safeLeft = Number.parseFloat(root.getPropertyValue('--lb-safe-left')) || 0;
+  const keyboard = Math.max(0, window.innerHeight - (window.visualViewport?.height ?? window.innerHeight));
   return {
     top: Math.max(10, safeTop + 8),
     right: Math.max(10, safeRight + 8),
-    bottom: Math.max(10, safeBottom + 8),
+    bottom: Math.max(10, safeBottom + 8 + Math.min(keyboard, 280)),
     left: Math.max(10, safeLeft + 8),
   };
 }
@@ -74,7 +113,7 @@ function defaultPos(width: number, height: number, compact: boolean): Pos {
     return clampPos(
       {
         x: box.right - m.right - width,
-        y: box.top + m.top,
+        y: box.bottom - bottomGap - height,
       },
       width,
       height,
@@ -114,7 +153,11 @@ function isDragFrom(target: EventTarget | null) {
   if (!el) return false;
   if (el.closest('[data-no-drag]')) return false;
   if (el.closest('a, input, textarea, select, option')) return false;
-  if (el.closest('.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop')) {
+  if (
+    el.closest(
+      '.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop, .lb-call-resize',
+    )
+  ) {
     return false;
   }
   const handle = el.closest('[data-call-drag]');
@@ -124,21 +167,71 @@ function isDragFrom(target: EventTarget | null) {
   return !control;
 }
 
+export function CallWinBar({
+  onMinimize,
+  onMaximize,
+  onClose,
+  maximized,
+  showMaximize = true,
+}: {
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
+  maximized?: boolean;
+  showMaximize?: boolean;
+}) {
+  return (
+    <div className="lb-call-winbar" data-call-drag>
+      <img src={BRAND_LOGO_SRC} alt="LiveBoom" className="lb-call-winbar__logo" draggable={false} />
+      <div className="lb-call-winbar__btns">
+        {onMinimize ? (
+          <button type="button" className="lb-call-winbtn" data-no-drag onClick={onMinimize} aria-label="Minimizar">
+            <Minimize2 size={14} />
+          </button>
+        ) : null}
+        {showMaximize && onMaximize ? (
+          <button
+            type="button"
+            className="lb-call-winbtn"
+            data-no-drag
+            onClick={onMaximize}
+            aria-label={maximized ? 'Restaurar' : 'Maximizar'}
+          >
+            <Maximize2 size={14} />
+          </button>
+        ) : null}
+        {onClose ? (
+          <button type="button" className="lb-call-winbtn lb-call-winbtn--close" data-no-drag onClick={onClose} aria-label="Cerrar">
+            <X size={14} />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function FloatingCallFrame({
   children,
   compact = false,
   video = false,
+  maximized = false,
+  incoming = false,
+  parked = false,
   onReady,
 }: {
   children: ReactNode;
   compact?: boolean;
   video?: boolean;
+  maximized?: boolean;
+  incoming?: boolean;
+  parked?: boolean;
   onReady?: () => void;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const [pos, setPos] = useState<Pos | null>(sessionPos);
+  const [size, setSize] = useState<Size | null>(compact ? null : sessionSize);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -147,28 +240,69 @@ export function FloatingCallFrame({
     origY: number;
     moved: boolean;
   } | null>(null);
+  const resizeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origW: number;
+    origH: number;
+  } | null>(null);
   const suppressClickRef = useRef(false);
-  const lastMode = useRef({ compact, video });
+  const lastMode = useRef({ compact, video, maximized, incoming });
 
   const applySize = useCallback(() => {
     const node = frameRef.current;
     if (!node) return;
+    onReadyRef.current?.();
+    if (parked) return;
+    const chat = chatBox();
+    if (maximized) {
+      const box = chat ?? (() => {
+        const view = viewBox();
+        const m = margins();
+        const bottom = Math.max(m.bottom, composerReserve(false));
+        return {
+          left: view.left + m.left,
+          top: view.top + m.top,
+          width: Math.max(280, view.width - m.left - m.right),
+          height: Math.max(240, view.height - m.top - m.bottom - bottom + m.bottom),
+        };
+      })();
+      const next = { x: box.left, y: box.top };
+      const dim = { w: Math.max(96, box.width), h: Math.max(96, box.height) };
+      sessionPos = next;
+      sessionSize = dim;
+      setPos(next);
+      setSize(dim);
+      return;
+    }
     const width = node.offsetWidth;
     const height = node.offsetHeight;
     if (!width || !height) return;
-    onReadyRef.current?.();
     setPos((prev) => {
       const modeChanged =
-        lastMode.current.compact !== compact || lastMode.current.video !== video;
-      lastMode.current = { compact, video };
-      const base = modeChanged
-        ? defaultPos(width, height, compact)
-        : prev ?? sessionPos ?? defaultPos(width, height, compact);
+        lastMode.current.compact !== compact ||
+        lastMode.current.video !== video ||
+        lastMode.current.maximized !== maximized ||
+        lastMode.current.incoming !== incoming;
+      const wasCompact = lastMode.current.compact;
+      lastMode.current = { compact, video, maximized, incoming };
+      let base: Pos;
+      if (modeChanged && compact && !wasCompact) {
+        expandedPos = prev ?? sessionPos;
+        base = defaultPos(width, height, true);
+      } else if (modeChanged && !compact && wasCompact) {
+        base = expandedPos ?? defaultPos(width, height, false);
+      } else if (modeChanged) {
+        base = prev ?? sessionPos ?? defaultPos(width, height, compact);
+      } else {
+        base = prev ?? sessionPos ?? defaultPos(width, height, compact);
+      }
       const next = clampPos(base, width, height);
       sessionPos = next;
       return next;
     });
-  }, [compact, video]);
+  }, [compact, video, maximized, incoming, parked]);
 
   useLayoutEffect(() => {
     applySize();
@@ -184,16 +318,21 @@ export function FloatingCallFrame({
     window.addEventListener('orientationchange', applySize);
     window.visualViewport?.addEventListener('resize', applySize);
     window.visualViewport?.addEventListener('scroll', applySize);
+    const host = document.getElementById('lb-chat-call-host');
+    const ro = host && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(applySize) : null;
+    if (host && ro) ro.observe(host);
     return () => {
       node?.removeEventListener('click', onClickCapture, true);
       window.removeEventListener('resize', applySize);
       window.removeEventListener('orientationchange', applySize);
       window.visualViewport?.removeEventListener('resize', applySize);
       window.visualViewport?.removeEventListener('scroll', applySize);
+      ro?.disconnect();
     };
-  }, [applySize, compact, video]);
+  }, [applySize, compact, video, maximized, incoming, parked]);
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (maximized || parked) return;
     if (event.button != null && event.button !== 0) return;
     if (!isDragFrom(event.target)) return;
     const node = frameRef.current;
@@ -211,6 +350,30 @@ export function FloatingCallFrame({
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const resize = resizeRef.current;
+    if (resize && resize.pointerId === event.pointerId) {
+      const node = frameRef.current;
+      if (!node) return;
+      const box = viewBox();
+      const m = margins();
+      const minW = video ? 280 : 240;
+      const minH = video ? 240 : 120;
+      const maxW = Math.max(minW, box.width - m.left - m.right);
+      const maxH = Math.max(minH, box.height - m.top - m.bottom);
+      const next = {
+        w: Math.min(maxW, Math.max(minW, resize.origW + event.clientX - resize.startX)),
+        h: Math.min(maxH, Math.max(minH, resize.origH + event.clientY - resize.startY)),
+      };
+      sessionSize = next;
+      setSize(next);
+      setPos((prev) => {
+        const base = prev ?? sessionPos ?? { x: node.offsetLeft, y: node.offsetTop };
+        const clamped = clampPos(base, next.w, next.h);
+        sessionPos = clamped;
+        return clamped;
+      });
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const node = frameRef.current;
@@ -228,6 +391,15 @@ export function FloatingCallFrame({
   }
 
   function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (resizeRef.current && resizeRef.current.pointerId === event.pointerId) {
+      resizeRef.current = null;
+      try {
+        frameRef.current?.releasePointerCapture(event.pointerId);
+      } catch {
+        /* ya soltado */
+      }
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const node = frameRef.current;
@@ -251,20 +423,49 @@ export function FloatingCallFrame({
     }
   }
 
+  function onResizeDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    if (event.button != null && event.button !== 0) return;
+    const node = frameRef.current;
+    if (!node) return;
+    resizeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origW: node.offsetWidth,
+      origH: node.offsetHeight,
+    };
+    node.setPointerCapture(event.pointerId);
+  }
+
+  const canResize = video && !compact && !maximized && !parked;
+
   return (
     <div className="lb-call-float-root" data-call-overlay-root>
       <div
         ref={frameRef}
-        className={`lb-call-float${compact ? ' is-compact' : ''}${video ? ' is-video' : ''}${
-          pos ? '' : ' is-measure'
-        }`}
-        style={pos ? { left: pos.x, top: pos.y } : undefined}
+        className={`lb-call-float${compact ? ' is-compact' : ' is-normal'}${video ? ' is-video' : ''}${
+          maximized ? ' is-maximized' : ''
+        }${incoming ? ' is-incoming' : ''}${parked ? ' is-parked' : ''}${pos ? '' : ' is-measure'}`}
+        style={{
+          ...(pos ? { left: pos.x, top: pos.y } : null),
+          ...((maximized || canResize) && size ? { width: size.w, height: size.h } : null),
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
         {children}
+        {canResize ? (
+          <button
+            type="button"
+            className="lb-call-resize"
+            data-no-drag
+            aria-label="Redimensionar"
+            onPointerDown={onResizeDown}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -182,9 +182,9 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           emojiSize={COMMENT_EMOJI_SIZE}
           className="lb-comment-bar__field"
           padClassName="px-3 py-2"
-          mirrorTextClassName={overlay ? 'text-white/90' : 'text-zinc-200'}
+          mirrorTextClassName={overlay ? 'text-white/90' : 'lb-comment-bar__value'}
           fieldClassName="lb-comment-bar__input"
-          placeholderClassName={overlay ? 'text-white/40' : 'text-zinc-500'}
+          placeholderClassName={overlay ? 'text-white/40' : 'lb-comment-bar__placeholder'}
           onEnterSubmit={() => {
             void publish();
           }}

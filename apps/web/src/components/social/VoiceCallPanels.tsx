@@ -1,5 +1,4 @@
 import {
-  BellOff,
   Gift,
   MessageCircle,
   Mic,
@@ -12,10 +11,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
-import { BRAND_LOGO_SRC } from '../../lib/brand';
 import { callMediaDeniedMessage, labelCallMicrophone, listCallMediaDevices } from '../../lib/callMedia';
 import { UserAvatar } from '../profile/UserAvatar';
 import type { ReactNode } from 'react';
+import { CallWinBar } from './FloatingCallFrame';
 
 export const VOICE_QUICK_REPLIES = [
   'No puedo hablar ahora.',
@@ -51,10 +50,6 @@ type Person = {
   avatar: string | null;
   uid?: string | null;
 };
-
-function BrandMark() {
-  return <img src={BRAND_LOGO_SRC} alt="LiveBoom" className="lb-voice-card__logo" draggable={false} />;
-}
 
 function PersonBlock({ person, children }: { person: Person; children?: ReactNode }) {
   const handle = person.handle.replace(/^@/, '');
@@ -119,39 +114,36 @@ export function VoiceCallIncoming({
   person,
   accepting,
   error,
-  ringMuted,
-  repliesOpen,
-  customReply,
-  onCustomReplyChange,
   onAccept,
   onDecline,
-  onMuteRing,
-  onOpenReplies,
-  onCloseReplies,
-  onSendReply,
+  onMinimize,
+  onMaximize,
+  onClose,
+  maximized,
 }: {
   person: Person;
   accepting?: boolean;
   error?: string | null;
-  ringMuted: boolean;
-  repliesOpen: boolean;
-  customReply: string;
-  onCustomReplyChange: (value: string) => void;
   onAccept: () => void;
   onDecline: () => void;
-  onMuteRing: () => void;
-  onOpenReplies: () => void;
-  onCloseReplies: () => void;
-  onSendReply: (text: string) => void;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
+  maximized?: boolean;
 }) {
   return (
-    <article className="lb-voice-card is-in">
-      <BrandMark />
+    <article className="lb-voice-card is-in is-float">
+      <CallWinBar
+        onMinimize={onMinimize}
+        onMaximize={onMaximize}
+        onClose={onClose}
+        maximized={maximized}
+      />
       <PersonBlock person={person}>
         <AvatarStage person={person} mode="in" />
       </PersonBlock>
-      <p className="lb-voice-card__status">Llamada entrante</p>
-      <p className="lb-voice-card__sub">Quiere hablar contigo por voz</p>
+      <p className="lb-voice-card__status">Llamada de voz</p>
+      <p className="lb-voice-card__sub">Te está llamando...</p>
       {error ? <p className="lb-voice-card__error">{error}</p> : null}
       {error ? (
         <div className="lb-voice-card__secondary">
@@ -165,73 +157,27 @@ export function VoiceCallIncoming({
       ) : null}
       {accepting ? <p className="lb-voice-card__sub">Conectando llamada...</p> : null}
 
-      {repliesOpen ? (
-        <div className="lb-voice-replies">
-          {VOICE_QUICK_REPLIES.map((line) => (
-            <button key={line} type="button" className="lb-voice-reply" onClick={() => onSendReply(line)}>
-              {line}
-            </button>
-          ))}
-          <form
-            className="lb-voice-reply-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const text = customReply.trim();
-              if (text) onSendReply(text);
-            }}
-          >
-            <input
-              value={customReply}
-              onChange={(event) => onCustomReplyChange(event.target.value)}
-              placeholder="Escribe una respuesta..."
-              maxLength={200}
-            />
-            <button type="submit" disabled={!customReply.trim()}>
-              Enviar
-            </button>
-          </form>
-          <button type="button" className="lb-voice-reply-cancel" onClick={onCloseReplies}>
-            Volver
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="lb-voice-card__main-actions">
-            <button
-              type="button"
-              className="lb-voice-round is-decline"
-              onClick={onDecline}
-              disabled={accepting}
-              aria-label="Rechazar"
-            >
-              <PhoneOff size={22} />
-            </button>
-            <button
-              type="button"
-              className="lb-voice-round is-accept"
-              onClick={onAccept}
-              disabled={accepting}
-              aria-label="Aceptar"
-            >
-              <Phone size={22} />
-            </button>
-          </div>
-          <div className="lb-voice-card__main-labels">
-            <span>Rechazar</span>
-            <span>Aceptar</span>
-          </div>
-          <div className="lb-voice-card__secondary">
-            <button type="button" onClick={onOpenReplies}>
-              <MessageCircle size={15} />
-              Responder con mensaje
-            </button>
-            <button type="button" onClick={onMuteRing}>
-              <BellOff size={15} />
-              {ringMuted ? 'Timbre silenciado' : 'Silenciar llamada'}
-            </button>
-          </div>
-        </>
-      )}
+      <div className="lb-voice-card__main-actions">
+        <button
+          type="button"
+          className="lb-voice-accept-pill"
+          onClick={onAccept}
+          disabled={accepting}
+          aria-label="Aceptar"
+        >
+          <Phone size={18} />
+          Aceptar
+        </button>
+        <button
+          type="button"
+          className="lb-voice-round is-decline"
+          onClick={onDecline}
+          disabled={accepting}
+          aria-label="Rechazar"
+        >
+          <PhoneOff size={20} />
+        </button>
+      </div>
     </article>
   );
 }
@@ -394,17 +340,25 @@ export function VoiceCallOutgoing({
   connecting,
   onCancel,
   onFollowChat,
+  onMinimize,
+  onMaximize,
+  onClose,
+  maximized,
 }: {
   person: Person;
   reconnecting?: boolean;
   connecting?: boolean;
   onCancel: () => void;
   onFollowChat: () => void;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
+  maximized?: boolean;
 }) {
   return (
     <article className="lb-voice-card is-out is-float">
       <span className="lb-voice-card__grip" data-call-drag aria-hidden />
-      <BrandMark />
+      <CallWinBar onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} maximized={maximized} />
       <PersonBlock person={person}>
         <AvatarStage person={person} mode="out" />
       </PersonBlock>
@@ -430,6 +384,10 @@ export function VoiceCallActive({
   lost,
   onHangup,
   onFollowChat,
+  onMinimize,
+  onMaximize,
+  onClose,
+  maximized,
 }: {
   person: Person;
   elapsedLabel: string;
@@ -437,12 +395,16 @@ export function VoiceCallActive({
   lost?: boolean;
   onHangup: () => void;
   onFollowChat: () => void;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
+  maximized?: boolean;
 }) {
   const state = reconnecting ? 'Reconectando...' : lost ? 'Conexión perdida' : 'En llamada';
   return (
     <article className="lb-voice-card is-on is-float">
       <span className="lb-voice-card__grip" data-call-drag aria-hidden />
-      <BrandMark />
+      <CallWinBar onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} maximized={maximized} />
       <PersonBlock person={person}>
         <AvatarStage person={person} mode="on" />
       </PersonBlock>
@@ -465,11 +427,13 @@ export function VoiceCallMiniBar({
   label,
   onExpand,
   onHangup,
+  ringing,
 }: {
   person: Person;
   label: string;
   onExpand: () => void;
   onHangup: () => void;
+  ringing?: boolean;
 }) {
   const [menu, setMenu] = useState(false);
   return (
@@ -488,6 +452,7 @@ export function VoiceCallMiniBar({
           <em>{label}</em>
         </span>
       </button>
+      {ringing ? null : (
       <button
         type="button"
         className="lb-voice-mini__gift"
@@ -497,6 +462,7 @@ export function VoiceCallMiniBar({
       >
         <Gift size={14} />
       </button>
+      )}
       <div className="lb-voice-mini__more">
         <button
           type="button"
@@ -513,7 +479,7 @@ export function VoiceCallMiniBar({
               Volver a la llamada
             </button>
             <button type="button" onClick={onHangup}>
-              Finalizar
+              {ringing ? 'Rechazar' : 'Finalizar'}
             </button>
           </div>
         ) : null}

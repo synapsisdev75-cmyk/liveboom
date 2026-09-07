@@ -7,6 +7,7 @@ import {
   liveCanvasDimensions,
   livePreviewFrameClass,
 } from '../lib/liveAspectRatio';
+import { labelLiveCamera, labelLiveMicrophone } from '../lib/liveMediaDevices';
 import { AddSourceMenu } from '../components/live/studio/AddSourceMenu';
 import { AudioMixer } from '../components/live/studio/AudioMixer';
 import { BroadcastControlsBar } from '../components/live/studio/BroadcastControlsBar';
@@ -69,6 +70,14 @@ type Props = {
   goLive: () => void;
   mirrorPreview: boolean;
   setMirrorPreview: (v: boolean) => void;
+  micOnAtStart: boolean;
+  setMicOnAtStart: (v: boolean) => void;
+  videoInputs: MediaDeviceInfo[];
+  audioInputs: MediaDeviceInfo[];
+  selectedCameraId: string;
+  selectedMicrophoneId: string;
+  onSelectCamera: (deviceId: string) => void;
+  onSelectMicrophone: (deviceId: string) => void;
   addSourceOpen: boolean;
   setAddSourceOpen: (v: boolean) => void;
 };
@@ -166,13 +175,13 @@ export function TransmitStudioBody(props: Props) {
           </div>
         </div>
       ) : (
-        <div className={`relative mx-auto w-full max-w-[min(100%,960px)] ${livePreviewFrameClass(aspectRatio)}`}>
+        <div className={livePreviewFrameClass(aspectRatio)}>
           <LivePreviewMeta format={props.studioFormat} resolution={resolution} fps={30} />
           <video
             ref={props.previewVideoRef}
             muted
             playsInline
-            className={`h-full w-full object-contain ${props.mirrorPreview ? 'lb-live-mirror-on' : ''}`}
+            className={props.mirrorPreview ? 'lb-live-mirror-on' : ''}
           />
           {!props.previewReady ? (
             <div className="absolute inset-0 grid place-items-center bg-zinc-950/85 text-center">
@@ -198,17 +207,19 @@ export function TransmitStudioBody(props: Props) {
 
   const compactPreLive = (
     <div className="mx-auto w-full max-w-lg space-y-3">
-      <div className={`relative mx-auto w-full ${livePreviewFrameClass(aspectRatio)}`}>
+      <div className={livePreviewFrameClass(aspectRatio)}>
         <video
           ref={props.previewVideoRef}
           muted
           playsInline
-          className={`h-full w-full object-contain ${props.mirrorPreview ? 'lb-live-mirror-on' : ''}`}
+          className={props.mirrorPreview ? 'lb-live-mirror-on' : ''}
         />
         {!props.previewReady ? (
           <div className="absolute inset-0 grid place-items-center bg-zinc-950/90 text-center">
             <Camera className="text-zinc-600" size={32} />
-            <p className="mt-2 px-4 text-xs text-zinc-500">Permite cámara para el preview</p>
+            <p className="mt-2 px-4 text-xs text-zinc-500">
+              No se pudo acceder a la cámara. Revisa los permisos del navegador.
+            </p>
           </div>
         ) : null}
       </div>
@@ -237,21 +248,66 @@ export function TransmitStudioBody(props: Props) {
           ))}
         </select>
       </label>
-      <BroadcastModeSelector value={props.broadcastMode} onChange={props.setBroadcastMode} />
       <OrientationSelector value={props.studioFormat} onChange={props.setStudioFormat} />
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => props.setMirrorPreview(!props.mirrorPreview)}
-          className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+          className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
             props.mirrorPreview ? 'bg-cyan-500/20 text-cyan-200' : 'bg-zinc-800 text-zinc-300'
           }`}
         >
           Espejo {props.mirrorPreview ? 'ON' : 'OFF'}
         </button>
-        <span className="inline-flex items-center gap-1 rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-400">
-          <Mic size={14} /> Mic activo al iniciar
-        </span>
+        <button
+          type="button"
+          onClick={() => props.setMicOnAtStart(!props.micOnAtStart)}
+          className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold ${
+            props.micOnAtStart ? 'bg-emerald-500/20 text-emerald-200' : 'bg-zinc-800 text-zinc-400'
+          }`}
+        >
+          <Mic size={14} /> {props.micOnAtStart ? 'Mic activo al iniciar' : 'Mic apagado al iniciar'}
+        </button>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-xs font-semibold text-zinc-400">Micrófono</span>
+          <select
+            value={props.selectedMicrophoneId}
+            onChange={(e) => props.onSelectMicrophone(e.target.value)}
+            disabled={props.audioInputs.length === 0}
+            className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+          >
+            {props.audioInputs.length === 0 ? (
+              <option value="">Sin micrófono</option>
+            ) : (
+              props.audioInputs.map((device, index) => (
+                <option key={device.deviceId || `mic-${index}`} value={device.deviceId}>
+                  {labelLiveMicrophone(device, index)}
+                </option>
+              ))
+            )}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs font-semibold text-zinc-400">Cámara</span>
+          <select
+            value={props.selectedCameraId}
+            onChange={(e) => props.onSelectCamera(e.target.value)}
+            disabled={props.videoInputs.length === 0}
+            className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+          >
+            {props.videoInputs.length === 0 ? (
+              <option value="">Sin cámara</option>
+            ) : (
+              props.videoInputs.map((device, index) => (
+                <option key={device.deviceId || `cam-${index}`} value={device.deviceId}>
+                  {labelLiveCamera(device, index)}
+                </option>
+              ))
+            )}
+          </select>
+        </label>
       </div>
       <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2">
         <input

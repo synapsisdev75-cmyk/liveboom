@@ -152,7 +152,7 @@ function OriginalPostEmbed({
       : null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-fuchsia-400/25 bg-zinc-950/80 ring-1 ring-cyan-400/10">
+    <div className="lb-embedded-post overflow-hidden rounded-xl border ring-1 ring-cyan-400/10">
       {origin === undefined ? (
         <p className="px-3 py-6 text-center text-xs text-zinc-500">Cargando publicación original…</p>
       ) : !origin ? (

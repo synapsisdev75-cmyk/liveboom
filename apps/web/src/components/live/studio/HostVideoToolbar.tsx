@@ -1,13 +1,24 @@
 import { Camera, Clapperboard, Mic, MicOff, MonitorUp, MoreHorizontal, Users } from 'lucide-react';
 
+type DeviceOption = { deviceId: string; label: string };
+
 type Props = {
   micOn: boolean;
   screenSharing: boolean;
+  cameraDevices?: DeviceOption[];
+  cameraDeviceId?: string;
+  cameraPickerOpen?: boolean;
+  audioDevices?: DeviceOption[];
+  audioDeviceId?: string;
+  micPickerOpen?: boolean;
   onInvite: () => void;
   onReel: () => void;
   onScreen: () => void;
   onMic: () => void;
+  onMuteMic?: () => void;
+  onSelectMic?: (deviceId: string) => void;
   onCamera: () => void;
+  onSelectCamera?: (deviceId: string) => void;
   onMore: () => void;
 };
 
@@ -15,11 +26,20 @@ type Props = {
 export function HostVideoToolbar({
   micOn,
   screenSharing,
+  cameraDevices = [],
+  cameraDeviceId,
+  cameraPickerOpen,
+  audioDevices = [],
+  audioDeviceId,
+  micPickerOpen,
   onInvite,
   onReel,
   onScreen,
   onMic,
+  onMuteMic,
+  onSelectMic,
   onCamera,
+  onSelectCamera,
   onMore,
 }: Props) {
   const btn =
@@ -39,12 +59,59 @@ export function HostVideoToolbar({
         <button type="button" onClick={onScreen} className={screenSharing ? active : btn}>
           <MonitorUp size={14} /> Pantalla
         </button>
-        <button type="button" onClick={onMic} className={!micOn ? active : btn}>
-          {micOn ? <Mic size={14} /> : <MicOff size={14} />} Micrófono
-        </button>
-        <button type="button" onClick={onCamera} className={btn}>
-          <Camera size={14} /> Cámara
-        </button>
+        <div className="relative">
+          <button type="button" onClick={onMic} className={!micOn ? active : btn}>
+            {micOn ? <Mic size={14} /> : <MicOff size={14} />} Micrófono
+          </button>
+          {micPickerOpen && audioDevices.length > 0 ? (
+            <div className="absolute bottom-full left-0 z-40 mb-1 min-w-[12rem] rounded-xl border border-white/10 bg-zinc-950/98 p-2 shadow-xl">
+              <button
+                type="button"
+                onClick={onMuteMic}
+                className="mb-1 block w-full rounded-lg px-2 py-1.5 text-left text-[11px] text-zinc-200 hover:bg-white/5"
+              >
+                {micOn ? 'Silenciar micrófono' : 'Activar micrófono'}
+              </button>
+              {audioDevices.map((device, index) => (
+                <button
+                  key={device.deviceId || `mic-${index}`}
+                  type="button"
+                  onClick={() => onSelectMic?.(device.deviceId)}
+                  className={`block w-full rounded-lg px-2 py-1.5 text-left text-[11px] ${
+                    audioDeviceId === device.deviceId
+                      ? 'bg-cyan-500/20 text-cyan-200'
+                      : 'text-zinc-200 hover:bg-white/5'
+                  }`}
+                >
+                  {device.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="relative">
+          <button type="button" onClick={onCamera} className={btn}>
+            <Camera size={14} /> Cámara
+          </button>
+          {cameraPickerOpen && cameraDevices.length > 0 ? (
+            <div className="absolute bottom-full right-0 z-40 mb-1 min-w-[12rem] rounded-xl border border-white/10 bg-zinc-950/98 p-2 shadow-xl">
+              {cameraDevices.map((device, index) => (
+                <button
+                  key={device.deviceId || `cam-${index}`}
+                  type="button"
+                  onClick={() => onSelectCamera?.(device.deviceId)}
+                  className={`block w-full rounded-lg px-2 py-1.5 text-left text-[11px] ${
+                    cameraDeviceId === device.deviceId
+                      ? 'bg-cyan-500/20 text-cyan-200'
+                      : 'text-zinc-200 hover:bg-white/5'
+                  }`}
+                >
+                  {device.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <button type="button" onClick={onMore} className={btn}>
           <MoreHorizontal size={14} /> Más
         </button>

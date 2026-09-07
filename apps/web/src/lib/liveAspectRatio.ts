@@ -62,9 +62,9 @@ export function liveHostControlsBottomClass(viewport: {
 
 export function livePreviewFrameClass(ratio: LiveAspectRatio): string {
   if (ratio === '16:9') {
-    return 'relative mx-auto aspect-video w-full max-w-full overflow-hidden rounded-2xl bg-zinc-950 ring-1 ring-white/10';
+    return 'lb-live-prep-frame lb-live-prep-frame--16x9 ring-1 ring-white/10';
   }
-  return 'relative mx-auto aspect-[9/16] w-full max-w-[min(100%,14rem)] overflow-hidden rounded-2xl bg-zinc-950 ring-1 ring-white/10 sm:max-w-[min(100%,18rem)]';
+  return 'lb-live-prep-frame lb-live-prep-frame--9x16 ring-1 ring-white/10';
 }
 
 export function liveAspectRatioLabel(ratio: LiveAspectRatio): string {

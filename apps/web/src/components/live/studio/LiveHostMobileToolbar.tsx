@@ -28,6 +28,9 @@ type Props = {
   videoInputs: MediaDeviceInfo[];
   cameraDeviceId: string;
   cameraPickerOpen: boolean;
+  audioInputs?: MediaDeviceInfo[];
+  micDeviceId?: string;
+  micPickerOpen?: boolean;
   onNotify: () => void;
   onWishlist: () => void;
   onLockToggle: () => void;
@@ -37,6 +40,8 @@ type Props = {
   onBatalla: () => void;
   onCameraPickerToggle: () => void;
   onSelectCamera: (deviceId: string) => void;
+  onMicPickerToggle?: () => void;
+  onSelectMic?: (deviceId: string) => void;
   onRecordReel: () => void;
   onScreenShare: () => void;
 };
@@ -57,6 +62,9 @@ export function LiveHostMobileToolbar({
   videoInputs,
   cameraDeviceId,
   cameraPickerOpen,
+  audioInputs = [],
+  micDeviceId,
+  micPickerOpen,
   onNotify,
   onWishlist,
   onLockToggle,
@@ -66,6 +74,8 @@ export function LiveHostMobileToolbar({
   onBatalla,
   onCameraPickerToggle,
   onSelectCamera,
+  onMicPickerToggle,
+  onSelectMic,
   onRecordReel,
   onScreenShare,
 }: Props) {
@@ -145,6 +155,31 @@ export function LiveHostMobileToolbar({
                     }`}
                   >
                     {device.label || `Cámara ${index + 1}`}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {canPublish && audioInputs.length > 1 ? (
+          <div className="relative shrink-0">
+            <button type="button" onClick={onMicPickerToggle} className={btn}>
+              Mic
+            </button>
+            {micPickerOpen ? (
+              <div className="absolute left-0 top-full z-40 mt-1 min-w-[12rem] rounded-xl border border-white/10 bg-zinc-950/98 p-2 shadow-xl">
+                {audioInputs.map((device, index) => (
+                  <button
+                    key={device.deviceId || `mic-${index}`}
+                    type="button"
+                    onClick={() => onSelectMic?.(device.deviceId)}
+                    className={`block w-full rounded-lg px-2 py-1.5 text-left text-[11px] ${
+                      micDeviceId === device.deviceId
+                        ? 'bg-cyan-500/20 text-cyan-200'
+                        : 'text-zinc-200 hover:bg-white/5'
+                    }`}
+                  >
+                    {device.label || `Micrófono ${index + 1}`}
                   </button>
                 ))}
               </div>

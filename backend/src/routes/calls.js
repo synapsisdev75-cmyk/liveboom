@@ -101,6 +101,14 @@ router.post('/start', requireAuth, async (req, res) => {
   const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const roomName = callRoomName(chatId, callId);
   const displayName = req.user.name || req.user.uid.slice(0, 8);
+  const liveKitUrl = typeof lk.publicLiveKitUrl === 'function' ? lk.publicLiveKitUrl() : String(process.env.LIVEKIT_URL || '').trim();
+
+  console.info('[CALL CREATE]', {
+    callId,
+    callerId: me,
+    receiverId: targetUid,
+    type,
+  });
 
   let claimed = { ok: true };
   try {
@@ -145,7 +153,7 @@ router.post('/start', requireAuth, async (req, res) => {
       receiverId: targetUid,
       identity: me,
       tokenGenerated: false,
-      liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+      liveKitUrlPresent: Boolean(liveKitUrl),
       callStatus: 'start',
     });
     const token = await lk.createLivekitToken({
@@ -162,11 +170,12 @@ router.post('/start', requireAuth, async (req, res) => {
       receiverId: targetUid,
       identity: me,
       tokenGenerated: true,
-      liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+      liveKitUrlPresent: Boolean(liveKitUrl),
       callStatus: 'start',
     });
+    console.info('[TOKEN]', { roomName, identity: me, tokenGenerated: true });
     res.json({
-      serverUrl: String(process.env.LIVEKIT_URL || '').trim(),
+      serverUrl: liveKitUrl,
       token,
       roomName,
       callId,
@@ -175,11 +184,13 @@ router.post('/start', requireAuth, async (req, res) => {
     });
   } catch (error) {
     await releaseCallById(me, callId).catch(() => undefined);
-    console.error('[LiveKit ERROR]', {
+    console.error('[ERROR]', {
+      name: error?.name || 'Error',
+      message: error?.message || String(error || ''),
+      status: error?.status || 500,
       callId,
       roomName,
       stage: 'token',
-      errorCode: 'TOKEN_ISSUE',
     });
     res.status(500).json({
       error: 'No se pudo iniciar la llamada. Intenta de nuevo.',

@@ -93,6 +93,7 @@ import { generateConversationPdf } from '../../lib/chatExportPdf';
 import { ConversationActionsModal } from './ConversationActionsModal';
 import { useAuthStore } from '../../store/authStore';
 import { formatCallClock, useCallElapsed, useCallStore } from '../../store/callStore';
+import { registerChatCallSurface } from '../../lib/chatCallSurface';
 import { profileHref } from '../../lib/profileFirestore';
 import { StickerPickerSheet } from './StickerPickerSheet';
 import type { ComposerSticker } from '../../lib/composerStickers';
@@ -559,6 +560,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   } | null>(null);
   const callStatus = useCallStore((state) => state.status);
   const callChatId = useCallStore((state) => state.chatId);
+  const incomingCall = useCallStore((state) => state.incoming);
   const hangup = useCallStore((state) => state.hangup);
   const callElapsed = useCallElapsed();
   const [recording, setRecording] = useState(false);
@@ -793,7 +795,13 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   const activeFriend = people.find((item) => item.uid === activeUid) || null;
   const online = Boolean(activeFriend && onlineByUid[activeFriend.uid]);
-  const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
+  const inThisCall = Boolean(
+    chatId &&
+      callStatus !== 'idle' &&
+      (callChatId === chatId || incomingCall?.chatId === chatId),
+  );
+  const callHostRef = useRef<HTMLDivElement>(null);
+  const callDockRef = useRef<HTMLDivElement>(null);
 
   const presenceUidsKey = people.map((item) => item.uid).join('|');
   useEffect(() => {
@@ -811,6 +819,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       unsubs.forEach((unsub) => unsub());
     };
   }, [presenceUidsKey]);
+
+  useLayoutEffect(() => {
+    const host = callHostRef.current;
+    const dock = callDockRef.current;
+    if (!chatId || !host || !dock) {
+      registerChatCallSurface(null);
+      return;
+    }
+    registerChatCallSurface({ chatId, host, dock });
+    return () => registerChatCallSurface(null);
+  }, [chatId, activeFriend?.uid]);
 
   useEffect(() => {
     if (!profile || !activeFriend) {
@@ -1800,9 +1819,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             </button>
           </div>
         </div>
+        <div ref={callDockRef} id="lb-chat-call-dock" className="lb-chat-call-dock" />
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <div id="lb-chat-call-host" className="lb-chat-call-host" />
+        <div id="lb-chat-call-host" ref={callHostRef} className="lb-chat-call-host" />
         <div
           className="chat-scroll flex-1 space-y-3 overflow-y-auto px-4 py-4"
           style={{
