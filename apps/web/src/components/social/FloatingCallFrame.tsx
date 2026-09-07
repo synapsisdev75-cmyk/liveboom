@@ -44,9 +44,32 @@ function clampPos(pos: Pos, width: number, height: number): Pos {
   };
 }
 
+function chatBox() {
+  const host = document.getElementById('lb-chat-call-host');
+  if (!host) return null;
+  const rect = host.getBoundingClientRect();
+  if (rect.width < 96 || rect.height < 96) return null;
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+    right: rect.right,
+    bottom: rect.bottom,
+  };
+}
+
+function composerReserve(hasChat: boolean) {
+  if (!hasChat) return window.matchMedia('(max-width: 767px)').matches ? 72 : 24;
+  return window.matchMedia('(max-width: 767px)').matches ? 92 : 80;
+}
+
 function defaultPos(width: number, height: number, compact: boolean): Pos {
-  const box = viewBox();
+  const view = viewBox();
+  const chat = chatBox();
+  const box = chat ?? view;
   const m = margins();
+  const bottomGap = Math.max(m.bottom, composerReserve(Boolean(chat)));
   if (compact) {
     return clampPos(
       {
@@ -57,10 +80,13 @@ function defaultPos(width: number, height: number, compact: boolean): Pos {
       height,
     );
   }
+  const usableTop = box.top + m.top;
+  const usableBottom = box.bottom - bottomGap;
+  const y = usableTop + Math.round((usableBottom - usableTop - height) / 2);
   return clampPos(
     {
       x: box.left + Math.round((box.width - width) / 2),
-      y: box.top + Math.round((box.height - height) / 2),
+      y,
     },
     width,
     height,
@@ -88,7 +114,7 @@ function isDragFrom(target: EventTarget | null) {
   if (!el) return false;
   if (el.closest('[data-no-drag]')) return false;
   if (el.closest('a, input, textarea, select, option')) return false;
-  if (el.closest('.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-sheet, .lb-video-sheet-backdrop')) {
+  if (el.closest('.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop')) {
     return false;
   }
   const handle = el.closest('[data-call-drag]');
@@ -102,12 +128,16 @@ export function FloatingCallFrame({
   children,
   compact = false,
   video = false,
+  onReady,
 }: {
   children: ReactNode;
   compact?: boolean;
   video?: boolean;
+  onReady?: () => void;
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const [pos, setPos] = useState<Pos | null>(sessionPos);
   const dragRef = useRef<{
     pointerId: number;
@@ -126,6 +156,7 @@ export function FloatingCallFrame({
     const width = node.offsetWidth;
     const height = node.offsetHeight;
     if (!width || !height) return;
+    onReadyRef.current?.();
     setPos((prev) => {
       const modeChanged =
         lastMode.current.compact !== compact || lastMode.current.video !== video;
@@ -221,7 +252,7 @@ export function FloatingCallFrame({
   }
 
   return (
-    <div className="lb-call-float-root">
+    <div className="lb-call-float-root" data-call-overlay-root>
       <div
         ref={frameRef}
         className={`lb-call-float${compact ? ' is-compact' : ''}${video ? ' is-video' : ''}${

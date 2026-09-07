@@ -1,7 +1,8 @@
-// Wompi sandbox — env cargado desde backend/.env en Firebase deploy
+// Wompi sandbox — env local (.env) o empaquetado para Functions (.env.functions)
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
 require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
+require('dotenv').config({ path: path.join(__dirname, '.env.functions'), override: false });
 require('dotenv').config({ path: path.join(__dirname, '../.env'), override: false });
 
 const http = require('http');

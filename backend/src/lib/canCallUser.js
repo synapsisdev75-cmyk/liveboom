@@ -4,7 +4,9 @@ function chatIdFor(a, b) {
   return [String(a || ''), String(b || '')].sort().join('_');
 }
 
-function callRoomName(chatId) {
+function callRoomName(chatId, callId) {
+  const id = String(callId || '').trim();
+  if (id) return `call_${id}`.slice(0, 64);
   return `dm_${String(chatId || '')}`.slice(0, 64);
 }
 

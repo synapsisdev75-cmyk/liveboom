@@ -41,7 +41,10 @@
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local",
-        "nodemon.json"
+        "nodemon.json",
+        ".env",
+        ".env.local",
+        ".env.example"
       ]
     }
   ],

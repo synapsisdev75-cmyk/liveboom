@@ -874,6 +874,18 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }, [messages, activeUid]);
 
   useEffect(() => {
+    if (!activeUid && !chatId) return;
+    try {
+      if (sessionStorage.getItem('lb_open_call_gifts') === '1') {
+        sessionStorage.removeItem('lb_open_call_gifts');
+        setGiftsOpen(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [activeUid, chatId]);
+
+  useEffect(() => {
     function openGiftsFromCall() {
       setGiftsOpen(true);
     }
@@ -2141,7 +2153,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         {error ? <p className="px-4 text-[11px] text-fuchsia-300">{error}</p> : null}
 
         <div
-          className="lb-chat-composer flex min-w-0 shrink-0 items-end gap-2 overflow-x-hidden border-t border-[color:var(--border-soft)] px-3 py-2.5"
+          className="lb-chat-composer flex min-w-0 shrink-0 items-end gap-2 overflow-x-hidden border-t border-[color:var(--border-soft)] px-3 py-2"
           style={{
             paddingBottom: isPage ? '0.65rem' : 'max(0.65rem, var(--lb-safe-bottom))',
           }}
@@ -2226,25 +2238,58 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                   void send(draft, link ? { linkUrl: link } : undefined);
                 }}
               >
-                <EmojiInput
-                  ref={composerInputRef}
-                  multiline
-                  rows={1}
-                  growMode="message"
-                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
-                  value={draft}
-                  onChange={(next) => setDraft(next.slice(0, MAX_CHAT_MESSAGE_LENGTH))}
-                  onEnterSubmit={() => {
-                    const link = detectLink(draft);
-                    void send(draft, link ? { linkUrl: link } : undefined);
-                  }}
-                  placeholder="Escribe un mensaje..."
-                  emojiSize={CHAT_EMOJI_SIZE}
-                  className="w-full min-w-0"
-                  fieldClassName="min-w-0 w-full"
-                  padClassName="py-1.5"
-                  mirrorTextClassName="text-[color:var(--text-primary)]"
-                />
+                <div className="lb-chat-composer-row">
+                  <EmojiInput
+                    ref={composerInputRef}
+                    multiline
+                    rows={1}
+                    growMode="message"
+                    maxLength={MAX_CHAT_MESSAGE_LENGTH}
+                    value={draft}
+                    onChange={(next) => setDraft(next.slice(0, MAX_CHAT_MESSAGE_LENGTH))}
+                    onEnterSubmit={() => {
+                      const link = detectLink(draft);
+                      void send(draft, link ? { linkUrl: link } : undefined);
+                    }}
+                    placeholder="Escribe un mensaje..."
+                    emojiSize={CHAT_EMOJI_SIZE}
+                    className="lb-chat-composer-grow min-w-0 flex-1"
+                    fieldClassName="min-w-0"
+                    padClassName="py-1 pr-1.5"
+                    mirrorTextClassName="text-[color:var(--text-primary)]"
+                  />
+                  <div className="lb-chat-composer-inline-tools">
+                    <EmojiPickerButton
+                      open={emojiPickerOpen}
+                      onOpenChange={(next) => {
+                        setEmojiPickerOpen(next);
+                        if (next) {
+                          setGifOpen(false);
+                          setAttachOpen(false);
+                        }
+                      }}
+                      title="Emoji"
+                      placement="above"
+                      buttonClassName={`lb-chat-composer-tool${emojiPickerOpen ? ' is-on' : ''}`}
+                      onPick={(id) => composerInputRef.current?.insertToken(id)}
+                    />
+                    <button
+                      type="button"
+                      className={`lb-chat-composer-tool${gifOpen ? ' is-on' : ''}`}
+                      aria-label="GIF"
+                      title="GIF"
+                      aria-pressed={gifOpen}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setGifOpen((open) => !open);
+                        setEmojiPickerOpen(false);
+                        setAttachOpen(false);
+                      }}
+                    >
+                      <span className="lb-chat-composer-gif-mark">GIF</span>
+                    </button>
+                  </div>
+                </div>
                 {draft.length >= 3500 ? (
                   <span
                     className={`lb-chat-composer-count${
@@ -2260,34 +2305,6 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                   </span>
                 ) : null}
               </form>
-              <EmojiPickerButton
-                open={emojiPickerOpen}
-                onOpenChange={(next) => {
-                  setEmojiPickerOpen(next);
-                  if (next) {
-                    setGifOpen(false);
-                    setAttachOpen(false);
-                  }
-                }}
-                title="Emoji"
-                placement="above"
-                buttonClassName={`lb-chat-composer-tool${emojiPickerOpen ? ' is-on' : ''}`}
-                onPick={(id) => composerInputRef.current?.insertToken(id)}
-              />
-              <button
-                type="button"
-                className={`lb-chat-composer-tool${gifOpen ? ' is-on' : ''}`}
-                aria-label="GIF"
-                title="GIF"
-                aria-pressed={gifOpen}
-                onClick={() => {
-                  setGifOpen((open) => !open);
-                  setEmojiPickerOpen(false);
-                  setAttachOpen(false);
-                }}
-              >
-                <span className="lb-chat-composer-gif-mark">GIF</span>
-              </button>
               {draft.trim() ? (
                 <button
                   type="submit"

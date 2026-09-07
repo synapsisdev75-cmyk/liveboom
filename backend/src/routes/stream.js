@@ -145,6 +145,7 @@ router.post('/live/start', requireAuth, (req, res) => {
   // Nueva sesión: limpia invitaciones y expulsiones de la sala anterior.
   invites.clearInvites(username);
   invites.clearBans(username);
+  invites.clearPendingInvites(username);
   void invites.persistClear(username);
   const entry = upsertLive({
     username,
@@ -172,6 +173,7 @@ router.post('/live/stop', requireAuth, (req, res) => {
   removeLive(username);
   invites.clearInvites(username);
   invites.clearBans(username);
+  invites.clearPendingInvites(username);
   void invites.persistClear(username);
   liveLocks.clearLock(username);
   try {
@@ -185,18 +187,55 @@ router.post('/live/stop', requireAuth, (req, res) => {
 router.post('/invite', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
-  const guestHandle =
-    typeof req.body?.guestHandle === 'string' ? normalize(req.body.guestHandle) : '';
-  if (!roomName || !guestHandle) {
-    res.status(400).json({ error: 'roomName y guestHandle son obligatorios' });
+  const liveId =
+    typeof req.body?.liveId === 'string' && req.body.liveId.trim()
+      ? normalize(req.body.liveId)
+      : roomName;
+  let viewerId = typeof req.body?.viewerId === 'string' ? String(req.body.viewerId).trim() : '';
+  const requestedHandle =
+    typeof req.body?.guestHandle === 'string' ? String(req.body.guestHandle).trim() : '';
+  const targetSlot = String(req.body?.targetSlot || invites.TARGET_SLOT_SALA_1).toUpperCase();
+  if (!roomName) {
+    res.status(400).json({ error: 'roomName es obligatorio' });
+    return;
+  }
+  if (liveId && liveId !== roomName) {
+    res.status(400).json({ error: 'La invitación no corresponde a este LIVE' });
     return;
   }
   if (!isRoomHost(req.user, roomName, req.body?.handle)) {
     res.status(403).json({ error: 'Solo el anfitrión puede invitar a unirse al live' });
     return;
   }
-  const guestProfile = findByUsername(guestHandle);
+  if (!(await invites.isLiveRoomActive(roomName))) {
+    res.status(409).json({ error: 'Este LIVE ya no está activo', code: 'SALA_UNAVAILABLE' });
+    return;
+  }
+  if (targetSlot !== invites.TARGET_SLOT_SALA_1) {
+    res.status(409).json({ error: 'Sala 1 no está disponible', code: 'SALA_UNAVAILABLE' });
+    return;
+  }
+  const viewer = viewerId
+    ? await invites.readActiveViewer(roomName, viewerId)
+    : requestedHandle
+      ? await invites.findActiveViewerByUsername(roomName, requestedHandle)
+      : null;
+  if (!viewer) {
+    res.status(403).json({
+      error: 'Solo puedes invitar a espectadores que están viendo este LIVE ahora',
+      code: 'VIEWER_NOT_IN_LIVE',
+    });
+    return;
+  }
+  viewerId = viewer.uid;
+  if (viewerId === req.user.uid) {
+    res.status(400).json({ error: 'No puedes invitarte a ti mismo' });
+    return;
+  }
+  const guestHandle = normalize(viewer.username || requestedHandle || viewerId);
+  const guestProfile = getProfile(viewerId);
   const banKeys = [
+    viewerId,
     guestHandle,
     guestProfile?.firebaseUid,
     guestProfile?.username,
@@ -209,34 +248,129 @@ router.post('/invite', requireAuth, async (req, res) => {
     });
     return;
   }
-  invites.addInvite(roomName, guestHandle);
-  if (guestProfile?.firebaseUid) invites.addInvite(roomName, guestProfile.firebaseUid);
-  if (guestProfile?.username) invites.addInvite(roomName, guestProfile.username);
-  if (guestProfile?.email) {
-    invites.addInvite(roomName, String(guestProfile.email).split('@')[0]);
+  if (invites.hasInvite(roomName, banKeys) || (await invites.hasInvitePersisted(roomName, banKeys))) {
+    res.status(409).json({ error: 'Ese espectador ya está en Sala 1', code: 'ALREADY_GUEST' });
+    return;
   }
-  void Promise.all([
-    invites.persistAdd(roomName, guestHandle),
-    guestProfile?.firebaseUid ? invites.persistAdd(roomName, guestProfile.firebaseUid) : null,
-    guestProfile?.username ? invites.persistAdd(roomName, guestProfile.username) : null,
+  try {
+    const invite = await invites.createPendingInvite({
+      liveId: roomName,
+      roomName,
+      hostId: req.user.uid,
+      viewerId,
+      guestHandle,
+      targetSlot: invites.TARGET_SLOT_SALA_1,
+    });
+    res.status(201).json({
+      ok: true,
+      invite: {
+        inviteId: invite.inviteId,
+        liveId: invite.liveId,
+        roomName: invite.roomName,
+        hostId: invite.hostId,
+        viewerId: invite.viewerId,
+        guestHandle,
+        targetSlot: invite.targetSlot,
+        uid: viewerId,
+      },
+    });
+  } catch (error) {
+    res.status(error.code === 'SLOT_UNAVAILABLE' ? 409 : 400).json({
+      error: error.message || 'No se pudo crear la invitación',
+      code: error.code || 'INVITE_FAILED',
+    });
+  }
+});
+
+router.post('/invite/accept', requireAuth, async (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const liveId =
+    typeof req.body?.liveId === 'string' && req.body.liveId.trim()
+      ? normalize(req.body.liveId)
+      : roomName;
+  const inviteId = typeof req.body?.inviteId === 'string' ? String(req.body.inviteId).trim() : '';
+  if (!roomName || !inviteId) {
+    res.status(400).json({ error: 'roomName e inviteId son obligatorios' });
+    return;
+  }
+  if (liveId && liveId !== roomName) {
+    res.status(400).json({ error: 'La invitación no corresponde a este LIVE' });
+    return;
+  }
+  const invite = await invites.loadPendingInvite(inviteId, roomName);
+  if (!invite) {
+    res.status(410).json({ error: 'La invitación ya no está vigente', code: 'INVITE_EXPIRED' });
+    return;
+  }
+  if (invite.roomName !== roomName || invite.liveId !== roomName) {
+    res.status(400).json({ error: 'La invitación no corresponde a este LIVE' });
+    return;
+  }
+  if (invite.viewerId !== req.user.uid) {
+    res.status(403).json({ error: 'Esta invitación no es para ti' });
+    return;
+  }
+  if (!(await invites.isLiveRoomActive(roomName))) {
+    res.status(409).json({ error: 'Este LIVE ya no está activo', code: 'SALA_UNAVAILABLE' });
+    return;
+  }
+  const stillWatching = await invites.readActiveViewer(roomName, req.user.uid);
+  if (!stillWatching) {
+    res.status(403).json({
+      error: 'Debes estar viendo este LIVE para unirte a Sala 1',
+      code: 'VIEWER_NOT_IN_LIVE',
+    });
+    return;
+  }
+  if (await invites.isBanned(roomName, [req.user.uid, invite.guestHandle])) {
+    res.status(403).json({
+      error: 'Este usuario fue expulsado de la sala de este live y no puede volver a entrar',
+      code: 'SALA_BANNED',
+    });
+    return;
+  }
+  const guestProfile = require('../lib/profileMemory').getProfile(req.user.uid);
+  invites.grantGuestPublish(roomName, [
+    req.user.uid,
+    invite.guestHandle,
+    guestProfile?.username,
+    guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
   ]);
-  res.status(201).json({
+  await invites.markPendingStatus(invite, 'accepted');
+  res.json({
     ok: true,
-    invite: { room: roomName, guest: guestHandle, uid: guestProfile?.firebaseUid || null },
-    pending: invites.listInvites(roomName),
+    invite: {
+      inviteId: invite.inviteId,
+      liveId: invite.liveId,
+      roomName: invite.roomName,
+      hostId: invite.hostId,
+      viewerId: invite.viewerId,
+      targetSlot: invite.targetSlot,
+      status: 'accepted',
+    },
   });
 });
 
-router.post('/invite/decline', requireAuth, (req, res) => {
+router.post('/invite/decline', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
   const guestHandle =
     typeof req.body?.guestHandle === 'string'
       ? normalize(req.body.guestHandle)
       : normalize(req.user.email ? String(req.user.email).split('@')[0] : req.user.uid);
+  const inviteId = typeof req.body?.inviteId === 'string' ? String(req.body.inviteId).trim() : '';
   if (!roomName) {
     res.status(400).json({ error: 'roomName es obligatorio' });
     return;
+  }
+  if (inviteId) {
+    const invite = await invites.loadPendingInvite(inviteId, roomName);
+    if (invite && invite.viewerId !== req.user.uid && !isRoomHost(req.user, roomName, req.body?.handle)) {
+      res.status(403).json({ error: 'No puedes rechazar esta invitación' });
+      return;
+    }
+    if (invite) await invites.markPendingStatus(invite, 'declined');
   }
   invites.removeInvite(roomName, guestHandle);
   invites.removeInvite(roomName, req.user.uid);

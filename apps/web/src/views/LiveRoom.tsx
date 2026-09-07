@@ -52,12 +52,20 @@ import { BoomReactionLayer } from '../components/live/studio/BoomReactionLayer';
 import { BoomRoundExplosionOverlay } from '../components/live/studio/BoomRoundExplosionOverlay';
 import { EndLiveModal } from '../components/live/studio/EndLiveModal';
 import { BatallaBoomModal, SalaBoomModal } from '../components/live/studio/LiveMultipartyModals';
+import type {
+  SalaInviteHostStatus,
+  SalaInviteViewer,
+} from '../components/live/studio/LiveMultipartyModals';
 import { SalaBoomStage } from '../components/live/studio/SalaBoomStage';
 import { BattleStage } from '../components/live/studio/BattleStage';
 import { useAgoraBattle } from '../components/live/studio/useAgoraBattle';
 import { useHostLiveDeepAr } from '../components/live/studio/useHostLiveDeepAr';
 import { LiveHostMobileToolbar } from '../components/live/studio/LiveHostMobileToolbar';
 import { HostVideoToolbar } from '../components/live/studio/HostVideoToolbar';
+import {
+  VerticalLiveCompactDock,
+  VerticalLiveToolsMenu,
+} from '../components/live/studio/VerticalLiveToolsMenu';
 import { VsBattleIcon } from '../components/live/studio/VsBattleIcon';
 import {
   HostLiveFooterBar,
@@ -77,6 +85,7 @@ import { api, apiPublic, ApiError } from '../lib/api';
 import { roomKey } from '../lib/roomKey';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
 import {
+  LIVE_VIEWER_HEARTBEAT_TTL_MS,
   listenLiveGifts,
   listenLiveRoomEarnings,
   publishLiveGift,
@@ -99,7 +108,6 @@ import {
   listenLiveBoomStats,
   listenLiveBoomEvents,
   notifyLiveInvite,
-  addLiveGuestInvites,
   removeLiveGuestInvites,
   banLiveSalaGuests,
   listenActiveLiveRooms,
@@ -112,7 +120,7 @@ import { useLiveViewport } from '../hooks/useLiveViewport';
 import { parseSalaBoomLayout, type SalaBoomLayout, type SalaCameraAction } from '../lib/salaBoomLayout';
 import { chatAuthorClass } from '../lib/chatAuthorStyle';
 import { downloadReelBlob, savePendingReel } from '../lib/pendingReelStore';
-import { addFirestoreCoins, addLevelXp, fetchLevelXp, fetchPublicUserByUsername, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
+import { addFirestoreCoins, addLevelXp, fetchLevelXp, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
 import { shareContent } from '../lib/shareContent';
 import { listFollowers, listFriends } from '../lib/socialFirestore';
 import { sendLiveboomGift } from '../lib/giftsFirestore';
@@ -239,7 +247,23 @@ type RoomPayload =
       emoji: string;
       multiplier?: number;
     }
-  | { type: 'invite'; guestHandle: string; hostName: string }
+  | {
+      type: 'invite';
+      guestHandle: string;
+      hostName: string;
+      inviteId?: string;
+      liveId?: string;
+      hostId?: string;
+      viewerId?: string;
+      targetSlot?: string;
+    }
+  | {
+      type: 'invite_response';
+      status: 'accepted' | 'declined';
+      inviteId?: string;
+      viewerId?: string;
+      username?: string;
+    }
   | { type: 'lock'; lock: LockInfo | null }
   | { type: 'live_ended'; hostName?: string }
   | {
@@ -472,15 +496,6 @@ export function LiveRoom() {
   }, [firebaseUid, username, needsLaunchConfirm, handle]);
 
   useEffect(() => {
-    if (new URLSearchParams(location.search).get('join') !== '1') return;
-    if (!username || !handle || needsLaunchConfirm) return;
-    if (!session || session.canPublish) return;
-    void fetchToken();
-    // Solo si el invitado ya estaba en la sala como espectador y abre ?join=1.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- no reintentar en cada session
-  }, [location.search]);
-
-  useEffect(() => {
     if (!gateLock || !username || !handle) return;
     let cancelled = false;
     const timer = window.setInterval(() => {
@@ -710,11 +725,28 @@ export function LiveRoom() {
           liveTitle={launch.title || `Live de ${username}`}
           liveCategory={launch.category || 'otro'}
           hostAvatarUrl={profile?.avatarUrl || null}
-          onAcceptSalaInvite={() => void fetchToken()}
-          onDeclineSalaInvite={() => {
+          onAcceptSalaInvite={async (invite) => {
+            await api('/api/stream/invite/accept', {
+              method: 'POST',
+              body: JSON.stringify({
+                roomName: username,
+                liveId: username,
+                inviteId: invite?.inviteId,
+                viewerId: firebaseUid,
+                handle,
+              }),
+            });
+          }}
+          onJoinSala1={() => fetchToken()}
+          onDeclineSalaInvite={(invite) => {
             void api('/api/stream/invite/decline', {
               method: 'POST',
-              body: JSON.stringify({ roomName: username, guestHandle: handle }),
+              body: JSON.stringify({
+                roomName: username,
+                inviteId: invite?.inviteId,
+                guestHandle: handle,
+                viewerId: firebaseUid,
+              }),
             }).catch(() => undefined);
             if (username && handle) {
               void removeLiveGuestInvites(username, [handle, firebaseUid]).catch(() => undefined);
@@ -740,7 +772,7 @@ export function LiveRoom() {
           canPublish={session.canPublish}
           isHostRoom={isOwnRoom}
           uiRole={session.isHost || isOwnRoom ? 'host' : 'viewer'}
-          onAcceptInvite={() => void fetchToken()}
+          onAcceptInvite={undefined}
           onDeclineInvite={() => {
             void api('/api/stream/invite/decline', {
               method: 'POST',
@@ -756,6 +788,15 @@ export function LiveRoom() {
     </div>
   );
 }
+
+type IncomingSalaInvite = {
+  inviteId?: string;
+  hostName: string;
+  hostId?: string;
+  viewerId?: string;
+  liveId?: string;
+  guestHandle?: string;
+};
 
 function CreatorStage({
   username,
@@ -775,6 +816,7 @@ function CreatorStage({
   onBattleActive,
   onAcceptSalaInvite,
   onDeclineSalaInvite,
+  onJoinSala1,
 }: {
   username: string;
   hostUid?: string;
@@ -791,8 +833,9 @@ function CreatorStage({
   hostAvatarUrl?: string | null;
   onLeaveLive?: () => Promise<void>;
   onBattleActive?: (active: boolean) => void;
-  onAcceptSalaInvite?: () => void;
-  onDeclineSalaInvite?: () => void;
+  onAcceptSalaInvite?: (invite?: IncomingSalaInvite) => void | Promise<void>;
+  onDeclineSalaInvite?: (invite?: IncomingSalaInvite) => void;
+  onJoinSala1?: () => void | Promise<void>;
 }) {
   const t = useT();
   const navigate = useNavigate();
@@ -1066,11 +1109,15 @@ function CreatorStage({
   const [remoteSalaPinnedId, setRemoteSalaPinnedId] = useState<string | null>(null);
   /** Host apagó cámara: perfil + audio (siguen en la sala). */
   const [salaCamOffIds, setSalaCamOffIds] = useState<string[]>([]);
-  /** Invitación Sala Boom visible dentro del video para el espectador invitado. */
-  const [salaInviteHost, setSalaInviteHost] = useState<string | null>(null);
+  /** Invitación Sala 1 visible dentro del video para el espectador invitado. */
+  const [salaInvite, setSalaInvite] = useState<IncomingSalaInvite | null>(null);
+  const [salaInviteStatus, setSalaInviteStatus] = useState<SalaInviteHostStatus>(null);
+  const [salaInviteBusy, setSalaInviteBusy] = useState(false);
+  const [salaInviteAccepting, setSalaInviteAccepting] = useState(false);
+  const [salaInviteError, setSalaInviteError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (canPublish) setSalaInviteHost(null);
+    if (canPublish) setSalaInvite(null);
   }, [canPublish]);
 
   const applySalaLayout = useCallback(
@@ -1152,7 +1199,7 @@ function CreatorStage({
 
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
-  const [viewersList, setViewersList] = useState<{ identity: string; name: string }[]>([]);
+  const [viewersList, setViewersList] = useState<SalaInviteViewer[]>([]);
   const [liveStats, setLiveStats] = useState<LiveSessionStats | null>(
     goalCoins || goalLabel
       ? {
@@ -1467,8 +1514,42 @@ function CreatorStage({
         const guest = String(data.guestHandle || '')
           .replace(/^@/, '')
           .toLowerCase();
-        if (myHandle && guest && myHandle === guest) {
-          setSalaInviteHost(String(data.hostName || 'host'));
+        const sameLive =
+          !data.liveId || roomKey(String(data.liveId)) === roomKey(username);
+        const mine =
+          (data.viewerId && data.viewerId === firebaseUid) ||
+          Boolean(myHandle && guest && myHandle === guest);
+        if (sameLive && mine) {
+          setSalaInvite({
+            inviteId: data.inviteId,
+            hostName: String(data.hostName || 'host'),
+            hostId: data.hostId,
+            viewerId: data.viewerId || firebaseUid,
+            liveId: data.liveId || username,
+            guestHandle: data.guestHandle,
+          });
+          setSalaInviteError(null);
+        }
+      }
+      if (data.type === 'invite_response' && isHost) {
+        const viewerId = String(data.viewerId || '');
+        const responseHandle = String(data.username || '').replace(/^@/, '');
+        if (data.status === 'declined') {
+          setSalaInviteStatus((current) =>
+            !current || (viewerId && current.viewerId !== viewerId)
+              ? current
+              : { ...current, phase: 'declined' },
+          );
+          setInviteNote(
+            `@${responseHandle || 'usuario'} rechazó la invitación.`,
+          );
+        }
+        if (data.status === 'accepted') {
+          setSalaInviteStatus((current) =>
+            !current || (viewerId && current.viewerId !== viewerId)
+              ? current
+              : { ...current, phase: 'connecting' },
+          );
         }
       }
       if (data.type === 'sala_control') {
@@ -1552,6 +1633,38 @@ function CreatorStage({
         .catch(() => undefined);
     };
   }, [room, username, isHost, canPublish, isSpectator, showBoomAt, firebaseUid, navigate, handle]);
+
+  useEffect(() => {
+    if (!isHost) return;
+    const markJoined = (identity: string) => {
+      setSalaInviteStatus((current) => {
+        if (!current || current.viewerId !== identity) return current;
+        if (current.phase === 'declined') return current;
+        return { ...current, phase: 'joined' };
+      });
+    };
+    const onParticipantConnected = (participant: { identity?: string }) => {
+      const identity = String(participant.identity || '');
+      if (!identity) return;
+      setSalaInviteStatus((current) => {
+        if (!current || current.viewerId !== identity) return current;
+        if (current.phase === 'declined' || current.phase === 'joined') return current;
+        return { ...current, phase: 'connecting' };
+      });
+    };
+    const onTrackPublished = (
+      _pub: { source?: Track.Source },
+      participant: { identity?: string },
+    ) => {
+      markJoined(String(participant.identity || ''));
+    };
+    room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
+    room.on(RoomEvent.TrackPublished, onTrackPublished);
+    return () => {
+      room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
+      room.off(RoomEvent.TrackPublished, onTrackPublished);
+    };
+  }, [isHost, room]);
 
   useEffect(() => {
     if (!faceGift) return;
@@ -1686,15 +1799,47 @@ function CreatorStage({
 
   useEffect(() => {
     if (!isHost) return;
-    return listenLiveViewers(username, (list) => {
+    let latest: Array<{
+      uid: string;
+      username: string;
+      displayName: string;
+      heartbeatAtMs: number;
+    }> = [];
+    const apply = (
+      list: Array<{
+        uid: string;
+        username: string;
+        displayName: string;
+        heartbeatAtMs: number;
+      }>,
+    ) => {
+      const now = Date.now();
       setViewersList(
-        list.map((viewer) => ({
-          identity: viewer.uid,
-          name: viewer.displayName || viewer.username,
-        })),
+        list
+          .filter(
+            (viewer) =>
+              viewer.uid &&
+              viewer.uid !== firebaseUid &&
+              viewer.heartbeatAtMs > 0 &&
+              now - viewer.heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS,
+          )
+          .map((viewer) => ({
+            identity: viewer.uid,
+            username: viewer.username || viewer.uid,
+            name: viewer.displayName || viewer.username || viewer.uid,
+          })),
       );
+    };
+    const unsub = listenLiveViewers(username, (list) => {
+      latest = list;
+      apply(list);
     });
-  }, [isHost, username]);
+    const timer = window.setInterval(() => apply(latest), 4000);
+    return () => {
+      unsub();
+      window.clearInterval(timer);
+    };
+  }, [isHost, username, firebaseUid]);
 
   async function setLiveLock(giftId: string | null) {
     if (!isHost) return;
@@ -2009,41 +2154,69 @@ function CreatorStage({
     navigate(`/stream/${encodeURIComponent(next.username)}`, { replace: true });
   }
 
-  async function inviteGuest(fromHandle?: string) {
-    const guestHandle = (fromHandle ?? inviteHandle).trim().replace(/^@/, '');
-    if (!guestHandle) return;
+  async function inviteGuest(viewer: SalaInviteViewer) {
+    if (!isHost) return;
+    const viewerId = String(viewer.identity || '').trim();
+    const guestHandle = String(viewer.username || viewer.name || '')
+      .trim()
+      .replace(/^@/, '');
+    if (!viewerId || !guestHandle) return;
+    if (!viewersList.some((item) => item.identity === viewerId)) {
+      setInviteNote('Esa persona ya no está viendo este LIVE.');
+      return;
+    }
     setInviteNote(null);
+    setSalaInviteBusy(true);
     try {
-      const result = await api<{ invite?: { uid?: string | null } }>('/api/stream/invite', {
+      const result = await api<{
+        invite?: {
+          inviteId?: string;
+          viewerId?: string;
+          guestHandle?: string;
+          uid?: string | null;
+        };
+      }>('/api/stream/invite', {
         method: 'POST',
-        body: JSON.stringify({ roomName: username, guestHandle, handle }),
+        body: JSON.stringify({
+          roomName: username,
+          liveId: username,
+          viewerId,
+          guestHandle,
+          handle,
+          hostId: firebaseUid,
+          targetSlot: 'SALA_1',
+        }),
       });
+      const inviteId = result.invite?.inviteId || '';
       await publishRoomData(room, {
         type: 'invite',
         guestHandle,
-        hostName: displayName || handle || username,
+        hostName: handle || displayName || username,
+        inviteId,
+        liveId: username,
+        hostId: firebaseUid,
+        viewerId,
+        targetSlot: 'SALA_1',
       });
-      let guestUid = result.invite?.uid || null;
-      if (!guestUid) {
-        const guest = await fetchPublicUserByUsername(guestHandle).catch(() => null);
-        guestUid = guest?.firebaseUid || null;
-      }
-      if (guestUid && firebaseUid) {
+      if (viewerId && firebaseUid) {
         await notifyLiveInvite({
           hostUid: firebaseUid,
           hostUsername: username,
-          hostName: displayName || handle || username,
-          guestUid,
+          hostName: handle || displayName || username,
+          guestUid: viewerId,
           guestHandle,
         }).catch(() => undefined);
-      } else {
-        await addLiveGuestInvites(username, [guestHandle, guestUid]).catch(() => undefined);
       }
+      setSalaInviteStatus({
+        viewerId,
+        username: guestHandle,
+        phase: 'waiting',
+      });
       setInviteNote(`Invitación enviada a @${guestHandle}`);
-      setInviteHandle('');
-      setSalaBoomOpen(false);
     } catch (err) {
       setInviteNote(err instanceof Error ? err.message : 'No se pudo invitar');
+    } finally {
+      setSalaInviteBusy(false);
     }
   }
 
@@ -2351,6 +2524,8 @@ function CreatorStage({
     [room],
   );
 
+  const verticalHost = Boolean(isHost && aspectRatio === '9:16' && !battle.liveBattle);
+
   return (
     <div
       className={
@@ -2382,7 +2557,48 @@ function CreatorStage({
         ) : null}
         <section className={liveStageSectionClass({ hostDashboard: isHost })}>
       <div className="relative h-full w-full max-w-full lg:max-h-full">
-        <div className={liveStageOuterClass(aspectRatio, liveViewport)}>
+        <div className={`${liveStageOuterClass(aspectRatio, liveViewport)}${verticalHost ? ' lb-live-vtools-host' : ''}`}>
+          {verticalHost ? (
+            <div className="lb-live-vtools-slot">
+              <VerticalLiveToolsMenu
+                micOn={isMicrophoneEnabled}
+                screenSharing={screenSharing}
+                mirrorOn={mirrorMode}
+                recording={recording}
+                notifyBusy={notifyBusy}
+                wishlistCount={wishlist.length}
+                lockActive={Boolean(lock)}
+                cameraDevices={videoInputs.map((device, index) => ({
+                  deviceId: device.deviceId,
+                  label: device.label || `Cámara ${index + 1}`,
+                }))}
+                cameraDeviceId={cameraDeviceId}
+                onInvite={() => {
+                  setBatallaOpen(false);
+                  setSalaBoomOpen(true);
+                }}
+                onReel={() => void recordReel()}
+                onScreen={() => void toggleScreenCapture()}
+                onMic={() => void toggleMic()}
+                onCamera={() => {
+                  if (canPublish && videoInputs.length > 1) setCameraPickerOpen((v) => !v);
+                  else void flipCamera();
+                }}
+                onSelectCamera={(id) => void switchCameraDevice(id)}
+                onMirror={toggleMirror}
+                onNotify={() => void notifyFollowers()}
+                onWishlist={() => {
+                  setLockPicker(false);
+                  setWishlistOpen(true);
+                }}
+                onLock={() => {
+                  setWishlistOpen(false);
+                  setLockPicker(true);
+                }}
+                onWithdraw={() => setWithdrawOpen(true)}
+              />
+            </div>
+          ) : null}
           <div
             ref={stageVideoRef}
             className={`${liveStageInnerClass(aspectRatio)}${showLocalMirror ? ' lb-live-mirror-on' : ''}`}
@@ -2435,30 +2651,61 @@ function CreatorStage({
                   : undefined
               }
             />
-            {salaInviteHost && isSpectator ? (
+            {salaInvite && isSpectator ? (
               <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]">
                 <div className="w-full max-w-sm rounded-2xl border border-cyan-400/40 bg-zinc-950/95 p-4 text-center shadow-2xl">
-                  <p className="text-sm font-bold text-white">Invitación a Sala Boom</p>
-                  <p className="mt-2 text-xs text-zinc-300">
-                    @{salaInviteHost} te invita a unirte con cámara a este LIVE
+                  <p className="text-sm font-bold text-white">
+                    @{salaInvite.hostName} te invita a Sala 1
                   </p>
+                  {salaInviteError ? (
+                    <p className="mt-2 text-[11px] text-rose-300">{salaInviteError}</p>
+                  ) : null}
                   <div className="mt-4 flex gap-2">
                     <button
                       type="button"
-                      className="flex-1 rounded-xl bg-cyan-400 py-2.5 text-xs font-bold text-zinc-950"
+                      disabled={salaInviteAccepting}
+                      className="min-h-11 flex-1 rounded-xl bg-cyan-400 py-2.5 text-xs font-bold text-zinc-950 disabled:opacity-50"
                       onClick={() => {
-                        setSalaInviteHost(null);
-                        onAcceptSalaInvite?.();
+                        void (async () => {
+                          setSalaInviteAccepting(true);
+                          setSalaInviteError(null);
+                          try {
+                            await onAcceptSalaInvite?.(salaInvite);
+                            await publishRoomData(room, {
+                              type: 'invite_response',
+                              status: 'accepted',
+                              inviteId: salaInvite.inviteId,
+                              viewerId: firebaseUid,
+                              username: handle || '',
+                            }).catch(() => undefined);
+                            await onJoinSala1?.();
+                            setSalaInvite(null);
+                          } catch (err) {
+                            setSalaInviteError(
+                              err instanceof Error ? err.message : 'No se pudo unir a Sala 1',
+                            );
+                          } finally {
+                            setSalaInviteAccepting(false);
+                          }
+                        })();
                       }}
                     >
-                      Aceptar
+                      {salaInviteAccepting ? 'Conectando...' : 'Aceptar'}
                     </button>
                     <button
                       type="button"
-                      className="flex-1 rounded-xl bg-white/10 py-2.5 text-xs font-bold text-zinc-200"
+                      disabled={salaInviteAccepting}
+                      className="min-h-11 flex-1 rounded-xl bg-white/10 py-2.5 text-xs font-bold text-zinc-200 disabled:opacity-50"
                       onClick={() => {
-                        setSalaInviteHost(null);
-                        onDeclineSalaInvite?.();
+                        void publishRoomData(room, {
+                          type: 'invite_response',
+                          status: 'declined',
+                          inviteId: salaInvite.inviteId,
+                          viewerId: firebaseUid,
+                          username: handle || '',
+                        }).catch(() => undefined);
+                        setSalaInvite(null);
+                        onDeclineSalaInvite?.(salaInvite);
                       }}
                     >
                       {t('common.reject')}
@@ -2555,7 +2802,19 @@ function CreatorStage({
                 </Link>
               </div>
             ) : null}
+            {verticalHost ? (
+              <VerticalLiveCompactDock
+                viewersLabel={
+                  <>
+                    <Eye size={13} /> {formatLiveCompact(viewers)}
+                  </>
+                }
+                onViewers={() => setViewersOpen((v) => !v)}
+                onEnd={() => setLeaveOpen(true)}
+              />
+            ) : null}
           </div>
+          {verticalHost ? <div className="lb-live-vtools-slot is-spacer" aria-hidden /> : null}
         </div>
       </div>
       <div
@@ -2604,6 +2863,8 @@ function CreatorStage({
               >
                 <Share2 size={15} />
               </button>
+              {!verticalHost ? (
+                <>
               <button
                 type="button"
                 onClick={() => void toggleScreenCapture()}
@@ -2631,6 +2892,8 @@ function CreatorStage({
               >
                 <Settings size={15} />
               </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setLeaveOpen(true)}
@@ -2708,7 +2971,7 @@ function CreatorStage({
             </div>
           </div>
         )}
-        {hostMoreOpen && isHost ? (
+        {hostMoreOpen && isHost && !verticalHost ? (
           <div className="pointer-events-auto mt-2 flex flex-wrap gap-2 rounded-xl border border-white/10 bg-zinc-950/90 p-2 backdrop-blur">
             <button type="button" disabled={notifyBusy} onClick={() => void notifyFollowers()} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-fuchsia-200">
               <Megaphone size={11} className="mr-1 inline" /> {notifyBusy ? 'Avisando…' : 'Avisar'}
@@ -2739,7 +3002,7 @@ function CreatorStage({
           </p>
         ) : null}
       </div>
-      {isHost ? (
+      {isHost && !verticalHost ? (
         <HostVideoToolbar
           micOn={isMicrophoneEnabled}
           screenSharing={screenSharing}
@@ -2754,7 +3017,7 @@ function CreatorStage({
           onMore={() => setHostMoreOpen((v) => !v)}
         />
       ) : null}
-      {isHost ? (
+      {isHost && !verticalHost ? (
         <LiveHostMobileToolbar
           notifyBusy={notifyBusy}
           wishlistCount={wishlist.length}
@@ -2919,7 +3182,7 @@ function CreatorStage({
           ) : null}
         </div>
       ) : null}
-      {isHost ? (
+      {isHost && !verticalHost ? (
         <div className="pointer-events-auto absolute left-3 right-3 top-[4.5rem] z-10 hidden flex-wrap items-center gap-2 sm:left-4 sm:right-auto">
           {!lockPicker ? (
             <>
@@ -3000,12 +3263,12 @@ function CreatorStage({
       <SalaBoomModal
         open={isHost && salaBoomOpen}
         onClose={() => setSalaBoomOpen(false)}
-        inviteHandle={inviteHandle}
-        onInviteHandleChange={setInviteHandle}
-        onInvite={(handle) => void inviteGuest(handle)}
+        onInvite={(viewer) => void inviteGuest(viewer)}
         viewersList={viewersList}
         layout={salaLayout}
         onLayoutChange={applySalaLayout}
+        inviteStatus={salaInviteStatus}
+        inviteBusy={salaInviteBusy}
       />
       <BatallaBoomModal
         open={isHost && batallaOpen}
@@ -3045,7 +3308,7 @@ function CreatorStage({
           onClose={() => setWithdrawOpen(false)}
         />
       ) : null}
-      {canPublish || isHost ? (
+      {(canPublish || isHost) && !verticalHost ? (
         <div
           className={`pointer-events-auto absolute right-3 z-30 flex flex-col gap-2 lg:hidden ${liveHostControlsBottomClass(liveViewport)}`}
         >
@@ -3125,7 +3388,7 @@ function CreatorStage({
                   <span className="grid h-7 w-7 place-items-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-200">
                     {(person.name || person.identity).slice(0, 1).toUpperCase()}
                   </span>
-                  <span className="truncate">@{person.name || person.identity}</span>
+                  <span className="truncate">@{person.username || person.name || person.identity}</span>
                 </li>
               ))
             )}
@@ -3867,10 +4130,7 @@ function ChatPanel({
         return;
       }
       if (data.type === 'invite') {
-        const myHandle = profile?.handle?.toLowerCase();
-        if (myHandle && data.guestHandle.toLowerCase() === myHandle) {
-          setInviteBanner(`@${data.hostName || 'host'} te invitó a unirse a su Sala Boom`);
-        }
+        return;
       }
     };
     room.on(RoomEvent.DataReceived, onData);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { releaseOwnCallPresence } from '../lib/callAvailability';
-import { releaseCallSession } from '../lib/liveKitCallService';
+import { releaseCallSession, logCallConnect } from '../lib/liveKitCallService';
 import { clearCallSession, readCallSession, saveCallSession } from '../lib/callSessionPersist';
 import {
   endPrivateCall,
@@ -83,6 +83,8 @@ type CallState = {
   hangup: (outcome?: 'completed' | 'missed' | 'cancelled' | 'declined', opts?: { skipHistory?: boolean }) => Promise<void>;
 };
 
+let hangupBusy = false;
+
 export const useCallStore = create<CallState>((set, get) => ({
   status: 'idle',
   chatId: null,
@@ -112,7 +114,7 @@ export const useCallStore = create<CallState>((set, get) => ({
         connectedAt: null,
         peer: incoming.peer,
       });
-    } else {
+    } else if (status === 'ringing-in') {
       clearCallSession();
     }
     set({
@@ -123,6 +125,18 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   beginOutgoing: ({ chatId, callId, peer, video, token, serverUrl }) => {
+    const prev = get();
+    logCallConnect('callStatus', {
+      callId,
+      roomName: null,
+      callerId: useAuthStore.getState().profile?.firebaseUid || null,
+      receiverId: peer.uid,
+      identity: useAuthStore.getState().profile?.firebaseUid || null,
+      tokenGenerated: Boolean(token),
+      liveKitUrlPresent: Boolean(serverUrl),
+      callStatus: 'ringing-out',
+      prevCallId: prev.callId,
+    });
     saveCallSession({
       chatId,
       callId,
@@ -145,6 +159,15 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   beginIncomingAccepted: ({ chatId, callId, peer, video, token, serverUrl }) => {
+    logCallConnect('callStatus', {
+      callId,
+      callerId: peer.uid,
+      receiverId: useAuthStore.getState().profile?.firebaseUid || null,
+      identity: useAuthStore.getState().profile?.firebaseUid || null,
+      tokenGenerated: Boolean(token),
+      liveKitUrlPresent: Boolean(serverUrl),
+      callStatus: 'active',
+    });
     saveCallSession({
       chatId,
       callId,
@@ -187,16 +210,28 @@ export const useCallStore = create<CallState>((set, get) => ({
       status: 'active',
       activeStartedAt: started,
     });
+    logCallConnect('callStatus', {
+      callId: prev.callId,
+      identity: useAuthStore.getState().profile?.firebaseUid || null,
+      callStatus: 'active',
+      tokenGenerated: Boolean(prev.token),
+      liveKitUrlPresent: Boolean(prev.serverUrl),
+    });
   },
 
     hangup: async (forcedOutcome, opts) => {
     const prev = get();
+    if (hangupBusy) return;
+    if (prev.status === 'idle' && !prev.incoming) return;
+
     const chatId = prev.chatId || prev.incoming?.chatId || null;
     const callId = prev.callId || prev.incoming?.callId || null;
     const wasActive = prev.status === 'active';
     const wasRingingOut = prev.status === 'ringing-out';
     const wasRingingIn = prev.status === 'ringing-in';
+    hangupBusy = true;
 
+    try {
     if (wasRingingIn && !wasActive && chatId) {
       const remote = await peekPrivateCallStatus(chatId).catch(() => null);
       if (remote === 'active') {
@@ -244,17 +279,11 @@ export const useCallStore = create<CallState>((set, get) => ({
       };
     }
 
-    const cleanup = Promise.all([
-      me?.firebaseUid ? releaseOwnCallPresence(me.firebaseUid, callId).catch(() => undefined) : Promise.resolve(),
-      releaseCallSession(callId),
-      chatId ? endPrivateCall(chatId) : Promise.resolve(),
-    ]);
-    await Promise.race([
-      cleanup,
-      new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 2500);
-      }),
-    ]);
+    if (chatId) await endPrivateCall(chatId);
+    await releaseCallSession(callId);
+    if (me?.firebaseUid) {
+      await releaseOwnCallPresence(me.firebaseUid, callId).catch(() => undefined);
+    }
     clearCallSession();
 
     set({
@@ -291,6 +320,9 @@ export const useCallStore = create<CallState>((set, get) => ({
         blocksCharged: summary?.blocksCharged,
         totalBlasts: summary?.totalBlasts,
       }).catch(() => undefined);
+    }
+    } finally {
+      hangupBusy = false;
     }
   },
 }));

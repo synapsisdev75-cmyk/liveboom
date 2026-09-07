@@ -1,4 +1,5 @@
 import { Users, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
   SALA_BOOM_LAYOUTS,
   SALA_BOOM_LAYOUT_META,
@@ -6,15 +7,27 @@ import {
 } from '../../../lib/salaBoomLayout';
 import { VsBattleIcon } from './VsBattleIcon';
 
+export type SalaInviteViewer = {
+  identity: string;
+  username: string;
+  name: string;
+};
+
+export type SalaInviteHostStatus = {
+  viewerId: string;
+  username: string;
+  phase: 'waiting' | 'connecting' | 'joined' | 'declined';
+} | null;
+
 type SalaBoomModalProps = {
   open: boolean;
   onClose: () => void;
-  inviteHandle: string;
-  onInviteHandleChange: (v: string) => void;
-  onInvite: (handle?: string) => void;
-  viewersList: Array<{ identity: string; name: string }>;
+  onInvite: (viewer: SalaInviteViewer) => void;
+  viewersList: SalaInviteViewer[];
   layout: SalaBoomLayout;
   onLayoutChange: (layout: SalaBoomLayout) => void;
+  inviteStatus?: SalaInviteHostStatus;
+  inviteBusy?: boolean;
 };
 
 function LayoutSketch({ kind, active }: { kind: SalaBoomLayout; active: boolean }) {
@@ -57,31 +70,52 @@ function LayoutSketch({ kind, active }: { kind: SalaBoomLayout; active: boolean 
   );
 }
 
-/** Sala Boom — invita co-hosts y elige cómo se ven en el LIVE. */
+function salaInviteStatusLabel(status: SalaInviteHostStatus | undefined) {
+  if (!status) return null;
+  const who = `@${status.username}`;
+  if (status.phase === 'waiting') return `${who}: Invitación enviada · Esperando respuesta`;
+  if (status.phase === 'connecting') return `${who}: Conectando...`;
+  if (status.phase === 'joined') return `${who}: En Sala 1`;
+  return `${who} rechazó la invitación`;
+}
+
+/** Sala 1 — invita solo a espectadores conectados a este LIVE. */
 export function SalaBoomModal({
   open,
   onClose,
-  inviteHandle,
-  onInviteHandleChange,
   onInvite,
   viewersList,
   layout,
   onLayoutChange,
+  inviteStatus,
+  inviteBusy,
 }: SalaBoomModalProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!viewersList.some((viewer) => viewer.identity === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [viewersList, selectedId]);
+
   if (!open) return null;
+  const selected = viewersList.find((viewer) => viewer.identity === selectedId) || null;
+  const statusText = salaInviteStatusLabel(inviteStatus);
+
   return (
     <div className="pointer-events-auto absolute left-3 right-3 top-[4.5rem] z-20 max-h-[min(72dvh,32rem)] overflow-y-auto sm:left-4 sm:max-w-sm max-lg:top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)]">
       <div className="rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-4 shadow-xl backdrop-blur">
         <div className="flex items-center justify-between gap-2">
           <p className="flex items-center gap-2 text-sm font-bold text-cyan-200">
-            <Users size={16} /> Sala Boom
+            <Users size={16} /> Sala 1
           </p>
           <button type="button" onClick={onClose} className="text-zinc-400 hover:text-white" aria-label="Cerrar">
             <X size={16} />
           </button>
         </div>
         <p className="mt-2 text-[11px] text-zinc-400">
-          Elige el diseño de la sala e invita creadores. El invitado publica su cámara vía LiveKit.
+          Solo puedes invitar a personas que están viendo este LIVE ahora.
         </p>
 
         <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-zinc-500">Diseño de sala</p>
@@ -113,57 +147,50 @@ export function SalaBoomModal({
           Diseño activo: {SALA_BOOM_LAYOUT_META[layout].label} · se aplica ya en el LIVE
         </p>
 
-        <div className="mt-3 flex items-center gap-2">
-          <input
-            value={inviteHandle}
-            onChange={(e) => onInviteHandleChange(e.target.value)}
-            placeholder="@usuario a invitar"
-            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500"
-            list="sala-boom-viewers"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onInvite();
-            }}
-          />
-          <datalist id="sala-boom-viewers">
-            {viewersList.map((viewer) => (
-              <option key={viewer.identity} value={viewer.name} />
-            ))}
-          </datalist>
-          <button
-            type="button"
-            onClick={() => onInvite()}
-            className="shrink-0 rounded-lg bg-cyan-500 px-3 py-2 text-[11px] font-bold text-zinc-950"
-          >
-            Invitar
-          </button>
-        </div>
-
-        {viewersList.length > 0 ? (
-          <div className="mt-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-              Bandeja de invitados
-            </p>
-            <div className="mt-1.5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {viewersList.map((viewer) => (
-                <button
-                  key={viewer.identity}
-                  type="button"
-                  onClick={() => onInvite(viewer.name)}
-                  className="flex w-14 shrink-0 flex-col items-center gap-1"
-                >
-                  <span className="relative grid h-11 w-11 place-items-center rounded-full bg-cyan-500/20 text-[11px] font-bold text-cyan-100 ring-1 ring-white/15">
-                    {(viewer.name || viewer.identity).slice(0, 1).toUpperCase()}
-                    <span className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-cyan-400 text-[10px] font-black text-zinc-950">
-                      +
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+          Personas viendo este LIVE
+        </p>
+        {viewersList.length === 0 ? (
+          <p className="mt-1.5 rounded-lg bg-white/5 px-3 py-2 text-[11px] text-zinc-500">
+            Nadie está viendo este LIVE ahora.
+          </p>
+        ) : (
+          <ul className="mt-1.5 max-h-44 space-y-1 overflow-y-auto">
+            {viewersList.map((viewer) => {
+              const handle = viewer.username || viewer.name || viewer.identity;
+              const active = selectedId === viewer.identity;
+              return (
+                <li key={viewer.identity}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(viewer.identity)}
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left ${
+                      active
+                        ? 'bg-cyan-500/20 ring-1 ring-cyan-400/60'
+                        : 'bg-white/5 ring-1 ring-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-cyan-500/20 text-[11px] font-bold text-cyan-100">
+                      {handle.slice(0, 1).toUpperCase()}
                     </span>
-                  </span>
-                  <span className="w-full truncate text-center text-[9px] text-zinc-400">
-                    @{viewer.name || viewer.identity}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+                    <span className="min-w-0 truncate text-xs font-semibold text-white">@{handle}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <button
+          type="button"
+          disabled={!selected || inviteBusy}
+          onClick={() => selected && onInvite(selected)}
+          className="mt-3 min-h-11 w-full rounded-xl bg-cyan-500 px-3 py-2 text-xs font-bold text-zinc-950 disabled:opacity-40"
+        >
+          Invitar
+        </button>
+        {statusText ? (
+          <p className="mt-2 text-[11px] font-semibold text-cyan-200">{statusText}</p>
         ) : null}
       </div>
     </div>

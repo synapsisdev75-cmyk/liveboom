@@ -254,7 +254,9 @@ function parseCall(value: unknown): PrivateCall | null {
   };
 }
 
-export function callRoomName(chatId: string) {
+export function callRoomName(chatId: string, callId?: string) {
+  const id = String(callId || '').trim();
+  if (id) return `call_${id}`.slice(0, 64);
   return `dm_${chatId}`.slice(0, 64);
 }
 
@@ -302,7 +304,7 @@ export async function startPrivateCall(
       receiverId: friend.uid,
       video,
       type: video ? 'video' : 'audio',
-      roomName: callRoomName(chatId),
+      roomName: callRoomName(chatId, id),
       createdAt: serverTimestamp(),
       connectedAt: null,
       answeredAt: null,

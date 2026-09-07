@@ -83,7 +83,7 @@ router.post('/token', requireAuth, async (req, res) => {
     } catch (error) {
       console.error('[LiveKit ERROR]', {
         callId,
-        roomName: callRoomName(chatId),
+        roomName: callRoomName(chatId, callId),
         stage: 'token',
         errorCode: error.status || 500,
       });
@@ -95,9 +95,16 @@ router.post('/token', requireAuth, async (req, res) => {
       return;
     }
 
-    const roomName = callRoomName(chatId);
+    const roomName = callRoomName(chatId, callId);
     try {
-      console.info('[LiveKit] requesting token', { callId, roomName, stage: 'join' });
+      console.info('[CallConnect] tokenGenerated', {
+        callId,
+        roomName,
+        identity,
+        tokenGenerated: false,
+        liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+        callStatus: 'join',
+      });
       const token = await createLivekitToken({
         identity,
         name,
@@ -105,7 +112,14 @@ router.post('/token', requireAuth, async (req, res) => {
         canPublish: true,
         ensureRoom: true,
       });
-      console.info('[LiveKit] token received', { callId, roomName, stage: 'join' });
+      console.info('[CallConnect] tokenGenerated', {
+        callId,
+        roomName,
+        identity,
+        tokenGenerated: true,
+        liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+        callStatus: 'join',
+      });
       res.json({
         serverUrl: String(process.env.LIVEKIT_URL || '').trim(),
         token,

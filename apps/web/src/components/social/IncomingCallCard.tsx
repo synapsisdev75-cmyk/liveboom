@@ -152,7 +152,7 @@ export function IncomingCallCard({
             </p>
           ) : null}
           {error ? <p className="lb-call-incoming__error">{error}</p> : null}
-          {accepting ? <p className="lb-call-incoming__kind">Conectando...</p> : null}
+          {accepting ? <p className="lb-call-incoming__kind">Conectando llamada...</p> : null}
         </div>
 
         {!mobile ? (

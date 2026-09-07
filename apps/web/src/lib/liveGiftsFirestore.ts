@@ -801,7 +801,7 @@ export async function banLiveSalaGuests(
   );
 }
 
-/** Invita a un usuario al LIVE: llega al baúl de notificaciones. */
+/** Invita a un usuario al LIVE: historial en campana. Aceptar ocurre dentro del LIVE. */
 export async function notifyLiveInvite(input: {
   hostUid: string;
   hostUsername: string;
@@ -811,14 +811,13 @@ export async function notifyLiveInvite(input: {
 }) {
   const guestUid = String(input.guestUid || '').trim();
   if (!guestUid || guestUid === input.hostUid) return;
-  await addLiveGuestInvites(input.hostUsername, [guestUid, input.guestHandle]);
   await addDoc(collection(db, 'users', guestUid, 'liveAlerts'), {
     kind: 'invite',
     hostUid: input.hostUid,
     hostUsername: input.hostUsername,
     hostName: input.hostName,
-    title: `@${input.hostUsername} te invitó a unirse a su Sala Boom`,
-    href: `/stream/${encodeURIComponent(input.hostUsername)}?join=1`,
+    title: `@${input.hostName || input.hostUsername} te invitó a Sala 1`,
+    href: `/stream/${encodeURIComponent(input.hostUsername)}`,
     createdAt: serverTimestamp(),
     createdAtMs: Date.now(),
   });

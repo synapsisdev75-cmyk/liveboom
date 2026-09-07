@@ -99,10 +99,16 @@ function commentComposerMinPx() {
 function messageComposerMaxPx(lineHeight: number) {
   const width = window.innerWidth;
   const viewH = window.visualViewport?.height ?? window.innerHeight;
-  const lines = width < 768 ? 8 : width < 1024 ? 10 : 12;
+  const lines = width < 768 ? 7 : width < 1024 ? 9 : 11;
   const lineCap = Math.max(lineHeight, lines * lineHeight);
   const viewCap =
-    viewH < 520 ? viewH * 0.26 : width < 768 ? viewH * 0.32 : viewH * 0.45;
+    viewH < 520
+      ? viewH * 0.2
+      : width < 768
+        ? viewH * 0.22
+        : width < 1024
+          ? viewH * 0.3
+          : viewH * 0.36;
   return Math.round(Math.min(lineCap, Math.max(lineHeight, viewCap)));
 }
 
@@ -207,7 +213,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       null,
     );
 
-    const lineHeightPx = Math.max(emojiSize + 8, 28);
+    const lineHeightPx =
+      resolvedGrow === 'message' ? Math.max(emojiSize + 2, 24) : Math.max(emojiSize + 8, 28);
 
     useImperativeHandle(ref, () => ({
       focus: () => fieldRef.current?.focus(),
@@ -599,7 +606,11 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               ref={mirrorRef}
               aria-hidden
               className={`${mirrorShell} whitespace-pre-wrap break-words ${
-                resolvedGrow !== 'none' ? 'overflow-y-auto' : 'overflow-hidden'
+                resolvedGrow === 'message'
+                  ? 'lb-chat-composer-mirror'
+                  : resolvedGrow !== 'none'
+                    ? 'overflow-y-auto'
+                    : 'overflow-hidden'
               }`}
               style={fieldStyle}
             >
@@ -646,7 +657,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                   : resolvedGrow === 'comment'
                     ? 'lb-comment-composer-field overflow-y-auto'
                     : resolvedGrow === 'message'
-                      ? 'lb-chat-composer-input overflow-y-auto'
+                      ? 'lb-chat-composer-input'
                       : ''
               }`}
               style={fieldStyle}

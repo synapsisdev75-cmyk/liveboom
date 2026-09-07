@@ -69,12 +69,24 @@ async function createLivekitToken({ identity, name, room, canPublish, ensureRoom
   });
   token.addGrant({
     roomJoin: true,
+    roomCreate: true,
     room: String(room),
     canPublish: Boolean(canPublish),
     canSubscribe: true,
     canPublishData: true,
   });
-  return Promise.resolve(token.toJwt());
+  const jwt = await token.toJwt();
+  if (typeof jwt !== 'string' || jwt.split('.').length < 3) {
+    throw new Error('LiveKit toJwt no devolvió un JWT');
+  }
+  console.info('[CallConnect] tokenGenerated', {
+    identity: String(identity),
+    roomName: String(room),
+    canPublish: Boolean(canPublish),
+    tokenGenerated: true,
+    liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+  });
+  return jwt;
 }
 
 async function listActiveLiveRooms() {

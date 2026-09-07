@@ -305,6 +305,9 @@ export function NotificationBell() {
     }
     try {
       const url = new URL(item.href, window.location.origin);
+      if (item.kind === 'live_invite') {
+        url.searchParams.delete('join');
+      }
       return { pathname: url.pathname, search: url.search, hash: url.hash };
     } catch {
       return item.href;
@@ -553,14 +556,17 @@ export function NotificationBell() {
                     {inviteItems.map((item) => (
                       <li key={item.id} className="rounded-xl bg-fuchsia-500/10 px-2 py-2">
                         <p className="text-xs font-semibold text-white">{item.text}</p>
+                        <p className="mt-1 text-[10px] text-zinc-500">
+                          Acepta la invitación dentro del LIVE
+                        </p>
                         <div className="mt-1.5 flex gap-1">
                           <button
                             type="button"
                             disabled={busy === item.id}
                             onClick={() => openNotification(item)}
-                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-cyan-500 py-1.5 text-[10px] font-bold text-zinc-950 disabled:opacity-50"
+                            className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-white/10 py-1.5 text-[10px] font-bold text-zinc-200 disabled:opacity-50"
                           >
-                            <Radio size={12} /> Aceptar
+                            <Radio size={12} /> Ver LIVE
                           </button>
                           <button
                             type="button"

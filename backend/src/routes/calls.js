@@ -98,8 +98,8 @@ router.post('/start', requireAuth, async (req, res) => {
     return;
   }
 
-  const roomName = callRoomName(chatId);
   const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const roomName = callRoomName(chatId, callId);
   const displayName = req.user.name || req.user.uid.slice(0, 8);
 
   let claimed = { ok: true };
@@ -138,7 +138,16 @@ router.post('/start', requireAuth, async (req, res) => {
   }
 
   try {
-    console.info('[LiveKit] requesting token', { callId, roomName, stage: 'start' });
+    console.info('[CallConnect] tokenGenerated', {
+      callId,
+      roomName,
+      callerId: me,
+      receiverId: targetUid,
+      identity: me,
+      tokenGenerated: false,
+      liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+      callStatus: 'start',
+    });
     const token = await lk.createLivekitToken({
       identity: me,
       name: displayName,
@@ -146,7 +155,16 @@ router.post('/start', requireAuth, async (req, res) => {
       canPublish: true,
       ensureRoom: true,
     });
-    console.info('[LiveKit] token received', { callId, roomName, stage: 'start' });
+    console.info('[CallConnect] tokenGenerated', {
+      callId,
+      roomName,
+      callerId: me,
+      receiverId: targetUid,
+      identity: me,
+      tokenGenerated: true,
+      liveKitUrlPresent: Boolean(String(process.env.LIVEKIT_URL || '').trim()),
+      callStatus: 'start',
+    });
     res.json({
       serverUrl: String(process.env.LIVEKIT_URL || '').trim(),
       token,

@@ -131,7 +131,7 @@ export function VideoCallMiniBar({
   onHangup: () => void;
 }) {
   return (
-    <div className="lb-video-mini">
+    <div className="lb-video-mini" data-call-drag>
       <button type="button" className="lb-video-mini__main" data-call-drag onClick={onExpand}>
         <UserAvatar
           src={person.avatar}

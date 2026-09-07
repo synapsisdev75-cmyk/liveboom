@@ -123,12 +123,16 @@ export function CallChatActions({
         localInCall: localStatus !== 'idle' || useCallStore.getState().recovering,
         handle: peer.username,
       });
-      await claimOwnCallBusy(profile.firebaseUid, { chatId, peerUid: peer.uid });
+      if (localStatus === 'idle') {
+        await releaseOwnCallPresence(profile.firebaseUid);
+      }
       const session = await createCall(peer.uid, video ? 'video' : 'audio', {
         authorizationId: authId,
         giftId: pricing?.giftId || null,
+        chatId,
       });
       startedCallId = session.callId;
+      await claimOwnCallBusy(profile.firebaseUid, { callId: session.callId, chatId, peerUid: peer.uid });
       const denied = await ensureCallMediaPermission(video);
       if (denied) {
         await releaseOwnCallPresence(profile.firebaseUid, session.callId);

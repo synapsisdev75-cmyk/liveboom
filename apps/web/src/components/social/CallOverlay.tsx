@@ -11,6 +11,7 @@ import { LocalVideoTrack, DisconnectReason, RoomEvent, Track } from 'livekit-cli
 import {
   ChevronDown,
   Gift,
+  MessageCircle,
   Mic,
   MicOff,
   PhoneOff,
@@ -19,7 +20,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CallRequestInbox } from './CallRequestInbox';
@@ -32,7 +33,14 @@ import {
   setCallAvailability,
 } from '../../lib/callAvailability';
 import { readCallSession, clearCallSession } from '../../lib/callSessionPersist';
-import { formatCallApiError, requestCallToken } from '../../lib/liveKitCallService';
+import {
+  describeLiveKitError,
+  formatCallApiError,
+  logCallConnect,
+  peekLiveKitGrant,
+  requestCallToken,
+  shouldHangupOnLiveKitError,
+} from '../../lib/liveKitCallService';
 import {
   callMediaDeniedMessage,
   ensureCallMediaPermission,
@@ -61,12 +69,62 @@ import {
   formatCallClock,
   useCallElapsed,
   useCallStore,
+  type IncomingCall,
 } from '../../store/callStore';
 import { UserAvatar } from '../profile/UserAvatar';
 import { IncomingCallCard } from './IncomingCallCard';
 import { FloatingCallFrame, clearFloatingCallPosition } from './FloatingCallFrame';
-import { VoiceCallActive, VoiceCallIncoming, VoiceCallOutgoing } from './VoiceCallPanels';
-import { VideoCallEnded, VideoCallOutgoing } from './VideoCallPanels';
+import { VoiceCallActive, VoiceCallIncoming, VoiceCallMiniBar, VoiceCallOutgoing } from './VoiceCallPanels';
+import { VideoCallEnded, VideoCallMiniBar, VideoCallOutgoing } from './VideoCallPanels';
+
+function logCallTransition(extra: Record<string, unknown> = {}) {
+  const store = useCallStore.getState();
+  const me = useAuthStore.getState().profile?.firebaseUid || null;
+  const saved = readCallSession();
+  const peerUid = store.peer?.uid || store.incoming?.peer.uid || null;
+  const asCallee = store.status === 'ringing-in' || saved?.role === 'callee';
+  const inCall = store.status === 'active' || store.status === 'ringing-out' || store.status === 'ringing-in';
+  const callType = store.incoming?.video || store.video ? 'video' : 'audio';
+  const { roomState = null, overlayMounted = false, ...rest } = extra;
+  console.info('[CallTransition]', {
+    callId: store.callId || store.incoming?.callId || null,
+    callType,
+    'call.status': store.status,
+    callerId: asCallee ? peerUid : me,
+    receiverId: asCallee ? me : peerUid,
+    tokenReady: Boolean(store.token && store.serverUrl),
+    roomName: extra.roomName ?? null,
+    roomState,
+    roomConnected: extra.roomConnected ?? roomState === 'connected',
+    audioTrackReady: extra.audioTrackReady ?? null,
+    videoTrackReady: extra.videoTrackReady ?? false,
+    activeCall: store.status === 'active' || store.status === 'ringing-out',
+    overlayMounted: Boolean(overlayMounted),
+    voiceCallMounted: Boolean(inCall && callType === 'audio' && overlayMounted),
+    videoCallMounted: Boolean(inCall && callType === 'video' && overlayMounted),
+    ...rest,
+  });
+}
+
+class CallLiveKitBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('[CallConnect] overlay render error', {
+      name: error.name,
+      message: error.message,
+    });
+  }
+
+  render() {
+    if (this.state.failed) return null;
+    return this.props.children;
+  }
+}
 
 function CallReconnectBanner() {
   const room = useRoomContext();
@@ -190,8 +248,28 @@ function CallConnectionSync() {
   useEffect(() => {
     const callId = useCallStore.getState().callId;
     console.info('[LiveKit] connecting room', { callId, roomName: room.name });
+    logCallConnect('roomConnectStart', {
+      roomState: room.state,
+      roomName: room.name,
+      roomConnected: room.state === 'connected',
+      overlayMounted: true,
+      tokenGenerated: Boolean(useCallStore.getState().token),
+      liveKitUrlPresent: Boolean(useCallStore.getState().serverUrl),
+      callId: callId,
+      callStatus: useCallStore.getState().status,
+      identity: useAuthStore.getState().profile?.firebaseUid || null,
+    });
     const onConnected = () => {
       console.info('[LiveKit] room connected', { callId, roomName: room.name });
+      logCallTransition({
+        roomState: 'connected',
+        roomName: room.name,
+        roomConnected: true,
+        overlayMounted: true,
+        voiceCallMounted: !useCallStore.getState().video,
+        videoCallMounted: Boolean(useCallStore.getState().video),
+        stage: 'livekit-connected',
+      });
       useCallStore.getState().setRecovering(false);
       if (room.remoteParticipants.size > 0) promote();
     };
@@ -494,6 +572,7 @@ function CallInCallBar({
   onOpenMicDevices,
   showMicPickerBtn,
   onHangup,
+  onOpenGifts,
   voiceUi,
 }: {
   video: boolean;
@@ -504,6 +583,7 @@ function CallInCallBar({
   onOpenMicDevices?: () => void;
   showMicPickerBtn?: boolean;
   onHangup: () => void;
+  onOpenGifts?: () => void;
   voiceUi?: boolean;
 }) {
   const room = useRoomContext();
@@ -600,7 +680,12 @@ function CallInCallBar({
     </button>
   );
   const giftBtn = (
-    <button type="button" className="lb-call-ctrl" onClick={openCallGifts} aria-label="Regalos">
+    <button
+      type="button"
+      className="lb-call-ctrl"
+      onClick={() => (onOpenGifts ? onOpenGifts() : openCallGifts())}
+      aria-label="Regalos"
+    >
       <Gift size={18} />
     </button>
   );
@@ -691,6 +776,9 @@ function CallStage({
   onHangup,
   onCancel,
   onFollowChat,
+  onExpand,
+  onOpenGifts,
+  minimized,
 }: {
   video: boolean;
   ringing?: boolean;
@@ -703,6 +791,9 @@ function CallStage({
   onHangup: () => void;
   onCancel?: () => void;
   onFollowChat?: () => void;
+  onExpand?: () => void;
+  onOpenGifts?: () => void;
+  minimized?: boolean;
 }) {
   const room = useRoomContext();
   const link = useCallLinkState();
@@ -1060,6 +1151,7 @@ function CallStage({
       onOpenMicDevices={openMicPicker}
       showMicPickerBtn={!coarse && audioInputs.length > 1}
       onHangup={onHangup}
+      onOpenGifts={onOpenGifts}
       voiceUi={!video}
     />
   );
@@ -1073,42 +1165,93 @@ function CallStage({
     };
     const reconnecting = link === 'reconnecting';
     const lost = link === 'lost';
+    const roomLive = room.state === 'connected';
+    const sessionLive = Boolean(connected && roomLive);
+    const connecting = Boolean(connected) && !roomLive;
+    const miniLabel = sessionLive
+      ? lost
+        ? 'Conexión perdida'
+        : reconnecting
+          ? 'Reconectando...'
+          : `En llamada · ${formatCallClock(elapsed || 0)}`
+      : reconnecting
+        ? 'Reconectando...'
+        : connecting
+          ? 'Conectando llamada...'
+          : 'Llamando...';
     return (
       <>
         <CallConnectionSync />
         <RoomAudioRenderer />
         <CallAudioUnlock />
-        {connected ? (
-          <VoiceCallActive
+        {minimized ? (
+          <VoiceCallMiniBar
             person={person}
-            elapsedLabel={formatCallClock(elapsed || 0)}
-            reconnecting={reconnecting}
-            lost={lost}
+            label={miniLabel}
+            onExpand={() => onExpand?.()}
             onHangup={onHangup}
-            onFollowChat={() => onFollowChat?.()}
           />
-        ) : (
-          <VoiceCallOutgoing
-            person={person}
-            reconnecting={reconnecting}
-            onCancel={onCancel || onHangup}
-            onFollowChat={() => onFollowChat?.()}
-          />
-        )}
+        ) : null}
+        <div className="lb-call-stage-keep" aria-hidden={minimized || undefined}>
+          {sessionLive ? (
+            <VoiceCallActive
+              person={person}
+              elapsedLabel={formatCallClock(elapsed || 0)}
+              reconnecting={reconnecting}
+              lost={lost}
+              onHangup={onHangup}
+              onFollowChat={() => onFollowChat?.()}
+            />
+          ) : (
+            <VoiceCallOutgoing
+              person={person}
+              reconnecting={reconnecting}
+              connecting={connecting}
+              onCancel={onCancel || onHangup}
+              onFollowChat={() => onFollowChat?.()}
+            />
+          )}
+        </div>
       </>
     );
   }
+
+  const videoMiniLabel =
+    connected && room.state === 'connected'
+      ? `En llamada · ${formatCallClock(elapsed || 0)}`
+      : ringing
+        ? 'Videollamando...'
+        : 'Conectando...';
 
   return (
     <>
       <CallConnectionSync />
       <RoomAudioRenderer />
       <CallAudioUnlock />
+      {minimized ? (
+        <VideoCallMiniBar
+          person={{
+            name: name || '',
+            handle: handle || '',
+            avatar: avatar || null,
+            uid: peerUid,
+          }}
+          label={videoMiniLabel}
+          onExpand={() => onExpand?.()}
+          onHangup={onHangup}
+        />
+      ) : null}
+      <div className="lb-call-stage-keep" aria-hidden={minimized || undefined}>
       <div className="lb-call-video-stage" data-call-drag>
-        {connected ? (
+        {connected && room.state === 'connected' ? (
           <div className="lb-video-hud" data-call-drag>
             <p>@{handle || 'usuario'}</p>
             <p>{formatCallClock(elapsed || 0)}</p>
+            {onFollowChat ? (
+              <button type="button" className="lb-video-chip" data-no-drag onClick={() => onFollowChat()}>
+                <MessageCircle size={14} /> Seguir en el chat
+              </button>
+            ) : null}
           </div>
         ) : null}
         {camHint ? (
@@ -1141,7 +1284,7 @@ function CallStage({
         <div className="lb-call-video-remote">
           {!remoteMain ? (
             <div className="lb-call-video-wait">
-              {connected ? (
+              {connected && room.state === 'connected' ? (
                 <>
                   <UserAvatar
                     src={avatar || null}
@@ -1163,9 +1306,10 @@ function CallStage({
                     uid: peerUid,
                   }}
                   onCancel={onCancel || onHangup}
+                  onMinimize={onFollowChat}
                 />
               ) : (
-                <p>Conectando...</p>
+                <p>Conectando llamada...</p>
               )}
             </div>
           ) : (
@@ -1217,6 +1361,7 @@ function CallStage({
       </div>
 
       {controls}
+      </div>
     </>
   );
 }
@@ -1254,6 +1399,11 @@ export function CallOverlay() {
   const lastOwnedCallIdRef = useRef<string | null>(null);
   const recoveredRef = useRef(false);
   const [selfBusyCallId, setSelfBusyCallId] = useState<string | null>(null);
+  const [heldIncoming, setHeldIncoming] = useState<IncomingCall | null>(null);
+  const [overlayReady, setOverlayReady] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [minimized, setMinimized] = useState(false);
+  const livekitFatalRef = useRef(false);
 
   useEffect(() => {
     if (!profile || recoveredRef.current) return;
@@ -1322,7 +1472,10 @@ export function CallOverlay() {
       setRepliesOpen(false);
       setCustomReply('');
     }
-    if (status === 'idle') clearFloatingCallPosition();
+    if (status === 'idle') {
+      clearFloatingCallPosition();
+      setMinimized(false);
+    }
   }, [status]);
 
   useEffect(() => {
@@ -1364,6 +1517,7 @@ export function CallOverlay() {
 
   useEffect(() => {
     if (!profile) return;
+    if (recovering && status === 'idle') return;
     if (status === 'ringing-out' || status === 'ringing-in' || status === 'active') {
       const id = callId || incoming?.callId || null;
       lastOwnedCallIdRef.current = id;
@@ -1384,7 +1538,7 @@ export function CallOverlay() {
     if (owned) {
       void releaseOwnCallPresence(profile.firebaseUid, owned).catch(() => undefined);
     }
-  }, [status, callId, chatId, incoming, peer, profile]);
+  }, [status, callId, chatId, incoming, peer, profile, recovering]);
 
   useEffect(() => {
     if (!profile) return;
@@ -1538,6 +1692,7 @@ export function CallOverlay() {
     if (!incoming || !profile || accepting) return;
     setPermError(null);
     setAccepting(true);
+    logCallTransition({ overlayMounted: true, stage: 'accept-start', roomState: null });
     const denied = await ensureCallMediaPermission(incoming.video);
     if (denied) {
       setPermError(denied);
@@ -1547,6 +1702,8 @@ export function CallOverlay() {
     try {
       const session = await requestCallToken(incoming.callId, incoming.chatId);
       await answerPrivateCall(incoming.chatId);
+      setHeldIncoming(incoming);
+      setOverlayReady(false);
       beginIncomingAccepted({
         chatId: incoming.chatId,
         callId: incoming.callId,
@@ -1555,8 +1712,10 @@ export function CallOverlay() {
         token: session.token,
         serverUrl: session.serverUrl,
       });
+      logCallTransition({ overlayMounted: true, stage: 'accept-token-ready', roomState: 'connecting' });
     } catch (error) {
       setPermError(formatCallApiError(error));
+      logCallTransition({ overlayMounted: true, stage: 'accept-error', roomState: 'failed' });
     } finally {
       setAccepting(false);
     }
@@ -1587,10 +1746,101 @@ export function CallOverlay() {
     setHost(document.getElementById('lb-chat-call-host'));
   }, [status, location.pathname, location.search]);
 
+  useEffect(() => {
+    if (incoming) setHeldIncoming(incoming);
+  }, [incoming]);
+
+  useEffect(() => {
+    if (status === 'idle') {
+      setHeldIncoming(null);
+      setOverlayReady(false);
+      livekitFatalRef.current = false;
+    }
+  }, [status]);
+
+  useEffect(() => {
+    if (status !== 'ringing-out' && status !== 'active') return;
+    if (!token || !serverUrl || !peer) setOverlayReady(false);
+  }, [status, token, serverUrl, peer]);
+
+  useEffect(() => {
+    logCallTransition({
+      overlayMounted: status === 'ringing-in' || status === 'ringing-out' || status === 'active',
+      roomState: token && serverUrl ? 'pending' : null,
+      stage: 'store',
+    });
+  }, [status, token, serverUrl, callId, incoming?.callId, overlayReady]);
+
+  useEffect(() => {
+    const readySession = (status === 'ringing-out' || status === 'active') && Boolean(token && serverUrl && peer);
+    if (!readySession || overlayReady) return;
+    const timer = window.setTimeout(() => setOverlayReady(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, [status, token, serverUrl, peer, overlayReady]);
+
+  function returnToChat(peerHandle?: string | null) {
+    const target = peerHandle?.replace(/^@/, '');
+    navigate(target ? `/mensajes?con=${encodeURIComponent(target)}` : '/mensajes');
+  }
+
+  function failLiveKit(error: Error, sessionCallId?: string | null) {
+    const store = useCallStore.getState();
+    const info = describeLiveKitError(error);
+    const grant = peekLiveKitGrant(store.token);
+    const me = profile?.firebaseUid || null;
+    const peerUid = store.peer?.uid || store.incoming?.peer.uid || null;
+    const asCallee = store.status === 'ringing-in' || readCallSession()?.role === 'callee';
+    console.error('[CallConnect] roomConnectError', {
+      ...info,
+      callId: store.callId || store.incoming?.callId || null,
+      sessionCallId: sessionCallId || null,
+      roomName: grant?.room || null,
+      callerId: asCallee ? peerUid : me,
+      receiverId: asCallee ? me : peerUid,
+      identity: grant?.identity || me,
+      tokenGenerated: Boolean(store.token),
+      liveKitUrlPresent: Boolean(store.serverUrl),
+      callStatus: store.status,
+    });
+    if (sessionCallId && store.callId && sessionCallId !== store.callId) {
+      console.warn('[CallConnect] error de sesión anterior, se ignora');
+      return;
+    }
+    if (!shouldHangupOnLiveKitError(error)) {
+      console.warn('[CallConnect] LiveKit error no fatal, se mantiene la llamada', info);
+      return;
+    }
+    if (livekitFatalRef.current) return;
+    livekitFatalRef.current = true;
+    logCallConnect('roomConnectError', {
+      callId: store.callId,
+      roomName: grant?.room,
+      identity: grant?.identity,
+      liveKitUrlPresent: Boolean(store.serverUrl),
+      callStatus: store.status,
+      tokenGenerated: Boolean(store.token),
+      ...info,
+    });
+    setConnectError('No se pudo conectar la llamada.');
+    const peerHandle = store.peer?.username || heldIncoming?.peer.username || incoming?.peer.username;
+    void hangup().then(() => {
+      returnToChat(peerHandle);
+      window.setTimeout(() => setConnectError(null), 4000);
+    });
+  }
+
   if (!profile) return null;
 
-  const showIncoming = status === 'ringing-in' && incoming;
-  const showCall = (status === 'ringing-out' || status === 'active') && token && serverUrl && peer;
+  const incomingPanel = incoming || heldIncoming;
+  const showCall = Boolean(
+    !livekitFatalRef.current && (status === 'ringing-out' || status === 'active') && token && serverUrl && peer,
+  );
+  const showIncoming = Boolean(
+    (status === 'ringing-in' && incoming) ||
+      (incomingPanel && (status === 'active' || status === 'ringing-out') && !overlayReady),
+  );
+  const showConnectingHint =
+    !showIncoming && (status === 'ringing-out' || status === 'active') && (!showCall || !overlayReady);
   const requestUi = status === 'idle' ? <CallRequestInbox /> : null;
   const endedUi = endedSummary ? (
     <VideoCallEnded
@@ -1602,28 +1852,37 @@ export function CallOverlay() {
       }}
     />
   ) : null;
+  const hintUi =
+    connectError ? (
+      createPortal(<p className="lb-call-recover is-error">{connectError}</p>, document.body)
+    ) : recovering && !showCall ? (
+      createPortal(<p className="lb-call-recover">Reconectando llamada...</p>, document.body)
+    ) : showConnectingHint ? (
+      createPortal(<p className="lb-call-recover">Conectando llamada...</p>, document.body)
+    ) : null;
 
   if (!showIncoming && !showCall) {
     return (
       <>
         {requestUi}
         {endedUi}
-        {recovering
-          ? createPortal(<p className="lb-call-recover">Reconectando llamada...</p>, document.body)
-          : null}
+        {hintUi}
       </>
     );
   }
 
-  const name = (showIncoming ? incoming?.peer.displayName : peer?.displayName) || '';
-  const handle = (showIncoming ? incoming?.peer.username : peer?.username) || '';
-  const avatar = (showIncoming ? incoming?.peer.avatarUrl : peer?.avatarUrl) || null;
-  const peerUid = showIncoming ? incoming?.peer.uid : peer?.uid;
-  const isVideo = showIncoming ? Boolean(incoming?.video) : video;
+  const name = (showIncoming && incomingPanel ? incomingPanel.peer.displayName : peer?.displayName) || '';
+  const handle = (showIncoming && incomingPanel ? incomingPanel.peer.username : peer?.username) || '';
+  const avatar = (showIncoming && incomingPanel ? incomingPanel.peer.avatarUrl : peer?.avatarUrl) || null;
+  const peerUid = showIncoming && incomingPanel ? incomingPanel.peer.uid : peer?.uid;
+  const isVideo = showIncoming && incomingPanel ? Boolean(incomingPanel.video) : video;
   const person = { name, handle, avatar, uid: peerUid };
+  const livekitStyle = isVideo
+    ? { width: '100%', height: '100%', minHeight: 0, background: 'transparent' as const }
+    : { width: 'fit-content' as const, height: 'auto' as const, minHeight: 0, background: 'transparent' as const };
 
   const incomingUi =
-    showIncoming && incoming ? (
+    showIncoming && incomingPanel ? (
       isVideo ? (
         <IncomingCallCard
           name={name}
@@ -1631,12 +1890,12 @@ export function CallOverlay() {
           avatar={avatar}
           uid={peerUid}
           video={isVideo}
-          accepting={accepting}
+          accepting={accepting || (status === 'active' && !overlayReady)}
           error={permError}
           ringMuted={ringMuted}
-          rateBlasts={incoming.rateBlasts}
-          giftName={incoming.giftName}
-          giftEmoji={incoming.giftEmoji}
+          rateBlasts={incomingPanel.rateBlasts}
+          giftName={incomingPanel.giftName}
+          giftEmoji={incomingPanel.giftEmoji}
           onAccept={() => void accept()}
           onDecline={() => hangupWithCooldown('declined')}
           onMuteRing={() => setRingMuted(true)}
@@ -1648,7 +1907,7 @@ export function CallOverlay() {
       ) : (
         <VoiceCallIncoming
           person={person}
-          accepting={accepting}
+          accepting={accepting || (status === 'active' && !overlayReady)}
           error={permError}
           ringMuted={ringMuted}
           repliesOpen={repliesOpen}
@@ -1664,12 +1923,99 @@ export function CallOverlay() {
       )
     ) : null;
 
-  const activeUi = showCall ? (
-    <div className={`lb-call-active${isVideo ? '' : ' is-voice'}`}>
+  const callStage = (
+            <CallStage
+              video={isVideo}
+              ringing={status === 'ringing-out'}
+              connected={status === 'active'}
+              elapsed={elapsed}
+              name={name}
+              handle={handle}
+              avatar={avatar}
+              peerUid={peerUid}
+              onHangup={() => hangupWithCooldown()}
+              onCancel={() => hangupWithCooldown('cancelled')}
+              onFollowChat={() => {
+                setMinimized(true);
+                navigate(handle ? `/mensajes?con=${encodeURIComponent(handle)}` : '/mensajes');
+              }}
+              onExpand={() => setMinimized(false)}
+              minimized={minimized}
+              onOpenGifts={() => {
+                try {
+                  sessionStorage.setItem('lb_open_call_gifts', '1');
+                } catch {
+                  /* ignore */
+                }
+                if (handle) {
+                  const target = `/mensajes?con=${encodeURIComponent(handle)}`;
+                  const here = `${location.pathname}${location.search}`;
+                  if (!here.includes(`con=${encodeURIComponent(handle)}`)) {
+                    navigate(target);
+                  }
+                }
+                window.dispatchEvent(new CustomEvent('liveboom:open-chat-gifts'));
+              }}
+            />
+  );
+
+  const activeUi = !showCall ? null : isVideo ? (
+    <div className={`lb-call-active${minimized ? ' is-video-mini' : ''}`}>
+      <div className="lb-call-lk is-video">
+        <CallLiveKitBoundary key={`lk-bound-${callId || 'video'}`}>
+          <LiveKitRoom
+            key={`lk-${callId || 'video'}`}
+            token={token || undefined}
+            serverUrl={serverUrl || undefined}
+            connect={Boolean(token && serverUrl)}
+            audio
+            video={false}
+            connectOptions={{
+              autoSubscribe: true,
+              maxRetries: 5,
+              peerConnectionTimeout: 30_000,
+            }}
+            className="lb-call-room"
+            style={livekitStyle}
+            onError={(error) => failLiveKit(error, callId)}
+            onConnected={() => {
+              const store = useCallStore.getState();
+              const grant = peekLiveKitGrant(store.token);
+              logCallConnect('roomConnectSuccess', {
+                callId: store.callId,
+                roomName: grant?.room,
+                identity: grant?.identity,
+                liveKitUrlPresent: Boolean(store.serverUrl),
+                tokenGenerated: Boolean(store.token),
+                callStatus: store.status,
+              });
+            }}
+            onMediaDeviceFailure={(failure, kind) => {
+              console.warn('[CallConnect] media device', {
+                failure: String(failure || ''),
+                kind: kind || null,
+                callId: useCallStore.getState().callId,
+              });
+            }}
+            onDisconnected={() => {
+              logCallTransition({ overlayMounted: true, roomState: 'disconnected', stage: 'livekit-disconnected' });
+            }}
+          >
+            <CallAutoReconnect serverUrl={serverUrl || ''} token={token || ''} />
+            <CallReconnectBanner />
+            {callStage}
+            {status === 'active' ? <PaidCallMeter /> : null}
+          </LiveKitRoom>
+        </CallLiveKitBoundary>
+      </div>
+    </div>
+  ) : (
+    <CallLiveKitBoundary key={`lk-bound-${callId || 'voice'}`}>
       <LiveKitRoom
-        token={token}
-        serverUrl={serverUrl}
-        connect
+        key={`lk-${callId || 'voice'}`}
+        token={token || undefined}
+        serverUrl={serverUrl || undefined}
+        connect={Boolean(token && serverUrl)}
         audio
         video={false}
         connectOptions={{
@@ -1677,34 +2023,44 @@ export function CallOverlay() {
           maxRetries: 5,
           peerConnectionTimeout: 30_000,
         }}
-        className={isVideo ? 'lb-call-room' : 'lb-call-room lb-call-room--voice'}
+        className="lb-call-room--voice"
+        style={livekitStyle}
+        onError={(error) => failLiveKit(error, callId)}
+        onConnected={() => {
+          const store = useCallStore.getState();
+          const grant = peekLiveKitGrant(store.token);
+          logCallConnect('roomConnectSuccess', {
+            callId: store.callId,
+            roomName: grant?.room,
+            identity: grant?.identity,
+            liveKitUrlPresent: Boolean(store.serverUrl),
+            tokenGenerated: Boolean(store.token),
+            callStatus: store.status,
+          });
+        }}
+        onMediaDeviceFailure={(failure, kind) => {
+          console.warn('[CallConnect] media device', {
+            failure: String(failure || ''),
+            kind: kind || null,
+            callId: useCallStore.getState().callId,
+          });
+        }}
+        onDisconnected={() => {
+          logCallTransition({ overlayMounted: true, roomState: 'disconnected', stage: 'livekit-disconnected' });
+        }}
       >
-        <CallAutoReconnect serverUrl={serverUrl} token={token} />
-        {isVideo ? <CallReconnectBanner /> : null}
-        <CallStage
-          video={isVideo}
-          ringing={status === 'ringing-out'}
-          connected={status === 'active'}
-          elapsed={elapsed}
-          name={name}
-          handle={handle}
-          avatar={avatar}
-          peerUid={peerUid}
-          onHangup={() => hangupWithCooldown()}
-          onCancel={() => hangupWithCooldown('cancelled')}
-          onFollowChat={() => {
-            navigate(handle ? `/mensajes?con=${encodeURIComponent(handle)}` : '/mensajes');
-          }}
-        />
+        <CallAutoReconnect serverUrl={serverUrl || ''} token={token || ''} />
+        {callStage}
         {status === 'active' ? <PaidCallMeter /> : null}
       </LiveKitRoom>
-    </div>
-  ) : null;
+    </CallLiveKitBoundary>
+  );
 
   return (
     <>
       {requestUi}
       {endedUi}
+      {hintUi}
       {incomingUi
         ? host
           ? createPortal(incomingUi, host)
@@ -1712,7 +2068,14 @@ export function CallOverlay() {
         : null}
       {activeUi
         ? createPortal(
-            <FloatingCallFrame video={isVideo}>
+            <FloatingCallFrame
+              video={isVideo}
+              compact={minimized}
+              onReady={() => {
+                setOverlayReady(true);
+                logCallTransition({ overlayMounted: true, roomState: token ? 'connecting' : null, stage: 'overlay-ready' });
+              }}
+            >
               {activeUi}
             </FloatingCallFrame>,
             document.body,

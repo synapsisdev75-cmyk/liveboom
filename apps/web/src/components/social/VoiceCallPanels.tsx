@@ -163,7 +163,7 @@ export function VoiceCallIncoming({
           </button>
         </div>
       ) : null}
-      {accepting ? <p className="lb-voice-card__sub">Conectando...</p> : null}
+      {accepting ? <p className="lb-voice-card__sub">Conectando llamada...</p> : null}
 
       {repliesOpen ? (
         <div className="lb-voice-replies">
@@ -391,11 +391,13 @@ function VoiceRoomControls({
 export function VoiceCallOutgoing({
   person,
   reconnecting,
+  connecting,
   onCancel,
   onFollowChat,
 }: {
   person: Person;
   reconnecting?: boolean;
+  connecting?: boolean;
   onCancel: () => void;
   onFollowChat: () => void;
 }) {
@@ -406,7 +408,9 @@ export function VoiceCallOutgoing({
       <PersonBlock person={person}>
         <AvatarStage person={person} mode="out" />
       </PersonBlock>
-      <p className="lb-voice-card__status">{reconnecting ? 'Reconectando...' : 'Llamando...'}</p>
+      <p className="lb-voice-card__status">
+        {reconnecting ? 'Reconectando...' : connecting ? 'Conectando llamada...' : 'Llamando...'}
+      </p>
       <VoiceRoomControls endLabel="Cancelar llamada" onEnd={onCancel} showSpeaker={canSelectAudioOutput()} />
       <button type="button" className="lb-voice-follow" data-no-drag onClick={onFollowChat}>
         <MessageCircle size={16} />

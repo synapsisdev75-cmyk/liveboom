@@ -1,9 +1,16 @@
-const { getAdminDb, hasAdminCredentials } = require('./firestoreAdmin');
+const { getAdminDb, hasAdminCredentials, firestoreConfigured } = require('./firestoreAdmin');
 const { FieldValue } = require('firebase-admin/firestore');
 
 const invitesByRoom = new Map();
 /** Expulsados de la Sala Boom de este live (solo esa sala/sesión). */
 const bannedByRoom = new Map();
+/** Invitaciones Sala 1 pendientes (aún no aceptadas = aún no pueden publicar). */
+const pendingById = new Map();
+const pendingByRoom = new Map();
+
+const VIEWER_HEARTBEAT_TTL_MS = 45_000;
+const SALA_INVITE_TTL_MS = 2 * 60 * 1000;
+const TARGET_SLOT_SALA_1 = 'SALA_1';
 
 function normalize(value) {
   return String(value || '')
@@ -83,7 +90,7 @@ function listBans(roomName) {
 }
 
 async function persistAdd(roomName, guestHandle) {
-  if (!hasAdminCredentials()) return;
+  if (!canUseAdminDb()) return;
   const room = normalize(roomName);
   const guest = normalize(guestHandle);
   if (!room || !guest) return;
@@ -98,7 +105,7 @@ async function persistAdd(roomName, guestHandle) {
 }
 
 async function persistRemove(roomName, guestHandle) {
-  if (!hasAdminCredentials()) return;
+  if (!canUseAdminDb()) return;
   const room = normalize(roomName);
   const guest = normalize(guestHandle);
   if (!room || !guest) return;
@@ -113,7 +120,7 @@ async function persistRemove(roomName, guestHandle) {
 }
 
 async function persistBanAdd(roomName, guestHandle) {
-  if (!hasAdminCredentials()) return;
+  if (!canUseAdminDb()) return;
   const room = normalize(roomName);
   const guest = normalize(guestHandle);
   if (!room || !guest) return;
@@ -134,21 +141,254 @@ async function persistBanAdd(roomName, guestHandle) {
 }
 
 async function persistClear(roomName) {
-  if (!hasAdminCredentials()) return;
+  if (!hasAdminCredentials() && !firestoreConfigured()) return;
   const room = normalize(roomName);
   if (!room) return;
   try {
-    await getAdminDb()
-      .collection('liveRooms')
-      .doc(room)
-      .set({ guestInvites: [], guestBanned: [] }, { merge: true });
+    const db = getAdminDb();
+    await db.collection('liveRooms').doc(room).set({ guestInvites: [], guestBanned: [] }, { merge: true });
+    await persistClearPending(room);
   } catch (error) {
     console.warn('[invites] persist clear', error.message);
   }
 }
 
+function canUseAdminDb() {
+  return hasAdminCredentials() || firestoreConfigured();
+}
+
+function rememberPending(invite) {
+  if (!invite?.inviteId) return;
+  pendingById.set(invite.inviteId, invite);
+  const room = normalize(invite.roomName || invite.liveId);
+  if (!room) return;
+  const set = pendingByRoom.get(room) || new Set();
+  set.add(invite.inviteId);
+  pendingByRoom.set(room, set);
+}
+
+function forgetPending(invite) {
+  if (!invite?.inviteId) return;
+  pendingById.delete(invite.inviteId);
+  const room = normalize(invite.roomName || invite.liveId);
+  const set = pendingByRoom.get(room);
+  if (!set) return;
+  set.delete(invite.inviteId);
+  if (!set.size) pendingByRoom.delete(room);
+}
+
+function clearPendingInvites(roomName) {
+  const room = normalize(roomName);
+  const set = pendingByRoom.get(room);
+  if (!set) return;
+  for (const id of Array.from(set)) pendingById.delete(id);
+  pendingByRoom.delete(room);
+}
+
+function newInviteId() {
+  return `sala1_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isInviteFresh(invite) {
+  if (!invite || invite.status !== 'pending') return false;
+  const expires = Number(invite.expiresAtMs || 0);
+  return expires > Date.now();
+}
+
+async function persistPending(invite) {
+  if (!canUseAdminDb() || !invite?.inviteId) return;
+  try {
+    await getAdminDb()
+      .collection('liveRooms')
+      .doc(normalize(invite.roomName))
+      .collection('salaInvites')
+      .doc(invite.inviteId)
+      .set(
+        {
+          inviteId: invite.inviteId,
+          liveId: invite.liveId,
+          roomName: invite.roomName,
+          hostId: invite.hostId,
+          viewerId: invite.viewerId,
+          guestHandle: invite.guestHandle,
+          targetSlot: invite.targetSlot || TARGET_SLOT_SALA_1,
+          status: invite.status,
+          createdAtMs: invite.createdAtMs,
+          expiresAtMs: invite.expiresAtMs,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+  } catch (error) {
+    console.warn('[invites] persist pending', error.message);
+  }
+}
+
+async function persistClearPending(roomName) {
+  if (!canUseAdminDb()) return;
+  const room = normalize(roomName);
+  if (!room) return;
+  try {
+    const snap = await getAdminDb().collection('liveRooms').doc(room).collection('salaInvites').get();
+    if (snap.empty) return;
+    const db = getAdminDb();
+    const batch = db.batch();
+    snap.docs.forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+  } catch (error) {
+    console.warn('[invites] persist pending clear', error.message);
+  }
+}
+
+async function readActiveViewer(roomName, viewerId) {
+  if (!canUseAdminDb()) return null;
+  const room = normalize(roomName);
+  const uid = String(viewerId || '').trim();
+  if (!room || !uid) return null;
+  try {
+    const snap = await getAdminDb().collection('liveRooms').doc(room).collection('viewers').doc(uid).get();
+    if (!snap.exists) return null;
+    const data = snap.data() || {};
+    const heartbeatAtMs = Number(data.heartbeatAtMs || data.joinedAtMs || 0);
+    if (!(heartbeatAtMs > 0 && Date.now() - heartbeatAtMs <= VIEWER_HEARTBEAT_TTL_MS)) {
+      return null;
+    }
+    return {
+      uid,
+      username: String(data.username || uid),
+      displayName: String(data.displayName || data.username || uid),
+    };
+  } catch (error) {
+    console.warn('[invites] viewer read', error.message);
+    return null;
+  }
+}
+
+async function findActiveViewerByUsername(roomName, guestHandle) {
+  if (!canUseAdminDb()) return null;
+  const room = normalize(roomName);
+  const needle = normalize(guestHandle);
+  if (!room || !needle) return null;
+  try {
+    const snap = await getAdminDb().collection('liveRooms').doc(room).collection('viewers').get();
+    for (const item of snap.docs) {
+      const data = item.data() || {};
+      const username = normalize(data.username || '');
+      if (username === needle || normalize(item.id) === needle) {
+        return readActiveViewer(roomName, item.id);
+      }
+    }
+    return null;
+  } catch (error) {
+    console.warn('[invites] viewer by handle', error.message);
+    return null;
+  }
+}
+
+async function isLiveRoomActive(roomName) {
+  if (!canUseAdminDb()) return true;
+  const room = normalize(roomName);
+  try {
+    const snap = await getAdminDb().collection('liveRooms').doc(room).get();
+    if (!snap.exists) return false;
+    const data = snap.data() || {};
+    if (String(data.status || '') === 'ended') return false;
+    if (Number(data.endedAtMs || 0) > 0) return false;
+    return true;
+  } catch (error) {
+    console.warn('[invites] live read', error.message);
+    return true;
+  }
+}
+
+async function loadPendingInvite(inviteId, roomName) {
+  const id = String(inviteId || '').trim();
+  if (id && pendingById.has(id)) {
+    const memory = pendingById.get(id);
+    if (isInviteFresh(memory)) return memory;
+    forgetPending(memory);
+  }
+  if (!canUseAdminDb() || !id) return null;
+  const room = normalize(roomName);
+  try {
+    let snap = null;
+    if (room) {
+      snap = await getAdminDb().collection('liveRooms').doc(room).collection('salaInvites').doc(id).get();
+    }
+    if (!snap?.exists) return null;
+    const data = snap.data() || {};
+    const invite = {
+      inviteId: id,
+      liveId: normalize(data.liveId || data.roomName || room),
+      roomName: normalize(data.roomName || data.liveId || room),
+      hostId: String(data.hostId || ''),
+      viewerId: String(data.viewerId || ''),
+      guestHandle: normalize(data.guestHandle || ''),
+      targetSlot: String(data.targetSlot || TARGET_SLOT_SALA_1),
+      status: String(data.status || 'pending'),
+      createdAtMs: Number(data.createdAtMs || 0),
+      expiresAtMs: Number(data.expiresAtMs || 0),
+    };
+    if (!isInviteFresh(invite)) return null;
+    rememberPending(invite);
+    return invite;
+  } catch (error) {
+    console.warn('[invites] pending read', error.message);
+    return null;
+  }
+}
+
+async function createPendingInvite({ liveId, roomName, hostId, viewerId, guestHandle, targetSlot }) {
+  const room = normalize(roomName || liveId);
+  const slot = String(targetSlot || TARGET_SLOT_SALA_1).toUpperCase();
+  if (slot !== TARGET_SLOT_SALA_1) {
+    const error = new Error('Solo se puede invitar a Sala 1');
+    error.code = 'SLOT_UNAVAILABLE';
+    throw error;
+  }
+  const invite = {
+    inviteId: newInviteId(),
+    liveId: normalize(liveId || room),
+    roomName: room,
+    hostId: String(hostId || ''),
+    viewerId: String(viewerId || ''),
+    guestHandle: normalize(guestHandle || viewerId),
+    targetSlot: TARGET_SLOT_SALA_1,
+    status: 'pending',
+    createdAtMs: Date.now(),
+    expiresAtMs: Date.now() + SALA_INVITE_TTL_MS,
+  };
+  rememberPending(invite);
+  await persistPending(invite);
+  return invite;
+}
+
+async function markPendingStatus(invite, status) {
+  if (!invite) return null;
+  const next = { ...invite, status };
+  if (status === 'pending') {
+    rememberPending(next);
+  } else {
+    forgetPending(invite);
+  }
+  await persistPending(next);
+  return next;
+}
+
+function grantGuestPublish(roomName, identities) {
+  const list = Array.isArray(identities) ? identities : [identities];
+  const granted = [];
+  for (const item of list) {
+    if (!item) continue;
+    addInvite(roomName, item);
+    granted.push(item);
+    void persistAdd(roomName, item);
+  }
+  return granted;
+}
+
 async function hasInvitePersisted(roomName, identities) {
-  if (!hasAdminCredentials()) return false;
+  if (!canUseAdminDb()) return false;
   const room = normalize(roomName);
   const list = Array.isArray(identities) ? identities : [identities];
   const keys = list.map(normalize).filter(Boolean);
@@ -165,7 +405,7 @@ async function hasInvitePersisted(roomName, identities) {
 }
 
 async function hasBanPersisted(roomName, identities) {
-  if (!hasAdminCredentials()) return false;
+  if (!canUseAdminDb()) return false;
   const room = normalize(roomName);
   const list = Array.isArray(identities) ? identities : [identities];
   const keys = list.map(normalize).filter(Boolean);
@@ -203,5 +443,15 @@ module.exports = {
   persistRemove,
   persistBanAdd,
   persistClear,
+  persistClearPending,
+  clearPendingInvites,
+  readActiveViewer,
+  findActiveViewerByUsername,
+  isLiveRoomActive,
+  loadPendingInvite,
+  createPendingInvite,
+  markPendingStatus,
+  grantGuestPublish,
+  TARGET_SLOT_SALA_1,
   normalize,
 };
