@@ -81,7 +81,7 @@ export function BroadcastControlsBar({
           </ToolBtn>
         ) : null}
         {onToggleScreen ? (
-          <ToolBtn label="Pantalla" onClick={onToggleScreen} active={screenSharing}>
+          <ToolBtn label={screenSharing ? 'Pantalla ON' : 'Pantalla'} onClick={onToggleScreen} active={screenSharing}>
             <MonitorUp size={18} />
           </ToolBtn>
         ) : null}

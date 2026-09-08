@@ -140,6 +140,22 @@ async function persistBanAdd(roomName, guestHandle) {
   }
 }
 
+async function persistClearMembers(roomName) {
+  if (!canUseAdminDb()) return;
+  const room = normalize(roomName);
+  if (!room) return;
+  try {
+    const snap = await getAdminDb().collection('liveRooms').doc(room).collection('salaMembers').get();
+    if (snap.empty) return;
+    const db = getAdminDb();
+    const batch = db.batch();
+    snap.docs.forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+  } catch (error) {
+    console.warn('[invites] persist members clear', error.message);
+  }
+}
+
 async function persistClear(roomName) {
   if (!hasAdminCredentials() && !firestoreConfigured()) return;
   const room = normalize(roomName);
@@ -148,9 +164,133 @@ async function persistClear(roomName) {
     const db = getAdminDb();
     await db.collection('liveRooms').doc(room).set({ guestInvites: [], guestBanned: [] }, { merge: true });
     await persistClearPending(room);
+    await persistClearMembers(room);
   } catch (error) {
     console.warn('[invites] persist clear', error.message);
   }
+}
+
+function identityKeys(values) {
+  const list = Array.isArray(values) ? values : [values];
+  return [...new Set(list.map((item) => normalize(item)).filter(Boolean))];
+}
+
+async function persistMember(roomName, uid, patch) {
+  if (!canUseAdminDb()) return;
+  const room = normalize(roomName);
+  const id = String(uid || '').trim();
+  if (!room || !id) return;
+  try {
+    await getAdminDb()
+      .collection('liveRooms')
+      .doc(room)
+      .collection('salaMembers')
+      .doc(id)
+      .set(
+        {
+          uid: id,
+          ...patch,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+  } catch (error) {
+    console.warn('[invites] persist member', error.message);
+  }
+}
+
+async function loadMember(roomName, uid) {
+  if (!canUseAdminDb()) return null;
+  const room = normalize(roomName);
+  const id = String(uid || '').trim();
+  if (!room || !id) return null;
+  try {
+    const snap = await getAdminDb()
+      .collection('liveRooms')
+      .doc(room)
+      .collection('salaMembers')
+      .doc(id)
+      .get();
+    if (!snap.exists) return null;
+    const data = snap.data() || {};
+    return {
+      uid: id,
+      status: String(data.status || ''),
+      inviteId: String(data.inviteId || ''),
+      handle: normalize(data.handle || ''),
+    };
+  } catch (error) {
+    console.warn('[invites] member read', error.message);
+    return null;
+  }
+}
+
+async function hasActiveMembership(roomName, uid) {
+  const member = await loadMember(roomName, uid);
+  return member?.status === 'ACTIVE';
+}
+
+async function consumeViewerInvites(roomName, uid, inviteId) {
+  if (!canUseAdminDb()) return;
+  const room = normalize(roomName);
+  const viewer = String(uid || '').trim();
+  const matchId = String(inviteId || '').trim();
+  if (!room) return;
+  try {
+    const snap = await getAdminDb().collection('liveRooms').doc(room).collection('salaInvites').get();
+    if (snap.empty) return;
+    const db = getAdminDb();
+    const batch = db.batch();
+    let writes = 0;
+    snap.docs.forEach((item) => {
+      const data = item.data() || {};
+      const status = String(data.status || '');
+      const sameId = matchId && item.id === matchId;
+      const sameViewer = viewer && String(data.viewerId || '') === viewer;
+      if (!sameId && !sameViewer) return;
+      if (status === 'consumed' || status === 'declined' || status === 'rejected') return;
+      batch.set(
+        item.ref,
+        { status: 'consumed', updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+      writes += 1;
+    });
+    if (writes) await batch.commit();
+  } catch (error) {
+    console.warn('[invites] consume invites', error.message);
+  }
+}
+
+async function activateGuest(roomName, uid, identities, { inviteId, guestHandle } = {}) {
+  const keys = identityKeys([uid, ...(Array.isArray(identities) ? identities : [identities])]);
+  for (const key of keys) addInvite(roomName, key);
+  await Promise.all(keys.map((key) => persistAdd(roomName, key)));
+  if (uid) {
+    await persistMember(roomName, uid, {
+      status: 'ACTIVE',
+      role: 'GUEST',
+      inviteId: inviteId || null,
+      handle: normalize(guestHandle || ''),
+      joinedAtMs: Date.now(),
+      leftAtMs: null,
+    });
+  }
+  return keys;
+}
+
+async function endGuestParticipation(roomName, uid, identities, inviteId) {
+  const keys = identityKeys([uid, ...(Array.isArray(identities) ? identities : [identities])]);
+  for (const key of keys) removeInvite(roomName, key);
+  if (uid) {
+    await persistMember(roomName, uid, {
+      status: 'LEFT',
+      leftAtMs: Date.now(),
+    });
+  }
+  await consumeViewerInvites(roomName, uid, inviteId);
+  await Promise.all(keys.map((key) => persistRemove(roomName, key)));
+  return keys;
 }
 
 function canUseAdminDb() {
@@ -382,7 +522,6 @@ function grantGuestPublish(roomName, identities) {
     if (!item) continue;
     addInvite(roomName, item);
     granted.push(item);
-    void persistAdd(roomName, item);
   }
   return granted;
 }
@@ -444,6 +583,13 @@ module.exports = {
   persistBanAdd,
   persistClear,
   persistClearPending,
+  persistClearMembers,
+  persistMember,
+  loadMember,
+  hasActiveMembership,
+  activateGuest,
+  endGuestParticipation,
+  consumeViewerInvites,
   clearPendingInvites,
   readActiveViewer,
   findActiveViewerByUsername,

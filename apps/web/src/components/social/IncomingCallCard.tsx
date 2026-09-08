@@ -1,5 +1,6 @@
 import { Phone, PhoneOff, Video } from 'lucide-react';
 import { UserAvatar } from '../profile/UserAvatar';
+import { CallConnectingDots } from './VoiceCallPanels';
 import { useT } from '../../i18n';
 import { CallWinBar } from './FloatingCallFrame';
 
@@ -10,6 +11,7 @@ type Props = {
   uid?: string | null;
   video: boolean;
   accepting?: boolean;
+  connecting?: boolean;
   error?: string | null;
   rateBlasts?: number;
   giftName?: string | null;
@@ -29,6 +31,7 @@ export function IncomingCallCard({
   uid,
   video,
   accepting,
+  connecting,
   error,
   rateBlasts = 0,
   giftName,
@@ -45,6 +48,8 @@ export function IncomingCallCard({
   const kind = video ? 'Videollamada' : 'Llamada de voz';
   const paid = video && rateBlasts > 0;
   const handleText = handle.replace(/^@/, '');
+
+  const pending = Boolean(connecting || accepting);
 
   return (
     <article className="lb-call-incoming is-float">
@@ -70,19 +75,23 @@ export function IncomingCallCard({
           </div>
           <h2 className="lb-call-incoming__name">{title}</h2>
           {handleText ? <p className="lb-call-incoming__handle">@{handleText}</p> : null}
-          <p className="lb-call-incoming__kind">{paid ? 'Videollamada paga' : kind}</p>
-          <p className="lb-call-incoming__status">Te está llamando...</p>
-          {paid ? (
+          <p className="lb-call-incoming__kind">{pending ? 'Conectando...' : paid ? 'Videollamada paga' : kind}</p>
+          {pending ? (
+            <CallConnectingDots />
+          ) : (
+            <p className="lb-call-incoming__status">Te está llamando...</p>
+          )}
+          {paid && !pending ? (
             <p className="lb-video-rate-pill">
               <span>{giftEmoji || '🎁'}</span>
               {giftName || 'Regalo'} · {rateBlasts} Blasts / minuto
             </p>
           ) : null}
           {error ? <p className="lb-call-incoming__error">{error}</p> : null}
-          {accepting ? <p className="lb-call-incoming__kind">Conectando llamada...</p> : null}
         </div>
       </div>
 
+      {pending ? null : (
       <div className="lb-call-incoming__actions is-float">
         <button
           type="button"
@@ -104,6 +113,7 @@ export function IncomingCallCard({
           <PhoneOff size={20} />
         </button>
       </div>
+      )}
     </article>
   );
 }

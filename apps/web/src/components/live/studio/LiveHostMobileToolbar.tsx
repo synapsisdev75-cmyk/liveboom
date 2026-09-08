@@ -209,7 +209,7 @@ export function LiveHostMobileToolbar({
           }`}
         >
           <MonitorUp size={13} />
-          {screenSharing ? 'Pantalla on' : 'Pantalla'}
+          {screenSharing ? 'Pantalla ON' : 'Pantalla'}
         </button>
       </div>
     </div>

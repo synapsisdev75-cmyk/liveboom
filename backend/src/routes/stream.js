@@ -88,6 +88,8 @@ function canGuestPublish(decoded, roomName) {
 async function canGuestPublishAsync(decoded, roomName) {
   const ids = identitiesFromToken(decoded);
   if (await invites.isBanned(roomName, ids)) return false;
+  const member = await invites.loadMember(roomName, decoded.uid);
+  if (member) return member.status === 'ACTIVE';
   if (invites.hasInvite(roomName, ids)) return true;
   return invites.hasInvitePersisted(roomName, ids);
 }
@@ -248,7 +250,7 @@ router.post('/invite', requireAuth, async (req, res) => {
     });
     return;
   }
-  if (invites.hasInvite(roomName, banKeys) || (await invites.hasInvitePersisted(roomName, banKeys))) {
+  if (await invites.hasActiveMembership(roomName, viewerId)) {
     res.status(409).json({ error: 'Ese espectador ya está en Sala 1', code: 'ALREADY_GUEST' });
     return;
   }
@@ -331,12 +333,17 @@ router.post('/invite/accept', requireAuth, async (req, res) => {
     return;
   }
   const guestProfile = require('../lib/profileMemory').getProfile(req.user.uid);
-  invites.grantGuestPublish(roomName, [
+  await invites.activateGuest(
+    roomName,
     req.user.uid,
-    invite.guestHandle,
-    guestProfile?.username,
-    guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
-  ]);
+    [
+      req.user.uid,
+      invite.guestHandle,
+      guestProfile?.username,
+      guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
+    ],
+    { inviteId: invite.inviteId, guestHandle: invite.guestHandle },
+  );
   await invites.markPendingStatus(invite, 'accepted');
   res.json({
     ok: true,
@@ -381,7 +388,29 @@ router.post('/invite/decline', requireAuth, async (req, res) => {
   res.json({ ok: true, room: roomName });
 });
 
-router.post('/invite/kick', requireAuth, (req, res) => {
+router.post('/invite/leave', requireAuth, async (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const inviteId = typeof req.body?.inviteId === 'string' ? String(req.body.inviteId).trim() : '';
+  if (!roomName) {
+    res.status(400).json({ error: 'roomName es obligatorio' });
+    return;
+  }
+  const guestProfile = getProfile(req.user.uid);
+  await invites.endGuestParticipation(
+    roomName,
+    req.user.uid,
+    identitiesFromToken(req.user).concat(
+      guestProfile?.username,
+      guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
+      req.body?.guestHandle,
+    ),
+    inviteId,
+  );
+  res.json({ ok: true, room: roomName, membership: 'LEFT' });
+});
+
+router.post('/invite/kick', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
   const guestHandle =
@@ -400,6 +429,7 @@ router.post('/invite/kick', requireAuth, (req, res) => {
     : guestHandle
       ? findByUsername(guestHandle)
       : null;
+  const targetUid = guestUid || guestProfile?.firebaseUid || '';
   const banKeys = [
     guestHandle,
     guestUid,
@@ -408,11 +438,13 @@ router.post('/invite/kick', requireAuth, (req, res) => {
     guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
   ].filter(Boolean);
 
+  await invites.endGuestParticipation(roomName, targetUid, banKeys);
+
   for (const key of banKeys) {
     invites.addBan(roomName, key);
     invites.removeInvite(roomName, key);
   }
-  void Promise.all(banKeys.map((key) => invites.persistBanAdd(roomName, key)));
+  await Promise.all(banKeys.map((key) => invites.persistBanAdd(roomName, key)));
 
   res.json({ ok: true, room: roomName, banned: invites.listBans(roomName) });
 });

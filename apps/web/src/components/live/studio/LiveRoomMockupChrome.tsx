@@ -1,6 +1,24 @@
+import { useEffect } from 'react';
 import { Coins, Eye, Gift, Heart, MapPin, Radio, Timer } from 'lucide-react';
 import { GiftIcon } from '../FloatingGift';
+import { seedAvatarCache } from '../../../hooks/useAuthorAvatar';
+import { UserAvatar } from '../../profile/UserAvatar';
 import { useT } from '../../../i18n';
+import { resolveUserAvatar } from '../../../lib/userAvatar';
+import { useAuthStore } from '../../../store/authStore';
+
+const LIVE_TAP_BOMB_SRC = '/reactions/boom-on.png';
+
+function LiveTapBombIcon() {
+  return (
+    <img
+      src={LIVE_TAP_BOMB_SRC}
+      alt=""
+      draggable={false}
+      className="lb-live-tap-bomb"
+    />
+  );
+}
 
 export type HostLiveStatSnapshot = {
   startedAt?: string;
@@ -9,6 +27,8 @@ export type HostLiveStatSnapshot = {
   giftsCount?: number;
   coinsEarned: number;
   goalCoins: number;
+  goalCurrent?: number;
+  goalReached?: boolean;
   goalLabel?: string;
   topGifters: { uid: string; name: string; coins: number }[];
 };
@@ -23,7 +43,8 @@ export type RecentLiveGiftRow = {
 };
 
 function formatElapsed(startedAt?: string) {
-  const start = startedAt ? new Date(startedAt).getTime() : Date.now();
+  const start = startedAt ? Date.parse(startedAt) : NaN;
+  if (!Number.isFinite(start) || start <= 0) return '00:00:00';
   const total = Math.max(0, Math.floor((Date.now() - start) / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -37,23 +58,75 @@ function formatCompact(n: number) {
   return n.toLocaleString('es-CO');
 }
 
+function handleKey(value?: string | null) {
+  return String(value || '')
+    .trim()
+    .replace(/^@/, '')
+    .toLowerCase();
+}
+
+function HostFooterTopGifterPhoto({
+  uid,
+  name,
+  hostUid,
+  hostUsername,
+  hostAvatarUrl,
+}: {
+  uid: string;
+  name: string;
+  hostUid?: string | null;
+  hostUsername?: string | null;
+  hostAvatarUrl?: string | null;
+}) {
+  const me = useAuthStore((state) => state.profile);
+  const myHandle = handleKey(me?.handle);
+  const gifterHandle = handleKey(name);
+  const isMe = Boolean(
+    (uid && me?.firebaseUid === uid) || (myHandle && gifterHandle && myHandle === gifterHandle),
+  );
+  const isHost = Boolean(
+    (hostUid && uid && hostUid === uid) ||
+      (handleKey(hostUsername) && gifterHandle && handleKey(hostUsername) === gifterHandle),
+  );
+  const src =
+    resolveUserAvatar(isMe ? me?.avatarUrl : null) ||
+    resolveUserAvatar(isHost ? hostAvatarUrl : null);
+  const lookupUid = (isMe ? me?.firebaseUid : null) || (isHost ? hostUid : null) || uid || null;
+
+  useEffect(() => {
+    if (lookupUid && src) seedAvatarCache(lookupUid, src);
+  }, [lookupUid, src]);
+
+  return (
+    <UserAvatar
+      src={src}
+      uid={lookupUid}
+      username={name || me?.handle || hostUsername}
+      displayName={isMe ? me?.displayName || name : name}
+      size={20}
+      className="bg-violet-500/30"
+    />
+  );
+}
+
 type LeftProps = {
   stats: HostLiveStatSnapshot;
   recentGifts: RecentLiveGiftRow[];
   nowMs: number;
   onOpenWishlist?: () => void;
+  onNewCoinGoal?: () => void;
 };
 
 /** Columna izquierda del dashboard host (mockup transmitir). */
-export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWishlist }: LeftProps) {
+export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWishlist, onNewCoinGoal }: LeftProps) {
   void _nowMs;
   const elapsed = formatElapsed(stats.startedAt);
   const goal = Math.max(0, stats.goalCoins || 0);
   const earned = Math.max(0, stats.coinsEarned || 0);
-  const softCap = goal > 0 ? goal : Math.max(20, Math.ceil(Math.max(earned, 1) / 20) * 20);
-  const pct = Math.min(100, Math.round((earned / softCap) * 100));
-  const metaCurrent = goal > 0 ? Math.min(earned, goal) : Math.min(earned, softCap);
-  const metaMax = goal > 0 ? goal : softCap;
+  const cycleCurrent = Math.max(0, Number(stats.goalCurrent ?? Math.min(earned, goal || earned)));
+  const cycleTarget = goal > 0 ? goal : Math.max(20, Math.ceil(Math.max(earned, 1) / 20) * 20);
+  const pct = Math.min(100, Math.round((cycleCurrent / Math.max(1, cycleTarget)) * 100));
+  const reached = Boolean(stats.goalReached || (goal > 0 && cycleCurrent >= goal));
 
   return (
     <aside className="lb-host-left hidden min-h-0 w-[min(100%,240px)] shrink-0 flex-col gap-3 overflow-y-auto lg:flex">
@@ -74,7 +147,7 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
           </li>
           <li className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-zinc-400">
-              <Heart size={12} className="text-violet-400" /> Me gusta
+              <LiveTapBombIcon /> Me gusta
             </span>
             <span className="font-semibold text-white">{formatCompact(stats.likes || 0)}</span>
           </li>
@@ -97,7 +170,7 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Meta de regalos</p>
           <span className="text-[11px] font-bold tabular-nums text-violet-300">
-            {metaCurrent} / {metaMax || 20}
+            {cycleCurrent.toLocaleString('es-CO')} / {cycleTarget.toLocaleString('es-CO')}
           </span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
@@ -107,8 +180,19 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
           />
         </div>
         <p className="mt-2 text-[10px] leading-snug text-zinc-500">
-          {stats.goalLabel || 'Envía regalos para completar la meta y ganar recompensas.'}
+          {reached
+            ? 'Meta cumplida ✓'
+            : stats.goalLabel || 'Envía regalos para completar la meta y ganar recompensas.'}
         </p>
+        {reached && onNewCoinGoal ? (
+          <button
+            type="button"
+            onClick={onNewCoinGoal}
+            className="mt-2 inline-flex min-h-9 items-center rounded-lg bg-violet-500/20 px-2.5 text-[11px] font-semibold text-violet-200 hover:bg-violet-500/30"
+          >
+            + Nueva meta
+          </button>
+        ) : null}
         {onOpenWishlist ? (
           <button
             type="button"
@@ -152,14 +236,23 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
 type FooterProps = {
   stats: HostLiveStatSnapshot;
   onCrearVs: () => void;
+  hostUid?: string | null;
+  hostUsername?: string | null;
+  hostAvatarUrl?: string | null;
 };
 
-export function HostLiveFooterBar({ stats, onCrearVs }: FooterProps) {
+export function HostLiveFooterBar({
+  stats,
+  onCrearVs,
+  hostUid,
+  hostUsername,
+  hostAvatarUrl,
+}: FooterProps) {
   const elapsed = formatElapsed(stats.startedAt);
   const top = stats.topGifters[0];
   return (
     <footer className="lb-host-footer hidden shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-zinc-950/90 px-3 py-2 lg:flex">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-300">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-zinc-300">
         <span className="inline-flex items-center gap-1">
           <Radio size={12} className="text-red-400" /> {elapsed}
         </span>
@@ -167,7 +260,7 @@ export function HostLiveFooterBar({ stats, onCrearVs }: FooterProps) {
           <Eye size={12} /> {formatCompact(stats.viewers)}
         </span>
         <span className="inline-flex items-center gap-1">
-          <Heart size={12} /> {formatCompact(stats.likes || 0)}
+          <LiveTapBombIcon /> {formatCompact(stats.likes || 0)}
         </span>
         <span className="inline-flex items-center gap-1">
           <Gift size={12} /> {formatCompact(stats.giftsCount || 0)}
@@ -177,32 +270,39 @@ export function HostLiveFooterBar({ stats, onCrearVs }: FooterProps) {
         </span>
         {top ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-2 py-0.5">
-            <span className="grid h-5 w-5 place-items-center rounded-full bg-violet-500/30 text-[9px] font-bold">
-              {top.name.slice(0, 1).toUpperCase()}
-            </span>
+            <HostFooterTopGifterPhoto
+              uid={top.uid}
+              name={top.name}
+              hostUid={hostUid}
+              hostUsername={hostUsername}
+              hostAvatarUrl={hostAvatarUrl}
+            />
             <span className="truncate max-w-[7rem]">@{top.name.replace(/^@/, '')}</span>
             <span className="tabular-nums text-amber-300">{top.coins.toLocaleString('es-CO')}</span>
           </span>
         ) : null}
       </div>
-      <button
-        type="button"
-        onClick={onCrearVs}
-        className="group relative inline-flex h-14 max-w-[min(100%,16rem)] shrink-0 items-center justify-center overflow-hidden rounded-xl ring-1 ring-violet-400/35 transition hover:ring-violet-300/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
-        aria-label="Crear VS — Invita a otro creador"
-      >
-        <video
-          src="/reactions/vs-cta.mp4"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="auto"
-          disablePictureInPicture
-          controls={false}
-          className="pointer-events-none h-full w-auto max-w-full object-contain"
-        />
-      </button>
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center">
+        <button
+          type="button"
+          onClick={onCrearVs}
+          className="group relative h-14 w-auto shrink-0 overflow-hidden rounded-xl ring-1 ring-violet-400/35 transition hover:ring-violet-300/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400"
+          aria-label="Crear VS — Invita a otro creador"
+        >
+          <video
+            src="/reactions/vs-cta.mp4"
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+            disablePictureInPicture
+            controls={false}
+            className="pointer-events-none h-full w-auto max-h-full object-contain object-center"
+            style={{ aspectRatio: '16 / 9' }}
+          />
+        </button>
+      </div>
     </footer>
   );
 }

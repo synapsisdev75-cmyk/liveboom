@@ -1725,7 +1725,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           isPage ? (chatOpen ? 'flex' : 'hidden md:flex') : 'flex'
         }`}
       >
-        <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-3 py-3">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.06] px-3 py-3">
           {isPage ? (
             <button
               type="button"
@@ -1780,6 +1780,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
               </span>
             </span>
           </Link>
+          <div ref={callDockRef} id="lb-chat-call-dock" className="lb-chat-call-dock" />
           <div className="flex shrink-0 items-center gap-0.5">
             {inThisCall ? (
               <button
@@ -1819,7 +1820,6 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             </button>
           </div>
         </div>
-        <div ref={callDockRef} id="lb-chat-call-dock" className="lb-chat-call-dock" />
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div id="lb-chat-call-host" ref={callHostRef} className="lb-chat-call-host" />

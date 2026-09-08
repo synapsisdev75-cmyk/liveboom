@@ -117,6 +117,7 @@ export function CallChatActions({
     const localStatus = useCallStore.getState().status;
     onBusy(true);
     onError(null);
+    if (video) console.info('[VIDEO CALL] start clicked');
     let startedCallId: string | null = null;
     try {
       await assertCanStartCall(profile.firebaseUid, peer.uid, {
@@ -179,6 +180,7 @@ export function CallChatActions({
   }
 
   async function onCall(video: boolean) {
+    if (video) console.info('[VIDEO CALL] start clicked');
     const access = video ? videoAccess : voiceAccess;
     if (!access || !profile) return;
     const asCreatorRequest = Boolean(access.canRequestCall && !access.canDirectCall);

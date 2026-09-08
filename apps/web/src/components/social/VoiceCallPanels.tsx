@@ -4,7 +4,6 @@ import {
   Mic,
   MicOff,
   MoreVertical,
-  Phone,
   PhoneOff,
   Volume2,
   VolumeX,
@@ -15,6 +14,9 @@ import { callMediaDeniedMessage, labelCallMicrophone, listCallMediaDevices } fro
 import { UserAvatar } from '../profile/UserAvatar';
 import type { ReactNode } from 'react';
 import { CallWinBar } from './FloatingCallFrame';
+import { IncomingVoiceCallScreen } from './IncomingVoiceCallScreen';
+import { OutgoingVoiceCallScreen } from './OutgoingVoiceCallScreen';
+import { ConnectedVoiceCallScreen } from './ConnectedVoiceCallScreen';
 
 export const VOICE_QUICK_REPLIES = [
   'No puedo hablar ahora.',
@@ -110,9 +112,20 @@ function AvatarStage({
   );
 }
 
+export function CallConnectingDots() {
+  return (
+    <div className="lb-call-connecting-dots" aria-hidden>
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
 export function VoiceCallIncoming({
   person,
   accepting,
+  connecting,
   error,
   onAccept,
   onDecline,
@@ -123,6 +136,7 @@ export function VoiceCallIncoming({
 }: {
   person: Person;
   accepting?: boolean;
+  connecting?: boolean;
   error?: string | null;
   onAccept: () => void;
   onDecline: () => void;
@@ -132,53 +146,18 @@ export function VoiceCallIncoming({
   maximized?: boolean;
 }) {
   return (
-    <article className="lb-voice-card is-in is-float">
-      <CallWinBar
-        onMinimize={onMinimize}
-        onMaximize={onMaximize}
-        onClose={onClose}
-        maximized={maximized}
-      />
-      <PersonBlock person={person}>
-        <AvatarStage person={person} mode="in" />
-      </PersonBlock>
-      <p className="lb-voice-card__status">Llamada de voz</p>
-      <p className="lb-voice-card__sub">Te está llamando...</p>
-      {error ? <p className="lb-voice-card__error">{error}</p> : null}
-      {error ? (
-        <div className="lb-voice-card__secondary">
-          <button type="button" onClick={onAccept}>
-            Reintentar
-          </button>
-          <button type="button" onClick={onDecline}>
-            Cancelar
-          </button>
-        </div>
-      ) : null}
-      {accepting ? <p className="lb-voice-card__sub">Conectando llamada...</p> : null}
-
-      <div className="lb-voice-card__main-actions">
-        <button
-          type="button"
-          className="lb-voice-accept-pill"
-          onClick={onAccept}
-          disabled={accepting}
-          aria-label="Aceptar"
-        >
-          <Phone size={18} />
-          Aceptar
-        </button>
-        <button
-          type="button"
-          className="lb-voice-round is-decline"
-          onClick={onDecline}
-          disabled={accepting}
-          aria-label="Rechazar"
-        >
-          <PhoneOff size={20} />
-        </button>
-      </div>
-    </article>
+    <IncomingVoiceCallScreen
+      person={person}
+      accepting={accepting}
+      connecting={connecting}
+      error={error}
+      onAccept={onAccept}
+      onDecline={onDecline}
+      onMinimize={onMinimize}
+      onMaximize={onMaximize}
+      onClose={onClose}
+      maximized={maximized}
+    />
   );
 }
 
@@ -337,7 +316,9 @@ function VoiceRoomControls({
 export function VoiceCallOutgoing({
   person,
   reconnecting,
-  connecting,
+  connected,
+  elapsedLabel,
+  standalone,
   onCancel,
   onFollowChat,
   onMinimize,
@@ -348,6 +329,9 @@ export function VoiceCallOutgoing({
   person: Person;
   reconnecting?: boolean;
   connecting?: boolean;
+  connected?: boolean;
+  elapsedLabel?: string;
+  standalone?: boolean;
   onCancel: () => void;
   onFollowChat: () => void;
   onMinimize?: () => void;
@@ -355,17 +339,44 @@ export function VoiceCallOutgoing({
   onClose?: () => void;
   maximized?: boolean;
 }) {
+  const live = Boolean(connected && !reconnecting);
+  if (!live) {
+    return (
+      <OutgoingVoiceCallScreen
+        person={person}
+        reconnecting={reconnecting}
+        onCancel={onCancel}
+        onMinimize={onMinimize}
+        onMaximize={onMaximize}
+        onClose={onClose}
+        maximized={maximized}
+      />
+    );
+  }
   return (
-    <article className="lb-voice-card is-out is-float">
+    <article className={`lb-voice-card is-float${live ? ' is-on' : ' is-out'}`}>
       <span className="lb-voice-card__grip" data-call-drag aria-hidden />
       <CallWinBar onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} maximized={maximized} />
       <PersonBlock person={person}>
-        <AvatarStage person={person} mode="out" />
+        <AvatarStage person={person} mode={live ? 'on' : 'out'} />
       </PersonBlock>
-      <p className="lb-voice-card__status">
-        {reconnecting ? 'Reconectando...' : connecting ? 'Conectando llamada...' : 'Llamando...'}
-      </p>
-      <VoiceRoomControls endLabel="Cancelar llamada" onEnd={onCancel} showSpeaker={canSelectAudioOutput()} />
+      <p className="lb-voice-card__status">En llamada</p>
+      <p className="lb-voice-card__clock">{elapsedLabel || '00:00'}</p>
+      {standalone ? (
+        <div className="lb-voice-card__main-actions">
+          <button
+            type="button"
+            className="lb-voice-round is-end"
+            data-no-drag
+            onClick={onCancel}
+            aria-label={live ? 'Finalizar' : 'Cancelar'}
+          >
+            <PhoneOff size={20} />
+          </button>
+        </div>
+      ) : (
+        <VoiceRoomControls endLabel={live ? 'Finalizar' : 'Cancelar llamada'} onEnd={onCancel} showSpeaker={canSelectAudioOutput()} />
+      )}
       <button type="button" className="lb-voice-follow" data-no-drag onClick={onFollowChat}>
         <MessageCircle size={16} />
         <span>
@@ -400,25 +411,19 @@ export function VoiceCallActive({
   onClose?: () => void;
   maximized?: boolean;
 }) {
-  const state = reconnecting ? 'Reconectando...' : lost ? 'Conexión perdida' : 'En llamada';
+  const statusLabel = reconnecting ? 'Reconectando...' : lost ? 'Conexión perdida' : 'En llamada de voz';
   return (
-    <article className="lb-voice-card is-on is-float">
-      <span className="lb-voice-card__grip" data-call-drag aria-hidden />
-      <CallWinBar onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} maximized={maximized} />
-      <PersonBlock person={person}>
-        <AvatarStage person={person} mode="on" />
-      </PersonBlock>
-      <p className="lb-voice-card__status">{state}</p>
-      {!reconnecting && !lost ? <p className="lb-voice-card__clock">{elapsedLabel}</p> : null}
-      <VoiceRoomControls endLabel="Finalizar" onEnd={onHangup} showSpeaker />
-      <button type="button" className="lb-voice-follow" data-no-drag onClick={onFollowChat}>
-        <MessageCircle size={16} />
-        <span>
-          Seguir en el chat
-          <em>La llamada continuará en segundo plano</em>
-        </span>
-      </button>
-    </article>
+    <ConnectedVoiceCallScreen
+      person={person}
+      elapsedLabel={elapsedLabel}
+      statusLabel={statusLabel}
+      onHangup={onHangup}
+      onFollowChat={onFollowChat}
+      onMinimize={onMinimize}
+      onMaximize={onMaximize}
+      onClose={onClose}
+      maximized={maximized}
+    />
   );
 }
 

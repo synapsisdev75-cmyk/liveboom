@@ -1,4 +1,4 @@
-import { Phone, PhoneOff, Video } from 'lucide-react';
+import { Maximize2, Phone, PhoneOff, Video } from 'lucide-react';
 import { UserAvatar } from '../profile/UserAvatar';
 
 type Props = {
@@ -10,6 +10,7 @@ type Props = {
   incoming: boolean;
   accepting?: boolean;
   statusLabel: string;
+  clock?: string;
   onAccept: () => void;
   onReject: () => void;
   onRestore: () => void;
@@ -24,12 +25,43 @@ export function CallHeaderDock({
   incoming,
   accepting,
   statusLabel,
+  clock,
   onAccept,
   onReject,
   onRestore,
 }: Props) {
   const title = name || (handle ? `@${handle}` : 'LiveBoom');
   const acceptLabel = incoming ? 'Aceptar' : 'Retomar';
+
+  if (!incoming) {
+    return (
+      <div className="lb-call-header-dock is-compact" role="status">
+        <button type="button" className="lb-call-header-dock__chip" onClick={onRestore}>
+          {video ? <Video size={14} /> : <Phone size={14} />}
+          <span>
+            Llamada activa
+            {clock ? ` · ${clock}` : ''}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="lb-call-header-dock__max"
+          onClick={onRestore}
+          aria-label="Maximizar"
+        >
+          <Maximize2 size={14} />
+        </button>
+        <button
+          type="button"
+          className="lb-call-header-dock__end"
+          onClick={onReject}
+          aria-label="Colgar"
+        >
+          <PhoneOff size={14} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="lb-call-header-dock" role="status">
@@ -51,11 +83,11 @@ export function CallHeaderDock({
         <button
           type="button"
           className="lb-call-header-dock__btn is-accept"
-          onClick={incoming ? onAccept : onRestore}
+          onClick={onAccept}
           disabled={accepting}
           aria-label={acceptLabel}
         >
-          {video && incoming ? <Video size={14} /> : <Phone size={14} />}
+          {video ? <Video size={14} /> : <Phone size={14} />}
           {acceptLabel}
         </button>
         <button
@@ -63,10 +95,10 @@ export function CallHeaderDock({
           className="lb-call-header-dock__btn is-end"
           onClick={onReject}
           disabled={accepting}
-          aria-label={incoming ? 'Rechazar' : 'Colgar'}
+          aria-label="Rechazar"
         >
           <PhoneOff size={14} />
-          {incoming ? 'Rechazar' : 'Colgar'}
+          Rechazar
         </button>
       </div>
     </div>

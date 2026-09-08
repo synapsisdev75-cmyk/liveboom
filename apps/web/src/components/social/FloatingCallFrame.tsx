@@ -10,6 +10,11 @@ let sessionSize: Size | null = null;
 let expandedPos: Pos | null = null;
 
 export type CallChrome = 'normal' | 'minimized' | 'maximized' | 'hidden';
+export type CallViewMode = 'expanded' | 'minimized';
+
+export function callViewMode(chrome: CallChrome): CallViewMode {
+  return chrome === 'minimized' || chrome === 'hidden' ? 'minimized' : 'expanded';
+}
 
 const CHROME_KEY = 'lb.floatCall.chrome';
 
@@ -26,7 +31,8 @@ export function readCallChrome(): CallChrome {
 
 export function writeCallChrome(value: CallChrome) {
   try {
-    sessionStorage.setItem(CHROME_KEY, value === 'hidden' ? 'normal' : value);
+    const stored = value === 'hidden' ? 'minimized' : value;
+    sessionStorage.setItem(CHROME_KEY, stored);
   } catch {
     /* ignore */
   }
@@ -155,7 +161,7 @@ function isDragFrom(target: EventTarget | null) {
   if (el.closest('a, input, textarea, select, option')) return false;
   if (
     el.closest(
-      '.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop, .lb-call-resize',
+      '.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop, .lb-call-resize, .lb-voice-out-end, .lb-voice-out-speaker, .lb-voice-in-decline, .lb-voice-in-accept, .lb-video-ring-end, .lb-video-ring-speaker, .lb-video-ring-decline, .lb-video-ring-accept',
     )
   ) {
     return false;
@@ -173,16 +179,22 @@ export function CallWinBar({
   onClose,
   maximized,
   showMaximize = true,
+  showLogo = true,
 }: {
   onMinimize?: () => void;
   onMaximize?: () => void;
   onClose?: () => void;
   maximized?: boolean;
   showMaximize?: boolean;
+  showLogo?: boolean;
 }) {
   return (
-    <div className="lb-call-winbar" data-call-drag>
-      <img src={BRAND_LOGO_SRC} alt="LiveBoom" className="lb-call-winbar__logo" draggable={false} />
+    <div className={`lb-call-winbar${showLogo ? '' : ' is-actions-only'}`} data-call-drag>
+      {showLogo ? (
+        <img src={BRAND_LOGO_SRC} alt="LiveBoom" className="lb-call-winbar__logo" draggable={false} />
+      ) : (
+        <span className="lb-call-winbar__spacer" data-call-drag aria-hidden />
+      )}
       <div className="lb-call-winbar__btns">
         {onMinimize ? (
           <button type="button" className="lb-call-winbtn" data-no-drag onClick={onMinimize} aria-label="Minimizar">
@@ -249,6 +261,7 @@ export function FloatingCallFrame({
   } | null>(null);
   const suppressClickRef = useRef(false);
   const lastMode = useRef({ compact, video, maximized, incoming });
+  const [manualSize, setManualSize] = useState(false);
 
   const applySize = useCallback(() => {
     const node = frameRef.current;
@@ -365,6 +378,7 @@ export function FloatingCallFrame({
         h: Math.min(maxH, Math.max(minH, resize.origH + event.clientY - resize.startY)),
       };
       sessionSize = next;
+      setManualSize(true);
       setSize(next);
       setPos((prev) => {
         const base = prev ?? sessionPos ?? { x: node.offsetLeft, y: node.offsetTop };
@@ -441,16 +455,22 @@ export function FloatingCallFrame({
   const canResize = video && !compact && !maximized && !parked;
 
   return (
-    <div className="lb-call-float-root" data-call-overlay-root>
+    <div className={`lb-call-float-root${parked ? ' is-parked' : ''}`} data-call-overlay-root>
       <div
         ref={frameRef}
-        className={`lb-call-float${compact ? ' is-compact' : ' is-normal'}${video ? ' is-video' : ''}${
+        className={`lb-call-float${compact ? ' is-compact' : ' is-normal'}${video ? ' is-video' : ' is-voice'}${
           maximized ? ' is-maximized' : ''
-        }${incoming ? ' is-incoming' : ''}${parked ? ' is-parked' : ''}${pos ? '' : ' is-measure'}`}
-        style={{
-          ...(pos ? { left: pos.x, top: pos.y } : null),
-          ...((maximized || canResize) && size ? { width: size.w, height: size.h } : null),
-        }}
+        }${incoming ? ' is-incoming' : ''}${parked ? ' is-parked' : ''}${parked || pos ? '' : ' is-measure'}`}
+        style={
+          parked
+            ? undefined
+            : {
+                ...(pos ? { left: pos.x, top: pos.y } : null),
+                ...((maximized || (canResize && manualSize)) && size ? { width: size.w, height: size.h } : null),
+              }
+        }
+        aria-hidden={parked || undefined}
+        data-call-view={parked ? 'minimized' : compact ? 'minimized' : 'expanded'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

@@ -1,0 +1,68 @@
+/* Video LiveKit host mirrors voice (.lb-voice-lk). Do not park or fill the viewport. */
+
+.lb-video-live-slot,
+.lb-video-lk {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.lb-video-call-session .lk-room-container,
+.lb-video-call-session .lb-call-room,
+.lb-video-live-slot .lk-room-container,
+.lb-video-live-slot .lb-call-room,
+.lb-video-lk .lk-room-container,
+.lb-video-lk .lb-call-room {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  flex: 0 0 auto;
+  background: transparent;
+  background-color: transparent;
+  --lk-bg: transparent;
+}
+
+.lb-call-float.is-video .lk-start-audio-button,
+.lb-call-float-root .lb-video-lk .lk-start-audio-button {
+  display: none;
+}
+
+.lb-call-float.is-video .lk-room-container,
+.lb-call-float.is-video .lk-room-container.lb-call-room,
+.lb-call-float.is-video .lb-call-room {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  --lk-bg: transparent;
+}
+
+.lb-call-float.is-video .lb-call-livekit-hold {
+  position: absolute !important;
+  left: -10000px !important;
+  top: 0 !important;
+  width: 1px !important;
+  height: 1px !important;
+  max-width: 1px !important;
+  max-height: 1px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  contain: strict;
+  clip-path: inset(50%);
+}
+
+.lb-video-connected-screen .lb-call-video-stage,
+.lb-call-float.is-video .lb-video-connected-screen .lb-call-video-stage {
+  flex: 0 0 auto;
+  height: min(20rem, 46dvh);
+  min-height: 16rem;
+  max-height: min(24rem, 52dvh);
+}

@@ -32,18 +32,8 @@ export async function ensureCallMediaPermission(video: boolean): Promise<string 
     return micDeniedMessage(error);
   }
   if (!video) return null;
-  try {
-    const camera = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: 'user' },
-    });
-    stopStream(camera);
-  } catch (error) {
-    console.warn('[CALL MEDIA] Cámara no disponible; la llamada continúa con audio', {
-      name: error instanceof Error ? error.name : 'Error',
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  // No abrir/cerrar la cámara aquí: en Windows/Chrome deja el dispositivo ocupado
+  // y el boot de la videollamada no llega a publicarla.
   return null;
 }
 
@@ -67,8 +57,8 @@ export async function listCallMediaDevices(): Promise<{
   try {
     const list = await navigator.mediaDevices.enumerateDevices();
     return {
-      video: list.filter((item) => item.kind === 'videoinput' && item.deviceId),
-      audio: list.filter((item) => item.kind === 'audioinput' && item.deviceId),
+      video: list.filter((item) => item.kind === 'videoinput'),
+      audio: list.filter((item) => item.kind === 'audioinput'),
     };
   } catch {
     return { video: [], audio: [] };
@@ -108,5 +98,10 @@ export function callMediaDeniedMessage(error: unknown, video: boolean): string {
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return video ? 'No se encontró esa cámara.' : 'No se encontró ese micrófono.';
   }
-  return video ? 'No se pudo cambiar la cámara.' : 'No se pudo cambiar el micrófono.';
+  if (name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError') {
+    return video
+      ? 'La cámara está ocupada. Ciérrala en otra app y vuelve a intentar.'
+      : 'El micrófono está ocupado. Ciérralo en otra app y vuelve a intentar.';
+  }
+  return video ? 'No se pudo usar la cámara.' : 'No se pudo usar el micrófono.';
 }

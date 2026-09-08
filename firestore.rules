@@ -585,7 +585,8 @@ service cloud.firestore {
         allow create: if signedIn()
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.nx is number
-          && request.resource.data.ny is number;
+          && request.resource.data.ny is number
+          && request.auth.uid != get(/databases/$(database)/documents/liveRooms/$(roomName)).data.hostUid;
       }
     }
 

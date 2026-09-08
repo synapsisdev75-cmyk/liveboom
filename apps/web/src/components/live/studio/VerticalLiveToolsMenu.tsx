@@ -1,5 +1,6 @@
 import {
   Camera,
+  CameraOff,
   Clapperboard,
   Coins,
   FlipHorizontal,
@@ -12,11 +13,10 @@ import {
   Plus,
   Users,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type VerticalLiveToolId =
   | 'invite'
-  | 'reel'
   | 'screen'
   | 'mic'
   | 'camera'
@@ -24,37 +24,27 @@ export type VerticalLiveToolId =
   | 'notify'
   | 'wishlist'
   | 'lock'
+  | 'reel'
   | 'withdraw';
-
-type CameraDevice = {
-  deviceId: string;
-  label: string;
-};
 
 type Props = {
   micOn: boolean;
+  cameraOn: boolean;
   screenSharing: boolean;
   mirrorOn: boolean;
-  recording: boolean;
   notifyBusy: boolean;
   wishlistCount: number;
   lockActive: boolean;
-  cameraDevices: CameraDevice[];
-  cameraDeviceId: string;
-  micDevices?: CameraDevice[];
-  micDeviceId?: string;
   onInvite: () => void;
-  onReel: () => void;
   onScreen: () => void;
   onMic: () => void;
   onCamera: () => void;
-  onSelectCamera: (deviceId: string) => void;
-  onSelectMic?: (deviceId: string) => void;
   onMirror: () => void;
   onNotify: () => void;
   onWishlist: () => void;
   onLock: () => void;
-  onWithdraw: () => void;
+  onReel?: () => void;
+  onWithdraw?: () => void;
 };
 
 const TOOLS: {
@@ -63,7 +53,6 @@ const TOOLS: {
   tone: string;
 }[] = [
   { id: 'invite', label: 'Invitar', tone: 'violet' },
-  { id: 'reel', label: 'Reel', tone: 'fuchsia' },
   { id: 'screen', label: 'Pantalla', tone: 'cyan' },
   { id: 'mic', label: 'Micrófono', tone: 'emerald' },
   { id: 'camera', label: 'Cámara', tone: 'amber' },
@@ -71,28 +60,39 @@ const TOOLS: {
   { id: 'notify', label: 'Avisar', tone: 'fuchsia' },
   { id: 'wishlist', label: 'Deseos', tone: 'cyan' },
   { id: 'lock', label: 'Privado', tone: 'gold' },
-  { id: 'withdraw', label: 'Retirar', tone: 'rose' },
 ];
+
+const REEL_TOOL: { id: VerticalLiveToolId; label: string; tone: string } = {
+  id: 'reel',
+  label: 'Reel',
+  tone: 'rose',
+};
+
+const WITHDRAW_TOOL: { id: VerticalLiveToolId; label: string; tone: string } = {
+  id: 'withdraw',
+  label: 'Retirar',
+  tone: 'cyan',
+};
 
 function ToolIcon({
   id,
   micOn,
+  cameraOn,
 }: {
   id: VerticalLiveToolId;
   micOn: boolean;
+  cameraOn: boolean;
 }) {
   const size = 18;
   switch (id) {
     case 'invite':
       return <Users size={size} />;
-    case 'reel':
-      return <Clapperboard size={size} />;
     case 'screen':
       return <MonitorUp size={size} />;
     case 'mic':
       return micOn ? <Mic size={size} /> : <MicOff size={size} />;
     case 'camera':
-      return <Camera size={size} />;
+      return cameraOn ? <Camera size={size} /> : <CameraOff size={size} />;
     case 'mirror':
       return <FlipHorizontal size={size} />;
     case 'notify':
@@ -101,6 +101,8 @@ function ToolIcon({
       return <Gift size={size} />;
     case 'lock':
       return <Lock size={size} />;
+    case 'reel':
+      return <Clapperboard size={size} />;
     case 'withdraw':
       return <Coins size={size} />;
     default:
@@ -110,38 +112,28 @@ function ToolIcon({
 
 export function VerticalLiveToolsMenu({
   micOn,
+  cameraOn,
   screenSharing,
   mirrorOn,
-  recording,
   notifyBusy,
   wishlistCount,
   lockActive,
-  cameraDevices,
-  cameraDeviceId,
-  micDevices = [],
-  micDeviceId,
   onInvite,
-  onReel,
   onScreen,
   onMic,
   onCamera,
-  onSelectCamera,
-  onSelectMic,
   onMirror,
   onNotify,
   onWishlist,
   onLock,
+  onReel,
   onWithdraw,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [cameraList, setCameraList] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) {
-      setCameraList(false);
-      return;
-    }
+    if (!open) return;
     const onPointer = (event: PointerEvent) => {
       const node = rootRef.current;
       if (!node || node.contains(event.target as Node)) return;
@@ -159,16 +151,9 @@ export function VerticalLiveToolsMenu({
   }, [open]);
 
   function run(id: VerticalLiveToolId) {
-    if (id === 'camera' && cameraDevices.length > 1) {
-      setCameraList((v) => !v);
-      return;
-    }
     switch (id) {
       case 'invite':
         onInvite();
-        break;
-      case 'reel':
-        onReel();
         break;
       case 'screen':
         onScreen();
@@ -191,20 +176,23 @@ export function VerticalLiveToolsMenu({
       case 'lock':
         onLock();
         break;
+      case 'reel':
+        onReel?.();
+        break;
       case 'withdraw':
-        onWithdraw();
+        onWithdraw?.();
         break;
       default:
         break;
     }
-    setOpen(false);
+    if (id !== 'camera' && id !== 'mirror' && id !== 'screen') setOpen(false);
   }
 
   function toolActive(id: VerticalLiveToolId) {
     if (id === 'mic') return !micOn;
+    if (id === 'camera') return !cameraOn;
     if (id === 'screen') return screenSharing;
     if (id === 'mirror') return mirrorOn;
-    if (id === 'reel') return recording;
     if (id === 'notify') return notifyBusy;
     if (id === 'wishlist') return wishlistCount > 0;
     if (id === 'lock') return lockActive;
@@ -213,19 +201,27 @@ export function VerticalLiveToolsMenu({
 
   function toolLabel(id: VerticalLiveToolId, label: string) {
     if (id === 'notify' && notifyBusy) return 'Avisando';
-    if (id === 'reel' && recording) return 'Grabando';
+    if (id === 'camera') return cameraOn ? 'Cámara ON' : 'Cámara OFF';
+    if (id === 'mirror') return mirrorOn ? 'Espejo ON' : 'Espejo OFF';
     if (id === 'wishlist' && wishlistCount) return `Deseos (${wishlistCount})`;
+    if (id === 'screen' && screenSharing) return 'Pantalla ON';
     return label;
   }
+
+  const tools = [
+    ...TOOLS,
+    ...(onReel ? [REEL_TOOL] : []),
+    ...(onWithdraw ? [WITHDRAW_TOOL] : []),
+  ];
 
   return (
     <div ref={rootRef} className={`lb-live-vtools${open ? ' is-open' : ''}`}>
       {open ? (
         <div className="lb-live-vtools-panel" role="menu" aria-label="Herramientas del live">
           <div className="lb-live-vtools-grid">
-            {TOOLS.map((tool) => {
+            {tools.map((tool) => {
               const active = toolActive(tool.id);
-              const disabled = (tool.id === 'notify' && notifyBusy) || (tool.id === 'reel' && recording);
+              const disabled = tool.id === 'notify' && notifyBusy;
               return (
                 <button
                   key={tool.id}
@@ -236,47 +232,13 @@ export function VerticalLiveToolsMenu({
                   className={`lb-live-vtools-item is-${tool.tone}${active ? ' is-on' : ''}`}
                 >
                   <span className="lb-live-vtools-icon">
-                    <ToolIcon id={tool.id} micOn={micOn} />
+                    <ToolIcon id={tool.id} micOn={micOn} cameraOn={cameraOn} />
                   </span>
                   <span>{toolLabel(tool.id, tool.label)}</span>
                 </button>
               );
             })}
           </div>
-          {cameraList && cameraDevices.length > 1 ? (
-            <div className="lb-live-vtools-cams">
-              {cameraDevices.map((device, index) => (
-                <button
-                  key={device.deviceId || `cam-${index}`}
-                  type="button"
-                  onClick={() => {
-                    onSelectCamera(device.deviceId);
-                    setOpen(false);
-                  }}
-                  className={cameraDeviceId === device.deviceId ? 'is-on' : ''}
-                >
-                  {device.label || `Cámara ${index + 1}`}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {micDevices.length > 1 ? (
-            <div className="lb-live-vtools-cams">
-              {micDevices.map((device, index) => (
-                <button
-                  key={device.deviceId || `mic-${index}`}
-                  type="button"
-                  onClick={() => {
-                    onSelectMic?.(device.deviceId);
-                    setOpen(false);
-                  }}
-                  className={micDeviceId === device.deviceId ? 'is-on' : ''}
-                >
-                  {device.label || `Micrófono ${index + 1}`}
-                </button>
-              ))}
-            </div>
-          ) : null}
         </div>
       ) : null}
       <button
@@ -287,27 +249,6 @@ export function VerticalLiveToolsMenu({
         onClick={() => setOpen((v) => !v)}
       >
         <Plus size={22} strokeWidth={2.4} />
-      </button>
-    </div>
-  );
-}
-
-export function VerticalLiveCompactDock({
-  viewersLabel,
-  onViewers,
-  onEnd,
-}: {
-  viewersLabel: ReactNode;
-  onViewers: () => void;
-  onEnd: () => void;
-}) {
-  return (
-    <div className="lb-live-vtools-dock">
-      <button type="button" className="lb-live-vtools-dock-btn" onClick={onViewers}>
-        {viewersLabel}
-      </button>
-      <button type="button" className="lb-live-vtools-dock-end" onClick={onEnd} aria-label="Finalizar live">
-        <span />
       </button>
     </div>
   );

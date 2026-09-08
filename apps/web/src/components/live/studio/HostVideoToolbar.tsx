@@ -57,7 +57,7 @@ export function HostVideoToolbar({
           <Clapperboard size={14} /> Reel
         </button>
         <button type="button" onClick={onScreen} className={screenSharing ? active : btn}>
-          <MonitorUp size={14} /> Pantalla
+          <MonitorUp size={14} /> {screenSharing ? 'Pantalla ON' : 'Pantalla'}
         </button>
         <div className="relative">
           <button type="button" onClick={onMic} className={!micOn ? active : btn}>

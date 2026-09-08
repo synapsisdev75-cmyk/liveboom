@@ -195,12 +195,15 @@ function Tile({
       }`}
     >
       {slot.trackRef && camOn ? (
-        <VideoTrack
-          trackRef={slot.trackRef}
-          className={`h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover ${
-            mirror ? 'lb-live-mirror-on' : '[&_video]:!transform-none'
-          }`}
-        />
+        <div
+          className="h-full w-full"
+          style={mirror ? { transform: 'scaleX(-1)' } : { transform: 'scaleX(1)' }}
+        >
+          <VideoTrack
+            trackRef={slot.trackRef}
+            className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover [&_video]:!transform-none"
+          />
+        </div>
       ) : (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-zinc-900 to-zinc-950 px-2 text-center">
           <UserAvatar
@@ -240,8 +243,8 @@ function Tile({
         </p>
       ) : null}
 
-      {/* Controles solo para quien inició el LIVE. */}
-      {isHostView && slot.identity && onControl ? (
+      {/* Controles de invitados. Nunca sobre la cámara del host. */}
+      {isHostView && slot.identity && onControl && !slot.isHost && !String(slot.label || '').startsWith('Host ') ? (
         <div className="absolute right-1 bottom-7 z-10 flex max-w-[calc(100%-0.5rem)] flex-wrap justify-end gap-0.5">
           <button
             type="button"
@@ -256,49 +259,45 @@ function Tile({
           >
             <Pin size={12} />
           </button>
-          {!slot.isHost ? (
-            <>
-              <button
-                type="button"
-                className={`grid h-8 w-8 place-items-center rounded-full text-white lg:h-7 lg:w-7 ${
-                  camOff || !camOn ? 'bg-amber-500/90 text-zinc-950' : 'bg-black/70'
-                }`}
-                title={
-                  camOn
-                    ? 'Apagar cámara (solo audio + perfil)'
-                    : 'Encender cámara'
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onControl(camOn ? 'mute_cam' : 'unmute_cam', slot.identity);
-                }}
-              >
-                {camOn ? <Video size={12} /> : <VideoOff size={12} />}
-              </button>
-              <button
-                type="button"
-                className="grid h-8 w-8 place-items-center rounded-full bg-black/70 text-white lg:h-7 lg:w-7"
-                title={micOn ? 'Silenciar mic' : 'Activar mic'}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onControl(micOn ? 'mute_mic' : 'unmute_mic', slot.identity);
-                }}
-              >
-                {micOn ? <Mic size={12} /> : <MicOff size={12} />}
-              </button>
-              <button
-                type="button"
-                className="grid h-8 w-8 place-items-center rounded-full bg-rose-600/90 text-white lg:h-7 lg:w-7"
-                title="Expulsar de la transmisión"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onControl('kick', slot.identity);
-                }}
-              >
-                <UserX size={12} />
-              </button>
-            </>
-          ) : null}
+          <button
+            type="button"
+            className={`grid h-8 w-8 place-items-center rounded-full text-white lg:h-7 lg:w-7 ${
+              camOff || !camOn ? 'bg-amber-500/90 text-zinc-950' : 'bg-black/70'
+            }`}
+            title={
+              camOn
+                ? 'Apagar cámara (solo audio + perfil)'
+                : 'Encender cámara'
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              onControl(camOn ? 'mute_cam' : 'unmute_cam', slot.identity);
+            }}
+          >
+            {camOn ? <Video size={12} /> : <VideoOff size={12} />}
+          </button>
+          <button
+            type="button"
+            className="grid h-8 w-8 place-items-center rounded-full bg-black/70 text-white lg:h-7 lg:w-7"
+            title={micOn ? 'Silenciar mic' : 'Activar mic'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onControl(micOn ? 'mute_mic' : 'unmute_mic', slot.identity);
+            }}
+          >
+            {micOn ? <Mic size={12} /> : <MicOff size={12} />}
+          </button>
+          <button
+            type="button"
+            className="grid h-8 w-8 place-items-center rounded-full bg-rose-600/90 text-white lg:h-7 lg:w-7"
+            title="Expulsar de la transmisión"
+            onClick={(e) => {
+              e.stopPropagation();
+              onControl('kick', slot.identity);
+            }}
+          >
+            <UserX size={12} />
+          </button>
         </div>
       ) : null}
 
@@ -370,7 +369,7 @@ export function SalaBoomStage({
       isSelf={Boolean(localIdentity && slot.identity === localIdentity)}
       pinned={Boolean(pinnedIdentity && slot.identity === pinnedIdentity)}
       camOff={camOffSet.has(slot.identity)}
-      onControl={onControl}
+      onControl={slots.length > 1 ? onControl : undefined}
       onLeaveSelf={onLeaveSelf}
     />
   );

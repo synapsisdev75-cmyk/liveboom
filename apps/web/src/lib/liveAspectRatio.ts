@@ -1,4 +1,4 @@
-import type { LiveViewportOrientation, LiveViewportSurface } from '../hooks/useLiveViewport';
+import type { LiveViewportOrientation, LiveViewportSurface } from './liveViewport';
 
 export type LiveAspectRatio = '16:9' | '9:16';
 

@@ -78,6 +78,7 @@ export function LiveFramedVideo({
           top: rect.y,
           width: rect.width,
           height: rect.height,
+          transform: mirrored ? 'scaleX(-1)' : 'scaleX(1)',
         }}
       >
         <VideoTrack

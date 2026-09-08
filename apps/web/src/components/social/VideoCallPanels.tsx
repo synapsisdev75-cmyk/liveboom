@@ -4,6 +4,8 @@ import { formatCallClock, type VideoCallEndedSummary } from '../../store/callSto
 import { openRechargeCoins } from '../../lib/giftsFirestore';
 import { findLiveGift } from '../../lib/liveboomGifts';
 import { CallWinBar } from './FloatingCallFrame';
+import { CallConnectingDots } from './VoiceCallPanels';
+import { OutgoingVideoCallCard } from './VideoCallRingCards';
 
 type Person = {
   name: string;
@@ -84,6 +86,9 @@ export function VideoCallWaitingSheet({
 
 export function VideoCallOutgoing({
   person,
+  connecting,
+  connected,
+  elapsedLabel,
   onCancel,
   onMinimize,
   onMaximize,
@@ -91,13 +96,29 @@ export function VideoCallOutgoing({
   maximized,
 }: {
   person: Person;
+  connecting?: boolean;
+  connected?: boolean;
+  elapsedLabel?: string;
   onCancel: () => void;
   onMinimize?: () => void;
   onMaximize?: () => void;
   onClose?: () => void;
   maximized?: boolean;
 }) {
-  const handle = handleOf(person.handle);
+  const live = Boolean(connected);
+  if (!live) {
+    return (
+      <OutgoingVideoCallCard
+        person={person}
+        connecting={connecting}
+        onCancel={onCancel}
+        onMinimize={onMinimize}
+        onMaximize={onMaximize}
+        onClose={onClose}
+        maximized={maximized}
+      />
+    );
+  }
   return (
     <div className="lb-video-outgoing">
       <CallWinBar onMinimize={onMinimize} onMaximize={onMaximize} onClose={onClose} maximized={maximized} />
@@ -112,10 +133,13 @@ export function VideoCallOutgoing({
         />
       </div>
       <p className="lb-video-outgoing__title">Videollamada</p>
-      <p className="lb-video-outgoing__sub">Llamando a @{handle || 'usuario'}...</p>
+      <p className="lb-video-outgoing__sub">
+        {live ? `En llamada · ${elapsedLabel || '00:00'}` : connecting ? 'Conectando...' : 'Llamando...'}
+      </p>
+      {live || connecting ? null : <CallConnectingDots />}
       <div className="lb-video-outgoing__actions">
         <button type="button" className="lb-video-chip is-danger" onClick={onCancel}>
-          Cancelar
+          {live ? 'Colgar' : 'Cancelar'}
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { LocalVideoTrack } from 'livekit-client';
+import { canShareScreenWeb, startScreenShare } from './screenShareService';
 
 export const LIVE_SCREEN_PIP_WIDTH_RATIO = 0.28;
 /** Relación ancho/alto del PiP de cámara (9:16 vertical). */
@@ -36,32 +37,13 @@ export type ScreenTrackDimensions = {
   displaySurface?: string;
 };
 
-function getDisplayMediaImpl(): ((
-  constraints?: DisplayMediaStreamOptions,
-) => Promise<MediaStream>) | null {
-  if (typeof navigator === 'undefined') return null;
-  const devices = navigator.mediaDevices;
-  if (devices && typeof devices.getDisplayMedia === 'function') {
-    return (constraints) => devices.getDisplayMedia(constraints);
-  }
-  const legacy = (
-    navigator as Navigator & {
-      getDisplayMedia?: MediaDevices['getDisplayMedia'];
-    }
-  ).getDisplayMedia;
-  if (typeof legacy === 'function') {
-    return (constraints) => legacy.call(navigator, constraints);
-  }
-  return null;
-}
-
 export function canUseDisplayMedia(): boolean {
-  return getDisplayMediaImpl() != null;
+  return canShareScreenWeb();
 }
 
-function isMobileCaptureClient(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+export async function requestScreenCaptureStream(): Promise<MediaStream> {
+  const { stream } = await startScreenShare();
+  return stream;
 }
 
 export function classifyScreenLayout(width: number, height: number): ScreenLayoutMode {
@@ -124,44 +106,6 @@ export function formatScreenShareSourceLabel(track: MediaStreamTrack): string | 
   if (surface === 'window') return 'Ventana';
   if (surface === 'browser') return 'Pestaña';
   return null;
-}
-
-export async function requestScreenCaptureStream(): Promise<MediaStream> {
-  const getDisplay = getDisplayMediaImpl();
-  if (!getDisplay) {
-    throw new Error(
-      'Este navegador no permite compartir pantalla. Abre LiveBoom en Chrome (Android) o Safari (iOS 16.4+).',
-    );
-  }
-
-  const attempts: DisplayMediaStreamOptions[] = isMobileCaptureClient()
-    ? [{ video: true, audio: true }, { video: true }]
-    : [
-        {
-          video: { frameRate: { ideal: LIVE_SCREEN_FPS, max: 30 } },
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          } as MediaTrackConstraints,
-        },
-        { video: true, audio: true },
-        { video: true },
-      ];
-
-  let lastError: unknown;
-  for (const constraints of attempts) {
-    try {
-      return await getDisplay(constraints);
-    } catch (err) {
-      lastError = err;
-      const name = (err as { name?: string })?.name;
-      if (name === 'AbortError' || name === 'NotAllowedError') throw err;
-    }
-  }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('No se pudo capturar la pantalla');
 }
 
 export function screenShareAudioStatusMessage(hasAudio: boolean): string {

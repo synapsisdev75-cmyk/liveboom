@@ -5,6 +5,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -35,6 +36,135 @@ export type LiveGiftEvent = {
   multiplier?: number;
 };
 
+export type LiveCoinGoalStatus = 'ACTIVE' | 'COMPLETED';
+
+export type LiveCoinGoalCycle = {
+  goalId: string;
+  targetCoins: number;
+  baselineCoins: number;
+  status: LiveCoinGoalStatus;
+  createdAt: number;
+  completedAt?: number;
+  topName?: string;
+  topCoins?: number;
+};
+
+const COIN_GOAL_HISTORY_MAX = 20;
+const COIN_GOAL_TARGET_MAX = 9_999_999;
+
+function newCoinGoalId() {
+  return `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function clampCoinGoalTarget(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(COIN_GOAL_TARGET_MAX, Math.max(0, n));
+}
+
+function createActiveCoinGoal(targetCoins: number, baselineCoins: number): LiveCoinGoalCycle {
+  return {
+    goalId: newCoinGoalId(),
+    targetCoins: Math.max(1, clampCoinGoalTarget(targetCoins)),
+    baselineCoins: Math.max(0, Math.floor(Number(baselineCoins) || 0)),
+    status: 'ACTIVE',
+    createdAt: Date.now(),
+  };
+}
+
+function parseCoinGoalCycle(raw: unknown): LiveCoinGoalCycle | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+  const targetCoins = clampCoinGoalTarget(data.targetCoins);
+  if (targetCoins <= 0) return null;
+  const status: LiveCoinGoalStatus =
+    String(data.status || 'ACTIVE').toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'ACTIVE';
+  const goal: LiveCoinGoalCycle = {
+    goalId: String(data.goalId || '').trim() || `legacy-${targetCoins}`,
+    targetCoins,
+    baselineCoins: Math.max(0, Math.floor(Number(data.baselineCoins) || 0)),
+    status,
+    createdAt: Number(data.createdAt) || Date.now(),
+  };
+  const completedAt = Math.floor(Number(data.completedAt) || 0);
+  if (completedAt > 0) goal.completedAt = completedAt;
+  const topName = String(data.topName || '').trim();
+  if (topName) goal.topName = topName;
+  const topCoins = Math.floor(Number(data.topCoins) || 0);
+  if (topCoins > 0) goal.topCoins = topCoins;
+  return goal;
+}
+
+/** Firestore rechaza `undefined`; nunca escribir claves opcionales vacías. */
+function serializeCoinGoal(goal: LiveCoinGoalCycle): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    goalId: goal.goalId,
+    targetCoins: goal.targetCoins,
+    baselineCoins: goal.baselineCoins,
+    status: goal.status,
+    createdAt: goal.createdAt,
+  };
+  if (goal.completedAt) out.completedAt = goal.completedAt;
+  if (goal.topName) out.topName = goal.topName;
+  if (typeof goal.topCoins === 'number' && goal.topCoins > 0) out.topCoins = goal.topCoins;
+  return out;
+}
+
+function parseCoinGoalHistory(raw: unknown): LiveCoinGoalCycle[] {
+  if (!Array.isArray(raw)) return [];
+  const items = raw
+    .map(parseCoinGoalCycle)
+    .filter((row): row is LiveCoinGoalCycle => Boolean(row));
+  const map = new Map<string, LiveCoinGoalCycle>();
+  for (const row of items) map.set(row.goalId, row);
+  return [...map.values()].slice(-COIN_GOAL_HISTORY_MAX);
+}
+
+type CoinGoalGifter = { uid: string; name: string; coins: number };
+
+function parseCoinGoalGifters(raw: unknown): Record<string, CoinGoalGifter> {
+  if (!raw || typeof raw !== 'object') return {};
+  const next: Record<string, CoinGoalGifter> = {};
+  for (const [uid, row] of Object.entries(raw as Record<string, { uid?: string; name?: string; coins?: number }>)) {
+    const id = String(row?.uid || uid || '').trim();
+    if (!id) continue;
+    next[id] = {
+      uid: id,
+      name: String(row?.name || 'Liveboomer'),
+      coins: Math.max(0, Number(row?.coins) || 0),
+    };
+  }
+  return next;
+}
+
+function topCoinGoalGifter(gifters: Record<string, CoinGoalGifter>): CoinGoalGifter | null {
+  return (
+    Object.values(gifters)
+      .sort((a, b) => b.coins - a.coins)[0] || null
+  );
+}
+
+export function liveGoalProgress(goal: LiveCoinGoalCycle | null | undefined, coinsEarned: number) {
+  if (!goal || goal.targetCoins <= 0) {
+    return { current: 0, target: 0, reached: false, pct: 0 };
+  }
+  const raw = Math.max(0, Math.floor(Number(coinsEarned) || 0) - goal.baselineCoins);
+  const reached = goal.status === 'COMPLETED' || raw >= goal.targetCoins;
+  const current = reached ? goal.targetCoins : raw;
+  return {
+    current,
+    target: goal.targetCoins,
+    reached,
+    pct: Math.min(100, Math.round((current / goal.targetCoins) * 100)),
+  };
+}
+
+function upsertCoinGoalHistory(history: LiveCoinGoalCycle[], goal: LiveCoinGoalCycle) {
+  const map = new Map(history.map((row) => [row.goalId, row]));
+  map.set(goal.goalId, goal);
+  return [...map.values()].slice(-COIN_GOAL_HISTORY_MAX);
+}
+
 /** Marca la sala como en vivo (nueva transmisión). */
 export async function markLiveRoomActive(
   roomName: string,
@@ -46,11 +176,31 @@ export async function markLiveRoomActive(
     category?: string;
     isPrivate?: boolean;
     aspectRatio?: '16:9' | '9:16';
+    goalCoins?: number;
+    goalLabel?: string;
   },
 ) {
   const username = roomKey(roomName);
+  const target = Math.max(0, Math.floor(Number(meta?.goalCoins) || 0));
+  const coinGoal = target > 0 ? createActiveCoinGoal(target, 0) : null;
+  const roomRef = doc(db, 'liveRooms', username);
+  let startedAtMs = Date.now();
+  try {
+    const snap = await getDoc(roomRef);
+    if (snap.exists()) {
+      const data = snap.data() as Record<string, unknown>;
+      const existing = Math.floor(Number(data.startedAtMs) || 0);
+      const status = String(data.status || '');
+      const endedAtMs = Number(data.endedAtMs) || 0;
+      if (status === 'live' && !endedAtMs && existing > 0) {
+        startedAtMs = existing;
+      }
+    }
+  } catch {
+    // primer arranque: Date.now()
+  }
   await setDoc(
-    doc(db, 'liveRooms', username),
+    roomRef,
     {
       status: 'live',
       hostUid,
@@ -63,7 +213,7 @@ export async function markLiveRoomActive(
       aspectRatio: meta?.aspectRatio === '16:9' ? '16:9' : '9:16',
       lockGiftId: null,
       viewers: 0,
-      startedAtMs: Date.now(),
+      startedAtMs,
       heartbeatAtMs: Date.now(),
       endedAtMs: null,
       coinsEarned: 0,
@@ -75,6 +225,11 @@ export async function markLiveRoomActive(
       gifters: {},
       guestInvites: [],
       guestBanned: [],
+      goalCoins: target,
+      goalLabel: String(meta?.goalLabel || '').trim().slice(0, 80) || 'Meta en coins',
+      coinGoal,
+      coinGoalHistory: [],
+      coinGoalGifters: {},
       updatedAt: serverTimestamp(),
     },
     { merge: true },
@@ -478,13 +633,15 @@ export function listenLiveRoomEarnings(
   onChange: (stats: {
     coinsEarned: number;
     topGifters: { uid: string; name: string; coins: number }[];
+    coinGoal: LiveCoinGoalCycle | null;
+    coinGoalTop: string;
   }) => void,
 ): Unsubscribe {
   return onSnapshot(
     doc(db, 'liveRooms', roomKey(roomName)),
     (snap) => {
       if (!snap.exists()) {
-        onChange({ coinsEarned: 0, topGifters: [] });
+        onChange({ coinsEarned: 0, topGifters: [], coinGoal: null, coinGoalTop: '' });
         return;
       }
       const data = snap.data() as Record<string, unknown>;
@@ -498,9 +655,17 @@ export function listenLiveRoomEarnings(
             .sort((a, b) => b.coins - a.coins)
             .slice(0, 5)
         : [];
+      const coinGoal = parseCoinGoalCycle(data.coinGoal);
+      const goalGifters = parseCoinGoalGifters(data.coinGoalGifters);
+      const goalTop =
+        coinGoal?.topName ||
+        topCoinGoalGifter(goalGifters)?.name ||
+        '';
       onChange({
         coinsEarned: Number(data.coinsEarned || 0),
         topGifters,
+        coinGoal,
+        coinGoalTop: goalTop,
       });
     },
     (err) => {
@@ -539,17 +704,113 @@ export async function recordLiveGiftEarnings(
       }))
       .sort((a, b) => b.coins - a.coins)
       .slice(0, 5);
+    const nextEarned = Number(data.coinsEarned || 0) + gift.coins;
+    let coinGoal = parseCoinGoalCycle(data.coinGoal);
+    const coinGoalGifters = parseCoinGoalGifters(data.coinGoalGifters);
+    let coinGoalHistory = parseCoinGoalHistory(data.coinGoalHistory);
+    if (coinGoal?.status === 'ACTIVE') {
+      const prevGoalCoins = Number(coinGoalGifters[gift.senderUid]?.coins || 0);
+      coinGoalGifters[gift.senderUid] = {
+        uid: gift.senderUid,
+        name: gift.senderName,
+        coins: prevGoalCoins + gift.coins,
+      };
+      const progress = nextEarned - coinGoal.baselineCoins;
+      if (progress >= coinGoal.targetCoins) {
+        const top = topCoinGoalGifter(coinGoalGifters);
+        const closed: LiveCoinGoalCycle = {
+          goalId: coinGoal.goalId,
+          targetCoins: coinGoal.targetCoins,
+          baselineCoins: coinGoal.baselineCoins,
+          status: 'COMPLETED',
+          createdAt: coinGoal.createdAt,
+          completedAt: Date.now(),
+        };
+        const topName = top?.name || coinGoal.topName;
+        if (topName) closed.topName = topName;
+        const topCoins = top?.coins ?? coinGoal.topCoins;
+        if (topCoins && topCoins > 0) closed.topCoins = topCoins;
+        coinGoal = closed;
+        coinGoalHistory = upsertCoinGoalHistory(coinGoalHistory, closed);
+      }
+    }
     tx.set(
       roomRef,
       {
-        coinsEarned: Number(data.coinsEarned || 0) + gift.coins,
+        coinsEarned: nextEarned,
         gifters,
         topGifters,
+        coinGoal: coinGoal ? serializeCoinGoal(coinGoal) : null,
+        coinGoalGifters,
+        coinGoalHistory: coinGoalHistory.map(serializeCoinGoal),
         updatedAt: serverTimestamp(),
       },
       { merge: true },
     );
   });
+}
+
+export async function startLiveCoinGoal(
+  roomName: string,
+  targetCoins: number,
+  opts?: { coinsEarnedHint?: number },
+): Promise<LiveCoinGoalCycle> {
+  const target = clampCoinGoalTarget(targetCoins);
+  if (target <= 0) {
+    throw new Error('La meta debe ser un número entero mayor a 0');
+  }
+  const roomRef = doc(db, 'liveRooms', roomKey(roomName));
+  let created: LiveCoinGoalCycle | null = null;
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(roomRef);
+    const data = (snap.exists() ? snap.data() : {}) as Record<string, unknown>;
+    const coinsEarned = Math.max(
+      0,
+      Math.floor(Number(data.coinsEarned) || 0),
+      Math.floor(Number(opts?.coinsEarnedHint) || 0),
+    );
+    const current = parseCoinGoalCycle(data.coinGoal);
+    const progress = liveGoalProgress(current, coinsEarned);
+    if (current?.status === 'ACTIVE' && !progress.reached) {
+      throw new Error('Todavía hay una meta activa');
+    }
+    let history = parseCoinGoalHistory(data.coinGoalHistory);
+    if (current) {
+      const top = topCoinGoalGifter(parseCoinGoalGifters(data.coinGoalGifters));
+      const closed: LiveCoinGoalCycle = {
+        goalId: current.goalId,
+        targetCoins: current.targetCoins,
+        baselineCoins: current.baselineCoins,
+        status: 'COMPLETED',
+        createdAt: current.createdAt,
+        completedAt: current.completedAt || Date.now(),
+      };
+      const topName = current.topName || top?.name;
+      if (topName) closed.topName = topName;
+      const topCoins = current.topCoins || top?.coins;
+      if (topCoins && topCoins > 0) closed.topCoins = topCoins;
+      history = upsertCoinGoalHistory(history, closed);
+    }
+    const next = createActiveCoinGoal(target, coinsEarned);
+    created = next;
+    const patch = {
+      coinGoal: serializeCoinGoal(next),
+      coinGoalHistory: history.map(serializeCoinGoal),
+      coinGoalGifters: {},
+      goalCoins: target,
+      updatedAt: serverTimestamp(),
+    };
+    if (snap.exists()) {
+      // update reemplaza el mapa `coinGoal` entero (set+merge deja completedAt viejo).
+      tx.update(roomRef, patch);
+    } else {
+      tx.set(roomRef, patch, { merge: true });
+    }
+  });
+  if (!created) {
+    throw new Error('No se pudo crear la meta');
+  }
+  return created;
 }
 
 /** Borra mensajes y regalos de la sala para que una transmisión nueva arranque con chat vacío. */
@@ -930,22 +1191,264 @@ export async function clearLiveAlerts(uid: string) {
   await batch.commit();
 }
 
-export async function setLiveWishlist(roomName: string, giftIds: string[]) {
-  await setDoc(
-    doc(db, 'liveRooms', roomKey(roomName)),
-    { wishlist: giftIds.slice(0, 5), updatedAt: serverTimestamp() },
-    { merge: true },
+export type LiveWishStatus = 'ACTIVE' | 'COMPLETED';
+
+export type LiveWishItem = {
+  wishId: string;
+  giftId: string;
+  giftName: string;
+  giftIcon: string;
+  giftPrice: number;
+  targetQuantity: number;
+  receivedQuantity: number;
+  status: LiveWishStatus;
+  completedAt?: number;
+};
+
+export const LIVE_WISH_ACTIVE_MAX = 5;
+const WISH_QTY_MAX = 99;
+const WISH_HISTORY_MAX = 40;
+const WISH_EVENT_MAX = 80;
+
+export function newLiveWishId() {
+  return `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function clampWishQty(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(WISH_QTY_MAX, Math.max(1, n));
+}
+
+function clampReceived(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, n);
+}
+
+export function liveWishGiftUnits(multiplier?: number): number {
+  const raw = Math.floor(Number(multiplier) || 1);
+  return [1, 2, 4, 8].includes(raw) ? raw : 1;
+}
+
+function serializeWish(item: LiveWishItem): LiveWishItem {
+  return {
+    wishId: item.wishId,
+    giftId: item.giftId,
+    giftName: item.giftName,
+    giftIcon: item.giftIcon,
+    giftPrice: item.giftPrice,
+    targetQuantity: clampWishQty(item.targetQuantity),
+    receivedQuantity: clampReceived(item.receivedQuantity),
+    status: item.status === 'COMPLETED' ? 'COMPLETED' : 'ACTIVE',
+    ...(item.completedAt ? { completedAt: item.completedAt } : {}),
+  };
+}
+
+function normalizeWishRow(row: unknown): LiveWishItem | null {
+  if (!row || typeof row !== 'object') return null;
+  const data = row as Record<string, unknown>;
+  const giftId = String(data.giftId || '').trim();
+  if (!giftId) return null;
+  const status: LiveWishStatus =
+    String(data.status || 'ACTIVE').toUpperCase() === 'COMPLETED' ? 'COMPLETED' : 'ACTIVE';
+  return serializeWish({
+    wishId: String(data.wishId || '').trim() || `legacy-${giftId}`,
+    giftId,
+    giftName: String(data.giftName || giftId),
+    giftIcon: String(data.giftIcon || ''),
+    giftPrice: Number(data.giftPrice) || 0,
+    targetQuantity: clampWishQty(data.targetQuantity),
+    receivedQuantity: clampReceived(data.receivedQuantity),
+    status,
+    completedAt: Number(data.completedAt) || undefined,
+  });
+}
+
+function mergeWishesById(rows: LiveWishItem[]): LiveWishItem[] {
+  const map = new Map<string, LiveWishItem>();
+  for (const row of rows) {
+    if (!row.wishId) continue;
+    map.set(row.wishId, row);
+  }
+  return [...map.values()];
+}
+
+function parseWishlistState(data: DocumentData | undefined): {
+  giftIds: string[];
+  items: LiveWishItem[];
+  completed: LiveWishItem[];
+  eventIds: string[];
+} {
+  const rawItems = Array.isArray(data?.wishlistItems) ? data.wishlistItems : [];
+  const rawCompleted = Array.isArray(data?.wishlistCompleted) ? data.wishlistCompleted : [];
+  const fromItems = rawItems.map(normalizeWishRow).filter((row): row is LiveWishItem => Boolean(row));
+  const fromCompleted = rawCompleted
+    .map(normalizeWishRow)
+    .filter((row): row is LiveWishItem => Boolean(row))
+    .map((row) => ({ ...row, status: 'COMPLETED' as const }));
+
+  const activeFromItems = fromItems.filter((row) => row.status === 'ACTIVE');
+  const completedFromItems = fromItems.filter((row) => row.status === 'COMPLETED');
+  const completed = mergeWishesById([...fromCompleted, ...completedFromItems]).slice(-WISH_HISTORY_MAX);
+
+  if (activeFromItems.length) {
+    const items = activeFromItems.slice(0, LIVE_WISH_ACTIVE_MAX);
+    return {
+      giftIds: items.map((item) => item.giftId),
+      items,
+      completed,
+      eventIds: Array.isArray(data?.wishlistGiftEvents)
+        ? data.wishlistGiftEvents.map(String).filter(Boolean).slice(-WISH_EVENT_MAX)
+        : [],
+    };
+  }
+
+  const list = Array.isArray(data?.wishlist) ? data.wishlist.map(String).filter(Boolean) : [];
+  const items = list.slice(0, LIVE_WISH_ACTIVE_MAX).map((giftId) =>
+    serializeWish({
+      wishId: `legacy-${giftId}`,
+      giftId,
+      giftName: giftId,
+      giftIcon: '',
+      giftPrice: 0,
+      targetQuantity: 1,
+      receivedQuantity: 0,
+      status: 'ACTIVE',
+    }),
   );
+  return {
+    giftIds: items.map((item) => item.giftId),
+    items,
+    completed,
+    eventIds: Array.isArray(data?.wishlistGiftEvents)
+      ? data.wishlistGiftEvents.map(String).filter(Boolean).slice(-WISH_EVENT_MAX)
+      : [],
+  };
+}
+
+function splitCompletedOnWrite(items: LiveWishItem[], previousCompleted: LiveWishItem[]) {
+  const active: LiveWishItem[] = [];
+  const newlyCompleted: LiveWishItem[] = [];
+  for (const raw of items.slice(0, LIVE_WISH_ACTIVE_MAX)) {
+    const item = serializeWish({ ...raw, status: 'ACTIVE' });
+    if (item.receivedQuantity >= item.targetQuantity) {
+      newlyCompleted.push({
+        ...item,
+        status: 'COMPLETED',
+        completedAt: item.completedAt || Date.now(),
+      });
+    } else {
+      active.push(item);
+    }
+  }
+  return {
+    active,
+    completed: mergeWishesById([...previousCompleted, ...newlyCompleted]).slice(-WISH_HISTORY_MAX),
+  };
+}
+
+export async function setLiveWishlist(roomName: string, giftIds: string[], items?: LiveWishItem[]) {
+  const roomRef = doc(db, 'liveRooms', roomKey(roomName));
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(roomRef);
+    const prev = parseWishlistState(snap.data());
+    const incoming =
+      items && items.length
+        ? items
+        : giftIds.slice(0, LIVE_WISH_ACTIVE_MAX).map((giftId) => {
+            const existing = prev.items.find((row) => row.giftId === giftId);
+            return serializeWish({
+              wishId: existing?.wishId || newLiveWishId(),
+              giftId,
+              giftName: existing?.giftName || giftId,
+              giftIcon: existing?.giftIcon || '',
+              giftPrice: existing?.giftPrice || 0,
+              targetQuantity: existing?.targetQuantity || 1,
+              receivedQuantity: existing?.receivedQuantity || 0,
+              status: 'ACTIVE',
+            });
+          });
+    const completedIds = new Set(prev.completed.map((row) => row.wishId));
+    const next = splitCompletedOnWrite(
+      incoming.filter((item) => item.wishId && !completedIds.has(item.wishId)),
+      prev.completed,
+    );
+    tx.set(
+      roomRef,
+      {
+        wishlist: next.active.map((item) => item.giftId),
+        wishlistItems: next.active,
+        wishlistCompleted: next.completed,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
+}
+
+export async function applyLiveWishGiftProgress(
+  roomName: string,
+  giftId: string,
+  units: number,
+  eventId: string,
+): Promise<LiveWishItem | null> {
+  const id = String(giftId || '').trim();
+  const eid = String(eventId || '').trim();
+  const add = Math.max(1, Math.floor(Number(units) || 1));
+  if (!id || !eid) return null;
+
+  return runTransaction(db, async (tx) => {
+    const roomRef = doc(db, 'liveRooms', roomKey(roomName));
+    const snap = await tx.get(roomRef);
+    const prev = parseWishlistState(snap.data());
+    if (prev.eventIds.includes(eid)) return null;
+    const idx = prev.items.findIndex((row) => row.giftId === id && row.status === 'ACTIVE');
+    if (idx < 0) return null;
+
+    const wish: LiveWishItem = {
+      ...prev.items[idx]!,
+      receivedQuantity: prev.items[idx]!.receivedQuantity + add,
+    };
+    const eventIds = [...prev.eventIds, eid].slice(-WISH_EVENT_MAX);
+    let active = [...prev.items];
+    let completed = [...prev.completed];
+    let completedWish: LiveWishItem | null = null;
+
+    if (wish.receivedQuantity >= wish.targetQuantity) {
+      completedWish = {
+        ...wish,
+        status: 'COMPLETED',
+        completedAt: Date.now(),
+      };
+      active = active.filter((_, index) => index !== idx);
+      completed = mergeWishesById([...completed, completedWish]).slice(-WISH_HISTORY_MAX);
+    } else {
+      active[idx] = wish;
+    }
+
+    tx.set(
+      roomRef,
+      {
+        wishlist: active.map((item) => item.giftId),
+        wishlistItems: active,
+        wishlistCompleted: completed,
+        wishlistGiftEvents: eventIds,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return completedWish;
+  });
 }
 
 export function listenLiveWishlist(
   roomName: string,
-  onChange: (giftIds: string[]) => void,
+  onChange: (giftIds: string[], items: LiveWishItem[], completed: LiveWishItem[]) => void,
 ): Unsubscribe {
   return onSnapshot(doc(db, 'liveRooms', roomKey(roomName)), (snap) => {
-    const data = snap.data();
-    const list = Array.isArray(data?.wishlist) ? data.wishlist.map(String) : [];
-    onChange(list);
+    const parsed = parseWishlistState(snap.data());
+    onChange(parsed.giftIds, parsed.items, parsed.completed);
   });
 }
 
@@ -984,6 +1487,10 @@ export async function sendLiveRoomBoom(
   const result = await runTransaction(db, async (tx) => {
     const snap = await tx.get(roomRef);
     const data = snap.data() || {};
+    const hostUid = String(data.hostUid || '').trim();
+    if (hostUid && uid === hostUid) {
+      throw new Error('El host no puede enviarse bombitas');
+    }
     const prevCount = Number(data.liveBoomCount ?? 0);
     const nextCount = prevCount + 1;
     const prevRound = Number(data.boomRoundCount ?? 0);
