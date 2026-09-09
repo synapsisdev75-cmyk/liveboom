@@ -45,18 +45,16 @@
 
 .lb-call-float.is-video .lb-call-livekit-hold {
   position: absolute !important;
-  left: -10000px !important;
+  left: 0 !important;
   top: 0 !important;
-  width: 1px !important;
-  height: 1px !important;
-  max-width: 1px !important;
-  max-height: 1px !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
   overflow: hidden !important;
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
-  contain: strict;
-  clip-path: inset(50%);
 }
 
 .lb-video-connected-screen .lb-call-video-stage,

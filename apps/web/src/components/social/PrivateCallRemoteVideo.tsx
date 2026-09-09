@@ -1,9 +1,9 @@
-import { useRoomContext } from '@livekit/components-react';
+import { useMaybeRoomContext } from '@livekit/components-react';
 import { RoomEvent, Track, type RemoteTrack } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { UserAvatar } from '../profile/UserAvatar';
 
-function pickRemoteVideo(room: ReturnType<typeof useRoomContext>): RemoteTrack | null {
+function pickRemoteVideo(room: NonNullable<ReturnType<typeof useMaybeRoomContext>>): RemoteTrack | null {
   try {
     let camera: RemoteTrack | null = null;
     for (const participant of room.remoteParticipants.values()) {
@@ -20,7 +20,7 @@ function pickRemoteVideo(room: ReturnType<typeof useRoomContext>): RemoteTrack |
   }
 }
 
-/** Video remoto de llamada privada. No usa VideoTrack/useTracks de LiveKit. */
+/** Video remoto de llamada privada. El <video> queda montado antes de que exista el stream. */
 export function PrivateCallRemoteVideo({
   name,
   handle,
@@ -34,48 +34,84 @@ export function PrivateCallRemoteVideo({
   peerUid?: string;
   waitingLabel: string;
 }) {
-  const room = useRoomContext();
+  const room = useMaybeRoomContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const attachedRef = useRef<RemoteTrack | null>(null);
   const [hasRemote, setHasRemote] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
 
   useEffect(() => {
     const el = videoRef.current;
-    if (!el) return;
+    if (!el) {
+      console.warn('[VIDEO CALL] remoteVideoRef.current is null');
+      return;
+    }
     el.playsInline = true;
     el.setAttribute('playsinline', 'true');
     el.setAttribute('webkit-playsinline', 'true');
     el.autoplay = true;
     el.muted = true;
+    console.info('[VIDEO CALL] remote video mounted', { hasRoom: Boolean(room) });
+  }, [room]);
 
-    function detach() {
-      const current = attachedRef.current;
-      if (current && el) {
-        try {
-          current.detach(el);
-        } catch {
-          /* ignore */
-        }
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    function markRemoteReady() {
+      if (!el) return;
+      const stream = el.srcObject instanceof MediaStream ? el.srcObject : null;
+      const videoTracks = stream?.getVideoTracks() ?? [];
+      const hasLiveTrack = videoTracks.some((track) => track.readyState === 'live');
+      const hasFrames = el.videoWidth > 0 || el.videoHeight > 0;
+      if (hasLiveTrack || hasFrames) {
+        setHasRemote(true);
+        console.info('[CALL] remote frames', {
+          width: el.videoWidth,
+          height: el.videoHeight,
+          videoTracks: videoTracks.length,
+        });
       }
-      attachedRef.current = null;
-      if (el) el.srcObject = null;
-      setHasRemote(false);
+    }
+
+    function cameraIsOff(track: RemoteTrack | null) {
+      const media = track?.mediaStreamTrack;
+      if (!media) return false;
+      return media.readyState === 'ended' || media.enabled === false;
     }
 
     function attach() {
-      const next = pickRemoteVideo(room);
-      if (!next || !el) {
-        if (attachedRef.current) detach();
+      const liveRoom = room;
+      if (!liveRoom || !el) return;
+      const next = pickRemoteVideo(liveRoom);
+      if (!next) {
+        if (attachedRef.current) {
+          try {
+            attachedRef.current.detach(el);
+          } catch {
+            /* keep element mounted */
+          }
+          attachedRef.current = null;
+        }
+        setHasRemote(false);
+        setCameraOff(false);
         return;
       }
-    if (attachedRef.current === next) {
-      setHasRemote(true);
-      void el.play().then(
-        () => console.info('[VIDEO CALL] remote video attached'),
-        (error) => console.warn('[VIDEO CALL] remote play() failed', error),
-      );
-      return;
-    }
+      if (cameraIsOff(next)) {
+        setHasRemote(false);
+        setCameraOff(true);
+        console.info('[CALL] remote camera off', { callId: liveRoom.name || null });
+        return;
+      }
+      setCameraOff(false);
+      if (attachedRef.current === next) {
+        if (!el.srcObject && next.mediaStreamTrack) {
+          el.srcObject = new MediaStream([next.mediaStreamTrack]);
+        }
+        void el.play().then(markRemoteReady, (error) => console.warn('[VIDEO CALL] remote play() failed', error));
+        markRemoteReady();
+        return;
+      }
       if (attachedRef.current) {
         try {
           attachedRef.current.detach(el);
@@ -86,28 +122,40 @@ export function PrivateCallRemoteVideo({
       attachedRef.current = next;
       try {
         next.attach(el);
-        setHasRemote(true);
-        console.info('[VIDEO CALL] remote track subscribed', {
+        if (!el.srcObject && next.mediaStreamTrack) {
+          el.srcObject = new MediaStream([next.mediaStreamTrack]);
+        }
+        const stream = el.srcObject instanceof MediaStream ? el.srcObject : null;
+        console.info('[CALL] remote track received', {
           kind: next.kind,
           source: next.source,
+          readyState: next.mediaStreamTrack?.readyState || null,
+          videoTracks: stream?.getVideoTracks().length ?? 0,
+          srcObject: Boolean(el.srcObject),
         });
-        const stream = el.srcObject instanceof MediaStream ? el.srcObject : null;
         console.info('[REMOTE MEDIA]', {
-          participant: [...room.remoteParticipants.values()][0]?.identity || null,
+          participant: [...liveRoom.remoteParticipants.values()][0]?.identity || null,
           videoTrack: true,
-          audioTrack: [...room.remoteParticipants.values()].some((p) =>
+          audioTrack: [...liveRoom.remoteParticipants.values()].some((p) =>
             [...p.audioTrackPublications.values()].some((pub) => Boolean(pub.track)),
           ),
           stream: Boolean(stream),
         });
-        void el.play().then(
-          () => console.info('[VIDEO CALL] remote video attached'),
-          (error) => console.warn('[VIDEO CALL] remote play() failed', error),
-        );
-      } catch {
-        detach();
+        el.onloadeddata = markRemoteReady;
+        el.onplaying = markRemoteReady;
+        void el.play().then(markRemoteReady, (error) => console.warn('[VIDEO CALL] remote play() failed', error));
+        markRemoteReady();
+      } catch (error) {
+        console.warn('[VIDEO CALL] remote attach failed', error);
+        if (next.mediaStreamTrack) {
+          el.srcObject = new MediaStream([next.mediaStreamTrack]);
+          void el.play().then(markRemoteReady, () => undefined);
+          markRemoteReady();
+        }
       }
     }
+
+    if (!room) return;
 
     attach();
     room.on(RoomEvent.Connected, attach);
@@ -125,20 +173,40 @@ export function PrivateCallRemoteVideo({
       room.off(RoomEvent.TrackUnmuted, attach);
       room.off(RoomEvent.ParticipantConnected, attach);
       room.off(RoomEvent.ParticipantDisconnected, attach);
-      detach();
+      if (el) {
+        el.onloadeddata = null;
+        el.onplaying = null;
+      }
     };
   }, [room]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    return () => {
+      const current = attachedRef.current;
+      attachedRef.current = null;
+      if (current && el) {
+        try {
+          current.detach(el);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, []);
+
+  const showPlaceholder = !hasRemote || cameraOff;
 
   return (
     <div className="lb-call-video-remote">
       <video
         ref={videoRef}
-        className={`lb-private-call-remote-video${hasRemote ? '' : ' is-idle'}`}
+        className="lb-private-call-remote-video"
         playsInline
         muted
         autoPlay
       />
-      {hasRemote ? null : (
+      {showPlaceholder ? (
         <div className="lb-call-video-wait">
           <UserAvatar
             src={avatar || null}
@@ -149,9 +217,9 @@ export function PrivateCallRemoteVideo({
             ringClassName="ring-0"
           />
           <p>{name || (handle ? `@${handle}` : 'LiveBoom')}</p>
-          <p>{waitingLabel}</p>
+          <p>{cameraOff ? 'Cámara apagada' : waitingLabel}</p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

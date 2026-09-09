@@ -8,7 +8,8 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDismissOnOutside } from '../../hooks/useDismissOnOutside';
 import { useRoomContext } from '@livekit/components-react';
 import { callMediaDeniedMessage, labelCallMicrophone, listCallMediaDevices } from '../../lib/callMedia';
 import { UserAvatar } from '../profile/UserAvatar';
@@ -441,6 +442,9 @@ export function VoiceCallMiniBar({
   ringing?: boolean;
 }) {
   const [menu, setMenu] = useState(false);
+  const menuRootRef = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback(() => setMenu(false), []);
+  useDismissOnOutside(menu, menuRootRef, closeMenu);
   return (
     <div className="lb-voice-mini" data-call-drag>
       <button type="button" className="lb-voice-mini__main" data-call-drag onClick={onExpand}>
@@ -468,22 +472,24 @@ export function VoiceCallMiniBar({
         <Gift size={14} />
       </button>
       )}
-      <div className="lb-voice-mini__more">
+      <div className="lb-voice-mini__more" ref={menuRootRef}>
         <button
           type="button"
           className="lb-voice-mini__dots"
           data-no-drag
+          aria-expanded={menu}
+          aria-haspopup="menu"
           onClick={() => setMenu((open) => !open)}
           aria-label="Más opciones"
         >
           <MoreVertical size={16} />
         </button>
         {menu ? (
-          <div className="lb-voice-mini__menu" data-no-drag>
-            <button type="button" onClick={onExpand}>
+          <div className="lb-voice-mini__menu" data-no-drag role="menu">
+            <button type="button" role="menuitem" onClick={onExpand}>
               Volver a la llamada
             </button>
-            <button type="button" onClick={onHangup}>
+            <button type="button" role="menuitem" onClick={onHangup}>
               {ringing ? 'Rechazar' : 'Finalizar'}
             </button>
           </div>

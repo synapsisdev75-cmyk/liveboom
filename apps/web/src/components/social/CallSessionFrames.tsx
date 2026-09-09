@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 
-/** Contenedor exclusivo de videollamada. Misma estructura que voz: chrome fuera, LiveKit en live. */
+/** Contenedor exclusivo de videollamada. Chrome encima; LiveKit siempre con tamaño real. */
 export function VideoCallSessionFrame({
   connected,
-  hold,
+  hold: _hold,
   chrome,
   live,
 }: {
@@ -19,18 +19,13 @@ export function VideoCallSessionFrame({
     >
       {live ? (
         <div
-          className={connected ? 'lb-video-live-slot' : hold ? 'lb-call-livekit-hold' : 'lb-video-live-slot'}
-          aria-hidden={!connected && hold ? true : undefined}
+          className={connected || !chrome ? 'lb-video-live-slot' : 'lb-video-live-slot is-under-chrome'}
+          aria-hidden={!connected && chrome ? true : undefined}
         >
           {live}
         </div>
       ) : null}
-      {connected ? null : chrome || (
-        <div className="lb-video-ring-screen" role="status">
-          <p className="lb-video-ring-screen__type">Videollamada</p>
-          <p className="lb-video-ring-screen__status">Conectando video...</p>
-        </div>
-      )}
+      {connected ? null : chrome}
     </article>
   );
 }

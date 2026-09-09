@@ -1,4 +1,4 @@
-import { BadgeCheck, Phone, PhoneOff, Video, Volume2, VolumeX } from 'lucide-react';
+import { BadgeCheck, Mic, MicOff, PhoneOff, SwitchCamera, Video, Volume2, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CallWinBar } from './FloatingCallFrame';
@@ -89,6 +89,9 @@ function VideoCallRingIdentity({
       <p className="lb-video-ring-screen__status" aria-live="polite">
         {status}
       </p>
+      {status === 'Videollamando...' ? (
+        <p className="lb-video-ring-screen__substatus">Conectando...</p>
+      ) : null}
       <VideoCallWave />
       <p className="lb-video-ring-screen__quote">Las mejores conexiones se viven en video 💜</p>
     </>
@@ -98,6 +101,9 @@ function VideoCallRingIdentity({
 export function OutgoingVideoCallCard({
   person,
   connecting,
+  micOn = true,
+  onToggleMic,
+  onFlipCamera,
   onCancel,
   onMinimize,
   onMaximize,
@@ -106,6 +112,9 @@ export function OutgoingVideoCallCard({
 }: {
   person: Person;
   connecting?: boolean;
+  micOn?: boolean;
+  onToggleMic?: () => void;
+  onFlipCamera?: () => void;
   onCancel: () => void;
   onMinimize?: () => void;
   onMaximize?: () => void;
@@ -113,7 +122,7 @@ export function OutgoingVideoCallCard({
   maximized?: boolean;
 }) {
   const [speakerOn, setSpeakerOn] = useState(true);
-  const status = connecting ? 'Conectando...' : 'Llamando...';
+  const status = connecting ? 'Conectando...' : 'Videollamando...';
 
   return (
     <article className="lb-video-ring-screen is-out" data-call-drag>
@@ -128,11 +137,18 @@ export function OutgoingVideoCallCard({
         <VideoCallRingIdentity person={person} status={status} />
       </div>
       <div className="lb-video-ring-screen__actions is-out">
-        <div className="lb-video-ring-screen__action is-end">
-          <button type="button" className="lb-video-ring-end" data-no-drag onClick={onCancel} aria-label="Cancelar">
-            <PhoneOff size={22} />
+        <div className="lb-video-ring-screen__action is-mic">
+          <button
+            type="button"
+            className={`lb-video-ring-speaker${micOn ? '' : ' is-off'}`}
+            data-no-drag
+            onClick={() => onToggleMic?.()}
+            disabled={!onToggleMic}
+            aria-label={micOn ? 'Silenciar' : 'Activar micrófono'}
+          >
+            {micOn ? <Mic size={18} /> : <MicOff size={18} />}
           </button>
-          <span>Cancelar</span>
+          <span>Silenciar</span>
         </div>
         <div className="lb-video-ring-screen__action is-speaker">
           <button
@@ -148,7 +164,26 @@ export function OutgoingVideoCallCard({
           >
             {speakerOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
-          <span>Cambiar altavoz</span>
+          <span>Altavoz</span>
+        </div>
+        <div className="lb-video-ring-screen__action is-flip">
+          <button
+            type="button"
+            className="lb-video-ring-speaker"
+            data-no-drag
+            onClick={() => onFlipCamera?.()}
+            disabled={!onFlipCamera}
+            aria-label="Invertir cámara"
+          >
+            <SwitchCamera size={18} />
+          </button>
+          <span>Invertir cámara</span>
+        </div>
+        <div className="lb-video-ring-screen__action is-end">
+          <button type="button" className="lb-video-ring-end" data-no-drag onClick={onCancel} aria-label="Cancelar">
+            <PhoneOff size={22} />
+          </button>
+          <span>Cancelar</span>
         </div>
       </div>
     </article>
@@ -220,7 +255,7 @@ export function IncomingVideoCallCard({
             disabled={pending}
             aria-label="Aceptar"
           >
-            <Phone size={22} />
+            <Video size={22} />
           </button>
           <span>Aceptar</span>
         </div>

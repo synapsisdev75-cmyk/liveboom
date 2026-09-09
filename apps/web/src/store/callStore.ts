@@ -122,6 +122,7 @@ export const useCallStore = create<CallState>((set, get) => ({
     set({
       incoming,
       status: incoming ? 'ringing-in' : 'idle',
+      chatId: incoming?.chatId || null,
       callId: incoming?.callId || null,
     });
   },
@@ -234,6 +235,11 @@ export const useCallStore = create<CallState>((set, get) => ({
     const wasRingingOut = prev.status === 'ringing-out';
     const wasRingingIn = prev.status === 'ringing-in';
     hangupBusy = true;
+    console.info('[CALL] cleanup', {
+      callId,
+      reason: forcedOutcome || opts?.error || (wasActive ? 'ended' : wasRingingOut ? 'cancelled' : wasRingingIn ? 'declined' : 'hangup'),
+      status: prev.status,
+    });
 
     try {
     if (wasRingingIn && !wasActive && chatId) {

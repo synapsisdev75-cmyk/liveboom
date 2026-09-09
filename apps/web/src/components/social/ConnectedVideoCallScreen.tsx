@@ -1,6 +1,6 @@
-import { BadgeCheck, Mic, MicOff, PhoneOff, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
+import { BadgeCheck, MessageSquare, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { useRoomContext } from '@livekit/components-react';
+import { useMaybeRoomContext } from '@livekit/components-react';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CallWinBar } from './FloatingCallFrame';
 
@@ -11,7 +11,7 @@ export type ConnectedVideoPerson = {
   uid?: string | null;
 };
 
-async function trySpeakerSink(room: ReturnType<typeof useRoomContext>) {
+async function trySpeakerSink(room: NonNullable<ReturnType<typeof useMaybeRoomContext>>) {
   try {
     const switchDevice = (room as { switchActiveDevice?: (kind: MediaDeviceKind, id: string) => Promise<unknown> })
       .switchActiveDevice;
@@ -28,7 +28,7 @@ async function trySpeakerSink(room: ReturnType<typeof useRoomContext>) {
   }
 }
 
-function applySpeakerOutput(room: ReturnType<typeof useRoomContext>, speakerOn: boolean) {
+function applySpeakerOutput(room: NonNullable<ReturnType<typeof useMaybeRoomContext>>, speakerOn: boolean) {
   const volume = speakerOn ? 1 : 0;
   try {
     for (const participant of room.remoteParticipants?.values() ?? []) {
@@ -108,19 +108,24 @@ export function ConnectedVideoCallHeader({
 export function ConnectedVideoCallBar({
   camOn,
   onToggleCam,
+  onFlipCamera,
   onHangup,
+  onOpenChat,
 }: {
   camOn: boolean;
   onToggleCam: () => void;
+  onFlipCamera?: () => void;
   onHangup: () => void;
+  onOpenChat?: () => void;
 }) {
-  const room = useRoomContext();
+  const room = useMaybeRoomContext();
   const [micOn, setMicOn] = useState(true);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [micError, setMicError] = useState<string | null>(null);
   const micHoldRef = useRef(0);
 
   useEffect(() => {
+    if (!room) return;
     applySpeakerOutput(room, speakerOn);
   }, [room, speakerOn]);
 
@@ -131,7 +136,9 @@ export function ConnectedVideoCallBar({
   async function toggleMic() {
     const next = !micOn;
     try {
-      await room.localParticipant.setMicrophoneEnabled(next);
+      const local = room?.localParticipant;
+      if (!local) return;
+      await local.setMicrophoneEnabled(next);
       setMicOn(next);
       setMicError(null);
     } catch {
@@ -151,13 +158,7 @@ export function ConnectedVideoCallBar({
         >
           {micOn ? <Mic size={18} /> : <MicOff size={18} />}
         </button>
-        <span>{micOn ? 'Silenciar micrófono' : 'Micrófono silenciado'}</span>
-      </div>
-      <div className="lb-video-connected-action is-end">
-        <button type="button" className="lb-video-connected-end" onClick={onHangup} aria-label="Finalizar">
-          <PhoneOff size={22} />
-        </button>
-        <span>Finalizar</span>
+        <span>Micrófono</span>
       </div>
       <div className="lb-video-connected-action">
         <button
@@ -169,7 +170,7 @@ export function ConnectedVideoCallBar({
         >
           {camOn ? <Video size={18} /> : <VideoOff size={18} />}
         </button>
-        <span>{camOn ? 'Apagar cámara' : 'Cámara apagada'}</span>
+        <span>Cámara</span>
       </div>
       <div className="lb-video-connected-action">
         <button
@@ -178,14 +179,44 @@ export function ConnectedVideoCallBar({
           onClick={() => {
             const next = !speakerOn;
             setSpeakerOn(next);
-            if (next) void trySpeakerSink(room);
+            if (next && room) void trySpeakerSink(room);
           }}
           aria-label="Cambiar altavoz"
           aria-pressed={speakerOn}
         >
           {speakerOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
         </button>
-        <span>Cambiar altavoz</span>
+        <span>Altavoz</span>
+      </div>
+      <div className="lb-video-connected-action">
+        <button
+          type="button"
+          className="lb-video-connected-btn"
+          onClick={() => onFlipCamera?.()}
+          disabled={!onFlipCamera}
+          aria-label="Voltear cámara"
+        >
+          <SwitchCamera size={18} />
+        </button>
+        <span>Voltear</span>
+      </div>
+      <div className="lb-video-connected-action">
+        <button
+          type="button"
+          className="lb-video-connected-btn"
+          onClick={() => onOpenChat?.()}
+          disabled={!onOpenChat}
+          aria-label="Abrir chat"
+        >
+          <MessageSquare size={18} />
+        </button>
+        <span>Chat</span>
+      </div>
+      <div className="lb-video-connected-action is-end">
+        <button type="button" className="lb-video-connected-end" onClick={onHangup} aria-label="Finalizar">
+          <PhoneOff size={22} />
+        </button>
+        <span>Finalizar</span>
       </div>
       {micError ? <p className="lb-video-connected-error">{micError}</p> : null}
     </div>
