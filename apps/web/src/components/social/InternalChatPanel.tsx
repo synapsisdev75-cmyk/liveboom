@@ -483,6 +483,7 @@ function Avatar({
   ring,
   online,
   presence,
+  className,
 }: {
   url: string | null;
   name: string;
@@ -490,14 +491,16 @@ function Avatar({
   ring?: boolean;
   online?: boolean;
   presence?: boolean;
+  className?: string;
 }) {
   const letter = (name || '?').slice(0, 1).toUpperCase();
   const showPresence = typeof presence === 'boolean';
   const isOnline = showPresence ? presence : Boolean(online);
+  const fluid = Boolean(className);
   return (
     <span
-      className="relative block shrink-0 rounded-full"
-      style={{ width: size, height: size, minWidth: size, minHeight: size, maxWidth: size, maxHeight: size }}
+      className={`relative block shrink-0 rounded-full ${className ?? ''}`}
+      style={fluid ? undefined : { width: size, height: size, minWidth: size, minHeight: size, maxWidth: size, maxHeight: size }}
     >
       <span className="block h-full w-full overflow-hidden rounded-full">
         {url ? (
@@ -506,10 +509,10 @@ function Avatar({
             alt=""
             width={size}
             height={size}
-            className={`block rounded-full object-cover ${
+            className={`block h-full w-full rounded-full object-cover ${
               ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
             }`}
-            style={{ width: size, height: size, maxWidth: size, maxHeight: size }}
+            style={fluid ? undefined : { width: size, height: size, maxWidth: size, maxHeight: size }}
           />
         ) : (
           <span
@@ -1753,117 +1756,118 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           isPage ? (chatOpen ? 'flex' : 'hidden md:flex') : 'flex'
         }`}
       >
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.06] px-3 py-3">
-          {isPage ? (
-            <button
-              type="button"
-              onClick={() => setActiveUid(null)}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-300 hover:bg-white/5 md:hidden"
-              aria-label="Volver a chats"
-            >
-              <ArrowLeft size={18} />
-            </button>
-          ) : null}
-          <Link
-            to={profileHref(activeFriend.username, activeFriend.uid)}
-            className="flex min-w-0 flex-1 items-center gap-3"
-          >
-            <Avatar
-              url={activeFriend.avatarUrl}
-              name={activeFriend.username}
-              size={44}
-              presence={online}
-            />
-            <span className="min-w-0">
-              <span className="flex items-center gap-1">
-                <span className="truncate text-sm font-bold text-white">
-                  {activeFriend.displayName || activeFriend.username}
-                </span>
-                <PresenceDot online={online} />
-                <BadgeCheck size={15} className="shrink-0 fill-violet-500 text-violet-500" />
-              </span>
-              <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
-                <span
-                  className={
-                    inThisCall && callStatus === 'active'
-                      ? 'font-semibold text-cyan-300'
-                      : inThisCall
-                        ? 'font-semibold text-cyan-200'
-                        : online
-                          ? 'lb-status-online'
-                          : 'lb-status-offline'
-                  }
-                >
-                  {inThisCall && callStatus === 'active'
-                    ? `En llamada · ${formatCallClock(callElapsed)}`
-                    : inThisCall
-                      ? 'Llamando...'
-                      : online
-                        ? 'En línea'
-                        : 'Desconectado'}
-                </span>
-                <span className="rounded-md bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold text-violet-300">
-                  Creador/a
-                </span>
-              </span>
-            </span>
-          </Link>
-          <div ref={callDockRef} id="lb-chat-call-dock" className="lb-chat-call-dock" />
-          <div className="flex shrink-0 items-center gap-0.5">
-            {inThisCall ? (
+        <div className="lb-chat-thread-head">
+          <div className="lb-chat-thread-head__row">
+            {isPage ? (
               <button
                 type="button"
-                onClick={stopCall}
-                className="inline-flex h-9 items-center gap-1 rounded-lg bg-red-500/20 px-2.5 text-xs font-bold text-red-300"
+                onClick={() => setActiveUid(null)}
+                className="lb-chat-thread-head__back md:hidden"
+                aria-label="Volver a chats"
               >
-                <PhoneOff size={14} /> Colgar
+                <ArrowLeft size={18} />
               </button>
-            ) : (
-              <CallChatActions
-                key={`${activeFriend.uid}-${peerBlocked ? 'blocked' : 'open'}`}
-                chatId={chatId}
-                peer={activeFriend}
-                inThisCall={false}
-                busy={busy}
-                callStatus={callStatus}
-                onBusy={setBusy}
-                onError={setError}
-                onStopCall={stopCall}
-              />
-            )}
-            {profile ? (
-              <ChatSafetyMenu
-                peer={activeFriend}
-                chatId={chatId}
-                me={profile}
-                onToast={setSafetyNotice}
-                onBlocked={() => {
-                  cancelAudioRecording();
-                  setGiftsOpen(false);
-                  setAttachOpen(false);
-                  setEmojiPickerOpen(false);
-                  setGifOpen(false);
-                  setStickerOpen(false);
-                  setVideoNoteOpen(false);
-                  setCameraOpen(false);
-                  setPendingFile(null);
-                  if (pendingImage) {
-                    URL.revokeObjectURL(pendingImage.url);
-                    setPendingImage(null);
-                  }
-                }}
-              />
             ) : null}
-            <button
-              type="button"
-              disabled={busy || !chatId}
-              onClick={() => setManageOpen(true)}
-              className="grid h-11 w-11 place-items-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-rose-300"
-              aria-label="Administrar conversación"
+            <Link
+              to={profileHref(activeFriend.username, activeFriend.uid)}
+              className="lb-chat-thread-head__profile"
             >
-              <Trash2 size={16} />
-            </button>
+              <Avatar
+                url={activeFriend.avatarUrl}
+                name={activeFriend.username}
+                size={44}
+                presence={online}
+                className="lb-chat-thread-head__avatar"
+              />
+              <span className="lb-chat-thread-head__id">
+                <span className="lb-chat-thread-head__name">
+                  <span className="lb-chat-thread-head__name-text">
+                    {activeFriend.displayName || activeFriend.username}
+                  </span>
+                  <PresenceDot online={online} />
+                  <BadgeCheck size={15} className="lb-chat-thread-head__verified" />
+                </span>
+                <span className="lb-chat-thread-head__status">
+                  <span
+                    className={
+                      inThisCall && callStatus === 'active'
+                        ? 'lb-chat-thread-head__presence font-semibold text-cyan-300'
+                        : inThisCall
+                          ? 'lb-chat-thread-head__presence font-semibold text-cyan-200'
+                          : online
+                            ? 'lb-chat-thread-head__presence lb-status-online'
+                            : 'lb-chat-thread-head__presence lb-status-offline'
+                    }
+                  >
+                    {inThisCall && callStatus === 'active'
+                      ? `En llamada · ${formatCallClock(callElapsed)}`
+                      : inThisCall
+                        ? 'Llamando...'
+                        : online
+                          ? 'En línea'
+                          : 'Desconectado'}
+                  </span>
+                  <span className="lb-chat-thread-head__badge">Creador/a</span>
+                </span>
+              </span>
+            </Link>
+            <div className="lb-chat-thread-head__tools">
+              {inThisCall ? (
+                <button
+                  type="button"
+                  onClick={stopCall}
+                  className="inline-flex h-9 items-center gap-1 rounded-lg bg-red-500/20 px-2.5 text-xs font-bold text-red-300"
+                >
+                  <PhoneOff size={14} /> Colgar
+                </button>
+              ) : (
+                <CallChatActions
+                  key={`${activeFriend.uid}-${peerBlocked ? 'blocked' : 'open'}`}
+                  chatId={chatId}
+                  peer={activeFriend}
+                  inThisCall={false}
+                  busy={busy}
+                  callStatus={callStatus}
+                  onBusy={setBusy}
+                  onError={setError}
+                  onStopCall={stopCall}
+                />
+              )}
+              {profile ? (
+                <ChatSafetyMenu
+                  peer={activeFriend}
+                  chatId={chatId}
+                  me={profile}
+                  onToast={setSafetyNotice}
+                  onBlocked={() => {
+                    cancelAudioRecording();
+                    setGiftsOpen(false);
+                    setAttachOpen(false);
+                    setEmojiPickerOpen(false);
+                    setGifOpen(false);
+                    setStickerOpen(false);
+                    setVideoNoteOpen(false);
+                    setCameraOpen(false);
+                    setPendingFile(null);
+                    if (pendingImage) {
+                      URL.revokeObjectURL(pendingImage.url);
+                      setPendingImage(null);
+                    }
+                  }}
+                />
+              ) : null}
+              <button
+                type="button"
+                disabled={busy || !chatId}
+                onClick={() => setManageOpen(true)}
+                className="lb-chat-thread-head__icon"
+                aria-label="Administrar conversación"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
+          <div ref={callDockRef} id="lb-chat-call-dock" className="lb-chat-call-dock" />
         </div>
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">

@@ -58,7 +58,13 @@ export function useBoomGesture({ onBoom, disabled, singleTap = false }: Options)
       if (!start) return;
       const dy = e.clientY - start.y;
       const dx = e.clientX - start.x;
-      if (Math.abs(dy) > SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      if (absY > SWIPE_THRESHOLD && absY > absX) {
+        lastTapRef.current = null;
+        return;
+      }
+      if (absX > SWIPE_THRESHOLD && absX > absY) {
         lastTapRef.current = null;
         return;
       }

@@ -27,7 +27,7 @@ import { MyPromotionsModal } from '../ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../ads/PublicidadSidebarCard';
 import { FollowButton } from '../social/SocialPostCard';
-import { useT } from '../../i18n';
+import { bcp47For, useT } from '../../i18n';
 import {
   joinGroup,
   listenMyGroups,
@@ -1118,6 +1118,9 @@ export function MessagesRail() {
 
 /** Rail exclusivo de /perfil/editar (mockup Configuración). */
 function SettingsRail() {
+  const t = useT();
+  const locale = t.locale;
+  const bcp = bcp47For(locale);
   const profile = useAuthStore((state) => state.profile);
   const firebaseUser = useAuthStore((state) => state.firebaseUser);
   const [xp, setXp] = useState(0);
@@ -1134,37 +1137,39 @@ function SettingsRail() {
     const ms = firebaseUser?.metadata?.lastSignInTime
       ? Date.parse(firebaseUser.metadata.lastSignInTime)
       : NaN;
-    if (Number.isNaN(ms)) return 'Hoy';
+    if (Number.isNaN(ms)) return t('settings.today');
     const d = new Date(ms);
     const today = new Date();
     const sameDay =
       d.getFullYear() === today.getFullYear() &&
       d.getMonth() === today.getMonth() &&
       d.getDate() === today.getDate();
-    const time = d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
-    return sameDay ? `Hoy, ${time}` : d.toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const time = d.toLocaleTimeString(bcp, { hour: 'numeric', minute: '2-digit' });
+    return sameDay
+      ? t('settings.todayAt', { time })
+      : d.toLocaleString(bcp, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
   })();
 
     return (
     <aside className="lb-settings-rail chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
-        <p className="text-sm font-bold text-white">Resumen de cuenta</p>
+        <p className="text-sm font-bold text-white">{t('settings.accountSummary')}</p>
         <ul className="mt-3 space-y-3">
           <li className="flex items-center justify-between gap-2">
-            <span className="text-xs text-zinc-500">Mi nivel</span>
+            <span className="text-xs text-zinc-500">{t('settings.myLevel')}</span>
             <span className="inline-flex items-center gap-1 text-sm font-bold text-violet-300">
-              <ShieldCheck size={14} /> {levelInfo.title} · Nv {levelInfo.level}
+              <ShieldCheck size={14} /> {levelInfo.title} · {t('settings.levelShort', { level: levelInfo.level })}
       </span>
           </li>
           <li className="flex items-center justify-between gap-2">
-            <span className="text-xs text-zinc-500">Coins actuales</span>
+            <span className="text-xs text-zinc-500">{t('settings.currentCoins')}</span>
             <span className="inline-flex items-center gap-1.5 text-sm font-bold text-white">
               <span className="text-amber-400">●</span>
-              {(profile?.coinsBalance ?? 0).toLocaleString('es-CO')}
+              {(profile?.coinsBalance ?? 0).toLocaleString(bcp)}
             </span>
           </li>
           <li className="flex items-center justify-between gap-2">
-            <span className="text-xs text-zinc-500">Diamantes</span>
+            <span className="text-xs text-zinc-500">{t('settings.diamonds')}</span>
             <span className="inline-flex items-center gap-1.5 text-sm font-bold text-white">
               <span className="text-fuchsia-400">◆</span> 0
             </span>
@@ -1174,31 +1179,34 @@ function SettingsRail() {
               to={profile ? `/u/${encodeURIComponent(profile.handle)}` : '/perfil'}
               className="flex items-center justify-between gap-2 rounded-lg py-0.5 hover:bg-white/[0.03]"
             >
-              <span className="text-xs text-zinc-500">Puntos de experiencia</span>
+              <span className="text-xs text-zinc-500">{t('settings.experiencePoints')}</span>
               <span className="inline-flex items-center gap-1 text-sm font-bold text-emerald-300">
                 <Star size={13} className="text-orange-400" />
-                {xp.toLocaleString('es-CO')} XP
+                {xp.toLocaleString(bcp)} XP
                 <ChevronRight size={14} className="text-zinc-600" />
               </span>
             </Link>
             <p className="mt-1 text-[10px] text-zinc-600">
               {remaining > 0
-                ? `Faltan ${remaining.toLocaleString('es-CO')} XP para el siguiente (${nextAt.toLocaleString('es-CO')} XP)`
-                : 'Nivel PRO — máximo alcanzado'}
+                ? t('settings.xpToNext', {
+                    remaining: remaining.toLocaleString(bcp),
+                    next: nextAt.toLocaleString(bcp),
+                  })
+                : t('settings.maxLevel')}
             </p>
           </li>
         </ul>
       </section>
 
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
-        <p className="mb-3 text-sm font-bold text-white">Seguridad rápida</p>
+        <p className="mb-3 text-sm font-bold text-white">{t('settings.quickSecurity')}</p>
         <ul className="space-y-3">
           <li className="flex items-center gap-2.5">
             <CheckCircle2 size={16} className="shrink-0 text-emerald-400" />
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold text-white">Verificación en dos pasos</span>
+              <span className="block text-xs font-semibold text-white">{t('settings.twoStep')}</span>
               <span className="text-[11px] font-medium text-emerald-400">
-                {firebaseUser?.emailVerified ? 'Activa (correo)' : 'Pendiente'}
+                {firebaseUser?.emailVerified ? t('settings.twoStepOn') : t('settings.twoStepOff')}
               </span>
             </span>
             <ChevronRight size={14} className="text-zinc-600" />
@@ -1206,15 +1214,15 @@ function SettingsRail() {
           <li className="flex items-center gap-2.5">
             <Laptop size={16} className="shrink-0 text-violet-400" />
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold text-white">Sesiones activas</span>
-              <span className="text-[11px] text-zinc-500">1 dispositivo</span>
+              <span className="block text-xs font-semibold text-white">{t('settings.activeSessions')}</span>
+              <span className="text-[11px] text-zinc-500">{t('settings.oneDevice')}</span>
             </span>
             <ChevronRight size={14} className="text-zinc-600" />
           </li>
           <li className="flex items-center gap-2.5">
             <Calendar size={16} className="shrink-0 text-sky-400" />
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold text-white">Último inicio de sesión</span>
+              <span className="block text-xs font-semibold text-white">{t('settings.lastSignIn')}</span>
               <span className="text-[11px] text-zinc-500">{lastLogin}</span>
             </span>
             <ChevronRight size={14} className="text-zinc-600" />
@@ -1223,25 +1231,25 @@ function SettingsRail() {
       </section>
 
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
-        <p className="mb-2 text-sm font-bold text-white">Soporte y ayuda</p>
+        <p className="mb-2 text-sm font-bold text-white">{t('settings.supportHelp')}</p>
         <ul className="space-y-1">
           {(
             [
-              { to: '/legal/terminos', label: 'Centro de ayuda', icon: HelpCircle },
-              { to: '/legal/terminos', label: 'Términos y condiciones', icon: HelpCircle },
-              { to: '/legal/privacidad', label: 'Política de privacidad', icon: ShieldCheck },
-              { to: '/mensajes', label: 'Reportar un problema', icon: HelpCircle },
-            ] as const
+              { to: '/legal/terminos', labelKey: 'settings.helpCenter' as const, icon: HelpCircle },
+              { to: '/legal/terminos', labelKey: 'settings.terms' as const, icon: HelpCircle },
+              { to: '/legal/privacidad', labelKey: 'settings.privacyPolicy' as const, icon: ShieldCheck },
+              { to: '/mensajes', labelKey: 'settings.reportProblem' as const, icon: HelpCircle },
+            ]
           ).map((item) => {
             const Icon = item.icon;
             return (
-              <li key={item.label}>
+              <li key={item.labelKey}>
                 <Link
                   to={item.to}
                   className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
                 >
                   <Icon size={14} className="text-zinc-500" />
-                  <span className="min-w-0 flex-1">{item.label}</span>
+                  <span className="min-w-0 flex-1">{t(item.labelKey)}</span>
                   <ChevronRight size={14} className="text-zinc-600" />
                 </Link>
               </li>
@@ -1254,9 +1262,9 @@ function SettingsRail() {
         <div className="flex items-start gap-2">
           <Gift className="mt-0.5 shrink-0" size={22} />
           <div>
-            <p className="text-sm font-bold">¡Gana más coins!</p>
+            <p className="text-sm font-bold">{t('settings.earnMoreCoins')}</p>
             <p className="lb-palette-promo__lead mt-1 text-[11px] leading-snug">
-              Participa en eventos y desafíos especiales dentro de LiveBoom.
+              {t('settings.earnMoreCoinsSub')}
             </p>
           </div>
         </div>
@@ -1264,12 +1272,12 @@ function SettingsRail() {
           to="/explorar"
           className="lb-palette-cta mt-3 flex h-10 w-full items-center justify-center rounded-xl text-xs font-bold"
         >
-          Explorar eventos
+          {t('settings.exploreEvents')}
         </Link>
       </section>
 
       <p className="px-1 pb-2 text-center text-[9px] text-zinc-600">
-        © {new Date().getFullYear()} LiveBoom. Todos los derechos reservados.
+        {t('settings.allRights', { year: new Date().getFullYear() })}
       </p>
     </aside>
   );

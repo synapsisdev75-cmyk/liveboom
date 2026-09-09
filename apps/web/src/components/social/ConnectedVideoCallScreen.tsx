@@ -1,4 +1,4 @@
-import { BadgeCheck, MessageSquare, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
+import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useMaybeRoomContext } from '@livekit/components-react';
 import { UserAvatar } from '../profile/UserAvatar';
@@ -59,8 +59,11 @@ export function ConnectedVideoCallHeader({
   statusLabel,
   onMinimize,
   onMaximize,
-  onClose,
+  onClose: _onClose,
   maximized,
+  onFlipCamera,
+  flipCameraLabel,
+  flipPickerOpen,
 }: {
   person: ConnectedVideoPerson;
   elapsedLabel: string;
@@ -69,6 +72,9 @@ export function ConnectedVideoCallHeader({
   onMaximize?: () => void;
   onClose?: () => void;
   maximized?: boolean;
+  onFlipCamera?: () => void;
+  flipCameraLabel?: string;
+  flipPickerOpen?: boolean;
 }) {
   const handle = person.handle.replace(/^@/, '');
   return (
@@ -101,8 +107,22 @@ export function ConnectedVideoCallHeader({
         showLogo={false}
         onMinimize={onMinimize}
         onMaximize={onMaximize}
-        onClose={onClose}
         maximized={maximized}
+        extraEnd={
+          onFlipCamera ? (
+            <button
+              type="button"
+              className="lb-call-winbtn"
+              data-no-drag
+              onClick={onFlipCamera}
+              aria-label={flipCameraLabel || 'Voltear cámara'}
+              aria-expanded={flipPickerOpen}
+              aria-haspopup={flipPickerOpen === undefined ? undefined : 'listbox'}
+            >
+              <SwitchCamera size={14} />
+            </button>
+          ) : null
+        }
       />
     </header>
   );
@@ -117,6 +137,9 @@ export function VideoCallShell({
   onMaximize,
   onClose,
   maximized,
+  onFlipCamera,
+  flipCameraLabel,
+  flipPickerOpen,
   stageRef,
   stage,
   footer,
@@ -129,6 +152,9 @@ export function VideoCallShell({
   onMaximize?: () => void;
   onClose?: () => void;
   maximized?: boolean;
+  onFlipCamera?: () => void;
+  flipCameraLabel?: string;
+  flipPickerOpen?: boolean;
   stageRef?: Ref<HTMLDivElement | null>;
   stage: ReactNode;
   footer: ReactNode;
@@ -144,6 +170,9 @@ export function VideoCallShell({
         onMaximize={onMaximize}
         onClose={onClose}
         maximized={maximized}
+        onFlipCamera={onFlipCamera}
+        flipCameraLabel={flipCameraLabel}
+        flipPickerOpen={flipPickerOpen}
       />
       <div className="lb-call-video-stage" data-call-drag ref={stageRef}>
         {stage}
@@ -156,15 +185,11 @@ export function VideoCallShell({
 export function ConnectedVideoCallBar({
   camOn,
   onToggleCam,
-  onFlipCamera,
   onHangup,
-  onOpenChat,
 }: {
   camOn: boolean;
   onToggleCam: () => void;
-  onFlipCamera?: () => void;
   onHangup: () => void;
-  onOpenChat?: () => void;
 }) {
   const room = useMaybeRoomContext();
   const [micOn, setMicOn] = useState(true);
@@ -218,7 +243,7 @@ export function ConnectedVideoCallBar({
         >
           {camOn ? <Video size={18} /> : <VideoOff size={18} />}
         </button>
-        <span>Cámara</span>
+        <span>{camOn ? 'Cámara' : 'Cámara OFF'}</span>
       </div>
       <div className="lb-video-connected-action">
         <button
@@ -236,29 +261,16 @@ export function ConnectedVideoCallBar({
         </button>
         <span>Altavoz</span>
       </div>
-      <div className="lb-video-connected-action">
+      <div className="lb-video-connected-action is-gift">
         <button
           type="button"
-          className="lb-video-connected-btn"
-          onClick={() => onFlipCamera?.()}
-          disabled={!onFlipCamera}
-          aria-label="Voltear cámara"
+          className="lb-video-connected-btn is-gift"
+          onClick={() => window.dispatchEvent(new CustomEvent('liveboom:open-chat-gifts'))}
+          aria-label="Regalos"
         >
-          <SwitchCamera size={18} />
+          <Gift size={18} />
         </button>
-        <span>Voltear</span>
-      </div>
-      <div className="lb-video-connected-action">
-        <button
-          type="button"
-          className="lb-video-connected-btn"
-          onClick={() => onOpenChat?.()}
-          disabled={!onOpenChat}
-          aria-label="Abrir chat"
-        >
-          <MessageSquare size={18} />
-        </button>
-        <span>Chat</span>
+        <span>Regalos</span>
       </div>
       <div className="lb-video-connected-action is-end">
         <button type="button" className="lb-video-connected-end" onClick={onHangup} aria-label="Finalizar">

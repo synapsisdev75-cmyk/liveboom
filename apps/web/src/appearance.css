@@ -247,18 +247,208 @@ html[data-lb-theme] .bg-black {
   color: #fff;
 }
 
+/* Llamadas: cromo sigue el tema. El tile de cámara sigue negro. */
+html[data-lb-theme] .lb-call-float-root,
+html[data-lb-theme] .lb-call-header-dock,
+html[data-lb-theme] .lb-call-incoming,
+html[data-lb-theme] .lb-call-active,
+html[data-lb-theme] .lb-voice-card,
+html[data-lb-theme] .lb-voice-out-screen,
+html[data-lb-theme] .lb-voice-in-screen,
+html[data-lb-theme] .lb-video-ring-screen,
+html[data-lb-theme] .lb-video-connected-screen,
+html[data-lb-theme] .lb-call-confirm,
+html[data-lb-theme] .lb-call-busy,
+html[data-lb-theme] .lb-call-crash {
+  color: var(--text-primary);
+}
+
 html[data-lb-theme] .lb-call-float-root .text-white,
+html[data-lb-theme] .lb-call-float-root .text-zinc-50,
+html[data-lb-theme] .lb-call-float-root .text-zinc-100,
+html[data-lb-theme] .lb-call-float-root .text-zinc-200,
 html[data-lb-theme] .lb-video-ring-screen .text-white,
 html[data-lb-theme] .lb-video-connected-screen .text-white,
-html[data-lb-theme] .lb-call-crash .text-white {
+html[data-lb-theme] .lb-call-crash .text-white,
+html[data-lb-theme] .lb-call-confirm .text-white,
+html[data-lb-theme] .lb-call-busy .text-white {
   color: var(--text-primary);
+}
+
+html[data-lb-theme] .lb-call-incoming__name,
+html[data-lb-theme] .lb-call-incoming__handle,
+html[data-lb-theme] .lb-call-incoming__kind,
+html[data-lb-theme] .lb-call-incoming__labels,
+html[data-lb-theme] .lb-call-header-dock__chip,
+html[data-lb-theme] .lb-call-header-dock__copy strong,
+html[data-lb-theme] .lb-call-header-dock__max,
+html[data-lb-theme] .lb-call-winbtn,
+html[data-lb-theme] .lb-call-chip,
+html[data-lb-theme] .lb-call-round,
+html[data-lb-theme] .lb-call-ctrl,
+html[data-lb-theme] .lb-voice-out-screen__name,
+html[data-lb-theme] .lb-voice-out-screen__handle,
+html[data-lb-theme] .lb-voice-out-screen__status,
+html[data-lb-theme] .lb-voice-out-screen__action span,
+html[data-lb-theme] .lb-voice-in-screen__status,
+html[data-lb-theme] .lb-voice-in-screen__action span,
+html[data-lb-theme] .lb-video-ring-screen__name,
+html[data-lb-theme] .lb-video-ring-screen__handle,
+html[data-lb-theme] .lb-video-ring-screen__status,
+html[data-lb-theme] .lb-video-ring-screen__action span,
+html[data-lb-theme] .lb-video-connected-peer__name,
+html[data-lb-theme] .lb-video-connected-peer__handle,
+html[data-lb-theme] .lb-video-connected-peer__status,
+html[data-lb-theme] .lb-video-connected-action span,
+html[data-lb-theme] .lb-voice-card__name,
+html[data-lb-theme] .lb-voice-card__clock,
+html[data-lb-theme] .lb-voice-card__main-labels span,
+html[data-lb-theme] .lb-voice-card__ctrl-labels,
+html[data-lb-theme] .lb-video-ctrl em,
+html[data-lb-theme] .lb-call-busy-sub,
+html[data-lb-theme] .lb-call-bill,
+html[data-lb-theme] .lb-call-busy-btn--ghost,
+html[data-lb-theme] .lb-call-gift-pick,
+html[data-lb-theme] .lb-video-ended-stats,
+html[data-lb-theme] .lb-video-ended-stats dd,
+html[data-lb-theme] .lb-video-ended-stats dt {
+  color: var(--text-primary);
+}
+
+html[data-lb-theme] .lb-call-incoming__handle,
+html[data-lb-theme] .lb-call-incoming__labels,
+html[data-lb-theme] .lb-voice-out-screen__handle,
+html[data-lb-theme] .lb-video-ring-screen__handle,
+html[data-lb-theme] .lb-video-connected-peer__handle,
+html[data-lb-theme] .lb-voice-card__handle,
+html[data-lb-theme] .lb-voice-card__sub,
+html[data-lb-theme] .lb-video-ctrl em,
+html[data-lb-theme] .lb-call-busy-sub,
+html[data-lb-theme] .lb-call-bill {
+  color: var(--text-muted);
+}
+
+html[data-lb-theme] .lb-call-incoming__status,
+html[data-lb-theme] .lb-call-header-dock__copy em,
+html[data-lb-theme] .lb-call-header-dock__chip svg,
+html[data-lb-theme] .lb-call-active__status,
+html[data-lb-theme] .lb-voice-out-screen__type,
+html[data-lb-theme] .lb-voice-card__status,
+html[data-lb-theme] .lb-call-ctrl.is-on {
+  color: var(--accent-secondary);
+}
+
+html[data-lb-theme] .lb-call-winbtn svg,
+html[data-lb-theme] .lb-call-round svg,
+html[data-lb-theme] .lb-call-ctrl svg,
+html[data-lb-theme] .lb-call-chip svg,
+html[data-lb-theme] .lb-call-header-dock svg,
+html[data-lb-theme] .lb-voice-out-speaker svg,
+html[data-lb-theme] .lb-video-ring-speaker svg,
+html[data-lb-theme] .lb-video-connected-action svg,
+html[data-lb-theme] .lb-voice-card__secondary svg {
+  color: currentColor;
+  stroke: currentColor;
 }
 
 html[data-lb-theme] .lb-call-float-root .bg-black,
 html[data-lb-theme] .lb-video-connected-screen .bg-black,
+html[data-lb-theme] .lb-call-video-remote,
 html[data-lb-theme] .lb-call-video-remote .bg-black {
   background-color: #050508;
+}
+
+html[data-lb-theme] .lb-call-video-remote,
+html[data-lb-theme] .lb-call-video-remote .text-white,
+html[data-lb-theme] .lb-call-video-caption,
+html[data-lb-theme] .lb-video-connected-you {
   color: #fff;
+}
+
+html[data-lb-theme='light'] .lb-call-incoming,
+html[data-lb-theme='light'] .lb-call-active,
+html[data-lb-theme='light'] .lb-voice-card,
+html[data-lb-theme='light'] .lb-voice-out-screen,
+html[data-lb-theme='light'] .lb-voice-in-screen,
+html[data-lb-theme='light'] .lb-video-ring-screen,
+html[data-lb-theme='light'] .lb-video-connected-screen,
+html[data-lb-theme='light'] .lb-call-header-dock,
+html[data-lb-theme='light'] .lb-call-header-dock.is-compact,
+html[data-lb-theme='light'] .lb-call-confirm,
+html[data-lb-theme='light'] .lb-call-crash {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--bg-primary) 35%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-voice-out-screen,
+html[data-lb-theme='light'] .lb-voice-in-screen,
+html[data-lb-theme='light'] .lb-video-ring-screen,
+html[data-lb-theme='light'] .lb-video-connected-screen {
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--accent-secondary) 12%, transparent), transparent 52%),
+    radial-gradient(90% 55% at 80% 100%, color-mix(in srgb, var(--accent-primary) 10%, transparent), transparent 48%),
+    var(--bg-elevated);
+}
+
+html[data-lb-theme='light'] .lb-call-winbtn,
+html[data-lb-theme='light'] .lb-call-round:not(.lb-call-round--accept):not(.lb-call-round--decline),
+html[data-lb-theme='light'] .lb-call-ctrl:not(.lb-call-ctrl--end):not(.is-on),
+html[data-lb-theme='light'] .lb-call-chip,
+html[data-lb-theme='light'] .lb-voice-out-speaker,
+html[data-lb-theme='light'] .lb-video-ring-speaker,
+html[data-lb-theme='light'] .lb-call-header-dock__max,
+html[data-lb-theme='light'] .lb-call-busy-btn--ghost,
+html[data-lb-theme='light'] .lb-call-gift-pick {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-default);
+}
+
+html[data-lb-theme='light'] .lb-voice-out-avatar__ring::after {
+  background: var(--bg-elevated);
+}
+
+html[data-lb-theme='light'] .lb-video-ring-screen__quote {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-soft);
+}
+
+html[data-lb-theme='light'] .lb-call-accept-pill,
+html[data-lb-theme='light'] .lb-voice-accept-pill,
+html[data-lb-theme='light'] .lb-call-round--accept,
+html[data-lb-theme='light'] .lb-voice-in-accept,
+html[data-lb-theme='light'] .lb-video-ring-accept,
+html[data-lb-theme='light'] .lb-call-header-dock__btn.is-accept,
+html[data-lb-theme='light'] .lb-call-round--decline,
+html[data-lb-theme='light'] .lb-voice-out-end,
+html[data-lb-theme='light'] .lb-voice-in-decline,
+html[data-lb-theme='light'] .lb-video-ring-end,
+html[data-lb-theme='light'] .lb-call-ctrl--end,
+html[data-lb-theme='light'] .lb-call-header-dock__end,
+html[data-lb-theme='light'] .lb-call-header-dock__btn.is-end,
+html[data-lb-theme='light'] .lb-call-winbtn--close,
+html[data-lb-theme='light'] .lb-video-connected-head .lb-call-winbtn--close,
+html[data-lb-theme='light'] .lb-call-busy-btn--primary {
+  color: #fff;
+}
+
+html[data-lb-theme='light'] .lb-call-accept-pill svg,
+html[data-lb-theme='light'] .lb-voice-accept-pill svg,
+html[data-lb-theme='light'] .lb-call-round--accept svg,
+html[data-lb-theme='light'] .lb-voice-in-accept svg,
+html[data-lb-theme='light'] .lb-video-ring-accept svg,
+html[data-lb-theme='light'] .lb-call-round--decline svg,
+html[data-lb-theme='light'] .lb-voice-out-end svg,
+html[data-lb-theme='light'] .lb-voice-in-decline svg,
+html[data-lb-theme='light'] .lb-video-ring-end svg,
+html[data-lb-theme='light'] .lb-call-ctrl--end svg,
+html[data-lb-theme='light'] .lb-call-header-dock__end svg,
+html[data-lb-theme='light'] .lb-call-winbtn--close svg {
+  color: #fff;
+  stroke: #fff;
 }
 
 html[data-lb-theme] .lb-explore-view .text-white,
@@ -267,6 +457,125 @@ html[data-lb-theme] .lb-live-stage .text-white,
 html[data-lb-theme] .lb-media-fab,
 html[data-lb-theme] [class*='bg-black'] .text-white {
   color: #fff;
+}
+
+/* Explorar: etiqueta y tabs solo texto; el color sigue el tema. */
+.lb-explore-chrome,
+.lb-explore-chrome button {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.lb-explore-tab {
+  opacity: 0.72;
+}
+
+.lb-explore-tab:hover,
+.lb-explore-tab:focus-visible {
+  background: transparent;
+  opacity: 0.92;
+}
+
+.lb-explore-tab.is-active,
+.lb-explore-tab.is-active:hover {
+  opacity: 1;
+}
+
+.lb-explore-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  border-radius: 999px;
+  padding: 0.12rem 0.28rem;
+  background: rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 1px 8px rgb(0 0 0 / 0.28);
+}
+
+html[data-lb-theme='dark'] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.65);
+}
+
+html[data-lb-theme='light'] .lb-explore-view .lb-explore-tabs {
+  background: rgb(255 255 255 / 0.62);
+  box-shadow: 0 1px 8px rgb(0 0 0 / 0.12);
+}
+
+html[data-lb-theme='light'] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
+  color: #111;
+  text-shadow: 0 1px 2px rgb(255 255 255 / 0.8);
+}
+
+.lb-explore-icon {
+  position: absolute;
+  top: max(0.4rem, var(--lb-safe-top, env(safe-area-inset-top, 0px)));
+  right: max(0.45rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
+  z-index: 32;
+  display: block;
+  width: clamp(2.35rem, 8vw, 3.1rem);
+  height: clamp(2.35rem, 8vw, 3.1rem);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.4));
+}
+
+.lb-explore-view:has(.lb-immersive-media-box) .lb-explore-icon {
+  display: none;
+}
+
+.lb-explore-view .lb-immersive-media-box::after {
+  content: '';
+  position: absolute;
+  top: 0.28rem;
+  right: 0.32rem;
+  z-index: 36;
+  width: clamp(2.45rem, 8.5vw, 3.45rem);
+  height: clamp(2.45rem, 8.5vw, 3.45rem);
+  pointer-events: none;
+  background: url('/brand/explore-icon-cut.png') center / contain no-repeat;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.4));
+}
+
+@media (min-width: 768px) {
+  .lb-explore-icon,
+  .lb-explore-view .lb-immersive-media-box::after {
+    width: clamp(2.7rem, 4.4vw, 3.55rem);
+    height: clamp(2.7rem, 4.4vw, 3.55rem);
+  }
+
+  .lb-explore-view .lb-immersive-media-box::after {
+    top: 0.4rem;
+    right: 0.45rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .lb-explore-view .lb-immersive-media-box::after {
+    top: 0.45rem;
+    right: 0.5rem;
+    width: 3.55rem;
+    height: 3.55rem;
+  }
+}
+
+html[data-lb-theme='dark'] .lb-explore-view .lb-explore-chrome,
+html[data-lb-theme='dark'] .lb-explore-view .lb-explore-chrome button {
+  color: #fff;
+}
+
+html[data-lb-theme='light'] .lb-explore-view .lb-explore-chrome,
+html[data-lb-theme='light'] .lb-explore-view .lb-explore-chrome button {
+  color: var(--text-primary);
+  text-shadow: 0 0 4px #fff, 0 1px 8px rgb(255 255 255 / 0.85);
 }
 
 html[data-lb-theme] .lb-reaction-chip,
@@ -467,6 +776,46 @@ html[data-lb-theme='light'] .lb-media-stage .text-white,
 html[data-lb-theme='light'] .lb-media-fab,
 html[data-lb-theme='light'] main [class*='bg-black'] .text-white {
   color: #fff;
+}
+
+/* LIVE: el input de chat sigue el tema (letra + fondo). El video sigue negro. */
+.lb-live-chat-input {
+  background: var(--surface-input);
+  color: var(--text-primary);
+  caret-color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.lb-live-chat-input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+  -webkit-text-fill-color: var(--text-muted);
+}
+
+html[data-lb-theme] .lb-live-chat-float .lb-live-chat-input,
+html[data-lb-theme] .lb-live-stage .lb-live-chat-input,
+html[data-lb-theme] .lb-live-chat-float .lb-live-chat-input.text-white,
+html[data-lb-theme='light'] main .lb-live-chat-float .lb-live-chat-input,
+html[data-lb-theme='light'] main .lb-live-chat-float .lb-live-chat-input.text-white,
+html[data-lb-theme='light'] .lb-live-stage .lb-live-chat-input,
+html[data-lb-theme='light'] main .lb-live-chat-float .lb-live-chat-input.bg-zinc-900 {
+  background: var(--surface-input);
+  color: var(--text-primary);
+  caret-color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+}
+
+html[data-lb-theme] .lb-live-chat-float .lb-live-chat-input::placeholder,
+html[data-lb-theme='light'] main .lb-live-chat-float .lb-live-chat-input::placeholder,
+html[data-lb-theme='light'] .lb-live-stage .lb-live-chat-input::placeholder {
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+}
+
+/* Explorar: el escenario del video (negro + blur) no cambia. Solo marco. */
+html[data-lb-theme='light'] .lb-explore-view .lb-immersive-media-box {
+  box-shadow: 0 0 0 1px var(--border-default);
 }
 
 .lb-bottom-nav .text-cyan-400 {

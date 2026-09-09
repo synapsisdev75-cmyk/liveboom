@@ -22,6 +22,7 @@ function LiveTapBombIcon() {
 
 export type HostLiveStatSnapshot = {
   startedAt?: string;
+  endedAtMs?: number;
   viewers: number;
   likes?: number;
   giftsCount?: number;
@@ -42,10 +43,11 @@ export type RecentLiveGiftRow = {
   atLabel: string;
 };
 
-function formatElapsed(startedAt?: string) {
+function formatElapsed(startedAt?: string, endedAtMs?: number) {
   const start = startedAt ? Date.parse(startedAt) : NaN;
   if (!Number.isFinite(start) || start <= 0) return '00:00:00';
-  const total = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const end = endedAtMs && endedAtMs > 0 ? endedAtMs : Date.now();
+  const total = Math.max(0, Math.floor((end - start) / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
@@ -120,7 +122,7 @@ type LeftProps = {
 /** Columna izquierda del dashboard host (mockup transmitir). */
 export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWishlist, onNewCoinGoal }: LeftProps) {
   void _nowMs;
-  const elapsed = formatElapsed(stats.startedAt);
+  const elapsed = formatElapsed(stats.startedAt, stats.endedAtMs);
   const goal = Math.max(0, stats.goalCoins || 0);
   const earned = Math.max(0, stats.coinsEarned || 0);
   const cycleCurrent = Math.max(0, Number(stats.goalCurrent ?? Math.min(earned, goal || earned)));
@@ -248,7 +250,7 @@ export function HostLiveFooterBar({
   hostUsername,
   hostAvatarUrl,
 }: FooterProps) {
-  const elapsed = formatElapsed(stats.startedAt);
+  const elapsed = formatElapsed(stats.startedAt, stats.endedAtMs);
   const top = stats.topGifters[0];
   return (
     <footer className="lb-host-footer hidden shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-zinc-950/90 px-3 py-2 lg:flex">
@@ -427,8 +429,8 @@ export function ViewerLiveInfoBar({
   );
 }
 
-export function formatLiveElapsed(startedAt?: string) {
-  return formatElapsed(startedAt);
+export function formatLiveElapsed(startedAt?: string, endedAtMs?: number) {
+  return formatElapsed(startedAt, endedAtMs);
 }
 
 export function formatLiveCompact(n: number) {

@@ -3,9 +3,10 @@ type Props = {
   onCancel: () => void;
   onConfirm: () => void;
   busy?: boolean;
+  error?: string | null;
 };
 
-export function EndLiveModal({ open, onCancel, onConfirm, busy }: Props) {
+export function EndLiveModal({ open, onCancel, onConfirm, busy, error }: Props) {
   if (!open) return null;
   return (
     <div className="lb-live-studio-modal fixed inset-0 z-[80] grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
@@ -21,6 +22,7 @@ export function EndLiveModal({ open, onCancel, onConfirm, busy }: Props) {
         <p className="mt-2 text-sm text-zinc-400">
           Tu LIVE terminará para todos los espectadores.
         </p>
+        {error ? <p className="mt-2 text-sm text-rose-400">{error}</p> : null}
         <div className="mt-5 flex gap-2">
           <button
             type="button"

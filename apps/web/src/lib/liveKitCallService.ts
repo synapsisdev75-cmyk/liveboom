@@ -252,7 +252,7 @@ export function readCallBusyCode(error: unknown): 'USER_BUSY' | 'USER_ALREADY_IN
 export async function createCall(
   targetUid: string,
   type: 'audio' | 'video',
-  extra?: { authorizationId?: string | null; giftId?: string | null; chatId?: string | null },
+  extra?: { authorizationId?: string | null; giftId?: string | null; chatId?: string | null; callId?: string | null },
 ): Promise<CallTokenSession> {
   const me = auth.currentUser?.uid || null;
   logCallConnect('tokenGenerated', {
@@ -272,6 +272,7 @@ export async function createCall(
         targetUid,
         type,
         chatId: extra?.chatId || undefined,
+        callId: extra?.callId || undefined,
         authorizationId: extra?.authorizationId || undefined,
         giftId: extra?.giftId || undefined,
       }),

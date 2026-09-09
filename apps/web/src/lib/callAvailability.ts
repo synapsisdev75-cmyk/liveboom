@@ -56,7 +56,7 @@ async function peekPresenceCallStatus(chatId: string): Promise<string | null> {
 }
 
 function isLiveCallStatus(status: string | null | undefined): boolean {
-  return status === 'ringing' || status === 'active';
+  return status === 'ringing' || status === 'accepted' || status === 'connecting' || status === 'connected' || status === 'active';
 }
 
 export function isBusyPresence(data: Record<string, unknown> | undefined | null, now = Date.now()): boolean {

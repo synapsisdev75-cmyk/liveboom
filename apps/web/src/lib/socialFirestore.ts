@@ -17,6 +17,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  runTransaction,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { api, apiPublic } from './api';
@@ -116,7 +117,7 @@ export type ChatMessage = {
 
 export type PrivateCall = {
   id: string;
-  status: 'ringing' | 'active' | 'ended';
+  status: 'ringing' | 'accepted' | 'connecting' | 'connected' | 'active' | 'ended' | 'rejected' | 'missed' | 'failed';
   fromUid: string;
   fromName: string;
   fromHandle: string;
@@ -232,17 +233,21 @@ function asEpochMs(value: unknown): number {
   return 0;
 }
 
+const LIVE_CALL_STATUSES = new Set(['ringing', 'accepted', 'connecting', 'connected', 'active']);
+const ENDED_CALL_STATUSES = new Set(['ended', 'rejected', 'missed', 'failed']);
+
 function parseCall(value: unknown): PrivateCall | null {
   if (!value || typeof value !== 'object') return null;
   const data = value as Record<string, unknown>;
-  if (data.status !== 'ringing' && data.status !== 'active' && data.status !== 'ended') return null;
+  const status = String(data.status || '') as PrivateCall['status'];
+  if (!LIVE_CALL_STATUSES.has(status) && !ENDED_CALL_STATUSES.has(status)) return null;
   const fromUid = String(data.fromUid || data.callerId || '');
   const toUid = String(data.toUid || data.receiverId || '');
   if (!fromUid) return null;
   const createdAtMs = Math.max(0, Number(data.createdAtMs) || asEpochMs(data.createdAt));
   return {
     id: String(data.id || ''),
-    status: data.status,
+    status,
     fromUid,
     fromName: String(data.fromName || data.fromHandle || ''),
     fromHandle: String(data.fromHandle || ''),
@@ -295,24 +300,45 @@ export async function startPrivateCall(
     rateSnapshot?: CallRateSnapshot | null;
     authorizationId?: string | null;
     maxBlasts?: number | null;
+    skipPermissionCheck?: boolean;
   },
 ) {
-  const perms = await getCommunicationPermissions(me.firebaseUid, friend.uid);
-  let allowed = video ? perms.canVideoCall : perms.canVoiceCall;
-  if (!allowed && opts?.authorizationId) {
+  if (!opts?.skipPermissionCheck) {
+    const perms = await getCommunicationPermissions(me.firebaseUid, friend.uid);
+    let allowed = video ? perms.canVideoCall : perms.canVoiceCall;
+    if (!allowed && opts?.authorizationId) {
+      const authz = await readCallAuthorization(friend.uid, opts.authorizationId, chatId);
+      allowed = Boolean(
+        authz &&
+          authz.callerId === me.firebaseUid &&
+          ((video && authz.callType === 'video') || (!video && authz.callType === 'audio')),
+      );
+    }
+    if (!allowed) {
+      throw new Error(
+        video
+          ? 'Las videollamadas están disponibles solo entre amigos.'
+          : 'Las llamadas de voz solo están disponibles entre amigos.',
+      );
+    }
+  } else if (opts?.authorizationId) {
     const authz = await readCallAuthorization(friend.uid, opts.authorizationId, chatId);
-    allowed = Boolean(
+    const allowed = Boolean(
       authz &&
         authz.callerId === me.firebaseUid &&
         ((video && authz.callType === 'video') || (!video && authz.callType === 'audio')),
     );
-  }
-  if (!allowed) {
-    throw new Error(
-      video
-        ? 'Las videollamadas están disponibles solo entre amigos.'
-        : 'Las llamadas de voz solo están disponibles entre amigos.',
-    );
+    if (!allowed) {
+      const perms = await getCommunicationPermissions(me.firebaseUid, friend.uid);
+      const fallback = video ? perms.canVideoCall : perms.canVoiceCall;
+      if (!fallback) {
+        throw new Error(
+          video
+            ? 'Las videollamadas están disponibles solo entre amigos.'
+            : 'Las llamadas de voz solo están disponibles entre amigos.',
+        );
+      }
+    }
   }
   const id = existingCallId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const snapshot = opts?.rateSnapshot && opts.rateSnapshot.rateBlasts > 0 ? opts.rateSnapshot : null;
@@ -354,8 +380,41 @@ export async function answerPrivateCall(chatId: string) {
   });
 }
 
-export async function endPrivateCall(chatId: string) {
-  await updateDoc(doc(db, 'chats', chatId), { call: null }).catch(() => undefined);
+export async function endPrivateCall(
+  chatId: string,
+  opts?: {
+    callId?: string | null;
+    outcome?: 'completed' | 'missed' | 'cancelled' | 'declined' | 'ended' | 'failed';
+  },
+) {
+  const ref = doc(db, 'chats', chatId);
+  const wantedId = String(opts?.callId || '').trim();
+  const outcome = opts?.outcome || 'ended';
+  const status =
+    outcome === 'declined' ? 'rejected' : outcome === 'missed' ? 'missed' : outcome === 'failed' ? 'failed' : 'ended';
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const call = snap.data()?.call as Record<string, unknown> | undefined;
+      if (!call || typeof call !== 'object') return;
+      const currentStatus = String(call.status || '');
+      if (ENDED_CALL_STATUSES.has(currentStatus)) return;
+      if (wantedId && call.id && String(call.id) !== wantedId) return;
+      tx.update(ref, {
+        'call.status': status,
+        'call.endedAt': serverTimestamp(),
+        'call.endedAtMs': Date.now(),
+        'call.endedByOutcome': outcome,
+      });
+    });
+  } catch {
+    await updateDoc(ref, {
+      'call.status': status,
+      'call.endedAt': serverTimestamp(),
+      'call.endedAtMs': Date.now(),
+      'call.endedByOutcome': outcome,
+    }).catch(() => undefined);
+  }
 }
 
 /** Estado remoto de la llamada en el chat (para answered-elsewhere). */
@@ -366,7 +425,11 @@ export async function peekPrivateCallStatus(chatId: string): Promise<string | nu
 }
 
 export function isLivePrivateCallStatus(status: string | null | undefined): boolean {
-  return status === 'ringing' || status === 'active';
+  return LIVE_CALL_STATUSES.has(String(status || ''));
+}
+
+export function isEndedPrivateCallStatus(status: string | null | undefined): boolean {
+  return ENDED_CALL_STATUSES.has(String(status || ''));
 }
 
 export async function peekPrivateCall(chatId: string): Promise<PrivateCall | null> {

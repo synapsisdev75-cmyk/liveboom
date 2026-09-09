@@ -236,33 +236,62 @@ export async function markLiveRoomActive(
   );
 }
 
-/** Pulso del host: el feed solo muestra salas con heartbeat reciente. */
-export async function touchLiveRoomHeartbeat(roomName: string) {
+export type LiveEndStats = {
+  durationMs?: number;
+  viewers?: number;
+  coinsEarned?: number;
+  giftsCount?: number;
+  likes?: number;
+  goalCoins?: number;
+};
+
+/** Marca la sala como cerrada cuando el anfitrión deja de transmitir. Idempotente. */
+export async function markLiveRoomEnded(roomName: string, stats?: LiveEndStats) {
+  const ref = doc(db, 'liveRooms', roomKey(roomName));
+  const snap = await getDoc(ref).catch(() => null);
+  const data = snap?.exists() ? snap.data() : null;
+  const alreadyEnded =
+    String(data?.status || '') === 'ended' || Number(data?.endedAtMs || 0) > 0;
+  await clearLiveViewers(roomName).catch(() => undefined);
+  if (alreadyEnded) return;
   const now = Date.now();
   await setDoc(
-    doc(db, 'liveRooms', roomKey(roomName)),
+    ref,
     {
-      status: 'live',
-      heartbeatAtMs: now,
+      status: 'ended',
+      endedAt: new Date(now).toISOString(),
+      endedAtMs: now,
+      heartbeatAtMs: 0,
+      isPrivate: false,
+      lockGiftId: null,
+      guestInvites: [],
+      guestBanned: [],
+      ...(typeof stats?.durationMs === 'number' ? { durationMs: Math.max(0, Math.floor(stats.durationMs)) } : {}),
+      ...(typeof stats?.viewers === 'number' ? { viewers: Math.max(0, Math.floor(stats.viewers)) } : {}),
+      ...(typeof stats?.coinsEarned === 'number'
+        ? { coinsEarned: Math.max(0, Math.floor(stats.coinsEarned)) }
+        : {}),
+      ...(typeof stats?.giftsCount === 'number' ? { giftsCount: Math.max(0, Math.floor(stats.giftsCount)) } : {}),
+      ...(typeof stats?.likes === 'number' ? { liveBoomCount: Math.max(0, Math.floor(stats.likes)) } : {}),
+      ...(typeof stats?.goalCoins === 'number' ? { goalCoins: Math.max(0, Math.floor(stats.goalCoins)) } : {}),
       updatedAt: serverTimestamp(),
     },
     { merge: true },
   );
 }
 
-/** Marca la sala como cerrada cuando el anfitrión deja de transmitir. */
-export async function markLiveRoomEnded(roomName: string) {
-  await clearLiveViewers(roomName).catch(() => undefined);
+/** Pulso del host: el feed solo muestra salas con heartbeat reciente. */
+export async function touchLiveRoomHeartbeat(roomName: string) {
+  const ref = doc(db, 'liveRooms', roomKey(roomName));
+  const snap = await getDoc(ref).catch(() => null);
+  const data = snap?.exists() ? snap.data() : null;
+  if (String(data?.status || '') === 'ended' || Number(data?.endedAtMs || 0) > 0) return;
+  const now = Date.now();
   await setDoc(
-    doc(db, 'liveRooms', roomKey(roomName)),
+    ref,
     {
-      status: 'ended',
-      endedAtMs: Date.now(),
-      heartbeatAtMs: 0,
-      isPrivate: false,
-      lockGiftId: null,
-      guestInvites: [],
-      guestBanned: [],
+      status: 'live',
+      heartbeatAtMs: now,
       updatedAt: serverTimestamp(),
     },
     { merge: true },

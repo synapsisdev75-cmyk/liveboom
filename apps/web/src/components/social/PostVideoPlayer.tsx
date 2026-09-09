@@ -31,6 +31,13 @@ import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster } from '../../lib/videoPoster';
+import {
+  exploreNavBindPlayer,
+  exploreNavCurrentGen,
+  exploreNavIsCurrent,
+  exploreNavSync,
+  exploreNavUnbindPlayer,
+} from '../../lib/exploreVideoPool';
 import { uploadUserMedia } from '../../lib/storage';
 import { type EmojiInputHandle } from './EmojiInput';
 import { EmojiText } from './EmojiText';
@@ -128,6 +135,14 @@ type Props = {
   originalUsername?: string | null;
   originalHref?: string | null;
   overlays?: MediaOverlayItem[];
+  /** Explorar: no crear un <video> extra solo para leer metadata. */
+  skipRemoteAspectProbe?: boolean;
+  /** Explorar: cancelar carga anterior al cambiar src (latest-wins). */
+  fastNav?: boolean;
+  fastNavPrevUrl?: string | null;
+  fastNavNextUrl?: string | null;
+  fastNavNext2Url?: string | null;
+  onFirstFrame?: () => void;
 };
 
 const SEEK_STEP_SEC = 10;
@@ -200,6 +215,12 @@ export function PostVideoPlayer({
   originalUsername = null,
   originalHref = null,
   overlays = [],
+  skipRemoteAspectProbe = false,
+  fastNav = false,
+  fastNavPrevUrl = null,
+  fastNavNextUrl = null,
+  fastNavNext2Url = null,
+  onFirstFrame,
 }: Props) {
   const t = useT();
   const reactId = useId();
@@ -211,6 +232,9 @@ export function PostVideoPlayer({
   const posterCapturedRef = useRef(false);
   const wheelLockRef = useRef(0);
   const gestureLockRef = useRef(false);
+  const onFirstFrameRef = useRef(onFirstFrame);
+  onFirstFrameRef.current = onFirstFrame;
+  const firstFrameSrcRef = useRef('');
   const playbackSnapshotRef = useRef({
     time: 0,
     playing: false,
@@ -237,7 +261,7 @@ export function PostVideoPlayer({
   const shareText =
     caption?.trim() ||
     (authorUsername ? `Mira este video de @${authorUsername} en LiveBoom` : 'Mira este video en LiveBoom');
-  const videoAspect = useVideoAspect(src);
+  const videoAspect = useVideoAspect(skipRemoteAspectProbe ? null : src);
   const storyHeld = commentsPanelOpen || giftsOpen;
 
   useEffect(() => {
@@ -378,17 +402,42 @@ export function PostVideoPlayer({
     };
   }, [src, overlayOnly]);
 
-  // Boom Clip / Flash / Explorar: autoplay al abrir cada clip
+  useLayoutEffect(() => {
+    if (!fastNav || !overlayOnly) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const gen = exploreNavSync({
+      currentUrl: src,
+      prevUrl: fastNavPrevUrl,
+      nextUrl: fastNavNextUrl,
+      next2Url: fastNavNext2Url,
+    });
+    exploreNavBindPlayer(video, src, gen);
+    return () => {
+      exploreNavUnbindPlayer(video);
+    };
+  }, [fastNav, overlayOnly, src, fastNavPrevUrl, fastNavNextUrl, fastNavNext2Url]);
+
   useEffect(() => {
     if (!overlayOnly) return;
     const video = videoRef.current;
     if (!video) return;
+    let cancelled = false;
+    const bindGen = exploreNavCurrentGen();
     const start = () => {
+      if (cancelled) return;
+      if (fastNav && !exploreNavIsCurrent(bindGen)) return;
+      if (fastNav && !video.paused) return;
       void video.play().catch(() => undefined);
     };
     if (video.readyState >= 2) start();
-    else video.addEventListener('loadeddata', start, { once: true });
-  }, [overlayOnly, src, postId]);
+    else video.addEventListener('loadeddata', start);
+    return () => {
+      cancelled = true;
+      video.removeEventListener('loadeddata', start);
+      if (fastNav) video.pause();
+    };
+  }, [overlayOnly, src, postId, fastNav]);
 
   const flashPlayback = useCallback((state: 'play' | 'pause') => {
     setPlaybackFlash(state);
@@ -640,6 +689,16 @@ export function PostVideoPlayer({
       }}
       onLoadedData={() => {
         tryCapturePoster();
+        if (firstFrameSrcRef.current !== src) {
+          firstFrameSrcRef.current = src;
+          onFirstFrameRef.current?.();
+        }
+      }}
+      onPlaying={() => {
+        if (firstFrameSrcRef.current !== src) {
+          firstFrameSrcRef.current = src;
+          onFirstFrameRef.current?.();
+        }
       }}
       onTimeUpdate={(event) => {
         if (!storyMode || storyHeld) return;
@@ -824,13 +883,7 @@ export function PostVideoPlayer({
             }`}
           >
             {hideClose ? (
-              parkRailAtDeviceEdge ? (
-                <span className="inline-flex h-8 w-8" aria-hidden />
-              ) : (
-                <span className="inline-flex h-10 items-center rounded-full bg-black/45 px-3 text-[11px] font-bold uppercase tracking-wider text-cyan-200/90 backdrop-blur-sm">
-                  Explorar
-                </span>
-              )
+              <span className="inline-flex h-11 w-11 shrink-0" aria-hidden />
             ) : (
               <button
                 type="button"
@@ -842,7 +895,7 @@ export function PostVideoPlayer({
               </button>
             )}
             <div className="flex items-center gap-2">
-              {reelPosition ? (
+              {reelPosition && !embedded ? (
                 <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/80 backdrop-blur-sm">
                   {reelPosition.current}/{reelPosition.total}
                 </span>

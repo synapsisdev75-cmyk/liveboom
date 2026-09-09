@@ -64,6 +64,8 @@ function toReelItem(post: FsPost): ReelFeedItem {
     contentBadge: type === 'boom_clip' ? BOOM_CLIP_LABEL : contentTypeLabel(type),
     durationSec: post.durationSec,
     thumbUrl: post.thumbUrl,
+    mediaWidth: post.mediaWidth,
+    mediaHeight: post.mediaHeight,
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
@@ -102,8 +104,10 @@ export function ExploreView() {
   const historyRef = useRef(history);
   const sessionSeenRef = useRef(sessionSeen);
   const dwellRef = useRef<{ id: string; at: number } | null>(null);
+  const burstFlushRef = useRef<{ id: string; at: number } | null>(null);
   const postsByIdRef = useRef<Map<string, FsPost>>(new Map());
   const appliedStartRef = useRef(false);
+  const navRafRef = useRef(0);
   const visitedRef = useRef<Record<ExploreTab, boolean>>({
     para_ti: false,
     virales: false,
@@ -111,9 +115,18 @@ export function ExploreView() {
   });
 
   queuesRef.current = queues;
-  indicesRef.current = indices;
   historyRef.current = history;
   sessionSeenRef.current = sessionSeen;
+
+  useEffect(() => {
+    indicesRef.current = indices;
+  }, [indices]);
+
+  useEffect(() => {
+    return () => {
+      if (navRafRef.current) window.cancelAnimationFrame(navRafRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia('(orientation: landscape)');
@@ -278,21 +291,38 @@ export function ExploreView() {
       if (!id) return;
 
       const prev = dwellRef.current;
-      if (prev && prev.id && prev.id !== id) flushDwell(prev.id);
-
+      if (prev && prev.id !== id && !burstFlushRef.current) burstFlushRef.current = prev;
       dwellRef.current = { id, at: Date.now() };
       visitedRef.current[currentTab] = true;
       indicesRef.current = { ...indicesRef.current, [currentTab]: index };
-      setIndices((state) => (state[currentTab] === index ? state : { ...state, [currentTab]: index }));
 
-      const nextSeen = markExploreSessionSeen(uid, id, sessionSeenRef.current);
-      sessionSeenRef.current = nextSeen;
-      setSessionSeen(nextSeen);
+      if (navRafRef.current) window.cancelAnimationFrame(navRafRef.current);
+      navRafRef.current = window.requestAnimationFrame(() => {
+        navRafRef.current = 0;
+        const latestIndex = indicesRef.current[currentTab];
+        const latestId = queuesRef.current[currentTab][latestIndex];
+        if (!latestId) return;
 
-      const next = new URLSearchParams(searchParams);
-      next.set('tab', currentTab);
-      next.set('v', id);
-      setSearchParams(next, { replace: true });
+        const toFlush = burstFlushRef.current;
+        burstFlushRef.current = null;
+        const latestDwell = dwellRef.current;
+        if (toFlush && toFlush.id !== latestId) {
+          dwellRef.current = toFlush;
+          flushDwell(toFlush.id);
+          dwellRef.current = latestDwell;
+        }
+
+        setIndices((state) =>
+          state[currentTab] === latestIndex ? state : { ...state, [currentTab]: latestIndex },
+        );
+        const nextSeen = markExploreSessionSeen(uid, latestId, sessionSeenRef.current);
+        sessionSeenRef.current = nextSeen;
+        setSessionSeen(nextSeen);
+        const next = new URLSearchParams(searchParams);
+        next.set('tab', currentTab);
+        next.set('v', latestId);
+        setSearchParams(next, { replace: true });
+      });
     },
     [flushDwell, searchParams, setSearchParams, uid],
   );
@@ -337,30 +367,39 @@ export function ExploreView() {
 
   return (
     <div className="lb-explore-view relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-black">
-      {!deviceLandscape ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[max(0.5rem,var(--lb-safe-top))] lg:pt-3">
-          <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-white/10 bg-black/55 px-1.5 py-1 backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {TABS.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => selectTab(item)}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition ${
-                  tab === item
-                    ? 'bg-white text-zinc-950'
-                    : 'text-white/75 hover:bg-white/10 hover:text-white'
-                }`}
-              >
-                {item === 'para_ti'
-                  ? t('explore.forYou')
-                  : item === 'virales'
-                    ? t('explore.viral')
-                    : t('explore.recent')}
-              </button>
-            ))}
-          </div>
+      <img
+        src="/brand/explore-icon-cut.png"
+        alt=""
+        width={52}
+        height={52}
+        className="lb-explore-icon"
+        draggable={false}
+        aria-hidden
+      />
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[max(0.5rem,var(--lb-safe-top))] lg:pt-3">
+        <div className="lb-explore-chrome pointer-events-auto flex max-w-full items-center justify-center overflow-x-auto px-[clamp(2.6rem,12vw,4.25rem)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {!deviceLandscape ? (
+            <div className="lb-explore-tabs">
+              {TABS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => selectTab(item)}
+                  className={`lb-explore-tab shrink-0 min-h-11 bg-transparent px-2.5 text-[12px] font-bold tracking-wide sm:px-3 ${
+                    tab === item ? 'is-active' : ''
+                  }`}
+                >
+                  {item === 'para_ti'
+                    ? t('explore.forYou')
+                    : item === 'virales'
+                      ? t('explore.viral')
+                      : t('explore.recent')}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {showEmpty ? (
         <div className="grid h-full place-items-center px-6 text-center">
@@ -384,6 +423,7 @@ export function ExploreView() {
           activeId={activeId}
           embedded
           immersiveLandscapeLayout
+          exploreFastNav
           onIndexChange={onIndexChange}
         />
       )}

@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   listenPostReactions,
@@ -17,6 +17,12 @@ import { PostPhotoViewer } from '../social/PostPhotoViewer';
 import { PostVideoPlayer } from '../social/PostVideoPlayer';
 import { originalPostPath } from '../social/RepostPostCard';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
+import {
+  exploreNavMarkGesture,
+  exploreNavRecordFrame,
+  exploreNavRecordUi,
+  exploreNavRelease,
+} from '../../lib/exploreVideoPool';
 
 export type ReelFeedItem = {
   id: string;
@@ -31,6 +37,8 @@ export type ReelFeedItem = {
   /** Boom Clip / Publicación */
   contentBadge?: string | null;
   durationSec?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
   sharedFromPostId?: string | null;
   sharedFromAuthorUid?: string | null;
   sharedFromUsername?: string | null;
@@ -52,6 +60,8 @@ type Props = {
   onIndexChange?: (index: number) => void;
   /** Explorar: mantiene el video actual si la cola se reordena o crece. */
   activeId?: string | null;
+  /** Explorar: latest-wins, pool de prefetch y sin remount del reproductor. */
+  exploreFastNav?: boolean;
 };
 
 export function ReelFeedViewer({
@@ -64,6 +74,7 @@ export function ReelFeedViewer({
   collapsibleCaption = false,
   onIndexChange,
   activeId,
+  exploreFastNav = false,
 }: Props) {
   useBodyScrollLock(!embedded);
   const profile = useAuthStore((state) => state.profile);
@@ -90,6 +101,15 @@ export function ReelFeedViewer({
 
   const onIndexChangeRef = useRef(onIndexChange);
   onIndexChangeRef.current = onIndexChange;
+  const gestureAtRef = useRef(0);
+  const desiredIdRef = useRef<string | null>(null);
+  const indexRef = useRef(index);
+  const reelsRef = useRef(reels);
+  reelsRef.current = reels;
+
+  useLayoutEffect(() => {
+    indexRef.current = index;
+  }, [index]);
 
   useEffect(() => {
     setIndex((current) => Math.min(Math.max(current, 0), Math.max(reels.length - 1, 0)));
@@ -99,13 +119,18 @@ export function ReelFeedViewer({
 
   useEffect(() => {
     if (!activeId) return;
+    if (desiredIdRef.current && desiredIdRef.current !== activeId) return;
     const next = reelIdsKey ? reelIdsKey.split('\n').indexOf(activeId) : -1;
     if (next < 0) return;
+    if (desiredIdRef.current === activeId) desiredIdRef.current = null;
     setIndex((current) => (current === next ? current : next));
   }, [activeId, reelIdsKey]);
 
   useEffect(() => {
-    onIndexChangeRef.current?.(index);
+    const frame = window.requestAnimationFrame(() => {
+      onIndexChangeRef.current?.(index);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [index]);
 
   useEffect(() => {
@@ -127,6 +152,7 @@ export function ReelFeedViewer({
 
   // Precarga los siguientes videos de ESTA cola (evita pantalla vacía al deslizar).
   useEffect(() => {
+    if (exploreFastNav) return;
     const upcoming = [reels[index + 1], reels[index + 2], reels[index + 3]].filter(
       (item): item is ReelFeedItem => Boolean(item?.mediaUrl && item.mediaType !== 'photo'),
     );
@@ -144,7 +170,33 @@ export function ReelFeedViewer({
         el.load();
       }
     };
-  }, [index, reels]);
+  }, [index, reels, exploreFastNav]);
+
+  const explorePrevUrl = exploreFastNav
+    ? reels[index - 1]?.mediaType === 'photo'
+      ? null
+      : reels[index - 1]?.mediaUrl || null
+    : null;
+  const exploreNextUrl = exploreFastNav
+    ? reels[index + 1]?.mediaType === 'photo'
+      ? null
+      : reels[index + 1]?.mediaUrl || null
+    : null;
+  const exploreNext2Url = exploreFastNav
+    ? reels[index + 2]?.mediaType === 'photo'
+      ? null
+      : reels[index + 2]?.mediaUrl || null
+    : null;
+
+  useLayoutEffect(() => {
+    if (!exploreFastNav) return;
+    if (gestureAtRef.current > 0) exploreNavRecordUi(gestureAtRef.current);
+  }, [exploreFastNav, index]);
+
+  useEffect(() => {
+    if (!exploreFastNav) return;
+    return () => exploreNavRelease();
+  }, [exploreFastNav]);
 
   const storyPosition = useMemo(
     () => (storyMode ? authorLocalPosition(reels, index) : { current: index + 1, total: reels.length }),
@@ -198,9 +250,20 @@ export function ReelFeedViewer({
     }
   }
 
+  function markNavGesture() {
+    if (!exploreFastNav) return;
+    gestureAtRef.current = exploreNavMarkGesture();
+  }
+
   function goNext() {
-    if (index < reels.length - 1) {
-      setIndex((value) => value + 1);
+    markNavGesture();
+    const list = reelsRef.current;
+    const from = indexRef.current;
+    if (from < list.length - 1) {
+      const nextIndex = from + 1;
+      indexRef.current = nextIndex;
+      desiredIdRef.current = list[nextIndex]?.id || null;
+      setIndex(nextIndex);
       return;
     }
     if (storyMode) {
@@ -211,8 +274,14 @@ export function ReelFeedViewer({
   }
 
   function goPrev() {
-    if (index > 0) {
-      setIndex((value) => value - 1);
+    markNavGesture();
+    const list = reelsRef.current;
+    const from = indexRef.current;
+    if (from > 0) {
+      const nextIndex = from - 1;
+      indexRef.current = nextIndex;
+      desiredIdRef.current = list[nextIndex]?.id || null;
+      setIndex(nextIndex);
       return;
     }
     setToast('Este es el primer video.');
@@ -255,6 +324,7 @@ export function ReelFeedViewer({
           authorAvatarUrl={reel.authorAvatarUrl}
           overlayOnly
           startExpanded
+          embedded={embedded}
           onCloseExpand={onClose}
           navigation={{ onNext: goNext, onPrev: goPrev }}
           userNavigation={userNavigation}
@@ -269,7 +339,7 @@ export function ReelFeedViewer({
         />
       ) : (
         <PostVideoPlayer
-          key={reel.id}
+          key={exploreFastNav ? 'explore-player' : reel.id}
           src={reel.mediaUrl}
           postId={originId}
           authorUid={originUid}
@@ -302,6 +372,21 @@ export function ReelFeedViewer({
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
           overlays={reel.overlays}
+          posterUrl={exploreFastNav ? reel.thumbUrl : undefined}
+          mediaWidth={exploreFastNav ? reel.mediaWidth || undefined : undefined}
+          mediaHeight={exploreFastNav ? reel.mediaHeight || undefined : undefined}
+          skipRemoteAspectProbe={exploreFastNav}
+          fastNav={exploreFastNav}
+          fastNavPrevUrl={explorePrevUrl}
+          fastNavNextUrl={exploreNextUrl}
+          fastNavNext2Url={exploreNext2Url}
+          onFirstFrame={
+            exploreFastNav
+              ? () => {
+                  if (gestureAtRef.current > 0) exploreNavRecordFrame(gestureAtRef.current);
+                }
+              : undefined
+          }
         />
       )}
       {storyMode && !embedded ? (

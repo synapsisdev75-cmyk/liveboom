@@ -48,7 +48,7 @@ import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
 import { LanguageSelector } from '../components/i18n/LanguageSelector';
 import { LanguageControl } from '../components/i18n/LanguageControl';
-import { categoryMessageKey, useT } from '../i18n';
+import { bcp47For, categoryMessageKey, useT } from '../i18n';
 
 type SettingsTab =
   | 'cuenta'
@@ -323,7 +323,7 @@ export function ProfileView() {
       await updateProfile(firebaseUser, { photoURL: url }).catch(() => undefined);
       setAvatarUrl(url);
       setProfile({ ...profile, avatarUrl: url });
-      setToast('Foto de perfil guardada.', 'success');
+      setToast(t('settings.photoSaved'), 'success');
       window.setTimeout(() => setToast(null), 2800);
     } catch (err) {
       setError(mapProfileSaveError(err));
@@ -336,7 +336,7 @@ export function ProfileView() {
     if (!firebaseUser || !profile || !nextDate) return;
     const age = ageFromIsoDate(nextDate);
     if (age == null || age < 18) {
-      setError('Debes ser mayor de 18 años para usar Liveboom.');
+      setError(t('settings.mustBe18'));
       return;
     }
     setBusy(true);
@@ -353,7 +353,7 @@ export function ProfileView() {
       }
       setProfile({ ...profile, birthDate: nextDate });
       clearPendingBirth(firebaseUser.uid);
-      setToast('Fecha de nacimiento guardada.', 'success');
+      setToast(t('settings.birthSaved'), 'success');
       window.setTimeout(() => setToast(null), 2800);
     } catch (err) {
       setError(mapProfileSaveError(err));
@@ -372,34 +372,34 @@ export function ProfileView() {
     setError(null);
 
     if (!name) {
-      setError('El nombre es obligatorio.');
+      setError(t('settings.nameRequired'));
       return;
     }
     if (/[<>]/.test(name)) {
-      setError('El nombre contiene caracteres no permitidos.');
+      setError(t('settings.nameInvalidChars'));
       return;
     }
     let avatarToSave =
       avatarUrl.trim() || profile.avatarUrl?.trim() || firebaseUser.photoURL?.trim() || '';
     if (!avatarToSave) {
-      setError('Agrega una foto de perfil (o usa la de tu cuenta Google).');
+      setError(t('settings.photoRequired'));
       return;
     }
     if (!USERNAME_RE.test(handle)) {
-      setError('El usuario debe tener 3-24 caracteres (a-z, 0-9, _).');
+      setError(t('settings.usernameFormat'));
       return;
     }
     if (forceComplete && !nextBio) {
-      setError('La biografía es obligatoria para completar tu perfil.');
+      setError(t('settings.bioRequired'));
       return;
     }
     if (!birthDate) {
-      setError('La fecha de nacimiento es obligatoria.');
+      setError(t('settings.birthMissing'));
       return;
     }
     const age = ageFromIsoDate(birthDate);
     if (age == null || age < 18) {
-      setError('Debes ser mayor de 18 años para usar Liveboom.');
+      setError(t('settings.mustBe18'));
       return;
     }
 
@@ -417,7 +417,7 @@ export function ProfileView() {
     if (isHttpUrl(avatarToSave) && avatarToSave !== prevAvatar) changed.avatarUrl = avatarToSave;
 
     if (Object.keys(changed).length === 0 && isHttpUrl(avatarToSave)) {
-      setToast('Perfil actualizado correctamente.', 'success');
+      setToast(t('settings.profileUpdated'), 'success');
       window.setTimeout(() => setToast(null), 2800);
       setEditing(null);
       return;
@@ -506,7 +506,7 @@ export function ProfileView() {
       if (avatarToSave.startsWith('http')) firebasePatch.photoURL = avatarToSave;
       await updateProfile(firebaseUser, firebasePatch).catch(() => undefined);
       setEditing(null);
-      setToast('Perfil actualizado correctamente.', 'success');
+      setToast(t('settings.profileUpdated'), 'success');
       window.setTimeout(() => setToast(null), 2800);
     } catch (err) {
       setError(mapProfileSaveError(err));
@@ -520,7 +520,7 @@ export function ProfileView() {
     setBusy(true);
     try {
       await sendPasswordResetEmail(auth, profile.email);
-      setToast('Te enviamos un correo para cambiar la contraseña.', 'success');
+      setToast(t('settings.passwordEmailSent'), 'success');
       window.setTimeout(() => setToast(null), 3200);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo enviar el correo');
@@ -701,7 +701,7 @@ export function ProfileView() {
                   </InfoRow>
 
                   <InfoRow
-                    label="Nombre de usuario"
+                    label={t('settings.username')}
                     value={`@${username.replace(/^@/, '') || '—'}`}
                     editing={editing === 'username'}
                     onEdit={() => setEditing('username')}
@@ -720,24 +720,24 @@ export function ProfileView() {
 
                   <div className="flex min-w-0 items-start justify-between gap-2 border-b border-white/[0.05] pb-3">
                     <div className="min-w-0 flex-1 overflow-hidden">
-                      <p className="text-[11px] font-medium text-zinc-500">Correo electrónico</p>
+                      <p className="text-[11px] font-medium text-zinc-500">{t('settings.email')}</p>
                       <p className="mt-0.5 truncate text-sm font-semibold text-white">
                         {profile.email || '—'}
                       </p>
                     </div>
                     {emailVerified ? (
                       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-300">
-                        <Check size={12} /> Verificado
+                        <Check size={12} /> {t('settings.verified')}
                       </span>
                     ) : (
                       <span className="inline-flex shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-200">
-                        Pendiente
+                        {t('settings.pending')}
                       </span>
                     )}
                   </div>
 
                   <div className="min-w-0 border-b border-white/[0.05] pb-3">
-                    <p className="text-[11px] font-medium text-zinc-500">Fecha de nacimiento</p>
+                    <p className="text-[11px] font-medium text-zinc-500">{t('settings.birthDate')}</p>
                     <input
                       type="date"
                       value={birthDate}
@@ -752,9 +752,11 @@ export function ProfileView() {
                       className="mt-1 h-10 w-full min-w-0 max-w-full rounded-lg border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
                     />
                     {calculatedAge != null ? (
-                      <p className="mt-1 text-[11px] text-zinc-500">Edad: {calculatedAge} años</p>
+                      <p className="mt-1 text-[11px] text-zinc-500">
+                        {t('settings.ageYears', { age: calculatedAge })}
+                      </p>
                     ) : (
-                      <p className="mt-1 text-[11px] text-zinc-500">Obligatoria · mayor de 18 años</p>
+                      <p className="mt-1 text-[11px] text-zinc-500">{t('settings.birthRequired')}</p>
                     )}
                   </div>
 
@@ -765,7 +767,7 @@ export function ProfileView() {
                       onClick={() => void save()}
                       className="h-10 w-full rounded-xl bg-violet-600 text-sm font-bold text-white disabled:opacity-50"
                     >
-                      {busy ? 'Guardando...' : 'Guardar cambios'}
+                      {busy ? t('settings.saving') : t('settings.saveChanges')}
                     </button>
                   ) : null}
                 </div>
@@ -777,11 +779,15 @@ export function ProfileView() {
                 onClick={() => void save()}
                 className="mt-4 h-11 w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-sm font-bold text-white disabled:opacity-50"
               >
-                {busy ? 'Guardando...' : avatarBusy ? 'Subiendo foto…' : 'Guardar perfil'}
+                {busy
+                  ? t('settings.saving')
+                  : avatarBusy
+                    ? t('settings.uploadingPhoto')
+                    : t('settings.saveProfile')}
               </button>
             </Card>
 
-            <Card title="Verificación de cuenta" subtitle="Aumenta tu seguridad y accede a más beneficios.">
+            <Card title={t('settings.accountVerification')} subtitle={t('settings.accountVerificationSub')}>
               <div
                 className={`flex items-center gap-3 rounded-xl border px-3 py-3 ${
                   emailVerified
@@ -798,12 +804,12 @@ export function ProfileView() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-bold text-white">
-                    {emailVerified ? 'Cuenta verificada' : 'Verificación pendiente'}
+                    {emailVerified ? t('settings.accountVerified') : t('settings.verificationPending')}
                   </span>
                   <span className="block text-xs text-zinc-400">
                     {emailVerified
-                      ? 'Tu cuenta está verificada.'
-                      : 'Confirma tu correo para verificar la cuenta.'}
+                      ? t('settings.accountVerifiedHint')
+                      : t('settings.verificationPendingHint')}
                   </span>
                 </span>
                 <ChevronRight size={16} className="text-zinc-500" />
@@ -812,15 +818,15 @@ export function ProfileView() {
 
             <RowLink
               icon={<Lock size={18} />}
-              title="Cambiar contraseña"
-              subtitle="Asegura tu cuenta con una contraseña fuerte."
+              title={t('settings.changePassword')}
+              subtitle={t('settings.changePasswordSub')}
               onClick={() => void onChangePassword()}
             />
 
-            <Card title="Eliminar cuenta" subtitle="Esta acción no se puede deshacer.">
+            <Card title={t('settings.deleteAccount')} subtitle={t('settings.deleteAccountSub')}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-zinc-500">
-                  Se borrarán perfil, publicaciones, amistades y mensajes.
+                  {t('settings.deleteAccountHint')}
                 </p>
                 <DeleteAccount inline />
               </div>
@@ -835,14 +841,14 @@ export function ProfileView() {
               </span>
               <div>
                 <h2 className="text-base font-bold text-white">{t('settings.referral')}</h2>
-                <p className="text-[11px] text-zinc-500">Invita amigos y gana coins juntos.</p>
+                <p className="text-[11px] text-zinc-500">{t('settings.referralSub')}</p>
               </div>
             </header>
 
             <div className="grid grid-cols-2 gap-2">
               <div className="lb-settings-stat rounded-xl p-3">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                  Tus referidos
+                  {t('settings.yourReferrals')}
                 </p>
                 <p className="mt-1 flex items-center gap-1.5 text-lg font-bold text-white">
                   <Users size={16} className="text-violet-400" /> 0
@@ -850,7 +856,7 @@ export function ProfileView() {
               </div>
               <div className="lb-settings-stat rounded-xl p-3">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                  Coins ganados
+                  {t('settings.coinsEarned')}
                 </p>
                 <p className="mt-1 flex items-center gap-1.5 text-lg font-bold text-white">
                   <span className="text-amber-400">●</span> 0
@@ -859,14 +865,14 @@ export function ProfileView() {
             </div>
 
             <div className="mt-5">
-              <p className="text-xs font-semibold text-white">Cómo funciona</p>
+              <p className="text-xs font-semibold text-white">{t('settings.howItWorks')}</p>
               <ol className="mt-3 space-y-3">
                 {[
-                  'Invita a tus amigos',
-                  'Ellos se registran',
-                  'Ambos ganan',
+                  t('settings.inviteFriends'),
+                  t('settings.theySignUp'),
+                  t('settings.bothEarn'),
                 ].map((step, i) => (
-                  <li key={step} className="flex items-center gap-3 text-sm text-zinc-300">
+                  <li key={i} className="flex items-center gap-3 text-sm text-zinc-300">
                     <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-violet-600 text-xs font-bold text-white">
                       {i + 1}
                     </span>
@@ -877,7 +883,7 @@ export function ProfileView() {
             </div>
 
             <div className="mt-5">
-              <p className="mb-2 text-xs font-semibold text-white">Tu enlace de referido</p>
+              <p className="mb-2 text-xs font-semibold text-white">{t('settings.yourReferralLink')}</p>
               <div className="flex gap-2">
                 <input
                   readOnly
@@ -890,13 +896,13 @@ export function ProfileView() {
                   className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 text-xs font-bold text-white"
                 >
                   {copied ? <Check size={14} /> : <Copy size={14} />}
-                  {copied ? 'Copiado' : 'Copiar'}
+                  {copied ? t('settings.copied') : t('settings.copy')}
                 </button>
               </div>
             </div>
 
             <div className="mt-5">
-              <p className="mb-2 text-xs font-semibold text-white">Compartir enlace</p>
+              <p className="mb-2 text-xs font-semibold text-white">{t('settings.shareLink')}</p>
               <div className="flex flex-wrap gap-2">
                 <ShareCircle label="WhatsApp" onClick={() => shareReferral('wa')} tone="bg-emerald-500/20 text-emerald-300">
                   WA
@@ -910,7 +916,7 @@ export function ProfileView() {
                 <ShareCircle label="X" onClick={() => shareReferral('x')} tone="bg-zinc-500/30 text-zinc-200">
                   X
                 </ShareCircle>
-                <ShareCircle label="Más" onClick={() => shareReferral('more')} tone="bg-white/10 text-zinc-300">
+                <ShareCircle label={t('settings.more')} onClick={() => shareReferral('more')} tone="bg-white/10 text-zinc-300">
                   <MoreHorizontal size={16} />
                 </ShareCircle>
               </div>
@@ -920,19 +926,19 @@ export function ProfileView() {
               type="button"
               className="mt-5 flex w-full items-center justify-center gap-1 text-sm font-semibold text-violet-300 hover:underline"
             >
-              Ver mis referidos <ChevronRight size={14} />
+              {t('settings.viewMyReferrals')} <ChevronRight size={14} />
             </button>
           </Card>
           <RowLink
             icon={<Share2 size={18} />}
             title={t('actions.shareProfile')}
-            subtitle="Comparte tu perfil de LiveBoom"
+            subtitle={t('settings.shareProfileSub')}
             onClick={() => shareOwnProfile()}
           />
           <RowLink
             icon={<LogOut size={18} />}
             title={t('settings.logOut')}
-            subtitle="Salir de esta cuenta"
+            subtitle={t('settings.logOutSub')}
             onClick={() => void logout()}
           />
           <LanguageControl variant="row" />
@@ -942,52 +948,52 @@ export function ProfileView() {
 
       {tab === 'privacidad' ? (
         <div className="space-y-4">
-          <Card title="Privacidad y seguridad" subtitle="Controla quién ve tu contenido y cómo proteges tu cuenta.">
+          <Card title={t('settings.privacyTitle')} subtitle={t('settings.privacySub')}>
             <div className="space-y-3">
               <ToggleRow
-                title="Perfil más privado"
-                subtitle="Limita quién puede enviarte solicitudes."
+                title={t('settings.morePrivate')}
+                subtitle={t('settings.morePrivateSub')}
                 checked={privateProfile}
                 onChange={setPrivateProfile}
               />
               <RowLink
                 icon={<Lock size={18} />}
-                title="Cambiar contraseña"
-                subtitle="Te enviaremos un correo seguro."
+                title={t('settings.changePassword')}
+                subtitle={t('settings.changePasswordMail')}
                 onClick={() => void onChangePassword()}
               />
               <RowLink
                 icon={<Shield size={18} />}
-                title="Sesiones y dispositivos"
-                subtitle="Revisa accesos recientes desde tu correo."
+                title={t('settings.sessionsDevices')}
+                subtitle={t('settings.sessionsDevicesSub')}
                 to="/legal/privacidad"
               />
             </div>
           </Card>
-          <Card title="Llamadas" subtitle="Quién puede llamarte y cuánto cuesta cada minuto.">
+          <Card title={t('settings.callsTitle')} subtitle={t('settings.callsSub')}>
             <CallSettingsPanel />
           </Card>
         </div>
       ) : null}
 
       {tab === 'notificaciones' ? (
-        <Card title="Notificaciones" subtitle="Elige qué alertas quieres recibir.">
+        <Card title={t('settings.notificationsTitle')} subtitle={t('settings.notificationsSub')}>
           <div className="space-y-3">
             <ToggleRow
-              title="Amigos en LIVE"
-              subtitle="Sonido y aviso cuando un amigo transmite."
+              title={t('settings.notifyFriendsLive')}
+              subtitle={t('settings.notifyFriendsLiveSub')}
               checked={notifyLive}
               onChange={setNotifyLive}
             />
             <ToggleRow
-              title="Mensajes privados"
-              subtitle="Alerta cuando recibes un chat."
+              title={t('settings.notifyPrivateMessages')}
+              subtitle={t('settings.notifyPrivateMessagesSub')}
               checked={notifyMsg}
               onChange={setNotifyMsg}
             />
             <ToggleRow
-              title="Regalos y actividad"
-              subtitle="Avisos de regalos y menciones."
+              title={t('settings.notifyGiftsActivity')}
+              subtitle={t('settings.notifyGiftsActivitySub')}
               checked={notifyGifts}
               onChange={setNotifyGifts}
             />
@@ -1051,7 +1057,7 @@ export function ProfileView() {
       {tab === 'billetera' && profile ? (
         <Card title={t('settings.tabWallet')} subtitle={t('settings.walletSub')}>
           <p className="text-3xl font-bold text-cyan-300">
-            {profile.coinsBalance.toLocaleString('es-CO')}{' '}
+            {profile.coinsBalance.toLocaleString(bcp47For(t.locale))}{' '}
             <span className="text-base font-semibold text-zinc-400">coins</span>
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -1074,12 +1080,12 @@ export function ProfileView() {
       {tab === 'apariencia' ? (
         <Card title={t('settings.tabAppearance')} subtitle={t('settings.appearanceSub')}>
           <p className="text-sm text-zinc-400">
-            Por ahora LiveBoom usa el tema oscuro oficial del mockup. Pronto podrás ajustar acentos.
+            {t('settings.appearanceSub')}
           </p>
           <div className="mt-4 grid grid-cols-3 gap-2">
-            {['Oscuro', 'Auto', 'Claro'].map((label, i) => (
+            {['dark', 'auto', 'light'].map((id, i) => (
               <button
-                key={label}
+                key={id}
                 type="button"
                 disabled={i !== 0}
                 className={`rounded-xl border px-3 py-4 text-xs font-bold ${
@@ -1088,7 +1094,7 @@ export function ProfileView() {
                     : 'border-white/10 text-zinc-600'
                 }`}
               >
-                {label}
+                {id === 'dark' ? t('appearance.dark') : id === 'light' ? t('appearance.light') : t('appearance.mode')}
               </button>
             ))}
           </div>
@@ -1139,6 +1145,7 @@ function InfoRow({
   onCancel: () => void;
   children: ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="min-w-0 border-b border-white/[0.05] pb-3 last:border-0 last:pb-0">
       <div className="flex min-w-0 items-start justify-between gap-2">
@@ -1154,7 +1161,7 @@ function InfoRow({
             onClick={onCancel}
             className="shrink-0 rounded-lg bg-zinc-800 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300"
           >
-            Cancelar
+            {t('common.cancel')}
           </button>
         ) : (
           <button
@@ -1162,7 +1169,7 @@ function InfoRow({
             onClick={onEdit}
             className="shrink-0 rounded-lg bg-zinc-800 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-200 hover:bg-zinc-700"
           >
-            Editar
+            {t('common.edit')}
           </button>
         )}
       </div>
@@ -1231,6 +1238,7 @@ function ShareCircle({
 
 /** Botón rojo del mockup + diálogo de confirmación existente. */
 function DeleteAccount({ inline = false }: { inline?: boolean }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   if (!inline) return <DeleteAccountSection />;
   return (
@@ -1241,7 +1249,7 @@ function DeleteAccount({ inline = false }: { inline?: boolean }) {
           onClick={() => setOpen(true)}
           className="inline-flex items-center gap-1.5 text-sm font-bold text-rose-400 hover:text-rose-300"
         >
-          <Trash2 size={15} /> Eliminar mi cuenta
+          <Trash2 size={15} /> {t('settings.deleteMyAccount')}
         </button>
       ) : (
         <div className="min-w-[14rem]">

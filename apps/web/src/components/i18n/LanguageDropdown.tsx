@@ -7,7 +7,24 @@ import {
   localeSearchHaystack,
   useT,
   type AppLocale,
+  type MessageKey,
 } from '../../i18n';
+
+const LOCALE_LABEL_KEY: Record<AppLocale, MessageKey> = {
+  es: 'language.localeEs',
+  en: 'language.localeEn',
+  pt: 'language.localePt',
+  fr: 'language.localeFr',
+  de: 'language.localeDe',
+  it: 'language.localeIt',
+  zh: 'language.localeZh',
+  ja: 'language.localeJa',
+  ko: 'language.localeKo',
+  hi: 'language.localeHi',
+  bn: 'language.localeBn',
+  ar: 'language.localeAr',
+  ru: 'language.localeRu',
+};
 import { useLocaleStore } from '../../store/localeStore';
 
 export function LanguageDropdown() {
@@ -64,8 +81,11 @@ export function LocaleMenuList({
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return [...APP_LOCALES];
-    return APP_LOCALES.filter((id) => localeSearchHaystack(id).includes(needle));
-  }, [query]);
+    return APP_LOCALES.filter((id) => {
+      const hay = `${localeSearchHaystack(id)} ${t(LOCALE_LABEL_KEY[id])}`.toLowerCase();
+      return hay.includes(needle);
+    });
+  }, [query, t]);
 
   function move(delta: number) {
     if (matches.length === 0) return;
@@ -109,27 +129,39 @@ export function LocaleMenuList({
           matches.map((id, index) => {
             const meta = LOCALE_META[id];
             const active = selected === id;
+            const translated = t(LOCALE_LABEL_KEY[id]);
+            const extra = translated && translated !== meta.nativeName ? translated : null;
             return (
               <button
                 key={id}
                 type="button"
                 role="option"
                 aria-selected={active}
-                dir={meta.dir}
+                dir="ltr"
                 className={`lb-lang-menu__item${active ? ' is-on' : ''}${index === activeIndex ? ' is-focus' : ''}`}
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => onPick(id)}
               >
-                <span className="lb-lang-menu__flag" aria-hidden>
-                  {meta.flag}
-                </span>
-                <span className="lb-lang-menu__names">
-                  <span className="lb-lang-menu__native">{meta.nativeName}</span>
-                  <span className="lb-lang-menu__latin">
-                    {meta.spanishName} · {id.toUpperCase()}
+                <span className="lb-lang-menu__lead">
+                  <span className="lb-lang-menu__code">{meta.regionCode}</span>
+                  <span className="lb-lang-menu__names">
+                    <span className="lb-lang-menu__native" dir={meta.dir}>
+                      {meta.nativeName}
+                    </span>
+                    {extra ? <span className="lb-lang-menu__latin">{extra}</span> : null}
                   </span>
                 </span>
-                {active ? <Check size={15} className="lb-lang-menu__check" /> : null}
+                <span className="lb-lang-menu__trail">
+                  {active ? <Check size={15} className="lb-lang-menu__check" /> : null}
+                  <img
+                    className="lb-lang-menu__flag"
+                    src={meta.flagSrc}
+                    alt=""
+                    width={22}
+                    height={16}
+                    draggable={false}
+                  />
+                </span>
               </button>
             );
           })

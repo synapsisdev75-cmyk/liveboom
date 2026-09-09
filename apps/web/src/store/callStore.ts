@@ -82,6 +82,7 @@ type CallState = {
     serverUrl: string;
   }) => void;
   markActive: (connectedAtMs?: number) => void;
+  setCallCredentials: (payload: { token: string; serverUrl: string; callId?: string }) => void;
   hangup: (outcome?: 'completed' | 'missed' | 'cancelled' | 'declined', opts?: { skipHistory?: boolean; error?: string | null }) => Promise<void>;
 };
 
@@ -225,6 +226,16 @@ export const useCallStore = create<CallState>((set, get) => ({
     });
   },
 
+  setCallCredentials: ({ token, serverUrl, callId }) => {
+    const prev = get();
+    if (prev.status === 'idle') return;
+    set({
+      token,
+      serverUrl,
+      callId: callId || prev.callId,
+    });
+  },
+
     hangup: async (forcedOutcome, opts) => {
     const prev = get();
     if (hangupBusy) return;
@@ -235,70 +246,41 @@ export const useCallStore = create<CallState>((set, get) => ({
     const wasActive = prev.status === 'active';
     const wasRingingOut = prev.status === 'ringing-out';
     const wasRingingIn = prev.status === 'ringing-in';
-    hangupBusy = true;
-    releasePendingCallMicrophone();
-    console.info('[CALL] cleanup', {
-      callId,
-      reason: forcedOutcome || opts?.error || (wasActive ? 'ended' : wasRingingOut ? 'cancelled' : wasRingingIn ? 'declined' : 'hangup'),
-      status: prev.status,
-    });
-
-    try {
-    if (wasRingingIn && !wasActive && chatId) {
-      const remote = await peekPrivateCallStatus(chatId).catch(() => null);
-      if (remote === 'active') {
-        clearCallSession();
-        set({
-          status: 'idle',
-          chatId: null,
-          callId: null,
-          peer: null,
-          video: false,
-          token: null,
-          serverUrl: null,
-          incoming: null,
-          activeStartedAt: null,
-          recovering: false,
-          callBilling: null,
-          lastError: prev.lastError,
-        });
-        return;
-      }
-    }
-
     const video = prev.video || Boolean(prev.incoming?.video);
     const durationSec =
       wasActive && prev.activeStartedAt
         ? Math.max(1, Math.round((Date.now() - prev.activeStartedAt) / 1000))
         : 0;
-
     const live = prev.callBilling;
     const me = useAuthStore.getState().profile;
-    let summary: VideoCallEndedSummary | null = null;
-    if (video && wasActive && chatId) {
-      const billing = await readCallBillingSnapshot(chatId).catch(() => null);
-      const rate = billing?.rateBlasts || live?.rateBlasts || 0;
-      const total = billing?.totalBlasts || live?.spentBlasts || 0;
-      const blocks = billing?.blocksCharged || live?.blocksCharged || 0;
-      const payer = billing?.payerUid || live?.payerUid || null;
-      summary = {
-        handle: prev.peer?.username || prev.incoming?.peer.username || '',
-        durationSec,
-        rateBlasts: rate,
-        blocksCharged: blocks,
-        totalBlasts: total,
-        giftName: billing?.giftName || live?.giftName || null,
-        received: Boolean(payer && me?.firebaseUid && payer !== me.firebaseUid),
-      };
+    let outcome = forcedOutcome;
+    if (!outcome) {
+      if (wasActive) outcome = 'completed';
+      else if (wasRingingIn) outcome = 'declined';
+      else if (wasRingingOut) outcome = 'missed';
+      else outcome = 'cancelled';
     }
+    const summary: VideoCallEndedSummary | null =
+      video && wasActive
+        ? {
+            handle: prev.peer?.username || prev.incoming?.peer.username || '',
+            durationSec,
+            rateBlasts: live?.rateBlasts || 0,
+            blocksCharged: live?.blocksCharged || 0,
+            totalBlasts: live?.spentBlasts || 0,
+            giftName: live?.giftName || null,
+            received: Boolean(live?.payerUid && me?.firebaseUid && live.payerUid !== me.firebaseUid),
+          }
+        : null;
 
-    if (chatId) await endPrivateCall(chatId);
-    await releaseCallSession(callId);
-    if (me?.firebaseUid) {
-      await releaseOwnCallPresence(me.firebaseUid, callId).catch(() => undefined);
-    }
+    hangupBusy = true;
+    releasePendingCallMicrophone();
+    console.info('[CALL] cleanup', {
+      callId,
+      reason: outcome || opts?.error || 'hangup',
+      status: prev.status,
+    });
     clearCallSession();
-
     set({
       status: 'idle',
       chatId: null,
@@ -315,26 +297,49 @@ export const useCallStore = create<CallState>((set, get) => ({
       lastError: opts?.error || null,
     });
 
-    let outcome = forcedOutcome;
-    if (!outcome) {
-      if (wasActive) outcome = 'completed';
-      else if (wasRingingIn) outcome = 'declined';
-      else if (wasRingingOut) outcome = 'missed';
-      else outcome = 'cancelled';
-    }
-
-    if (!opts?.skipHistory && me?.firebaseUid && callId && chatId) {
-      await postCallHistoryMessage(chatId, me.firebaseUid, {
-        callId,
-        video,
-        outcome,
-        durationSec,
-        giftName: summary?.giftName,
-        rateBlasts: summary?.rateBlasts,
-        blocksCharged: summary?.blocksCharged,
-        totalBlasts: summary?.totalBlasts,
-      }).catch(() => undefined);
-    }
+    try {
+      if (wasRingingIn && !wasActive && chatId) {
+        const remote = await peekPrivateCallStatus(chatId).catch(() => null);
+        if (remote === 'active') return;
+      }
+      if (chatId) {
+        void endPrivateCall(chatId, { callId, outcome }).catch(() => undefined);
+      }
+      void releaseCallSession(callId);
+      if (me?.firebaseUid) {
+        void releaseOwnCallPresence(me.firebaseUid, callId).catch(() => undefined);
+      }
+      if (!opts?.skipHistory && me?.firebaseUid && callId && chatId) {
+        void postCallHistoryMessage(chatId, me.firebaseUid, {
+          callId,
+          video,
+          outcome,
+          durationSec,
+          giftName: summary?.giftName,
+          rateBlasts: summary?.rateBlasts,
+          blocksCharged: summary?.blocksCharged,
+          totalBlasts: summary?.totalBlasts,
+        }).catch(() => undefined);
+      }
+      if (video && wasActive && chatId) {
+        void readCallBillingSnapshot(chatId)
+          .then((billing) => {
+            if (!billing || !summary) return;
+            set({
+              endedSummary: {
+                ...summary,
+                rateBlasts: billing.rateBlasts || summary.rateBlasts,
+                blocksCharged: billing.blocksCharged || summary.blocksCharged,
+                totalBlasts: billing.totalBlasts || summary.totalBlasts,
+                giftName: billing.giftName || summary.giftName,
+                received: Boolean(
+                  billing.payerUid && me?.firebaseUid && billing.payerUid !== me.firebaseUid,
+                ),
+              },
+            });
+          })
+          .catch(() => undefined);
+      }
     } finally {
       hangupBusy = false;
     }

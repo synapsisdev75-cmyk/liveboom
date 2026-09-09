@@ -19,7 +19,7 @@ import {
 import { assertCanStartCall, CallBusyError, claimOwnCallBusy, releaseOwnCallPresence } from '../../lib/callAvailability';
 import { formatCallApiError, createCall, readCallBusyCode, releaseCallSession } from '../../lib/liveKitCallService';
 import { ensureCallMediaPermission, releasePendingCallMicrophone } from '../../lib/callMedia';
-import { startPrivateCall, type FriendChip } from '../../lib/socialFirestore';
+import { endPrivateCall, startPrivateCall, type FriendChip } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
 
@@ -120,26 +120,22 @@ export function CallChatActions({
     if (video) console.info('[VIDEO CALL] start clicked');
     let startedCallId: string | null = null;
     try {
-      const denied = await ensureCallMediaPermission(video);
-      if (denied) {
-        onError(denied);
-        return;
-      }
       await assertCanStartCall(profile.firebaseUid, peer.uid, {
         localInCall: localStatus !== 'idle' || useCallStore.getState().recovering,
         handle: peer.username,
       });
       if (localStatus === 'idle') {
-        await releaseOwnCallPresence(profile.firebaseUid);
+        void releaseOwnCallPresence(profile.firebaseUid);
       }
+      const mediaPromise = ensureCallMediaPermission(video);
       const session = await createCall(peer.uid, video ? 'video' : 'audio', {
         authorizationId: authId,
         giftId: pricing?.giftId || null,
         chatId,
       });
-      startedCallId = session.callId;
-      await claimOwnCallBusy(profile.firebaseUid, { callId: session.callId, chatId, peerUid: peer.uid });
-      const callId = await startPrivateCall(
+      const callId = session.callId;
+      startedCallId = callId;
+      await startPrivateCall(
         chatId,
         {
           firebaseUid: profile.firebaseUid,
@@ -149,10 +145,9 @@ export function CallChatActions({
         },
         peer,
         video,
-        session.callId,
-        { rateSnapshot: pricing, authorizationId: authId, maxBlasts },
+        callId,
+        { rateSnapshot: pricing, authorizationId: authId, maxBlasts, skipPermissionCheck: true },
       );
-      await claimOwnCallBusy(profile.firebaseUid, { callId, chatId, peerUid: peer.uid });
       beginOutgoing({
         chatId,
         callId,
@@ -161,14 +156,26 @@ export function CallChatActions({
         token: session.token,
         serverUrl: session.serverUrl,
       });
+      void claimOwnCallBusy(profile.firebaseUid, { callId, chatId, peerUid: peer.uid });
+      const denied = await mediaPromise;
+      if (denied) {
+        onError(denied);
+        void useCallStore.getState().hangup('cancelled');
+        return;
+      }
       setAuthId(null);
     } catch (err) {
       releasePendingCallMicrophone();
-      if (startedCallId) {
-        await releaseOwnCallPresence(profile.firebaseUid, startedCallId);
-        await releaseCallSession(startedCallId);
+      if (startedCallId && chatId) {
+        void endPrivateCall(chatId, { callId: startedCallId, outcome: 'failed' }).catch(() => undefined);
+      }
+      if (useCallStore.getState().status !== 'idle') {
+        void useCallStore.getState().hangup('cancelled', { skipHistory: true });
+      } else if (startedCallId) {
+        void releaseOwnCallPresence(profile.firebaseUid, startedCallId).catch(() => undefined);
+        void releaseCallSession(startedCallId);
       } else {
-        await releaseOwnCallPresence(profile.firebaseUid).catch(() => undefined);
+        void releaseOwnCallPresence(profile.firebaseUid).catch(() => undefined);
       }
       if (!showBusy(err, false)) {
         onError(formatCallApiError(err, { handle: peer.username }));

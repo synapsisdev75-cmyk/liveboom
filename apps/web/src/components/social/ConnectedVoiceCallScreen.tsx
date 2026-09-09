@@ -1,4 +1,4 @@
-import { BadgeCheck, Gift, Grid3x3, MessageCircle, Mic, MicOff, MoreHorizontal, PhoneOff, Volume2, VolumeX } from 'lucide-react';
+import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { UserAvatar } from '../profile/UserAvatar';
@@ -11,8 +11,6 @@ export type ConnectedVoicePerson = {
   avatar: string | null;
   uid?: string | null;
 };
-
-const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'] as const;
 
 async function trySpeakerSink(room: ReturnType<typeof useRoomContext>) {
   try {
@@ -52,16 +50,6 @@ function applySpeakerOutput(room: ReturnType<typeof useRoomContext>, speakerOn: 
   });
 }
 
-function sendDtmf(room: ReturnType<typeof useRoomContext>, digit: string) {
-  const publish = (
-    room.localParticipant as { publishDtmf?: (code: number, identity: string) => Promise<unknown> }
-  ).publishDtmf;
-  if (typeof publish !== 'function') return;
-  const code = digit === '*' ? 10 : digit === '#' ? 11 : Number(digit);
-  if (!Number.isFinite(code)) return;
-  void publish(code, digit).catch(() => undefined);
-}
-
 function ConnectedVoiceWave() {
   const room = useRoomContext();
   const [level, setLevel] = useState(0.35);
@@ -89,10 +77,9 @@ export function ConnectedVoiceCallScreen({
   elapsedLabel,
   statusLabel,
   onHangup,
-  onFollowChat,
+  onFollowChat: _onFollowChat,
   onMinimize,
   onMaximize,
-  onClose,
   maximized,
 }: {
   person: ConnectedVoicePerson;
@@ -110,7 +97,6 @@ export function ConnectedVoiceCallScreen({
   const [micOn, setMicOn] = useState(true);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [micError, setMicError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<null | 'keypad' | 'more'>(null);
 
   useEffect(() => {
     applySpeakerOutput(room, speakerOn);
@@ -158,7 +144,6 @@ export function ConnectedVoiceCallScreen({
           showLogo={false}
           onMinimize={onMinimize}
           onMaximize={onMaximize}
-          onClose={onClose}
           maximized={maximized}
         />
       </header>
@@ -179,41 +164,6 @@ export function ConnectedVoiceCallScreen({
         <p className="lb-voice-connected-quote">Las mejores conexiones se viven en voz 💜</p>
       </div>
 
-      {panel === 'keypad' ? (
-        <div className="lb-voice-keypad" data-no-drag>
-          {KEYPAD_KEYS.map((key) => (
-            <button key={key} type="button" onClick={() => sendDtmf(room, key)} aria-label={`Tecla ${key}`}>
-              {key}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {panel === 'more' ? (
-        <div className="lb-voice-more-sheet" data-no-drag>
-          <button
-            type="button"
-            onClick={() => {
-              setPanel(null);
-              onFollowChat();
-            }}
-          >
-            <MessageCircle size={16} />
-            Seguir en el chat
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPanel(null);
-              window.dispatchEvent(new CustomEvent('liveboom:open-chat-gifts'));
-            }}
-          >
-            <Gift size={16} />
-            Regalos
-          </button>
-        </div>
-      ) : null}
-
       <div className="lb-voice-connected-actions" data-no-drag>
         <div className="lb-voice-connected-action">
           <button
@@ -227,17 +177,16 @@ export function ConnectedVoiceCallScreen({
           </button>
           <span>{micOn ? 'Silenciar micrófono' : 'Micrófono silenciado'}</span>
         </div>
-        <div className="lb-voice-connected-action">
+        <div className="lb-voice-connected-action is-gift">
           <button
             type="button"
-            className={`lb-video-connected-btn${panel === 'keypad' ? ' is-on' : ''}`}
-            onClick={() => setPanel((current) => (current === 'keypad' ? null : 'keypad'))}
-            aria-label="Teclado"
-            aria-expanded={panel === 'keypad'}
+            className="lb-video-connected-btn is-gift"
+            onClick={() => window.dispatchEvent(new CustomEvent('liveboom:open-chat-gifts'))}
+            aria-label="Regalos"
           >
-            <Grid3x3 size={18} />
+            <Gift size={18} />
           </button>
-          <span>Teclado</span>
+          <span>Regalos</span>
         </div>
         <div className="lb-voice-connected-action is-end">
           <button type="button" className="lb-video-connected-end" onClick={onHangup} aria-label="Finalizar">
@@ -260,18 +209,6 @@ export function ConnectedVoiceCallScreen({
             {speakerOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
           <span>Altavoz</span>
-        </div>
-        <div className="lb-voice-connected-action">
-          <button
-            type="button"
-            className={`lb-video-connected-btn${panel === 'more' ? ' is-on' : ''}`}
-            onClick={() => setPanel((current) => (current === 'more' ? null : 'more'))}
-            aria-label="Más opciones"
-            aria-expanded={panel === 'more'}
-          >
-            <MoreHorizontal size={18} />
-          </button>
-          <span>Más opciones</span>
         </div>
       </div>
       {micError ? <p className="lb-video-connected-error">{micError}</p> : null}

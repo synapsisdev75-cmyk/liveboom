@@ -66,6 +66,8 @@ type Props = {
   originalUsername?: string | null;
   originalHref?: string | null;
   overlays?: MediaOverlayItem[];
+  /** Feed embebido en página (Explorar): sin conteo ni botón cerrar. */
+  embedded?: boolean;
 };
 
 /**
@@ -95,6 +97,7 @@ export function PostPhotoViewer({
   originalUsername = null,
   originalHref = null,
   overlays = [],
+  embedded = false,
 }: Props) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
@@ -414,7 +417,9 @@ export function PostPhotoViewer({
                 : 'max(0.75rem, env(safe-area-inset-top, 0px))',
             }}
           >
-          {profilePath || originalUsername ? (
+          {embedded ? (
+            <span className="inline-flex h-11 w-11 shrink-0" aria-hidden />
+          ) : profilePath || originalUsername ? (
             <div className="min-w-0">
               {repostByUsername ? (
                 <p className="text-[11px] font-semibold text-fuchsia-200">@{repostByUsername} reposteó</p>
@@ -432,19 +437,21 @@ export function PostPhotoViewer({
             </span>
           )}
           <div className="flex items-center gap-2">
-            {position ? (
+            {position && !embedded ? (
               <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/80">
                 {position.current}/{position.total}
               </span>
             ) : null}
-            <button
-              type="button"
-              onClick={closeExpand}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
-              aria-label="Cerrar"
-            >
-              <X size={18} />
-            </button>
+            {!embedded ? (
+              <button
+                type="button"
+                onClick={closeExpand}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            ) : null}
           </div>
           </div>
         </header>

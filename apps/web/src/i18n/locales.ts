@@ -27,7 +27,8 @@ export const LOCALE_META: Record<
     nativeName: string;
     englishName: string;
     spanishName: string;
-    flag: string;
+    regionCode: string;
+    flagSrc: string;
     htmlLang: string;
     bcp47: string;
     dir: 'ltr' | 'rtl';
@@ -37,7 +38,8 @@ export const LOCALE_META: Record<
     nativeName: 'Español',
     englishName: 'Spanish',
     spanishName: 'Español',
-    flag: '🇪🇸',
+    regionCode: 'ES',
+    flagSrc: '/emojis/flags/es.svg',
     htmlLang: 'es',
     bcp47: 'es-ES',
     dir: 'ltr',
@@ -46,7 +48,8 @@ export const LOCALE_META: Record<
     nativeName: 'English',
     englishName: 'English',
     spanishName: 'Inglés',
-    flag: '🇺🇸',
+    regionCode: 'US',
+    flagSrc: '/emojis/flags/us.svg',
     htmlLang: 'en',
     bcp47: 'en-US',
     dir: 'ltr',
@@ -55,7 +58,8 @@ export const LOCALE_META: Record<
     nativeName: 'Português',
     englishName: 'Portuguese',
     spanishName: 'Portugués',
-    flag: '🇧🇷',
+    regionCode: 'BR',
+    flagSrc: '/emojis/flags/br.svg',
     htmlLang: 'pt',
     bcp47: 'pt-BR',
     dir: 'ltr',
@@ -64,7 +68,8 @@ export const LOCALE_META: Record<
     nativeName: 'Français',
     englishName: 'French',
     spanishName: 'Francés',
-    flag: '🇫🇷',
+    regionCode: 'FR',
+    flagSrc: '/emojis/flags/fr.svg',
     htmlLang: 'fr',
     bcp47: 'fr-FR',
     dir: 'ltr',
@@ -73,7 +78,8 @@ export const LOCALE_META: Record<
     nativeName: 'Deutsch',
     englishName: 'German',
     spanishName: 'Alemán',
-    flag: '🇩🇪',
+    regionCode: 'DE',
+    flagSrc: '/emojis/flags/de.svg',
     htmlLang: 'de',
     bcp47: 'de-DE',
     dir: 'ltr',
@@ -82,7 +88,8 @@ export const LOCALE_META: Record<
     nativeName: 'Italiano',
     englishName: 'Italian',
     spanishName: 'Italiano',
-    flag: '🇮🇹',
+    regionCode: 'IT',
+    flagSrc: '/emojis/flags/it.svg',
     htmlLang: 'it',
     bcp47: 'it-IT',
     dir: 'ltr',
@@ -91,7 +98,8 @@ export const LOCALE_META: Record<
     nativeName: '中文',
     englishName: 'Chinese (Mandarin)',
     spanishName: 'Chino',
-    flag: '🇨🇳',
+    regionCode: 'CN',
+    flagSrc: '/emojis/flags/cn.svg',
     htmlLang: 'zh-CN',
     bcp47: 'zh-CN',
     dir: 'ltr',
@@ -100,7 +108,8 @@ export const LOCALE_META: Record<
     nativeName: '日本語',
     englishName: 'Japanese',
     spanishName: 'Japonés',
-    flag: '🇯🇵',
+    regionCode: 'JP',
+    flagSrc: '/emojis/flags/jp.svg',
     htmlLang: 'ja',
     bcp47: 'ja-JP',
     dir: 'ltr',
@@ -109,7 +118,8 @@ export const LOCALE_META: Record<
     nativeName: '한국어',
     englishName: 'Korean',
     spanishName: 'Coreano',
-    flag: '🇰🇷',
+    regionCode: 'KR',
+    flagSrc: '/emojis/flags/kr.svg',
     htmlLang: 'ko',
     bcp47: 'ko-KR',
     dir: 'ltr',
@@ -118,7 +128,8 @@ export const LOCALE_META: Record<
     nativeName: 'हिन्दी',
     englishName: 'Hindi',
     spanishName: 'Hindi',
-    flag: '🇮🇳',
+    regionCode: 'IN',
+    flagSrc: '/emojis/flags/in.svg',
     htmlLang: 'hi',
     bcp47: 'hi-IN',
     dir: 'ltr',
@@ -127,7 +138,8 @@ export const LOCALE_META: Record<
     nativeName: 'বাংলা',
     englishName: 'Bengali',
     spanishName: 'Bengalí',
-    flag: '🇧🇩',
+    regionCode: 'BD',
+    flagSrc: '/emojis/flags/bd.svg',
     htmlLang: 'bn',
     bcp47: 'bn-BD',
     dir: 'ltr',
@@ -136,7 +148,8 @@ export const LOCALE_META: Record<
     nativeName: 'العربية',
     englishName: 'Arabic',
     spanishName: 'Árabe',
-    flag: '🇸🇦',
+    regionCode: 'SA',
+    flagSrc: '/emojis/flags/sa.svg',
     htmlLang: 'ar',
     bcp47: 'ar',
     dir: 'rtl',
@@ -145,7 +158,8 @@ export const LOCALE_META: Record<
     nativeName: 'Русский',
     englishName: 'Russian',
     spanishName: 'Ruso',
-    flag: '🇷🇺',
+    regionCode: 'RU',
+    flagSrc: '/emojis/flags/ru.svg',
     htmlLang: 'ru',
     bcp47: 'ru-RU',
     dir: 'ltr',
@@ -153,6 +167,58 @@ export const LOCALE_META: Record<
 };
 
 const LOCALE_SET = new Set<string>(APP_LOCALES);
+
+const LOCALE_ALIASES: Record<string, AppLocale> = {
+  english: 'en',
+  eng: 'en',
+  'en-us': 'en',
+  'en-gb': 'en',
+  spanish: 'es',
+  espanol: 'es',
+  español: 'es',
+  spa: 'es',
+  'es-es': 'es',
+  'es-mx': 'es',
+  'es-co': 'es',
+  portuguese: 'pt',
+  portugues: 'pt',
+  português: 'pt',
+  por: 'pt',
+  'pt-br': 'pt',
+  'pt-pt': 'pt',
+  french: 'fr',
+  francais: 'fr',
+  français: 'fr',
+  'fr-fr': 'fr',
+  german: 'de',
+  deutsch: 'de',
+  'de-de': 'de',
+  italian: 'it',
+  italiano: 'it',
+  'it-it': 'it',
+  chinese: 'zh',
+  mandarin: 'zh',
+  'zh-cn': 'zh',
+  'zh-tw': 'zh',
+  'zh-hans': 'zh',
+  'zh-hant': 'zh',
+  japanese: 'ja',
+  'ja-jp': 'ja',
+  korean: 'ko',
+  'ko-kr': 'ko',
+  hindi: 'hi',
+  'hi-in': 'hi',
+  bengali: 'bn',
+  bangla: 'bn',
+  'bn-bd': 'bn',
+  'bn-in': 'bn',
+  arabic: 'ar',
+  'ar-sa': 'ar',
+  'ar-eg': 'ar',
+  russian: 'ru',
+  ruso: 'ru',
+  'ru-ru': 'ru',
+};
 
 export function isAppLocale(value: unknown): value is AppLocale {
   return typeof value === 'string' && LOCALE_SET.has(value);
@@ -165,10 +231,14 @@ export function isRtlLocale(locale: AppLocale) {
 export function parseAppLocale(value: unknown, fallback: AppLocale = DEFAULT_LOCALE): AppLocale {
   if (isAppLocale(value)) return value;
   if (typeof value !== 'string') return fallback;
-  const short = value.trim().toLowerCase().replace('_', '-');
+  const short = value.trim().toLowerCase().replaceAll('_', '-');
+  if (!short) return fallback;
+  if (isAppLocale(short)) return short;
+  const aliased = LOCALE_ALIASES[short];
+  if (aliased) return aliased;
   if (short.startsWith('zh')) return 'zh';
-  const two = short.slice(0, 2);
-  return isAppLocale(two) ? two : fallback;
+  const prefix = short.split('-')[0];
+  return isAppLocale(prefix) ? prefix : fallback;
 }
 
 export function detectBrowserLocale(): AppLocale {
@@ -204,5 +274,5 @@ export function translateApiCode(locale: AppLocale | 'auto'): string {
 
 export function localeSearchHaystack(id: AppLocale): string {
   const meta = LOCALE_META[id];
-  return `${meta.nativeName} ${meta.englishName} ${meta.spanishName} ${id}`.toLowerCase();
+  return `${meta.nativeName} ${meta.englishName} ${meta.spanishName} ${meta.regionCode} ${id}`.toLowerCase();
 }

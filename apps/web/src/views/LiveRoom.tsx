@@ -16,6 +16,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  type RoomConnectOptions,
   type RoomOptions,
 } from 'livekit-client';
 import {
@@ -27,6 +28,8 @@ import {
   SwitchCamera,
   FlipHorizontal,
   Users,
+  ChevronLeft,
+  ChevronRight,
   X,
   Mic,
   MicOff,
@@ -34,7 +37,7 @@ import {
   MessageCircle,
   Plus,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { LiveWishCarousel } from '../components/live/LiveWishCarousel';
@@ -80,6 +83,20 @@ import { followUser, isFollowing, unfollowUser } from '../lib/socialFirestore';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, apiPublic, ApiError } from '../lib/api';
+import {
+  bumpLiveSwitchGen,
+  currentLiveSwitchGen,
+  disconnectLiveRoomQuiet,
+  fetchLiveViewerToken,
+  neighborPair,
+  peekCachedLiveToken,
+  pickNeighborLive,
+  prefetchLiveViewerTokens,
+  rememberLiveToken,
+  warmupLivePoster,
+  watchSpectatorLiveQuality,
+  type LiveSwitchToken,
+} from '../lib/liveCarouselSwitch';
 import { roomKey } from '../lib/roomKey';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
 import {
@@ -110,6 +127,7 @@ import {
   liveWishGiftUnits,
   LIVE_WISH_ACTIVE_MAX,
   type LiveWishItem,
+  type LiveEndStats,
   sendLiveRoomBoom,
   listenLiveBoomStats,
   listenLiveBoomEvents,
@@ -123,7 +141,9 @@ import {
 import { useLiveWishAchieved } from '../lib/liveWishAchieved';
 import { LIVE_BOOM_ROUND_GOAL, resolveBoomRoundCount } from '../lib/liveBoomRound';
 import { useLivePresence } from '../hooks/useLivePresence';
+import { useLiveCarouselPointer } from '../hooks/useLiveCarouselPointer';
 import { useLiveViewport } from '../hooks/useLiveViewport';
+import { getLiveRanking } from '../lib/liveRanking';
 import {
   prefetchLiveChatAuthorProfiles,
   seedLiveChatAuthorProfile,
@@ -199,6 +219,13 @@ function loadLiveMirrorPref(): boolean | null {
 const LIVEKIT_ROOM_OPTIONS: RoomOptions = {
   adaptiveStream: true,
   dynacast: true,
+  disconnectOnPageLeave: true,
+};
+
+const LIVEKIT_CONNECT_OPTIONS: RoomConnectOptions = {
+  autoSubscribe: true,
+  maxRetries: 1,
+  peerConnectionTimeout: 8_000,
 };
 
 type LiveLaunchState = {
@@ -213,6 +240,7 @@ type LiveLaunchState = {
   microphoneId?: string | null;
   mirror?: boolean;
   micOn?: boolean;
+  liveCarouselDir?: 1 | -1;
 };
 
 type LiveSessionStats = {
@@ -342,6 +370,7 @@ function useViewerCount(roomName: string) {
 }
 
 export function LiveRoom() {
+  const t = useT();
   const { username } = useParams();
   const location = useLocation();
   const launch = (location.state as LiveLaunchState | null) || {};
@@ -352,7 +381,7 @@ export function LiveRoom() {
   const setCoins = useAuthStore((state) => state.setCoins);
   const canonicalRoom = username ? roomKey(username) : '';
   const activeRoomRef = useRef(canonicalRoom);
-  const livekitRoom = useMemo(() => new Room(LIVEKIT_ROOM_OPTIONS), [canonicalRoom]);
+  const livekitRoom = useMemo(() => new Room(LIVEKIT_ROOM_OPTIONS), []);
   const [session, setSession] = useState<{
     token: string;
     serverUrl: string;
@@ -361,9 +390,12 @@ export function LiveRoom() {
     roomName: string;
     hostUid?: string | null;
   } | null>(null);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const [battleActive, setBattleActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveStarted, setLiveStarted] = useState(false);
+  const [liveKitConnect, setLiveKitConnect] = useState(true);
   const [isPrivate, setIsPrivate] = useState(Boolean(launch.isPrivate));
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
   const [unlocking, setUnlocking] = useState(false);
@@ -385,16 +417,23 @@ export function LiveRoom() {
 
   useEffect(() => {
     activeRoomRef.current = canonicalRoom;
-    setSession(null);
+    bumpLiveSwitchGen(canonicalRoom);
+    const prev = sessionRef.current;
+    const keepChrome = Boolean(prev && !prev.canPublish && !prev.isHost);
+    if (!keepChrome) {
+      setSession(null);
+      setLiveStarted(false);
+    }
+    disconnectLiveRoomQuiet(livekitRoom);
     setError(null);
     setGateLock(null);
     setViewerPaused(false);
-    setLiveStarted(false);
-  }, [canonicalRoom]);
+    setLiveKitConnect(true);
+  }, [canonicalRoom, livekitRoom]);
 
   useEffect(() => {
     return () => {
-      void livekitRoom.disconnect();
+      disconnectLiveRoomQuiet(livekitRoom);
     };
   }, [livekitRoom]);
 
@@ -449,15 +488,28 @@ export function LiveRoom() {
     const targetRoom = canonicalRoom;
     if (!targetRoom) return;
     const tokenHandle = encodeURIComponent(profile.handle);
-    const data = await api<{
-      token: string;
-      serverUrl: string;
-      canPublish: boolean;
-      isHost?: boolean;
-      roomName?: string;
-      hostUid?: string | null;
-    }>(`/api/stream/token/${encodeURIComponent(username)}?handle=${tokenHandle}`);
+    const cached = !isOwnRoom ? peekCachedLiveToken(username) : null;
+    const data =
+      cached ||
+      (await api<{
+        token: string;
+        serverUrl: string;
+        canPublish: boolean;
+        isHost?: boolean;
+        roomName?: string;
+        hostUid?: string | null;
+      }>(`/api/stream/token/${encodeURIComponent(username)}?handle=${tokenHandle}`));
     if (activeRoomRef.current !== targetRoom) return;
+    if (!data.canPublish && !data.isHost) {
+      rememberLiveToken(username, {
+        token: data.token,
+        serverUrl: data.serverUrl,
+        canPublish: data.canPublish,
+        isHost: data.isHost,
+        roomName: data.roomName || targetRoom,
+        hostUid: data.hostUid ?? null,
+      });
+    }
     setSession((current) => {
       const next = {
         token: data.token,
@@ -488,24 +540,79 @@ export function LiveRoom() {
   useEffect(() => {
     if (!username || !handle || needsLaunchConfirm) return;
     let cancelled = false;
+    const gen = currentLiveSwitchGen();
+    const abort = new AbortController();
+    const applyToken = (data: LiveSwitchToken) => {
+      if (cancelled || activeRoomRef.current !== canonicalRoom) return;
+      setSession((current) => {
+        const next = {
+          token: data.token,
+          serverUrl: data.serverUrl,
+          canPublish: data.canPublish,
+          isHost: data.isHost,
+          roomName: data.roomName || canonicalRoom,
+          hostUid: data.hostUid ?? null,
+        };
+        if (
+          current &&
+          current.token === next.token &&
+          current.canPublish === next.canPublish &&
+          current.serverUrl === next.serverUrl &&
+          current.roomName === next.roomName
+        ) {
+          return current;
+        }
+        return next;
+      });
+      setGateLock(null);
+      setError(null);
+    };
     void (async () => {
       try {
-        const lockState = await api<{
-          locked: boolean;
-          unlocked: boolean;
-          isHost: boolean;
-          lock: LockInfo | null;
-        }>(
-          `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle)}`,
-        );
-        if (cancelled) return;
-        if (lockState.locked && !lockState.unlocked && !lockState.isHost && lockState.lock) {
-          setGateLock(lockState.lock);
-          return;
+        if (!isOwnRoom) {
+          const cachedToken = peekCachedLiveToken(username);
+          const [lockState, token] = await Promise.all([
+            api<{
+              locked: boolean;
+              unlocked: boolean;
+              isHost: boolean;
+              lock: LockInfo | null;
+            }>(
+              `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle)}`,
+              { signal: abort.signal },
+            ),
+            cachedToken
+              ? Promise.resolve(cachedToken)
+              : fetchLiveViewerToken(username, handle, gen),
+          ]);
+          if (cancelled || gen !== currentLiveSwitchGen()) return;
+          if (lockState.locked && !lockState.unlocked && !lockState.isHost && lockState.lock) {
+            setGateLock(lockState.lock);
+            return;
+          }
+          if (token && !token.canPublish && !token.isHost) {
+            applyToken(token);
+            return;
+          }
+        } else {
+          const lockState = await api<{
+            locked: boolean;
+            unlocked: boolean;
+            isHost: boolean;
+            lock: LockInfo | null;
+          }>(
+            `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle)}`,
+            { signal: abort.signal },
+          );
+          if (cancelled) return;
+          if (lockState.locked && !lockState.unlocked && !lockState.isHost && lockState.lock) {
+            setGateLock(lockState.lock);
+            return;
+          }
         }
         await fetchToken();
       } catch (err: unknown) {
-        if (cancelled) return;
+        if (cancelled || abort.signal.aborted) return;
         if (err instanceof ApiError && err.status === 402) {
           const lock = (err.data.lock as LockInfo) || null;
           if (lock) {
@@ -518,8 +625,9 @@ export function LiveRoom() {
     })();
     return () => {
       cancelled = true;
+      abort.abort();
     };
-  }, [firebaseUid, username, needsLaunchConfirm, handle]);
+  }, [firebaseUid, username, needsLaunchConfirm, handle, isOwnRoom, canonicalRoom]);
 
   useEffect(() => {
     if (!gateLock || !username || !handle) return;
@@ -611,6 +719,10 @@ export function LiveRoom() {
     if (!liveStarted || !username || !isOwnRoom) return;
     const endLive = () => {
       void markLiveRoomEnded(username).catch(() => undefined);
+      void api('/api/stream/live/stop', {
+        method: 'POST',
+        body: JSON.stringify({ username }),
+      }).catch(() => undefined);
     };
     window.addEventListener('pagehide', endLive);
     window.addEventListener('beforeunload', endLive);
@@ -699,13 +811,15 @@ export function LiveRoom() {
       </div>
     );
   }
-  if (!session || session.roomName !== canonicalRoom) {
+  if (!session) {
     return (
       <div className="grid h-[100dvh] place-items-center bg-zinc-950 text-sm text-zinc-400">
-        Conectando LiveKit…
+        {t('liveUi.loadingLive')}
       </div>
     );
   }
+
+  const sessionMatchesRoom = session.roomName === canonicalRoom;
 
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden bg-zinc-950 p-0 sm:p-3">
@@ -714,7 +828,8 @@ export function LiveRoom() {
         room={livekitRoom}
         token={session.token}
         serverUrl={session.serverUrl}
-        connect
+        connect={liveKitConnect && sessionMatchesRoom}
+        connectOptions={LIVEKIT_CONNECT_OPTIONS}
         video={false}
         audio={false}
         className={`relative flex h-full w-full min-h-0 ${
@@ -723,7 +838,7 @@ export function LiveRoom() {
             : 'flex-col lg:flex-row lg:gap-3'
         }`}
       >
-        {viewerPaused || battleActive ? null : (
+        {viewerPaused || battleActive || !sessionMatchesRoom ? null : (
           <>
             <StartAudio label="Toca para activar el audio del LIVE" />
             <RoomAudioRenderer />
@@ -738,9 +853,13 @@ export function LiveRoom() {
         >
         <CreatorStage
           username={username!}
-          hostUid={session.hostUid || undefined}
-          canPublish={session.canPublish}
-          isHost={Boolean(session.isHost ?? (session.canPublish && isOwnRoom))}
+          hostUid={sessionMatchesRoom ? session.hostUid || undefined : undefined}
+          canPublish={sessionMatchesRoom ? session.canPublish : false}
+          isHost={
+            sessionMatchesRoom
+              ? Boolean(session.isHost ?? (session.canPublish && isOwnRoom))
+              : false
+          }
           isPrivate={isPrivate}
           aspectRatio={aspectRatio}
           onPrivacyChange={setIsPrivate}
@@ -787,19 +906,35 @@ export function LiveRoom() {
               void removeLiveGuestInvites(username, [handle, firebaseUid]).catch(() => undefined);
             }
           }}
-          onLeaveLive={async () => {
-            if (isOwnRoom) {
-              clearLiveChatCache(username);
-              await Promise.all([
-                markLiveRoomEnded(username).catch(() => undefined),
-                api('/api/stream/live/stop', {
+          onHangupLiveKit={() => setLiveKitConnect(false)}
+          onLeaveLive={async (stats?: LiveEndStats) => {
+            if (!isOwnRoom) return;
+            clearLiveChatCache(username);
+            const marked = await markLiveRoomEnded(username, stats).then(() => true).catch(() => false);
+            let stopped = false;
+            try {
+              await api('/api/stream/live/stop', {
+                method: 'POST',
+                body: JSON.stringify({ username }),
+              });
+              stopped = true;
+            } catch {
+              try {
+                await api('/api/stream/live/stop', {
                   method: 'POST',
                   body: JSON.stringify({ username }),
-                }).catch(() => undefined),
-                resetLiveRoomChat(username).catch(() => undefined),
-              ]);
-              setLiveStarted(false);
+                });
+                stopped = true;
+              } catch {
+                stopped = false;
+              }
             }
+            void resetLiveRoomChat(username).catch(() => undefined);
+            if (!marked && !stopped) {
+              throw new Error('No se pudo finalizar el LIVE. Intenta nuevamente.');
+            }
+            setLiveKitConnect(false);
+            setLiveStarted(false);
           }}
         />
         <ChatPanel
@@ -935,6 +1070,7 @@ function CreatorStage({
   liveCategory,
   hostAvatarUrl,
   onLeaveLive,
+  onHangupLiveKit,
   onBattleActive,
   onAcceptSalaInvite,
   onDeclineSalaInvite,
@@ -954,7 +1090,8 @@ function CreatorStage({
   liveTitle?: string;
   liveCategory?: string;
   hostAvatarUrl?: string | null;
-  onLeaveLive?: () => Promise<void>;
+  onLeaveLive?: (stats?: LiveEndStats) => Promise<void>;
+  onHangupLiveKit?: () => void;
   onBattleActive?: (active: boolean) => void;
   onAcceptSalaInvite?: (invite?: IncomingSalaInvite) => void | Promise<void>;
   onDeclineSalaInvite?: (invite?: IncomingSalaInvite) => void;
@@ -992,10 +1129,20 @@ function CreatorStage({
   const [flipping, setFlipping] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [endLiveError, setEndLiveError] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [viewersOpen, setViewersOpen] = useState(false);
   const [shareNote, setShareNote] = useState<string | null>(null);
   const [liveNeighbors, setLiveNeighbors] = useState<SuggestedLive[]>([]);
+  const liveNeighborsRef = useRef<SuggestedLive[]>([]);
+  liveNeighborsRef.current = liveNeighbors;
+  const carouselTargetRef = useRef(username);
+  const [switchCover, setSwitchCover] = useState<SuggestedLive | null>(null);
+  const switchCoverRef = useRef<SuggestedLive | null>(null);
+  switchCoverRef.current = switchCover;
+  useEffect(() => {
+    carouselTargetRef.current = username;
+  }, [username]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [wishQty, setWishQty] = useState<Record<string, number>>({});
   const [completedWishItems, setCompletedWishItems] = useState<LiveWishItem[]>([]);
@@ -1036,6 +1183,11 @@ function CreatorStage({
   }, [canPublish, room]);
 
   const [liveEnded, setLiveEnded] = useState(false);
+  const hostSessionEndedRef = useRef(false);
+  const endedBackendOkRef = useRef(false);
+  const endedAtMsRef = useRef(0);
+  const onHangupLiveKitRef = useRef(onHangupLiveKit);
+  onHangupLiveKitRef.current = onHangupLiveKit;
   const canSendLiveBoom = Boolean(firebaseUid) && !liveEnded && !isOwnLiveAccount;
   const seenBoomIds = useRef(new Set<string>());
   const liveBoomCountRef = useRef(0);
@@ -1144,6 +1296,69 @@ function CreatorStage({
     disabled: !canSendLiveBoom,
     singleTap: true,
   });
+  const goToNeighborLive = useCallback(
+    (direction: 1 | -1) => {
+      if (isHost || canPublish || liveEnded) return;
+      const neighbors = liveNeighborsRef.current;
+      if (neighbors.length === 0) return;
+      const from = carouselTargetRef.current || username;
+      const next = pickNeighborLive(neighbors, from, direction);
+      if (!next) return;
+      carouselTargetRef.current = next.username;
+      setSwitchCover(next);
+      warmupLivePoster(next.avatarUrl);
+      disconnectLiveRoomQuiet(room);
+      navigate(`/stream/${encodeURIComponent(next.username)}`, {
+        replace: true,
+        state: { liveCarouselDir: direction },
+      });
+    },
+    [isHost, canPublish, liveEnded, username, room, navigate],
+  );
+  const onCarouselNext = useCallback(() => {
+    goToNeighborLive(1);
+  }, [goToNeighborLive]);
+  const onCarouselPrev = useCallback(() => {
+    goToNeighborLive(-1);
+  }, [goToNeighborLive]);
+  const canCarouselLive = Boolean(
+    isSpectator &&
+      !liveEnded &&
+      liveNeighbors.some((stream) => roomKey(stream.username) !== roomKey(username)),
+  );
+  const liveCarousel = useLiveCarouselPointer({
+    enabled: canCarouselLive,
+    onNext: onCarouselNext,
+    onPrev: onCarouselPrev,
+  });
+  const handleStagePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      liveCarousel.onPointerDown(event);
+      boomGestureProps.onPointerDown?.(event);
+    },
+    [liveCarousel, boomGestureProps],
+  );
+  const handleStagePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      liveCarousel.onPointerMove(event);
+    },
+    [liveCarousel],
+  );
+  const handleStagePointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const navigated = liveCarousel.onPointerUp(event);
+      if (navigated) return;
+      boomGestureProps.onPointerUp?.(event);
+    },
+    [liveCarousel, boomGestureProps],
+  );
+  const handleStagePointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      liveCarousel.onPointerCancel(event);
+    },
+    [liveCarousel],
+  );
+  const liveCarouselDir = launch.liveCarouselDir;
   const [connectionQuality, setConnectionQuality] = useState<ConnectionQuality>('excellent');
   const presenceUser = useMemo(
     () =>
@@ -1481,8 +1696,57 @@ function CreatorStage({
           .filter((item) => roomKey(item.username) !== roomKey(username))
           .map((item) => ({ username: item.username, displayName: item.displayName })),
       );
+      const { topLives, regularLives } = getLiveRanking(streams, '');
+      setLiveNeighbors(
+        [...topLives, ...regularLives].map((item) => ({
+          username: item.username,
+          displayName: item.displayName,
+          avatarUrl: item.avatarUrl,
+          title: item.title,
+          viewers: item.viewers,
+          isPrivate: item.isPrivate,
+        })),
+      );
     });
   }, [username]);
+
+  useEffect(() => {
+    hadHostCamera.current = false;
+  }, [username]);
+
+  useEffect(() => {
+    if (!handle || !isSpectator || liveEnded) return;
+    const { prev, next } = neighborPair(liveNeighbors, username);
+    const gen = currentLiveSwitchGen();
+    prefetchLiveViewerTokens([prev?.username, next?.username], handle, gen);
+    warmupLivePoster(prev?.avatarUrl);
+    warmupLivePoster(next?.avatarUrl);
+  }, [liveNeighbors, username, handle, isSpectator, liveEnded]);
+
+  useEffect(() => {
+    if (!switchCover) return;
+    if (roomKey(switchCover.username) !== roomKey(username)) return;
+    const tryClear = () => {
+      if (room.state !== ConnectionState.Connected) return;
+      const hasVideo = Array.from(room.remoteParticipants.values()).some((participant) =>
+        Array.from(participant.videoTrackPublications.values()).some(
+          (pub) => pub.kind === Track.Kind.Video && Boolean(pub.track) && !pub.isMuted,
+        ),
+      );
+      if (hasVideo) setSwitchCover(null);
+    };
+    room.on(RoomEvent.TrackSubscribed, tryClear);
+    room.on(RoomEvent.Connected, tryClear);
+    tryClear();
+    const fallback = window.setTimeout(() => {
+      if (room.state === ConnectionState.Connected) setSwitchCover(null);
+    }, 1800);
+    return () => {
+      room.off(RoomEvent.TrackSubscribed, tryClear);
+      room.off(RoomEvent.Connected, tryClear);
+      window.clearTimeout(fallback);
+    };
+  }, [room, username, switchCover]);
 
   useEffect(() => {
     if (battle.incoming) setBatallaOpen(true);
@@ -1523,14 +1787,16 @@ function CreatorStage({
   // Pulso periódico: el feed cierra salas sin heartbeat.
   useEffect(() => {
     if (!isHost || !username) return;
+    if (hostSessionEndedRef.current || summaryOpen || liveEnded) return;
     void touchLiveRoomHeartbeat(username).catch(() => undefined);
     void refreshLiveViewerCount(username).catch(() => undefined);
     const timer = window.setInterval(() => {
+      if (hostSessionEndedRef.current) return;
       void touchLiveRoomHeartbeat(username).catch(() => undefined);
       void refreshLiveViewerCount(username).catch(() => undefined);
     }, 12_000);
     return () => window.clearInterval(timer);
-  }, [isHost, username]);
+  }, [isHost, username, summaryOpen, liveEnded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1605,9 +1871,10 @@ function CreatorStage({
   }, [liveStats?.startedAt]);
 
   useEffect(() => {
+    if (summaryOpen || liveEnded) return;
     const timer = window.setInterval(() => setDashNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [summaryOpen, liveEnded]);
 
   useEffect(() => {
     liveStartedAt.current = 0;
@@ -1758,6 +2025,8 @@ function CreatorStage({
       }
       if (data.type === 'live_ended' && isSpectator) {
         setLiveEnded(true);
+        onHangupLiveKitRef.current?.();
+        void room.disconnect().catch(() => undefined);
       }
       if (data.type === 'boom') {
         if (!(hostUid && data.uid && data.uid === hostUid)) {
@@ -1962,24 +2231,32 @@ function CreatorStage({
             Boolean(pub.track),
         ),
       );
-      if (!remoteCams) setLiveEnded(true);
+      if (!remoteCams) {
+        setLiveEnded(true);
+        onHangupLiveKitRef.current?.();
+        void room.disconnect().catch(() => undefined);
+      }
     });
   }, [username, isHost, canPublish, room]);
 
   // Host: pulso también desde la sala (por si el stage se remonta).
   useEffect(() => {
     if (!isHost || !username) return;
+    if (hostSessionEndedRef.current || summaryOpen || liveEnded) return;
     void touchLiveRoomHeartbeat(username).catch(() => undefined);
     const timer = window.setInterval(() => {
+      if (hostSessionEndedRef.current) return;
       void touchLiveRoomHeartbeat(username).catch(() => undefined);
     }, 10_000);
     return () => window.clearInterval(timer);
-  }, [isHost, username]);
+  }, [isHost, username, summaryOpen, liveEnded]);
 
   useEffect(() => {
     if (isHost || canPublish || liveEnded) return;
     let cancelled = false;
     const check = async () => {
+      if (switchCoverRef.current) return;
+      if (room.state !== ConnectionState.Connected) return;
       try {
         const data = await apiPublic<{ streams?: SuggestedLive[] }>('/api/stream/live');
         if (cancelled) return;
@@ -2230,22 +2507,6 @@ function CreatorStage({
   }, [viewers]);
 
   useEffect(() => {
-    if (isHost || canPublish) return;
-    let cancelled = false;
-    void apiPublic<{ streams?: SuggestedLive[] }>('/api/stream/live')
-      .then((data) => {
-        if (cancelled) return;
-        setLiveNeighbors(
-          (data.streams || []).filter((stream) => !stream.isPrivate),
-        );
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [username, isHost, canPublish]);
-
-  useEffect(() => {
     setWishSyncReady(false);
     return listenLiveWishlist(username, (ids, items, completed) => {
       wishItemsRef.current = items;
@@ -2437,19 +2698,107 @@ function CreatorStage({
   async function confirmLeave(dest: '/' | '/transmitir' = '/') {
     if (leaving) return;
     setLeaving(true);
+    setEndLiveError(null);
     try {
       if (isHost) {
-        await battle.stop();
+        if (endedBackendOkRef.current) {
+          setLeaveOpen(false);
+          setSummaryOpen(true);
+          return;
+        }
+        hostSessionEndedRef.current = true;
+        const endedAtMs = Date.now();
+        endedAtMsRef.current = endedAtMs;
+        const startedAt =
+          persistLiveStartedAt(
+            liveStats?.startedAt,
+            liveStartedAt.current ? new Date(liveStartedAt.current).toISOString() : '',
+          ) || new Date(endedAtMs).toISOString();
+        const durationMs = Math.max(0, endedAtMs - new Date(startedAt).getTime());
+        const endStats: LiveEndStats = {
+          durationMs,
+          viewers: Math.max(viewers, peakViewersRef.current),
+          coinsEarned: liveStats?.coinsEarned || 0,
+          giftsCount,
+          likes: liveBoomCount,
+          goalCoins: liveStats?.goalCoins || goalCoins || 0,
+        };
+        if (!onLeaveLive) {
+          hostSessionEndedRef.current = false;
+          endedAtMsRef.current = 0;
+          setEndLiveError('No se pudo finalizar el LIVE. Intenta nuevamente.');
+          return;
+        }
+        try {
+          await onLeaveLive(endStats);
+        } catch {
+          hostSessionEndedRef.current = false;
+          endedAtMsRef.current = 0;
+          setEndLiveError('No se pudo finalizar el LIVE. Intenta nuevamente.');
+          return;
+        }
+        endedBackendOkRef.current = true;
+        await battle.stop().catch(() => undefined);
+        onHangupLiveKit?.();
         await publishRoomData(room, {
           type: 'live_ended',
           hostName: displayName || handle || username,
         }).catch(() => undefined);
+        await stopScreenCaptureRef.current().catch(() => undefined);
+        const local = room.localParticipant;
+        for (const pub of [...local.trackPublications.values()]) {
+          const track = pub.track;
+          try {
+            if (track && 'mediaStreamTrack' in track) {
+              track.mediaStreamTrack?.stop();
+            }
+          } catch {
+            /* ignore */
+          }
+          try {
+            if (track && 'stop' in track && typeof track.stop === 'function') {
+              track.stop();
+            }
+          } catch {
+            /* ignore */
+          }
+          try {
+            if (track) await local.unpublishTrack(track, true);
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          cameraTrackRef.current?.mediaStreamTrack?.stop();
+          cameraTrackRef.current?.stop();
+        } catch {
+          /* ignore */
+        }
+        cameraTrackRef.current = null;
+        try {
+          rawCameraTrackRef.current?.mediaStreamTrack?.stop();
+          rawCameraTrackRef.current?.stop();
+        } catch {
+          /* ignore */
+        }
+        rawCameraTrackRef.current = null;
+        try {
+          await local.setCameraEnabled(false);
+        } catch {
+          /* ignore */
+        }
+        try {
+          await local.setMicrophoneEnabled(false);
+        } catch {
+          /* ignore */
+        }
+        try {
+          await local.setScreenShareEnabled(false);
+        } catch {
+          /* ignore */
+        }
+        await room.disconnect().catch(() => undefined);
         if (firebaseUid) {
-          const endedAt = new Date().toISOString();
-          const startedAt = persistLiveStartedAt(
-            liveStats?.startedAt,
-            liveStartedAt.current ? new Date(liveStartedAt.current).toISOString() : '',
-          ) || new Date().toISOString();
           await archiveLiveActivity(firebaseUid, {
             username,
             displayName: displayName || handle || username,
@@ -2457,8 +2806,8 @@ function CreatorStage({
               ? `Live · ${liveStats.goalLabel}`
               : `Live de ${displayName || handle || username}`,
             startedAt,
-            endedAt,
-            durationMs: Math.max(0, Date.now() - new Date(startedAt).getTime()),
+            endedAt: new Date(endedAtMs).toISOString(),
+            durationMs,
             viewers: Math.max(viewers, peakViewersRef.current),
             coinsEarned: liveStats?.coinsEarned || 0,
             goalCoins: liveStats?.goalCoins || goalCoins || 0,
@@ -2466,8 +2815,7 @@ function CreatorStage({
             topGifters: liveStats?.topGifters || [],
           }).catch((error) => console.error('[live] archive', error));
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
-        await onLeaveLive?.();
+        setLiveEnded(true);
         setLeaveOpen(false);
         setSummaryOpen(true);
         return;
@@ -2488,7 +2836,9 @@ function CreatorStage({
       navigate(dest, { replace: true });
     } finally {
       setLeaving(false);
-      setLeaveOpen(false);
+      if (!isHost || endedBackendOkRef.current) {
+        setLeaveOpen(false);
+      }
     }
   }
 
@@ -2523,18 +2873,6 @@ function CreatorStage({
     window.setTimeout(() => setShareNote(null), 2500);
   }
   void shareHostProfile;
-
-  function goToNeighborLive(direction: 1 | -1) {
-    if (isHost || canPublish || liveNeighbors.length === 0) return;
-    const currentIdx = liveNeighbors.findIndex(
-      (stream) => roomKey(stream.username) === roomKey(username),
-    );
-    const base = currentIdx >= 0 ? currentIdx : -1;
-    const nextIdx = (base + direction + liveNeighbors.length) % liveNeighbors.length;
-    const next = liveNeighbors[nextIdx];
-    if (!next || roomKey(next.username) === roomKey(username)) return;
-    navigate(`/stream/${encodeURIComponent(next.username)}`, { replace: true });
-  }
 
   async function inviteGuest(viewer: SalaInviteViewer) {
     if (!isHost) return;
@@ -2986,6 +3324,7 @@ function CreatorStage({
           <HostLiveLeftRail
             stats={{
               startedAt: liveStats?.startedAt,
+              endedAtMs: endedAtMsRef.current || undefined,
               viewers,
               likes: liveBoomCount,
               giftsCount,
@@ -3014,7 +3353,7 @@ function CreatorStage({
         ) : null}
         <section className={liveStageSectionClass({ hostDashboard: isHost })}>
       <div className="relative h-full w-full max-w-full lg:max-h-full">
-        <div className={`${liveStageOuterClass(aspectRatio, liveViewport)}${verticalHost ? ' lb-live-vtools-host' : ''}`}>
+        <div className={`${liveStageOuterClass(aspectRatio, liveViewport)}${verticalHost ? ' lb-live-vtools-host' : ''}${canCarouselLive ? ' is-live-carousel-nav' : ''}`}>
           {isHost && !battle.liveBattle ? (
             <div className={`lb-live-vtools-slot${verticalHost ? '' : ' is-wide'}`}>
               <VerticalLiveToolsMenu
@@ -3049,23 +3388,12 @@ function CreatorStage({
           ) : null}
           <div
             ref={stageVideoRef}
-            className={`${liveStageInnerClass(aspectRatio)}${showLocalMirror ? ' lb-live-mirror-on' : ''}`}
-            {...(canSendLiveBoom ? boomGestureProps : {})}
-            onTouchStart={(event) => {
-              if (!isSpectator && !isHost) return;
-              const touch = event.changedTouches[0];
-              if (!touch) return;
-              (stageVideoRef.current as HTMLDivElement & { __swipeY?: number }).__swipeY = touch.clientY;
-            }}
-            onTouchEnd={(event) => {
-              if (!isSpectator && !isHost) return;
-              const touch = event.changedTouches[0];
-              const startY = (stageVideoRef.current as HTMLDivElement & { __swipeY?: number })?.__swipeY;
-              if (!touch || startY == null) return;
-              const delta = touch.clientY - startY;
-              if (Math.abs(delta) < 70) return;
-              goToNeighborLive(delta < 0 ? 1 : -1);
-            }}
+            className={`${liveStageInnerClass(aspectRatio)}${showLocalMirror ? ' lb-live-mirror-on' : ''}${canCarouselLive ? ' is-live-carousel' : ''}${liveCarouselDir === 1 ? ' is-live-slide-next' : liveCarouselDir === -1 ? ' is-live-slide-prev' : ''}`}
+            onDoubleClick={canSendLiveBoom ? boomGestureProps.onDoubleClick : undefined}
+            onPointerDown={handleStagePointerDown}
+            onPointerMove={handleStagePointerMove}
+            onPointerUp={handleStagePointerUp}
+            onPointerCancel={handleStagePointerCancel}
           >
             <BoomReactionLayer bursts={boomBursts} />
             {isHost ? (
@@ -3078,6 +3406,7 @@ function CreatorStage({
             <BoomRoundExplosionOverlay active={roundExplosionActive} />
             <CreatorVideo
               canPublish={canPublish}
+              allowPublish={!liveEnded && !summaryOpen}
               hostUid={hostUid}
               facing={facing}
               preferredCameraId={cameraDeviceId || String(launch.cameraId || '')}
@@ -3255,7 +3584,48 @@ function CreatorStage({
                 </Link>
               </div>
             ) : null}
+            {switchCover ? (
+              <div className="pointer-events-none absolute inset-0 z-[60]">
+                {switchCover.avatarUrl ? (
+                  <img
+                    src={switchCover.avatarUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full bg-zinc-950" />
+                )}
+              </div>
+            ) : null}
           </div>
+          {canCarouselLive ? (
+            <>
+              <button
+                type="button"
+                className="lb-live-carousel-nav is-prev"
+                data-boom-ignore
+                aria-label="LIVE anterior"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCarouselPrev();
+                }}
+              >
+                <ChevronLeft size={18} strokeWidth={2.4} />
+              </button>
+              <button
+                type="button"
+                className="lb-live-carousel-nav is-next"
+                data-boom-ignore
+                aria-label="Siguiente LIVE"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCarouselNext();
+                }}
+              >
+                <ChevronRight size={18} strokeWidth={2.4} />
+              </button>
+            </>
+          ) : null}
           {verticalHost ? <div className="lb-live-vtools-slot is-spacer" aria-hidden /> : null}
         </div>
       </div>
@@ -3275,7 +3645,7 @@ function CreatorStage({
                 <Radio size={11} /> EN VIVO
               </span>
               <span className="hidden tabular-nums text-xs font-semibold text-zinc-200 sm:inline">
-                {formatLiveElapsed(liveStats?.startedAt)}
+                {formatLiveElapsed(liveStats?.startedAt, endedAtMsRef.current || undefined)}
               </span>
               <button
                 type="button"
@@ -3688,7 +4058,12 @@ function CreatorStage({
         <EndLiveModal
           open={leaveOpen}
           busy={leaving}
-          onCancel={() => setLeaveOpen(false)}
+          error={endLiveError}
+          onCancel={() => {
+            if (leaving) return;
+            setEndLiveError(null);
+            setLeaveOpen(false);
+          }}
           onConfirm={() => void confirmLeave()}
         />
       ) : null}
@@ -3740,7 +4115,8 @@ function CreatorStage({
                   {(() => {
                     const origin =
                       Date.parse(liveStats?.startedAt || '') || liveStartedAt.current || 0;
-                    const ms = origin > 0 ? Math.max(0, Date.now() - origin) : 0;
+                    const endAt = endedAtMsRef.current || Date.now();
+                    const ms = origin > 0 ? Math.max(0, endAt - origin) : 0;
                     const mins = Math.floor(ms / 60000);
                     const secs = Math.floor((ms % 60000) / 1000);
                     return `${mins}m ${secs.toString().padStart(2, '0')}s`;
@@ -3829,6 +4205,7 @@ function CreatorStage({
         <HostLiveFooterBar
           stats={{
             startedAt: liveStats?.startedAt,
+            endedAtMs: endedAtMsRef.current || undefined,
             viewers,
             likes: liveBoomCount,
             giftsCount,
@@ -3919,6 +4296,7 @@ function trackRenderKey(ref: TrackReference | null): string {
 
 function CreatorVideo({
   canPublish,
+  allowPublish = true,
   hostUid,
   facing,
   preferredCameraId,
@@ -3943,6 +4321,7 @@ function CreatorVideo({
   onSalaLayoutChange,
 }: {
   canPublish: boolean;
+  allowPublish?: boolean;
   hostUid?: string;
   facing: 'user' | 'environment';
   preferredCameraId?: string;
@@ -4069,12 +4448,12 @@ function CreatorVideo({
 
   useEffect(() => {
     let timer = 0;
+    let first = true;
     const bump = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(
-        () => setTrackEpoch((value) => value + 1),
-        canPublish ? 80 : 700,
-      );
+      const delay = canPublish ? 80 : first ? 0 : 48;
+      first = false;
+      timer = window.setTimeout(() => setTrackEpoch((value) => value + 1), delay);
     };
     room.on(RoomEvent.TrackSubscribed, bump);
     room.on(RoomEvent.TrackUnsubscribed, bump);
@@ -4093,8 +4472,10 @@ function CreatorVideo({
     };
   }, [room, canPublish]);
 
+  useEffect(() => watchSpectatorLiveQuality(room, !canPublish), [room, canPublish]);
+
   useEffect(() => {
-    if (!canPublish) return;
+    if (!canPublish || !allowPublish) return;
     let cancelled = false;
 
     async function attachCameraRef() {
@@ -4110,6 +4491,8 @@ function CreatorVideo({
       try {
         await waitConnected(room);
         if (cancelled) return;
+        if (!canPublish || !allowPublish) return;
+        if (room.localParticipant.permissions?.canPublish === false) return;
 
         if (localCamOff || preferredCamOnRef.current === false) {
           await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
@@ -4170,7 +4553,7 @@ function CreatorVideo({
     return () => {
       cancelled = true;
     };
-  }, [canPublish, retry, room, cameraTrackRef, facing, localCamOff, preferredCamOn]);
+  }, [canPublish, allowPublish, retry, room, cameraTrackRef, facing, localCamOff, preferredCamOn]);
 
   if (!shownScreen && !shownCamera) {
     return (
@@ -4995,7 +5378,7 @@ function ChatPanel({
               if (event.key === 'Enter') void sendMessage();
             }}
             placeholder={t('chat.writeMessage')}
-            className="h-11 flex-1 rounded-full bg-black/55 px-3.5 text-sm text-white outline-none ring-1 ring-white/15 backdrop-blur-md placeholder:text-zinc-400 lg:rounded-xl lg:bg-zinc-900 lg:ring-white/10"
+            className="lb-live-chat-input h-11 flex-1 rounded-full px-3.5 text-sm outline-none lg:rounded-xl"
           />
           <button
             type="button"

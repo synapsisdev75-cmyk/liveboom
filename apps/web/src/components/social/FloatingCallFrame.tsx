@@ -161,7 +161,7 @@ function isDragFrom(target: EventTarget | null) {
   if (el.closest('a, input, textarea, select, option')) return false;
   if (
     el.closest(
-      '.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop, .lb-call-resize, .lb-voice-out-end, .lb-voice-out-speaker, .lb-voice-in-decline, .lb-voice-in-accept, .lb-video-ring-end, .lb-video-ring-speaker, .lb-video-ring-decline, .lb-video-ring-accept, .lb-video-connected-btn, .lb-video-connected-end, .lb-video-connected-accept, .lb-video-connected-actions',
+      '.lb-call-video-local, .lb-video-flip-fab, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop, .lb-call-resize, .lb-voice-out-end, .lb-voice-out-speaker, .lb-voice-in-decline, .lb-voice-in-accept, .lb-video-ring-end, .lb-video-ring-speaker, .lb-video-ring-decline, .lb-video-ring-accept, .lb-video-connected-btn, .lb-video-connected-end, .lb-video-connected-accept, .lb-video-connected-actions',
     )
   ) {
     return false;
@@ -180,6 +180,7 @@ export function CallWinBar({
   maximized,
   showMaximize = true,
   showLogo = true,
+  extraEnd,
 }: {
   onMinimize?: () => void;
   onMaximize?: () => void;
@@ -187,6 +188,7 @@ export function CallWinBar({
   maximized?: boolean;
   showMaximize?: boolean;
   showLogo?: boolean;
+  extraEnd?: ReactNode;
 }) {
   return (
     <div className={`lb-call-winbar${showLogo ? '' : ' is-actions-only'}`} data-call-drag>
@@ -212,6 +214,7 @@ export function CallWinBar({
             <Maximize2 size={14} />
           </button>
         ) : null}
+        {extraEnd}
         {onClose ? (
           <button type="button" className="lb-call-winbtn lb-call-winbtn--close" data-no-drag onClick={onClose} aria-label="Cerrar">
             <X size={14} />

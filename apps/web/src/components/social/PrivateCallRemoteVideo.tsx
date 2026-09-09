@@ -1,6 +1,7 @@
 import { useMaybeRoomContext } from '@livekit/components-react';
 import { RoomEvent, Track, type RemoteTrack } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
+import { UserAvatar } from '../profile/UserAvatar';
 
 function pickRemoteVideo(room: NonNullable<ReturnType<typeof useMaybeRoomContext>>): RemoteTrack | null {
   try {
@@ -19,8 +20,12 @@ function pickRemoteVideo(room: NonNullable<ReturnType<typeof useMaybeRoomContext
   }
 }
 
-/** Video remoto de llamada privada. El <video> queda montado y visible; sin avatar encima. */
+/** Video remoto de llamada privada. Si la cámara remota está apagada, muestra avatar. */
 export function PrivateCallRemoteVideo({
+  name,
+  handle,
+  avatar,
+  peerUid,
   waitingLabel: _waitingLabel,
 }: {
   name?: string;
@@ -58,7 +63,9 @@ export function PrivateCallRemoteVideo({
     }
 
     function cameraIsOff(track: RemoteTrack | null) {
-      const media = track?.mediaStreamTrack;
+      if (!track) return false;
+      if (track.isMuted) return true;
+      const media = track.mediaStreamTrack;
       if (!media) return false;
       return media.readyState === 'ended' || media.enabled === false;
     }
@@ -186,7 +193,18 @@ export function PrivateCallRemoteVideo({
         autoPlay
       />
       {cameraOff ? (
-        <p className="lb-call-video-caption">Cámara apagada</p>
+        <div className="lb-call-video-camoff">
+          <UserAvatar
+            src={avatar}
+            uid={peerUid}
+            username={handle}
+            displayName={name}
+            size={72}
+            ringClassName="ring-0"
+          />
+          <p className="lb-call-video-camoff__name">{name || (handle ? `@${handle.replace(/^@/, '')}` : 'LiveBoom')}</p>
+          <p className="lb-call-video-caption">Cámara apagada</p>
+        </div>
       ) : null}
     </div>
   );

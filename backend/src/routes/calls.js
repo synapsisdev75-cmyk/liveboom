@@ -98,7 +98,10 @@ router.post('/start', requireAuth, async (req, res) => {
     return;
   }
 
-  const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const requestedId = String(req.body?.callId || '').trim();
+  const callId = /^[a-zA-Z0-9_-]{6,80}$/.test(requestedId)
+    ? requestedId
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const roomName = callRoomName(chatId, callId);
   const displayName = req.user.name || req.user.uid.slice(0, 8);
   const liveKitUrl = typeof lk.publicLiveKitUrl === 'function' ? lk.publicLiveKitUrl() : String(process.env.LIVEKIT_URL || '').trim();
@@ -161,7 +164,7 @@ router.post('/start', requireAuth, async (req, res) => {
       name: displayName,
       room: roomName,
       canPublish: true,
-      ensureRoom: true,
+      ensureRoom: false,
     });
     console.info('[CallConnect] tokenGenerated', {
       callId,

@@ -42,13 +42,18 @@ export const useLocaleStore = create<LocaleState>((set) => ({
   hydrateFromCloud: async (uid) => {
     cloudUid = uid;
     if (!uid) return;
+    const current = useLocaleStore.getState().locale;
+    if (hasExplicitLocale()) {
+      commit(current);
+      return;
+    }
     const cloud = await fetchCloudLocale(uid);
     if (!cloud) {
-      commit(useLocaleStore.getState().locale);
+      commit(current);
       return;
     }
     applyLocaleToDocument(cloud);
-    writeStoredLocale(cloud);
+    writeStoredLocale(cloud, false);
     set({ locale: cloud });
   },
 }));
