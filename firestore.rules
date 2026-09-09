@@ -268,6 +268,12 @@ service cloud.firestore {
         // Si ya eres participante del chat, puedes enviar (la relación se exige al crear el chat).
         allow create: if signedIn()
           && request.auth.uid in chatData().participants
+          && !blockedEitherWay(
+            request.auth.uid,
+            request.auth.uid == chatData().participants[0]
+              ? chatData().participants[1]
+              : chatData().participants[0]
+          )
           && request.resource.data.fromUid == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
@@ -612,6 +618,16 @@ service cloud.firestore {
           && request.auth.uid == userId
           && resource.data.userId == request.auth.uid;
       }
+    }
+
+    match /reports/{reportId} {
+      allow read: if isSuperAdmin()
+        || (signedIn() && resource.data.reporterUserId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /reportThrottle/{uid} {
+      allow read, write: if false;
     }
 
     match /threeDReconstructions/{jobId} {

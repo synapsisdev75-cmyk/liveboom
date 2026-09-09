@@ -722,6 +722,20 @@ export async function isBlocked(meUid: string, targetUid: string) {
   return snap.exists();
 }
 
+export function listenBlocked(
+  meUid: string,
+  targetUid: string,
+  onChange: (blocked: boolean) => void,
+): Unsubscribe {
+  if (!meUid || !targetUid) {
+    onChange(false);
+    return () => undefined;
+  }
+  return onSnapshot(doc(db, 'users', meUid, 'blocked', targetUid), (snap) => {
+    onChange(snap.exists());
+  });
+}
+
 export async function blockUser(
   me: MeProfile,
   target: { uid: string; username: string; displayName: string; avatarUrl: string | null },
@@ -1395,7 +1409,6 @@ async function assertCanMessage(meUid: string, otherUid: string) {
 
 export async function ensureChat(me: MeProfile, friend: FriendChip) {
   if (!friend.uid) throw new Error('Amigo inválido');
-  await assertCanMessage(me.firebaseUid, friend.uid);
 
   const id = chatIdFor(me.firebaseUid, friend.uid);
   const ref = doc(db, 'chats', id);
@@ -1421,6 +1434,7 @@ export async function ensureChat(me: MeProfile, friend: FriendChip) {
   }
 
   if (!exists) {
+    await assertCanMessage(me.firebaseUid, friend.uid);
     await setDoc(ref, {
       participants,
       profiles,

@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { BrandBackground } from './BrandBackground';
 import { BrandVideo } from './BrandVideo';
 import { LegalFooter } from '../legal/LegalFooter';
-import { LanguageSelector } from '../i18n/LanguageSelector';
+import { LanguageDropdown } from '../i18n/LanguageDropdown';
 import { ageFromBirthYear } from '../../lib/birthDate';
 import { useAuthStore } from '../../store/authStore';
 import { useT } from '../../i18n';
@@ -53,18 +53,20 @@ export function AuthScreen() {
   }
 
   return (
-    <div className="relative flex min-h-[100dvh] items-center justify-center px-4 py-8">
+    <div className="lb-auth-page">
       <BrandBackground />
-
-      <div className="relative z-10 w-full max-w-md">
-        <div className="mb-6 flex justify-center">
+      <div className="lb-auth-lang">
+        <LanguageDropdown />
+      </div>
+      <header className="lb-auth-top">
+        <div className="lb-auth-top__logo">
           <BrandVideo />
         </div>
+      </header>
 
-        <div className="mb-4">
-          <LanguageSelector compact />
-        </div>
-        <div className="rounded-3xl border border-white/10 bg-boom-panel/88 p-6 shadow-glow backdrop-blur-xl sm:p-8">
+      <div className="lb-auth-main">
+        <div className="w-full max-w-md">
+        <div className="lb-auth-card rounded-3xl border border-white/10 bg-boom-panel/88 p-6 shadow-glow backdrop-blur-xl sm:p-8">
           <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-black/35 p-1">
             <Link
               to="/login"
@@ -207,21 +209,22 @@ export function AuthScreen() {
 
           {mode === 'register' ? (
             <p className="mt-2 text-center text-[11px] text-zinc-500">
-              Con Google también usa el año de nacimiento de arriba.
+              {t('auth.googleBirthHint')}
             </p>
           ) : null}
 
           {mode === 'login' ? (
             <Link to="/registro" className="mt-6 block w-full text-center text-sm text-zinc-400 hover:text-white">
-              ¿No tienes cuenta? Regístrate
+              {t('auth.noAccount')}
             </Link>
           ) : (
             <Link to="/login" className="mt-6 block w-full text-center text-sm text-zinc-400 hover:text-white">
-              ¿Ya tienes cuenta? Inicia sesión
+              {t('auth.hasAccount')}
             </Link>
           )}
 
           <LegalFooter compact />
+        </div>
         </div>
       </div>
     </div>

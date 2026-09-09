@@ -64,6 +64,7 @@ mount('/api/gifts', () => require('./src/routes/gifts'));
 mount('/api/users', () => require('./src/routes/users'));
 mount('/api/social', () => require('./src/routes/social'));
 mount('/api/messages', () => require('./src/routes/messages'));
+mount('/api/reports', () => require('./src/routes/reports'));
 mount('/api/ads', () => require('./src/routes/ads'));
 mount('/api/reconstructions', () => require('./src/routes/reconstructions'));
 mount('/api/translate', () => require('./src/routes/translate'));

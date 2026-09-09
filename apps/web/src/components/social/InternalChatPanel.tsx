@@ -7,7 +7,6 @@ import {
   FileText,
   Gift,
   Image as ImageIcon,
-  Info,
   MessageCircle,
   Mic,
   Pause,
@@ -76,6 +75,7 @@ import {
   listenFriends,
   listenMessages,
   listenPresence,
+  listenBlocked,
   markMessagesDelivered,
   markMessagesRead,
   sendChatMessage,
@@ -92,6 +92,7 @@ import {
 } from '../../lib/chatArchive';
 import { generateConversationPdf } from '../../lib/chatExportPdf';
 import { ConversationActionsModal } from './ConversationActionsModal';
+import { ChatSafetyMenu } from './ChatSafetyMenu';
 import { useAuthStore } from '../../store/authStore';
 import { formatCallClock, useCallElapsed, useCallStore } from '../../store/callStore';
 import { registerChatCallSurface } from '../../lib/chatCallSurface';
@@ -587,6 +588,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [archivedMap, setArchivedMap] = useState<ArchivedChatMap>({});
   const [clearedAtMs, setClearedAtMs] = useState(0);
   const [peerDeletedNotice, setPeerDeletedNotice] = useState<string | null>(null);
+  const [safetyNotice, setSafetyNotice] = useState<string | null>(null);
+  const [peerBlocked, setPeerBlocked] = useState(false);
   const [liveHandles, setLiveHandles] = useState<Set<string>>(new Set());
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [newMsgOpen, setNewMsgOpen] = useState(false);
@@ -676,6 +679,12 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     const id = window.setTimeout(() => setPeerDeletedNotice(null), 4200);
     return () => window.clearTimeout(id);
   }, [peerDeletedNotice]);
+
+  useEffect(() => {
+    if (!safetyNotice) return;
+    const id = window.setTimeout(() => setSafetyNotice(null), 3200);
+    return () => window.clearTimeout(id);
+  }, [safetyNotice]);
 
   useEffect(() => {
     if (!profile || !isPage) return;
@@ -885,6 +894,14 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       cancelled = true;
       unsub?.();
     };
+  }, [profile?.firebaseUid, activeFriend?.uid]);
+
+  useEffect(() => {
+    if (!profile?.firebaseUid || !activeFriend?.uid) {
+      setPeerBlocked(false);
+      return;
+    }
+    return listenBlocked(profile.firebaseUid, activeFriend.uid, setPeerBlocked);
   }, [profile?.firebaseUid, activeFriend?.uid]);
 
   useEffect(() => {
@@ -1803,6 +1820,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
               </button>
             ) : (
               <CallChatActions
+                key={`${activeFriend.uid}-${peerBlocked ? 'blocked' : 'open'}`}
                 chatId={chatId}
                 peer={activeFriend}
                 inThisCall={false}
@@ -1813,13 +1831,29 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 onStopCall={stopCall}
               />
             )}
-            <Link
-              to={profileHref(activeFriend.username, activeFriend.uid)}
-              className="grid h-9 w-9 place-items-center rounded-lg text-zinc-300 hover:bg-white/5"
-              aria-label="Info del perfil"
-            >
-              <Info size={18} />
-            </Link>
+            {profile ? (
+              <ChatSafetyMenu
+                peer={activeFriend}
+                chatId={chatId}
+                me={profile}
+                onToast={setSafetyNotice}
+                onBlocked={() => {
+                  cancelAudioRecording();
+                  setGiftsOpen(false);
+                  setAttachOpen(false);
+                  setEmojiPickerOpen(false);
+                  setGifOpen(false);
+                  setStickerOpen(false);
+                  setVideoNoteOpen(false);
+                  setCameraOpen(false);
+                  setPendingFile(null);
+                  if (pendingImage) {
+                    URL.revokeObjectURL(pendingImage.url);
+                    setPendingImage(null);
+                  }
+                }}
+              />
+            ) : null}
             <button
               type="button"
               disabled={busy || !chatId}
@@ -2096,6 +2130,12 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           <div ref={bottomRef} />
         </div>
 
+        {peerBlocked ? (
+          <div className="lb-chat-blocked-banner" role="status">
+            Has bloqueado a este usuario
+          </div>
+        ) : (
+          <>
         {pendingImage ? (
           <div className="border-t border-white/[0.06] p-3">
             <img src={pendingImage.url} alt="" className="mx-auto max-h-48 rounded-xl object-contain" />
@@ -2362,6 +2402,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             </>
           )}
         </div>
+          </>
+        )}
         </div>
       </div>
     ) : isPage ? (
@@ -2379,6 +2421,11 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       {peerDeletedNotice ? (
         <div className="lb-chat-deleted-toast" role="status">
           {peerDeletedNotice}
+        </div>
+      ) : null}
+      {safetyNotice ? (
+        <div className="lb-chat-deleted-toast" role="status">
+          {safetyNotice}
         </div>
       ) : null}
       {manageOpen && activeFriend && chatId && profile ? (

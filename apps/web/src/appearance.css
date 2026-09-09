@@ -1374,7 +1374,9 @@ html[data-lb-theme='light'] .from-cyan-500.to-fuchsia-500.text-white {
   color: #fff;
 }
 
-html[data-lb-theme='light'] .lb-sidebar [class*='#00E5FF'] {
+html[data-lb-theme='light'] .lb-sidebar [class*='#00E5FF'],
+html[data-lb-theme='light'] .lb-sidebar-wallet__amount,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__amount {
   color: #0891b2;
 }
 
@@ -1591,6 +1593,69 @@ html[data-lb-theme] .lb-chat-bubble.is-out.text-white {
 
 .lb-settings-row:hover {
   background: var(--surface-hover);
+}
+
+.lb-settings-page {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.lb-settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  column-gap: 0.1rem;
+  overflow: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-default, rgba(255, 255, 255, 0.08)) 80%, transparent);
+}
+
+.lb-settings-tab {
+  position: relative;
+  display: inline-flex;
+  min-height: 2.75rem;
+  max-width: 100%;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  background: transparent;
+  padding: 0.65rem 0.7rem;
+  color: var(--text-muted, #71717a);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.lb-settings-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lb-settings-tab.is-on {
+  color: #c4b5fd;
+}
+
+.lb-settings-tab.is-on svg {
+  color: #a78bfa;
+}
+
+.lb-settings-tab.is-on::after {
+  content: '';
+  position: absolute;
+  right: 0.5rem;
+  bottom: -1px;
+  left: 0.5rem;
+  height: 2px;
+  border-radius: 999px;
+  background: #8b5cf6;
+}
+
+.lb-settings-page input,
+.lb-settings-page input[type='date'] {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .lb-live-orient-opt {

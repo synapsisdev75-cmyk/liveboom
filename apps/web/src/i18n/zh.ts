@@ -47,6 +47,9 @@ export const zh: Catalog = {
     entering: '正在登录…',
     or: '或',
     google: '使用 Google 继续',
+    noAccount: '还没有账号？去注册',
+    hasAccount: '已有账号？去登录',
+    googleBirthHint: '使用 Google 注册时也会用到上方的出生年份。',
     mustAccept: '必须同意条款和隐私声明。',
     invalidBirthYear: '请输入有效的出生年份（须满 18 岁）。',
     mustBe18: '注册须年满 18 岁。',
@@ -100,6 +103,7 @@ export const zh: Catalog = {
     realtimeHint: '你用自己的语言发送时，对方会看到其语言的译文。你仍然看到原文。',
     openPicker: '选择语言',
     close: '关闭',
+    searchPlaceholder: '搜索语言...',
   },
   appearance: {
     title: '外观',

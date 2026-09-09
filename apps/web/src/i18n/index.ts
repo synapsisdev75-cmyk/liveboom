@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import type { MessageKey } from './es';
 import type { AppLocale } from './locales';
-import { LOCALE_META } from './locales';
 import { translate } from './translate';
 import { getLocale, useLocaleStore } from '../store/localeStore';
 
@@ -17,11 +16,6 @@ export function useT() {
     fn.locale = locale;
     return fn;
   }, [locale]);
-}
-
-export function languageLabel(locale: AppLocale, inLocale: AppLocale = locale): string {
-  if (inLocale === locale) return LOCALE_META[locale].nativeName;
-  return LOCALE_META[locale].nativeName;
 }
 
 export function categoryMessageKey(
@@ -43,5 +37,5 @@ export function categoryMessageKey(
 }
 
 export type { AppLocale, MessageKey };
-export { APP_LOCALES, DEFAULT_LOCALE, LOCALE_META, parseAppLocale, bcp47For } from './locales';
+export { APP_LOCALES, DEFAULT_LOCALE, LOCALE_META, parseAppLocale, bcp47For, localeSearchHaystack, isRtlLocale } from './locales';
 export { useLocaleStore, getLocale } from '../store/localeStore';

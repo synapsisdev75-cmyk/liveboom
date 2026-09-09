@@ -47,6 +47,9 @@ export const it: Catalog = {
     entering: 'Accesso…',
     or: 'o',
     google: 'Continua con Google',
+    noAccount: 'Non hai un account? Registrati',
+    hasAccount: 'Hai già un account? Accedi',
+    googleBirthHint: 'Google usa anche l’anno di nascita indicato sopra.',
     mustAccept: "Devi accettare i Termini e l'Informativa sulla privacy.",
     invalidBirthYear: 'Inserisci un anno di nascita valido (devi avere 18 anni o più).',
     mustBe18: 'Devi avere almeno 18 anni per registrarti.',
@@ -102,6 +105,7 @@ export const it: Catalog = {
       'Quando scrivi nella tua lingua, l’altra persona vede il messaggio nella sua. Tu continui a vedere l’originale.',
     openPicker: 'Scegli lingua',
     close: 'Chiudi',
+    searchPlaceholder: 'Cerca lingua...',
   },
   appearance: {
     title: 'Aspetto',

@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import type { AppLocale } from '../i18n/locales';
+import { detectBrowserLocale } from '../i18n/locales';
 import {
   applyLocaleToDocument,
   fetchCloudLocale,
+  hasExplicitLocale,
   persistCloudLocale,
   readStoredLocale,
   writeStoredLocale,
@@ -19,7 +21,6 @@ let cloudTimer: number | null = null;
 const initial = readStoredLocale();
 if (typeof document !== 'undefined') {
   applyLocaleToDocument(initial);
-  writeStoredLocale(initial);
 }
 
 function commit(locale: AppLocale) {
@@ -51,6 +52,15 @@ export const useLocaleStore = create<LocaleState>((set) => ({
     set({ locale: cloud });
   },
 }));
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('languagechange', () => {
+    if (hasExplicitLocale()) return;
+    const next = detectBrowserLocale();
+    applyLocaleToDocument(next);
+    useLocaleStore.setState({ locale: next });
+  });
+}
 
 export function getLocale(): AppLocale {
   return useLocaleStore.getState().locale;

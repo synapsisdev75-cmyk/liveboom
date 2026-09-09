@@ -47,6 +47,7 @@ import { cropToAvatar } from '../lib/avatarCrop';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
 import { LanguageSelector } from '../components/i18n/LanguageSelector';
+import { LanguageControl } from '../components/i18n/LanguageControl';
 import { categoryMessageKey, useT } from '../i18n';
 
 type SettingsTab =
@@ -132,7 +133,7 @@ function Card({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-white/[0.08] bg-[#14151c] p-4 sm:p-5 ${className}`}
+      className={`min-w-0 overflow-x-clip rounded-2xl border border-white/[0.08] bg-[#14151c] p-4 sm:p-5 ${className}`}
     >
       {title ? (
         <header className="mb-4">
@@ -587,7 +588,7 @@ export function ProfileView() {
         <p className="mt-1 text-sm text-zinc-400">{t('settings.subtitle')}</p>
       </header>
 
-      <nav className="chat-scroll -mx-1 flex gap-1 overflow-x-auto border-b border-white/[0.06] px-1 pb-px">
+      <nav className="lb-settings-tabs" aria-label={t('settings.title')}>
         {TABS.map((item) => {
           const Icon = item.icon;
           const active = tab === item.id;
@@ -596,15 +597,10 @@ export function ProfileView() {
               key={item.id}
               type="button"
               onClick={() => setTab(item.id)}
-              className={`relative flex shrink-0 items-center gap-2 px-3 py-3 text-sm font-semibold transition ${
-                active ? 'text-violet-300' : 'text-zinc-500 hover:text-zinc-300'
-              }`}
+              className={`lb-settings-tab${active ? ' is-on' : ''}`}
             >
-              <Icon size={16} className={active ? 'text-violet-400' : ''} />
-              <span className="whitespace-nowrap">{t(item.labelKey)}</span>
-              {active ? (
-                <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-violet-500" />
-              ) : null}
+              <Icon size={16} />
+              <span>{t(item.labelKey)}</span>
             </button>
           );
         })}
@@ -619,14 +615,14 @@ export function ProfileView() {
       {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
 
       {tab === 'cuenta' && profile ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-          <div className="space-y-4">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <div className="min-w-0 space-y-4">
             <Card
               title={t('settings.accountInfo')}
               subtitle={t('settings.accountInfoSub')}
             >
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-                <div className="relative mx-auto shrink-0 sm:mx-0" ref={avatarMenuRef}>
+              <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start">
+                <div className="relative mx-auto shrink-0 lg:mx-0" ref={avatarMenuRef}>
                   <div className="h-[5.5rem] w-[5.5rem] overflow-hidden rounded-full bg-zinc-900 ring-2 ring-white/10">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
@@ -722,8 +718,8 @@ export function ProfileView() {
                     </div>
                   </InfoRow>
 
-                  <div className="flex items-start justify-between gap-3 border-b border-white/[0.05] pb-3">
-                    <div className="min-w-0">
+                  <div className="flex min-w-0 items-start justify-between gap-2 border-b border-white/[0.05] pb-3">
+                    <div className="min-w-0 flex-1 overflow-hidden">
                       <p className="text-[11px] font-medium text-zinc-500">Correo electrónico</p>
                       <p className="mt-0.5 truncate text-sm font-semibold text-white">
                         {profile.email || '—'}
@@ -740,7 +736,7 @@ export function ProfileView() {
                     )}
                   </div>
 
-                  <div className="border-b border-white/[0.05] pb-3">
+                  <div className="min-w-0 border-b border-white/[0.05] pb-3">
                     <p className="text-[11px] font-medium text-zinc-500">Fecha de nacimiento</p>
                     <input
                       type="date"
@@ -753,7 +749,7 @@ export function ProfileView() {
                           void saveBirthDateOnly(value);
                         }
                       }}
-                      className="mt-1 h-10 w-full rounded-lg border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+                      className="mt-1 h-10 w-full min-w-0 max-w-full rounded-lg border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
                     />
                     {calculatedAge != null ? (
                       <p className="mt-1 text-[11px] text-zinc-500">Edad: {calculatedAge} años</p>
@@ -831,7 +827,7 @@ export function ProfileView() {
             </Card>
           </div>
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
           <Card className="h-fit">
             <header className="mb-4 flex items-center gap-2">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-500/20 text-violet-300">
@@ -939,6 +935,7 @@ export function ProfileView() {
             subtitle="Salir de esta cuenta"
             onClick={() => void logout()}
           />
+          <LanguageControl variant="row" />
           </div>
         </div>
       ) : null}
@@ -1143,11 +1140,11 @@ function InfoRow({
   children: ReactNode;
 }) {
   return (
-    <div className="border-b border-white/[0.05] pb-3 last:border-0 last:pb-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+    <div className="min-w-0 border-b border-white/[0.05] pb-3 last:border-0 last:pb-0">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-[11px] font-medium text-zinc-500">{label}</p>
-          {editing ? <div className="mt-1">{children}</div> : (
+          {editing ? <div className="mt-1 min-w-0">{children}</div> : (
             <p className="mt-0.5 truncate text-sm font-semibold text-white">{value}</p>
           )}
         </div>

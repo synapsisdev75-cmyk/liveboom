@@ -47,6 +47,9 @@ export const en: Catalog = {
     entering: 'Signing in…',
     or: 'or',
     google: 'Continue with Google',
+    noAccount: "Don't have an account? Sign up",
+    hasAccount: 'Already have an account? Sign in',
+    googleBirthHint: 'Google sign-up also uses the birth year above.',
     mustAccept: 'You must accept the Terms and the Privacy Notice.',
     invalidBirthYear: 'Enter a valid year of birth (you must be 18+).',
     mustBe18: 'You must be 18 or older to sign up.',
@@ -102,6 +105,7 @@ export const en: Catalog = {
       'When you write in your language, the other person sees the message in theirs. You still see the original.',
     openPicker: 'Choose language',
     close: 'Close',
+    searchPlaceholder: 'Search language...',
   },
   appearance: {
     title: 'Appearance',

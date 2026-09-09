@@ -2,9 +2,11 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 import { firebaseApp } from './firebase';
 import {
-  DEFAULT_LOCALE,
   detectBrowserLocale,
+  htmlLangFor,
   isAppLocale,
+  isRtlLocale,
+  LOCALE_EXPLICIT_KEY,
   LOCALE_STORAGE_KEY,
   parseAppLocale,
   type AppLocale,
@@ -12,21 +14,33 @@ import {
 
 const db = getFirestore(firebaseApp);
 
-export function readStoredLocale(): AppLocale {
-  if (typeof window === 'undefined') return DEFAULT_LOCALE;
+export function hasExplicitLocale(): boolean {
+  if (typeof window === 'undefined') return false;
   try {
-    const raw = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-    if (raw && isAppLocale(raw)) return raw;
+    return window.localStorage.getItem(LOCALE_EXPLICIT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function readStoredLocale(): AppLocale {
+  if (typeof window === 'undefined') return detectBrowserLocale();
+  try {
+    if (hasExplicitLocale()) {
+      const raw = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+      if (raw && isAppLocale(raw)) return raw;
+    }
   } catch {
     /* private mode */
   }
   return detectBrowserLocale();
 }
 
-export function writeStoredLocale(locale: AppLocale) {
+export function writeStoredLocale(locale: AppLocale, explicit = true) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    if (explicit) window.localStorage.setItem(LOCALE_EXPLICIT_KEY, '1');
   } catch {
     /* quota / private mode */
   }
@@ -34,8 +48,8 @@ export function writeStoredLocale(locale: AppLocale) {
 
 export function applyLocaleToDocument(locale: AppLocale) {
   if (typeof document === 'undefined') return;
-  const htmlLang = locale === 'zh' ? 'zh-CN' : locale;
-  document.documentElement.lang = htmlLang;
+  document.documentElement.lang = htmlLangFor(locale);
+  document.documentElement.dir = isRtlLocale(locale) ? 'rtl' : 'ltr';
 }
 
 export async function fetchCloudLocale(uid: string): Promise<AppLocale | null> {

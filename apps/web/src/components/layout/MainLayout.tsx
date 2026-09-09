@@ -30,7 +30,6 @@ import { SideRailPanel } from './SideRailPanel';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { Logo } from '../brand/Logo';
 import { AppearanceControl } from '../appearance/AppearanceControl';
-import { LanguageControl } from '../i18n/LanguageControl';
 import { bcp47For, useT } from '../../i18n';
 import { useLocaleStore } from '../../store/localeStore';
 
@@ -110,7 +109,6 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
         >
           <Logo compact className="!justify-start [&_img]:!h-[4.25rem] [&_img]:!max-w-[15rem]" />
         </Link>
-        <LanguageControl />
         <AppearanceControl />
       </div>
 
@@ -144,48 +142,47 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
 
       {/* Bloque inferior: Transmitir + Billetera + Perfil (mockup 2) */}
       <div className="mt-auto flex shrink-0 flex-col gap-3 pt-2">
+        <div className="lb-sidebar-dock">
         <NavLink
           to="/transmitir"
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(to_right,#EC4899,#06B6D4)] text-[15px] font-extrabold text-black shadow-[0_8px_24px_rgba(236,72,153,0.3)] transition hover:brightness-110 ${
-              isActive ? 'ring-2 ring-cyan-300/55 ring-offset-2 ring-offset-[#0a0b10]' : ''
-            }`
+            `lb-sidebar-cta${isActive ? ' is-active' : ''}`
           }
         >
-          <Radio size={17} strokeWidth={2.5} className="text-black" />
+          <Radio size={15} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
           {t('nav.goLive')}
         </NavLink>
 
-        <div className="rounded-[18px] border border-white/[0.08] bg-[#15161e] px-3.5 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+        <div className="lb-sidebar-wallet">
+          <p className="lb-sidebar-wallet__title">
             {t('nav.myWallet')}
           </p>
           {profile ? (
             <>
-              <p className="mt-2 flex items-baseline gap-1.5 leading-none">
-                <span className="text-[28px] font-black tracking-tight text-[#00E5FF]">
+              <p className="lb-sidebar-wallet__balance">
+                <span className="lb-sidebar-wallet__amount">
                   {profile.coinsBalance.toLocaleString(numberLocale)}
                 </span>
-                <span className="text-[15px] font-semibold text-white">{t('nav.coins')}</span>
+                <span className="lb-sidebar-wallet__unit">{t('nav.coins')}</span>
               </p>
               <button
                 type="button"
                 onClick={onRecharge}
-                className="mt-3 flex h-10 w-full items-center justify-center rounded-full bg-[linear-gradient(to_right,#EC4899,#06B6D4)] text-[13px] font-bold text-white shadow-[0_4px_16px_rgba(236,72,153,0.25)] transition hover:brightness-110"
+                className="lb-sidebar-wallet__recharge"
               >
                 {t('nav.recharge')}
               </button>
               <Link
                 to="/billetera"
                 onClick={onNavigate}
-                className="mt-2 flex h-10 w-full items-center justify-center rounded-full border-[1.5px] border-[#10B981] bg-transparent text-[13px] font-semibold text-[#10B981] transition hover:bg-[#10B981]/10"
+                className="lb-sidebar-wallet__withdraw"
               >
                 {t('nav.withdraw')}
               </Link>
             </>
           ) : (
-            <div className="mt-3 flex flex-col gap-2">
+            <div className="mt-2 flex flex-col gap-1.5">
               <Link
                 to="/login"
                 onClick={onNavigate}
@@ -196,12 +193,13 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
               <Link
                 to="/registro"
                 onClick={onNavigate}
-                className="flex h-10 items-center justify-center rounded-full bg-[linear-gradient(to_right,#EC4899,#06B6D4)] text-sm font-bold text-black"
+                className="lb-sidebar-cta"
               >
                 {t('nav.signUp')}
               </Link>
             </div>
           )}
+        </div>
         </div>
 
         {profile ? (
@@ -299,7 +297,6 @@ export function MainLayout() {
           <Link to="/" className="min-w-0 shrink">
             <Logo compact className="[&_img]:!h-14 [&_img]:!max-w-[12rem] sm:[&_img]:!h-16 sm:[&_img]:!max-w-[14rem]" />
           </Link>
-          <LanguageControl />
           <AppearanceControl />
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">

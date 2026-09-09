@@ -45,6 +45,9 @@ export const es = {
     entering: 'Entrando…',
     or: 'o',
     google: 'Continuar con Google',
+    noAccount: '¿No tienes cuenta? Regístrate',
+    hasAccount: '¿Ya tienes cuenta? Inicia sesión',
+    googleBirthHint: 'Con Google también usa el año de nacimiento de arriba.',
     mustAccept: 'Debes aceptar los Términos y el Aviso de Privacidad.',
     invalidBirthYear: 'Ingresa un año de nacimiento válido (mayor de 18 años).',
     mustBe18: 'Debes ser mayor de 18 años para registrarte.',
@@ -100,6 +103,7 @@ export const es = {
       'Si escribes en tu idioma, la otra persona verá el mensaje en el suyo. Tú sigues viendo el original.',
     openPicker: 'Elegir idioma',
     close: 'Cerrar',
+    searchPlaceholder: 'Buscar idioma...',
   },
   appearance: {
     title: 'Apariencia',
