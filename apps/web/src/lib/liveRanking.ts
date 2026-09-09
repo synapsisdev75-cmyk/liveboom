@@ -1,4 +1,5 @@
 import type { ActiveLiveFeedItem } from './liveGiftsFirestore';
+import { scoreLiveItem } from './liveboomAlgorithm';
 
 /** Máximo de lives en la sección Directos Top. */
 export const TOP_LIVE_LIMIT = 5;
@@ -24,9 +25,23 @@ export function getLiveRanking(
   });
 
   const ranked = [...filtered].sort((a, b) => {
-    const diff = (b.viewers || 0) - (a.viewers || 0);
+    const scoreA = scoreLiveItem({
+      id: a.uid,
+      creatorId: a.uid,
+      viewers: a.viewers || 0,
+      startedAtMs: Date.parse(a.startedAt) || 0,
+      category: a.category,
+    });
+    const scoreB = scoreLiveItem({
+      id: b.uid,
+      creatorId: b.uid,
+      viewers: b.viewers || 0,
+      startedAtMs: Date.parse(b.startedAt) || 0,
+      category: b.category,
+    });
+    const diff = scoreB - scoreA;
     if (diff !== 0) return diff;
-    return 0;
+    return (b.viewers || 0) - (a.viewers || 0);
   });
 
   return {

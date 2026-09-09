@@ -1,4 +1,5 @@
 import { isPublicationPost } from './contentType';
+import { calculateViralScore, type RankingSignals } from './liveboomAlgorithm';
 import type { HomeFeedHistory } from './homeFeedHistory';
 
 /** Tamaño de página del feed de Publicaciones en Inicio. */
@@ -28,6 +29,7 @@ export type HomeFeedPost = {
   mediaUrl?: string | null;
   postFormat?: 'story' | 'post' | null;
   durationSec?: number | null;
+  views?: number;
   reelFeedUntilMs?: number | null;
   storyExpiresAtMs?: number | null;
 };
@@ -71,10 +73,25 @@ function recencyScore(ageMs: number) {
   return 0.16;
 }
 
-function growthScore(likes: number, ageMs: number) {
-  const hours = Math.max(ageMs / (60 * 60 * 1000), 0.5);
-  const velocity = likes / hours;
-  return clamp01(Math.log1p(velocity * 8) / Math.log1p(40));
+function growthScore(post: HomeFeedPost, now: number) {
+  const likes = Math.max(0, Number(post.likes) || 0);
+  const views = Math.max(0, Number(post.views) || 0);
+  const signals: RankingSignals = {
+    id: post.id,
+    creatorId: authorId(post),
+    contentType: post.postFormat === 'story' ? 'flashboom' : 'post',
+    createdAtMs: createdMs(post),
+    qualifiedViews: Math.max(views, likes),
+    uniqueQualifiedViews: Math.max(views, likes),
+    uniqueLikes: likes,
+    uniqueDislikes: 0,
+    uniqueCommenters: 0,
+    validCommentWeight: 0,
+    giftCoins: 0,
+    uniqueGiftSenders: 0,
+    durationSec: post.durationSec,
+  };
+  return clamp01(calculateViralScore(signals, now).viralScore / 100);
 }
 
 function authorId(post: { authorUid?: string }) {
@@ -133,7 +150,7 @@ export function scoreHomePublication(
   const isNetwork = isOwn || isFriend || isFollowing;
 
   let recency = recencyScore(ageMs);
-  let growth = growthScore(likes, ageMs);
+  let growth = growthScore(post, now);
   const interest =
     isOwn ? 0.55 : isNetwork || seen?.interacted || (uid && favoredAuthors?.has(uid)) ? 0.9 : 0.2;
   let discovery = isNetwork ? 0.12 : 0.95;

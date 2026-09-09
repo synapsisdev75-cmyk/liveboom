@@ -1,5 +1,14 @@
 import type { ExploreHistory } from './exploreHistory';
 import { extractHashtags } from './trendsFirestore';
+import {
+  ALGORITHM_CONFIG,
+  calculateCreatorMomentum,
+  calculateDiscoveryScore,
+  calculateForYouScore,
+  calculateViralScore,
+  type RankingContentType,
+  type RankingSignals,
+} from './liveboomAlgorithm';
 
 export type ExploreTabId = 'para_ti' | 'virales' | 'recientes';
 
@@ -9,7 +18,15 @@ export type ExploreRankPost = {
   caption?: string | null;
   createdAt: string;
   likes?: number;
+  views?: number;
+  dislikes?: number;
+  commentCount?: number;
+  giftCoins?: number;
+  uniqueGiftSenders?: number;
   durationSec?: number | null;
+  type?: string | null;
+  postFormat?: 'story' | 'post' | null;
+  storyExpiresAtMs?: number | null;
 };
 
 export type ExploreViewer = {
@@ -26,8 +43,8 @@ export const EXPLORE_VIRAL_WINDOWS_MS = [
 ] as const;
 
 const MIN_VIRAL_COUNT = 12;
-const MAX_CONSECUTIVE_AUTHOR = 2;
-const DISCOVERY_SHARE = 0.28;
+const MAX_CONSECUTIVE_AUTHOR = ALGORITHM_CONFIG.maxConsecutiveAuthor;
+const DISCOVERY_SHARE = ALGORITHM_CONFIG.forYouMix.discovery;
 
 function createdMs(post: { createdAt: string }) {
   const parsed = Date.parse(post.createdAt);
@@ -131,22 +148,39 @@ function ensureDiscoveryShare<T extends ExploreRankPost>(
   return mixed;
 }
 
+function contentTypeOf(post: ExploreRankPost): RankingContentType {
+  if (post.postFormat === 'story' || (Number(post.storyExpiresAtMs) || 0) > 0) return 'flashboom';
+  if (post.postFormat === 'post' && post.type === 'video') return 'boom_clip';
+  return 'post';
+}
+
+export function exploreSignalsFromPost(post: ExploreRankPost): RankingSignals {
+  const likes = Math.max(0, Number(post.likes) || 0);
+  const views = Math.max(0, Number(post.views) || 0);
+  const uniqueViews = Math.max(views, likes > 0 ? likes : 0);
+  return {
+    id: post.id,
+    creatorId: authorId(post),
+    contentType: contentTypeOf(post),
+    createdAtMs: createdMs(post),
+    expiresAtMs: Number(post.storyExpiresAtMs) || null,
+    qualifiedViews: uniqueViews,
+    uniqueQualifiedViews: uniqueViews,
+    uniqueLikes: likes,
+    uniqueDislikes: Math.max(0, Number(post.dislikes) || 0),
+    uniqueCommenters: Math.max(0, Number(post.commentCount) || 0),
+    validCommentWeight: Math.max(0, Number(post.commentCount) || 0),
+    giftCoins: Math.max(0, Number(post.giftCoins) || 0),
+    uniqueGiftSenders: Math.max(0, Number(post.uniqueGiftSenders) || 0),
+    durationSec: post.durationSec,
+  };
+}
+
 /**
- * Viralidad por crecimiento AHORA, no por total histórico.
- * Señales disponibles en el cliente: Booms (likes) / hora, recencia de la ventana,
- * y un factor anti-fama para que cuentas grandes no ganen siempre.
+ * Viralidad 0-100: tasas + velocidad + frescura, no totales brutos.
  */
 export function viralScore(post: ExploreRankPost, now = Date.now()): number {
-  const ageMs = Math.max(0, now - createdMs(post));
-  const ageHours = Math.max(ageMs / 3_600_000, 0.25);
-  const likes = Math.max(0, Number(post.likes) || 0);
-  const boomVelocity = likes / ageHours;
-  const uniqueProxy = Math.log1p(likes) / Math.log1p(90);
-  const recencyWindow =
-    ageHours <= 6 ? 1.4 : ageHours <= 24 ? 1.15 : ageHours <= 72 ? 0.9 : ageHours <= 168 ? 0.62 : 0.28;
-  const antiFame = 1 / (1 + Math.log1p(likes) * 0.18);
-  const growthNow = clamp01(Math.log1p(boomVelocity * 14) / Math.log1p(55));
-  return growthNow * 0.58 * recencyWindow + uniqueProxy * 0.12 + recencyWindow * 0.18 + antiFame * 0.12;
+  return calculateViralScore(exploreSignalsFromPost(post), now).viralScore;
 }
 
 export function rankExploreRecent<T extends ExploreRankPost>(posts: T[]): T[] {
@@ -164,20 +198,15 @@ export function rankExploreViral<T extends ExploreRankPost>(posts: T[], now = Da
   }
   if (pool.length === 0) pool = unique;
   const scored = [...pool].sort((a, b) => {
-    const diff = viralScore(b, now) - viralScore(a, now);
+    const va = calculateViralScore(exploreSignalsFromPost(a), now);
+    const vb = calculateViralScore(exploreSignalsFromPost(b), now);
+    const rankA = va.viralScore * 0.7 + va.velocityScore * 0.2 + va.freshnessScore * 0.1;
+    const rankB = vb.viralScore * 0.7 + vb.velocityScore * 0.2 + vb.freshnessScore * 0.1;
+    const diff = rankB - rankA;
     if (Math.abs(diff) > 1e-9) return diff;
     return createdMs(b) - createdMs(a);
   });
   return diversifyExploreAuthors(scored);
-}
-
-function recencyScore(ageMs: number) {
-  const day = 24 * 60 * 60 * 1000;
-  if (ageMs <= 6 * 60 * 60 * 1000) return 1;
-  if (ageMs <= day) return 0.86;
-  if (ageMs <= 3 * day) return 0.68;
-  if (ageMs <= 14 * day) return 0.42;
-  return 0.2;
 }
 
 type ViewerTaste = {
@@ -224,8 +253,8 @@ function forYouScore(
   taste: ViewerTaste,
   salt: number,
   now: number,
+  momentumByCreator: Map<string, number>,
 ): number {
-  const ageMs = Math.max(0, now - createdMs(post));
   const likes = Math.max(0, Number(post.likes) || 0);
   const uid = authorId(post);
   const hist = history[post.id];
@@ -235,38 +264,37 @@ function forYouScore(
 
   let tagScore = 0;
   for (const tag of tags) tagScore += taste.tagWeights.get(tag) || 0;
-  tagScore = clamp01(tagScore / 4);
-
-  const authorScore = clamp01((taste.authorAffinity.get(uid) || 0) / 4);
-  const similar = tagScore * 0.55 + authorScore * 0.45;
-  const recency = recencyScore(ageMs);
-  const discovery = !following && !isOwn ? 0.92 : 0.22;
-  const isSmallCreator = likes < 10 && !following && !isOwn;
-  const newCreatorBoost = isSmallCreator && (tagScore > 0.12 || unitNoise(viewer.uid, post.id, salt) < 0.34) ? 0.7 : 0.12;
-  const finishAffinity = similar * 0.65 + recency * 0.35;
-  const growth = viralScore(post, now);
-  const noise = unitNoise(viewer.uid, `${post.id}:fy`, salt);
-
-  let score: number;
-  if (!taste.hasSignals) {
-    score = recency * 0.38 + growth * 0.32 + discovery * 0.18 + noise * 0.12;
-  } else {
-    score =
-      finishAffinity * 0.3 +
-      similar * 0.22 +
-      discovery * 0.16 +
-      newCreatorBoost * 0.12 +
-      recency * 0.1 +
-      growth * 0.05 +
-      noise * 0.05;
-  }
-
-  if (taste.skipAuthors.has(uid) && !following) score *= 0.35;
-  if (hist?.skipped) score *= 0.22;
-  if (hist?.completed) score *= 0.4;
-  if (hist && hist.watchCount >= 2 && hist.watchPct < 0.4) score *= 0.3;
-
-  return score;
+  const interestAffinity = clamp01(tagScore / 4) * 100;
+  const creatorAffinity = clamp01((taste.authorAffinity.get(uid) || 0) / 4) * 100;
+  const watchAffinity = hist
+    ? clamp01((hist.completed ? 0.55 : 0) + hist.watchPct * 0.45) * 100
+    : 28;
+  const related = interestAffinity > 12;
+  const smallCreator = likes < 12 && (Number(post.views) || 0) < 80 && !following && !isOwn;
+  const discoveryScore = calculateDiscoveryScore({
+    following,
+    isOwn,
+    smallCreator,
+    relatedInterest: related,
+  });
+  const viral = calculateViralScore(exploreSignalsFromPost(post), now);
+  const momentum = momentumByCreator.get(uid) || 0;
+  const score = calculateForYouScore(
+    viral,
+    {
+      interestAffinity,
+      watchAffinity,
+      creatorAffinity: clamp01((creatorAffinity + momentum * 0.25) / 100) * 100,
+      discoveryScore: clamp01((discoveryScore + (smallCreator ? momentum * 0.2 : 0)) / 100) * 100,
+      skipped: Boolean(hist?.skipped),
+      completedRecently: Boolean(hist?.completed && now - hist.seenAt < 6 * 60 * 60 * 1000),
+      ignoredCreator: taste.skipAuthors.has(uid) && !following,
+    },
+    !taste.hasSignals,
+  );
+  const noise = unitNoise(viewer.uid, `${post.id}:fy`, salt) * 4;
+  if (hist && hist.watchCount >= 2 && hist.watchPct < 0.4) return score * 0.3 + noise;
+  return score + noise;
 }
 
 export function rankExploreForYou<T extends ExploreRankPost>(
@@ -279,9 +307,22 @@ export function rankExploreForYou<T extends ExploreRankPost>(
   const unique = dedupePosts(posts);
   if (unique.length === 0) return [];
   const taste = buildTaste(history);
+  const byCreator = new Map<string, RankingSignals[]>();
+  for (const post of unique) {
+    const uid = authorId(post);
+    if (!uid) continue;
+    const list = byCreator.get(uid) || [];
+    list.push(exploreSignalsFromPost(post));
+    byCreator.set(uid, list);
+  }
+  const momentumByCreator = new Map<string, number>();
+  for (const [uid, list] of byCreator) {
+    momentumByCreator.set(uid, calculateCreatorMomentum(list, now));
+  }
   const scored = [...unique].sort((a, b) => {
     const diff =
-      forYouScore(b, viewer, history, taste, salt, now) - forYouScore(a, viewer, history, taste, salt, now);
+      forYouScore(b, viewer, history, taste, salt, now, momentumByCreator) -
+      forYouScore(a, viewer, history, taste, salt, now, momentumByCreator);
     if (Math.abs(diff) > 1e-9) return diff;
     return createdMs(b) - createdMs(a);
   });
