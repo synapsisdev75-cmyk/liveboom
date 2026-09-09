@@ -125,6 +125,7 @@ export type PrivateCall = {
   video: boolean;
   type?: 'voice' | 'video';
   createdAt: string;
+  createdAtMs?: number;
   connectedAt?: string | null;
   answeredAt?: string | null;
   rateSnapshot?: {
@@ -213,22 +214,46 @@ function asIso(value: unknown) {
   return new Date().toISOString();
 }
 
+function asEpochMs(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (
+    value &&
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof (value as { toDate: () => Date }).toDate === 'function'
+  ) {
+    const ms = (value as { toDate: () => Date }).toDate().getTime();
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  return 0;
+}
+
 function parseCall(value: unknown): PrivateCall | null {
   if (!value || typeof value !== 'object') return null;
   const data = value as Record<string, unknown>;
   if (data.status !== 'ringing' && data.status !== 'active' && data.status !== 'ended') return null;
-  if (!data.fromUid || !data.toUid) return null;
+  const fromUid = String(data.fromUid || data.callerId || '');
+  const toUid = String(data.toUid || data.receiverId || '');
+  if (!fromUid) return null;
+  const createdAtMs = Math.max(0, Number(data.createdAtMs) || asEpochMs(data.createdAt));
   return {
     id: String(data.id || ''),
     status: data.status,
-    fromUid: String(data.fromUid),
+    fromUid,
     fromName: String(data.fromName || data.fromHandle || ''),
     fromHandle: String(data.fromHandle || ''),
     fromAvatar: (data.fromAvatar as string | null) ?? null,
-    toUid: String(data.toUid),
+    toUid,
     video: Boolean(data.video),
     type: data.video ? 'video' : 'voice',
-    createdAt: asIso(data.createdAt),
+    createdAt: data.createdAt ? asIso(data.createdAt) : createdAtMs > 0
+      ? new Date(createdAtMs).toISOString()
+      : new Date().toISOString(),
+    createdAtMs: createdAtMs || Date.now(),
     connectedAt: data.connectedAt ? asIso(data.connectedAt) : null,
     answeredAt: data.answeredAt ? asIso(data.answeredAt) : null,
     rateSnapshot:
@@ -306,6 +331,7 @@ export async function startPrivateCall(
       type: video ? 'video' : 'audio',
       roomName: callRoomName(chatId, id),
       createdAt: serverTimestamp(),
+      createdAtMs: Date.now(),
       connectedAt: null,
       answeredAt: null,
       rateSnapshot: snapshot,
@@ -346,6 +372,22 @@ export function isLivePrivateCallStatus(status: string | null | undefined): bool
 export async function peekPrivateCall(chatId: string): Promise<PrivateCall | null> {
   const snap = await getDoc(doc(db, 'chats', chatId));
   return parseCall(snap.data()?.call);
+}
+
+export function listenChatCall(
+  chatId: string,
+  onChange: (call: PrivateCall | null) => void,
+): Unsubscribe {
+  return onSnapshot(
+    doc(db, 'chats', chatId),
+    (snap) => {
+      onChange(parseCall(snap.data()?.call));
+    },
+    (error) => {
+      console.warn('[CALL] chat call listen error', chatId, error);
+      onChange(null);
+    },
+  );
 }
 
 export async function beatPresence(uid: string) {
@@ -893,7 +935,9 @@ export function listenConversations(
   onChange: (conversations: Conversation[]) => void,
 ): Unsubscribe {
   const q = query(collection(db, 'chats'), where('participants', 'array-contains', uid));
-  return onSnapshot(q, (snap) => {
+  return onSnapshot(
+    q,
+    (snap) => {
     const list: Conversation[] = snap.docs.map((item) => {
       const data = item.data() as {
         participants?: string[];
@@ -925,7 +969,11 @@ export function listenConversations(
     });
     list.sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
     onChange(list);
-  });
+    },
+    (error) => {
+      console.warn('[CALL] conversations listen error', error);
+    },
+  );
 }
 
 export function listenMessages(

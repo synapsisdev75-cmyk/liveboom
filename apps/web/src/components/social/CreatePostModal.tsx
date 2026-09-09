@@ -1386,9 +1386,10 @@ export function CreatePostModal({
                 }
                 emojiSize={POST_EMOJI_SIZE}
                 growToMaxScroll
-                fieldClassName="publication-composer-field min-h-[4.5rem] w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/40"
+                fieldClassName="publication-composer-field min-h-[4.5rem] w-full min-w-0 max-w-full rounded-xl"
                 padClassName={captionMax != null ? 'px-3 pb-7 pt-2' : 'px-3 py-2'}
-                mirrorTextClassName="text-white"
+                mirrorTextClassName="publication-composer-text"
+                placeholderClassName="publication-composer-placeholder"
               />
               {captionMax != null ? (
                 <span
@@ -1680,10 +1681,8 @@ export function CreatePostModal({
               <button
                 type="button"
                 onClick={() => setMediaMenuOpen((value) => !value)}
-                className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border px-2 transition ${
-                  mediaMenuOpen
-                    ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
-                    : 'border-white/15 bg-zinc-900/80 text-zinc-300 hover:border-cyan-400/40'
+                className={`lb-composer-attach inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border px-2 transition ${
+                  mediaMenuOpen ? 'is-open' : ''
                 }`}
                 aria-label="Adjuntar foto o video"
                 aria-expanded={mediaMenuOpen}
@@ -1692,8 +1691,8 @@ export function CreatePostModal({
                 <span className="hidden text-[11px] font-semibold sm:inline">Adjuntar</span>
               </button>
               {mediaMenuOpen ? (
-                <div className="absolute bottom-full left-0 z-20 mb-1.5 w-[min(18.5rem,calc(100vw-2.5rem))] rounded-2xl bg-gradient-to-br from-cyan-400/80 to-violet-500/80 p-px shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
-                  <div className="overflow-hidden rounded-[15px] bg-zinc-900">
+                <div className="lb-composer-attach-menu absolute bottom-full left-0 z-20 mb-1.5 w-[min(18.5rem,calc(100vw-2.5rem))] rounded-2xl p-px">
+                  <div className="lb-composer-attach-menu__inner overflow-hidden rounded-[15px]">
                     <button
                       type="button"
                       onClick={() => openGallery('any')}
@@ -1701,13 +1700,13 @@ export function CreatePostModal({
                     >
                       <Image size={18} className="shrink-0 text-cyan-300" />
                       <span className="min-w-0">
-                        <span className="block text-sm font-bold text-white">Galería</span>
-                        <span className="block text-[11px] leading-snug text-zinc-500">
+                        <span className="lb-composer-attach-menu__title block text-sm font-bold">Galería</span>
+                        <span className="lb-composer-attach-menu__sub block text-[11px] leading-snug">
                           Elige fotos o videos
                         </span>
                       </span>
                     </button>
-                    <div className="mx-3 h-px bg-white/10" />
+                    <div className="lb-composer-attach-menu__rule mx-3 h-px" />
                     <button
                       type="button"
                       onClick={() => openCamera()}
@@ -1715,8 +1714,8 @@ export function CreatePostModal({
                     >
                       <Camera size={18} className="shrink-0 text-zinc-100" />
                       <span className="min-w-0">
-                        <span className="block text-sm font-bold text-white">Cámara</span>
-                        <span className="block text-[11px] leading-snug text-zinc-500">
+                        <span className="lb-composer-attach-menu__title block text-sm font-bold">Cámara</span>
+                        <span className="lb-composer-attach-menu__sub block text-[11px] leading-snug">
                           Captura una foto o video
                         </span>
                       </span>
@@ -1727,7 +1726,7 @@ export function CreatePostModal({
               <button
                 type="button"
                 onClick={() => setGifPickerOpen(true)}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-violet-400/70 px-2.5 text-[11px] font-bold text-violet-200"
+                className="lb-composer-gif inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg px-2.5 text-[11px] font-bold"
                 aria-label="GIF"
               >
                 GIF
@@ -1753,7 +1752,7 @@ export function CreatePostModal({
               </button>
               {showVisibility ? (
                 <div
-                  className="ml-auto flex min-h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-black/35 p-0.5"
+                  className="lb-composer-privacy ml-auto flex min-h-11 min-w-0 max-w-full items-center rounded-lg p-0.5"
                   role="group"
                   aria-label="Quién puede verlo"
                 >
@@ -1772,10 +1771,8 @@ export function CreatePostModal({
                         if (value === 'friends') setNotifyFriends(true);
                         if (value === 'private') setNotifyFriends(false);
                       }}
-                      className={`inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${
-                        visibility === value
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : 'text-zinc-400 hover:text-zinc-200'
+                      className={`lb-composer-privacy__opt inline-flex min-h-10 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 text-[10px] font-semibold sm:px-2 sm:text-[11px] ${
+                        visibility === value ? 'is-active' : ''
                       }`}
                       aria-pressed={visibility === value}
                       title={label}
@@ -1852,9 +1849,9 @@ export function CreatePostModal({
   ) : null;
 
   const modalFooter = isModalOpen && !trimDraft ? (
-    <div className="shrink-0 border-t border-white/10 bg-zinc-950 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <div className="lb-composer-modal__foot shrink-0 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {isFlashBoom ? (
-        <p className="mb-2 text-center text-[10px] text-zinc-500">{storyLifecycleHint()}</p>
+        <p className="lb-composer-hint mb-2 text-center text-[10px]">{storyLifecycleHint()}</p>
       ) : null}
       {error ? (
         <div className="mb-2 space-y-2">
@@ -1874,7 +1871,7 @@ export function CreatePostModal({
         </div>
       ) : null}
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={requestClose} className="px-4 py-2 text-sm text-zinc-400">
+        <button type="button" onClick={requestClose} className="lb-composer-cancel px-4 py-2 text-sm">
           Cancelar
         </button>
         <button
@@ -1892,13 +1889,13 @@ export function CreatePostModal({
   const modalOverlay =
     isModalOpen && !trimDraft ? (
       <div
-        className="fixed inset-0 z-[100] flex items-end justify-center overscroll-none bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
+        className="lb-composer-overlay fixed inset-0 z-[100] flex items-end justify-center overscroll-none sm:items-center sm:p-4"
         onClick={(event) => {
           if (event.target === event.currentTarget) requestClose();
         }}
       >
         <div
-          className="lb-composer-modal relative flex w-full flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-zinc-950 shadow-2xl sm:rounded-3xl"
+          className="lb-composer-modal relative flex w-full flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl"
           style={{
             maxHeight:
               'min(92dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 0.5rem))',
@@ -1908,14 +1905,14 @@ export function CreatePostModal({
           aria-modal="true"
           aria-labelledby="create-post-title"
         >
-          <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
-            <h3 id="create-post-title" className="text-base font-bold text-white">
+          <div className="lb-composer-modal__head flex shrink-0 items-center justify-between px-4 py-3">
+            <h3 id="create-post-title" className="lb-composer-modal__title text-base font-bold">
               {modalTitle}
             </h3>
             <button
               type="button"
               onClick={requestClose}
-              className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white"
+              className="lb-composer-modal__close grid h-9 w-9 place-items-center rounded-full"
               aria-label="Cerrar"
             >
               <X size={18} />
@@ -1924,12 +1921,12 @@ export function CreatePostModal({
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">{panelBody}</div>
           {modalFooter}
           {discardOpen ? (
-            <div className="absolute inset-0 z-[20] flex items-center justify-center bg-black/70 p-4">
-              <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-900 p-4 shadow-2xl">
-                <p className="text-sm font-bold text-white">
+            <div className="lb-composer-discard absolute inset-0 z-[20] flex items-center justify-center p-4">
+              <div className="lb-composer-discard__card w-full max-w-sm rounded-2xl p-4">
+                <p className="lb-composer-discard__title text-sm font-bold">
                   {isEditMode ? '¿Descartar cambios?' : '¿Descartar el borrador?'}
                 </p>
-                <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
+                <p className="lb-composer-discard__sub mt-1.5 text-xs leading-relaxed">
                   {isEditMode
                     ? 'Si sales ahora, la publicación original se mantiene igual.'
                     : 'Si sales ahora se perderán el archivo, el texto y las ediciones de esta publicación.'}
@@ -1938,7 +1935,7 @@ export function CreatePostModal({
                   <button
                     type="button"
                     onClick={() => setDiscardOpen(false)}
-                    className="min-h-11 rounded-full px-4 text-sm text-zinc-300"
+                    className="lb-composer-cancel min-h-11 rounded-full px-4 text-sm"
                   >
                     Seguir editando
                   </button>

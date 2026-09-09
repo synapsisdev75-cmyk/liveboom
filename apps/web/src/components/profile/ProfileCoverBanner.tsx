@@ -63,9 +63,14 @@ export function ProfileCoverBanner({ url, type, isOwner, onEdit }: Props) {
         </div>
       )}
       {isOwner && src ? (
-        <button type="button" className="lb-profile-cover__edit" onClick={onEdit}>
-          <Camera size={15} />
-          Editar portada
+        <button
+          type="button"
+          className="lb-profile-cover__edit"
+          onClick={onEdit}
+          aria-label="Cambiar portada"
+          title="Cambiar portada"
+        >
+          <Camera size={16} strokeWidth={2.2} />
         </button>
       ) : null}
     </div>

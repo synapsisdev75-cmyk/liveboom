@@ -2,13 +2,14 @@
  * Tokens de layout solo para móvil y tablet (< lg / 1024px).
  * PC usa otros caminos (sidebar, rail aside escritorio); no mezclar aquí.
  *
- * Breakpoints oficiales (Tailwind, `apps/web/tailwind.config.js`):
- * sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536
- * Referencia de producto: 320–374 / 375–430 / 431–767 / 768–1024 / 1024–1440 / 1440+
+ * Breakpoints oficiales: `responsive/viewport.ts` (md 768 · lg 1024).
+ * Tailwind: sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536
  */
 
+import { VP_LG } from '../viewport';
+
 /** Ancho máximo tratado como móvil/tablet (Tailwind `lg`). */
-export const MOBILE_TABLET_MAX_PX = 1023;
+export const MOBILE_TABLET_MAX_PX = VP_LG - 1;
 
 /** Explorar — teléfono/tablet en landscape. */
 export const exploreLandscape = {

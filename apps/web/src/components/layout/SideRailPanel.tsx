@@ -796,7 +796,7 @@ function TransmitRail() {
     : 'https://liveboomapp.com/registro';
 
   return (
-    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
+    <aside className="lb-transmit-rail chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <p className="text-sm font-bold text-white">Consejos para un gran live</p>
         <ul className="mt-3 space-y-3">
@@ -822,7 +822,7 @@ function TransmitRail() {
           <ul className="space-y-3">
             {lives.map((live) => (
               <li key={live.id} className="flex items-center gap-2.5">
-                <span className="grid h-11 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-zinc-800 text-[10px] font-bold text-zinc-500">
+                <span className="lb-live-thumb-badge grid h-11 w-14 shrink-0 place-items-center overflow-hidden rounded-lg text-[10px] font-bold">
                   LIVE
                 </span>
                 <span className="min-w-0 flex-1">
@@ -840,12 +840,12 @@ function TransmitRail() {
         )}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-700/45 via-fuchsia-700/25 to-[#14151c] p-3.5">
+      <section className="lb-palette-promo overflow-hidden rounded-2xl p-3.5">
         <div className="flex items-start gap-2">
-          <Gift className="mt-0.5 shrink-0 text-violet-200" size={22} />
+          <Gift className="mt-0.5 shrink-0" size={22} />
           <div>
-            <p className="text-sm font-bold text-white">¡Invita y gana más!</p>
-            <p className="mt-1 text-[11px] leading-snug text-violet-100/80">
+            <p className="text-sm font-bold">¡Invita y gana más!</p>
+            <p className="lb-palette-promo__lead mt-1 text-[11px] leading-snug">
               Invita amigos y recibe recompensas en coins cuando se registren y comiencen a transmitir.
             </p>
           </div>
@@ -860,7 +860,7 @@ function TransmitRail() {
               'noopener',
             );
           }}
-          className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-violet-600 text-xs font-bold text-white"
+          className="lb-palette-cta mt-3 flex h-10 w-full items-center justify-center rounded-xl text-xs font-bold"
         >
           Invitar amigos
         </button>
@@ -1146,7 +1146,7 @@ function SettingsRail() {
   })();
 
     return (
-    <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
+    <aside className="lb-settings-rail chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <p className="text-sm font-bold text-white">Resumen de cuenta</p>
         <ul className="mt-3 space-y-3">
@@ -1250,19 +1250,19 @@ function SettingsRail() {
         </ul>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-700/50 via-fuchsia-700/30 to-[#14151c] p-3.5">
+      <section className="lb-palette-promo overflow-hidden rounded-2xl p-3.5">
         <div className="flex items-start gap-2">
-          <Gift className="mt-0.5 shrink-0 text-violet-200" size={22} />
+          <Gift className="mt-0.5 shrink-0" size={22} />
           <div>
-            <p className="text-sm font-bold text-white">¡Gana más coins!</p>
-            <p className="mt-1 text-[11px] leading-snug text-violet-100/80">
+            <p className="text-sm font-bold">¡Gana más coins!</p>
+            <p className="lb-palette-promo__lead mt-1 text-[11px] leading-snug">
               Participa en eventos y desafíos especiales dentro de LiveBoom.
             </p>
           </div>
         </div>
         <Link
           to="/explorar"
-          className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-violet-600 text-xs font-bold text-white"
+          className="lb-palette-cta mt-3 flex h-10 w-full items-center justify-center rounded-xl text-xs font-bold"
         >
           Explorar eventos
         </Link>

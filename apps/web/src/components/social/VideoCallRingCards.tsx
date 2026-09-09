@@ -125,7 +125,7 @@ export function OutgoingVideoCallCard({
   const status = connecting ? 'Conectando...' : 'Videollamando...';
 
   return (
-    <article className="lb-video-ring-screen is-out" data-call-drag>
+    <article className="lb-video-ring-screen is-out" data-call-kind="video" data-call-drag>
       <CallWinBar
         showLogo={false}
         onMinimize={onMinimize}
@@ -219,7 +219,7 @@ export function IncomingVideoCallCard({
   const status = pending ? 'Conectando...' : 'Te está llamando...';
 
   return (
-    <article className="lb-video-ring-screen is-in" data-call-drag>
+    <article className="lb-video-ring-screen is-in" data-call-kind="video" data-call-drag>
       <CallWinBar
         showLogo={false}
         onMinimize={onMinimize}

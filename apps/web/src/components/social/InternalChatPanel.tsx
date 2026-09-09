@@ -28,6 +28,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useDismissOnOutside } from '../../hooks/useDismissOnOutside';
 import { EmojiPickerButton } from './EmojiPicker';
 import { VideoNoteBubble, VideoNoteCapture } from './ChatVideoNote';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
@@ -590,6 +591,9 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [newMsgOpen, setNewMsgOpen] = useState(false);
   const [menuMessageId, setMenuMessageId] = useState<string | null>(null);
+  const deleteMenuRootRef = useRef<HTMLSpanElement>(null);
+  const closeDeleteMenu = useCallback(() => setMenuMessageId(null), []);
+  useDismissOnOutside(Boolean(menuMessageId), deleteMenuRootRef, closeDeleteMenu);
   const bottomRef = useRef<HTMLDivElement>(null);
   const holdTimerRef = useRef(0);
   const lastMsgCount = useRef(0);
@@ -1534,13 +1538,13 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           </div>
         </div>
 
-        <label className="mt-3 flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#12131a] px-3 py-2.5">
-          <Search size={16} className="shrink-0 text-zinc-500" />
+        <label className="lb-chat-search mt-3 flex items-center gap-2 rounded-xl px-3 py-2.5">
+          <Search size={16} className="shrink-0" />
           <input
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
             placeholder={t('chat.searchConversations')}
-            className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
         </label>
 
@@ -1645,7 +1649,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             {filteredPeople.map((friend) => {
               const isLive = liveHandles.has(friend.username.toLowerCase());
               const active = activeUid === friend.uid;
-              const rowInCall = Boolean(friend.chatId && callChatId === friend.chatId && callStatus !== 'idle');
+              const rowIncoming = Boolean(incomingCall?.chatId && incomingCall.chatId === friend.chatId);
+              const rowInCall = Boolean(
+                rowIncoming || (friend.chatId && callChatId === friend.chatId && callStatus !== 'idle'),
+              );
               const rowLive = rowInCall && callStatus === 'active';
               return (
                 <li key={friend.uid} className="flex items-stretch gap-1">
@@ -1683,6 +1690,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       >
                         {rowLive
                           ? `En llamada · ${formatCallClock(callElapsed)}`
+                          : rowIncoming
+                            ? incomingCall?.video
+                              ? 'Videollamada...'
+                              : 'Te está llamando...'
                           : rowInCall
                             ? 'Llamando...'
                             : friend.lastMessage || `@${friend.username}`}
@@ -1901,10 +1912,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                         className={`break-words ${
                           isVideo
                             ? 'bg-transparent p-0'
-                            : `rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                            : `lb-chat-bubble rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
                                 message.mine
-                                  ? 'rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white'
-                                  : 'rounded-bl-md bg-[#1c1d26] text-zinc-100'
+                                  ? 'is-out rounded-br-md'
+                                  : 'is-in rounded-bl-md'
                               }`
                         }`}
                       >
@@ -2016,6 +2027,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       <div className="mt-1 flex items-center gap-1.5 px-1">
                         {!message.deleted ? (
                           <span
+                            ref={menuMessageId === message.id ? deleteMenuRootRef : undefined}
                             className={`relative z-20 flex items-center gap-1 ${
                               menuMessageId === message.id
                                 ? 'opacity-100'
@@ -2050,6 +2062,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                                 className={`lb-chat-msg-menu absolute bottom-5 z-30 ${
                                   message.mine ? 'right-0' : 'left-0'
                                 }`}
+                                role="menu"
                               >
                                 <button
                                   type="button"

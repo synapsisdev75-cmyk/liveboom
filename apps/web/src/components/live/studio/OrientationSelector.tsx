@@ -24,15 +24,13 @@ export function OrientationSelector({ value, onChange, compact }: Props) {
               key={opt.id}
               type="button"
               onClick={() => onChange(opt.id)}
-              className={`min-h-10 w-full rounded-xl border px-3 py-2 text-left transition duration-200 ${
-                active
-                  ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-100 ring-1 ring-cyan-400/35'
-                  : 'border-white/[0.08] bg-[#0f1016] text-zinc-300 hover:border-white/20'
+              className={`lb-live-orient-opt min-h-10 w-full rounded-xl px-3 py-2 text-left transition duration-200 ${
+                active ? 'is-active' : ''
               }`}
             >
               <span className="block text-xs font-bold">{opt.label}</span>
               {!compact ? (
-                <span className="block text-[10px] text-zinc-500">{opt.hint}</span>
+                <span className="lb-live-orient-opt__hint block text-[10px]">{opt.hint}</span>
               ) : null}
             </button>
           );

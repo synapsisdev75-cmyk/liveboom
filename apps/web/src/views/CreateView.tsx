@@ -1,8 +1,12 @@
-import { Clock, Image, PenLine, Radio, Upload } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Radio, SquarePen } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../lib/brand';
-import { MAX_CLIP_DURATION_SECONDS } from '../lib/contentType';
-import { STORY_MAX_DURATION_SEC } from '../lib/storyLifecycle';
+import { MyPromotionsModal } from '../components/ads/MyPromotionsModal';
+import { PromoteAdsModal } from '../components/ads/PromoteAdsModal';
+import { PublicidadSidebarCard } from '../components/ads/PublicidadSidebarCard';
+import { CreatePostModal } from '../components/social/CreatePostModal';
+import { listenActivePromotions, listenMyPromotions, type PromotionAd } from '../lib/promotionsFirestore';
+import { fetchPrivateLocation } from '../lib/userLocation';
 import { useAuthStore } from '../store/authStore';
 import { useT } from '../i18n';
 
@@ -10,12 +14,30 @@ export function CreateView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [ads, setAds] = useState<PromotionAd[]>([]);
+  const [myAds, setMyAds] = useState<PromotionAd[]>([]);
+  const [regionId, setRegionId] = useState('nacional');
+  const [promoteOpen, setPromoteOpen] = useState(false);
+  const [myPromotionsOpen, setMyPromotionsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.firebaseUid) return;
+    void fetchPrivateLocation(profile.firebaseUid)
+      .then((geo) => {
+        if (geo?.regionId) setRegionId(geo.regionId);
+      })
+      .catch(() => undefined);
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => listenActivePromotions(regionId, setAds), [regionId]);
+  useEffect(() => listenMyPromotions(profile?.firebaseUid, setMyAds), [profile?.firebaseUid]);
 
   if (!profile) {
     return (
-      <div className="grid min-h-full place-items-center rounded-2xl bg-zinc-900 p-6">
-        <p className="text-center text-sm text-zinc-400">
-          <Link to="/login" className="text-cyan-400 underline">
+      <div className="lb-create-page grid min-h-full place-items-center rounded-2xl p-6">
+        <p className="lb-create-page__muted text-center text-sm">
+          <Link to="/login" className="lb-create-page__link underline">
             {t('common.signIn')}
           </Link>{' '}
           {t('create.signInToCreate')}
@@ -24,28 +46,24 @@ export function CreateView() {
     );
   }
 
-  const profilePath = `/u/${encodeURIComponent(profile.handle)}`;
-
   return (
-    <div className="lb-page mx-auto flex min-h-full max-w-lg flex-col gap-5 rounded-2xl bg-zinc-900 p-4 sm:p-6">
+    <div className="lb-page lb-create-page mx-auto flex min-h-full w-full max-w-lg flex-col gap-5 overflow-x-hidden rounded-2xl p-4 sm:p-6">
       <div className="min-w-0">
-        <h1 className="text-xl font-bold text-white sm:text-2xl">{t('create.title')}</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          {t('create.subtitle', { flash: FLASH_BOOM_LABEL, clip: BOOM_CLIP_LABEL })}
-        </p>
+        <h1 className="lb-create-page__title text-xl font-bold sm:text-2xl">{t('create.title')}</h1>
+        <p className="lb-create-page__muted mt-1 text-sm">{t('create.subtitle')}</p>
       </div>
 
       <button
         type="button"
         onClick={() => navigate('/transmitir')}
-        className="flex min-h-[4.5rem] items-center gap-3 rounded-2xl border border-fuchsia-400/40 bg-gradient-to-r from-fuchsia-500/20 to-cyan-400/10 p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
+        className="lb-create-action lb-create-action--live flex min-h-[4.5rem] items-center gap-3 rounded-2xl p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
       >
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-fuchsia-500/25 text-fuchsia-200">
+        <span className="lb-create-action__icon grid h-12 w-12 shrink-0 place-items-center rounded-xl">
           <Radio size={22} />
         </span>
-        <span>
-          <span className="block text-base font-bold text-white">Iniciar LIVE</span>
-          <span className="mt-0.5 block text-xs text-zinc-400">
+        <span className="min-w-0">
+          <span className="lb-create-action__title block text-base font-bold">Iniciar LIVE</span>
+          <span className="lb-create-page__muted mt-0.5 block text-xs">
             Checklist de seguridad, metas y transmisión en tiempo real.
           </span>
         </span>
@@ -53,63 +71,48 @@ export function CreateView() {
 
       <button
         type="button"
-        onClick={() => navigate(`${profilePath}?crear=historia`)}
-        className="flex items-center gap-4 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/10 p-4 text-left transition hover:border-fuchsia-400/50"
+        onClick={() => setCreateOpen(true)}
+        className="lb-create-action lb-create-action--post flex min-h-[4.5rem] items-center gap-3 rounded-2xl p-3.5 text-left sm:gap-4 sm:p-4"
       >
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-fuchsia-500/20 text-fuchsia-200">
-          <Clock size={22} />
+        <span className="lb-create-action__icon grid h-12 w-12 shrink-0 place-items-center rounded-xl">
+          <SquarePen size={22} />
         </span>
-        <span>
-          <span className="block text-base font-bold text-white">{FLASH_BOOM_LABEL}</span>
-          <span className="mt-0.5 block text-xs text-zinc-400">
-            Foto o video 0–{STORY_MAX_DURATION_SEC} s · 24 h · amigos y seguidores.
+        <span className="min-w-0">
+          <span className="lb-create-action__title block text-base font-bold">Hacer una nueva publicación</span>
+          <span className="lb-create-page__muted mt-0.5 block text-xs">
+            Crea y comparte una nueva publicación con foto, video o texto.
           </span>
         </span>
       </button>
 
-      <button
-        type="button"
-        onClick={() => navigate(`${profilePath}?crear=video`)}
-        className="flex min-h-[4.5rem] items-center gap-3 rounded-2xl border border-cyan-400/40 bg-gradient-to-r from-cyan-500/15 to-fuchsia-500/10 p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
-      >
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-cyan-500/25 text-cyan-200">
-          <Upload size={22} />
-        </span>
-        <span>
-          <span className="block text-base font-bold text-white">Subir video · {BOOM_CLIP_LABEL}</span>
-          <span className="mt-0.5 block text-xs text-zinc-400">
-            Video corto 0–{MAX_CLIP_DURATION_SECONDS} s · aparece en el carrusel de Inicio.
-          </span>
-        </span>
-      </button>
+      <div className="w-full min-w-0 [&_img]:bg-black/35 [&_img]:object-contain [&_video]:bg-black/35 [&_video]:object-contain">
+        <PublicidadSidebarCard
+          ads={ads}
+          myAds={myAds}
+          loggedIn
+          compact={false}
+          className="lb-create-ad"
+          onConfigure={() => setPromoteOpen(true)}
+          onManageMyPromotions={() => setMyPromotionsOpen(true)}
+        />
+      </div>
 
-      <button
-        type="button"
-        onClick={() => navigate(`${profilePath}?crear=foto`)}
-        className="flex items-center gap-4 rounded-2xl border border-white/10 bg-zinc-950 p-4 text-left transition hover:border-cyan-400/40"
-      >
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-amber-500/15 text-amber-300">
-          <Image size={22} />
-        </span>
-        <span>
-          <span className="block text-base font-bold text-white">Publicar foto</span>
-          <span className="mt-0.5 block text-xs text-zinc-400">Imagen o publicación visual.</span>
-        </span>
-      </button>
+      {createOpen ? (
+        <CreatePostModal
+          username={profile.handle}
+          autoOpen
+          hideTrigger
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => setCreateOpen(false)}
+        />
+      ) : null}
 
-      <button
-        type="button"
-        onClick={() => navigate(`${profilePath}?crear=texto`)}
-        className="flex items-center gap-4 rounded-2xl border border-white/10 bg-zinc-950 p-4 text-left transition hover:border-cyan-400/40"
-      >
-        <span className="grid h-12 w-12 place-items-center rounded-xl bg-emerald-500/15 text-emerald-300">
-          <PenLine size={22} />
-        </span>
-        <span>
-          <span className="block text-base font-bold text-white">Escribir post</span>
-          <span className="mt-0.5 block text-xs text-zinc-400">Texto con emojis y hashtags.</span>
-        </span>
-      </button>
+      {promoteOpen ? (
+        <PromoteAdsModal defaultRegionId={regionId} onClose={() => setPromoteOpen(false)} />
+      ) : null}
+      {myPromotionsOpen ? (
+        <MyPromotionsModal ads={myAds} onClose={() => setMyPromotionsOpen(false)} />
+      ) : null}
     </div>
   );
 }

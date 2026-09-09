@@ -35,11 +35,11 @@ export function IncomingVoiceCallScreen({
       onClose={onClose}
       maximized={maximized}
       actions={
-        <div className="lb-video-ring-screen__actions is-in">
-          <div className="lb-video-ring-screen__action">
+        <div className="lb-voice-in-screen__actions">
+          <div className="lb-voice-in-screen__action">
             <button
               type="button"
-              className="lb-video-ring-decline"
+              className="lb-voice-in-decline"
               data-no-drag
               onClick={onDecline}
               disabled={pending}
@@ -49,10 +49,10 @@ export function IncomingVoiceCallScreen({
             </button>
             <span>Rechazar</span>
           </div>
-          <div className="lb-video-ring-screen__action">
+          <div className="lb-voice-in-screen__action">
             <button
               type="button"
-              className="lb-video-ring-accept"
+              className="lb-voice-in-accept"
               data-no-drag
               onClick={onAccept}
               disabled={pending}

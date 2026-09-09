@@ -197,7 +197,7 @@ export const it: Catalog = {
   },
   create: {
     title: 'Crea',
-    subtitle: '{flash}, {clip} o un LIVE. Scegli cosa vuoi condividere.',
+    subtitle: 'Un LIVE o una pubblicazione. Scegli cosa vuoi condividere.',
     signInToCreate: 'per creare contenuti.',
   },
   search: {

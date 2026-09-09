@@ -195,7 +195,7 @@ export const es = {
   },
   create: {
     title: 'Crear',
-    subtitle: '{flash}, {clip} o un LIVE. Elige qué quieres compartir.',
+    subtitle: 'LIVE o una publicación. Elige qué quieres compartir.',
     signInToCreate: 'para crear contenido.',
   },
   search: {

@@ -28,6 +28,34 @@ export type UserLevelInfo = {
   badgeAnimMp4: string | null;
 };
 
+/** RGB del glow del emblema (misma paleta que `LevelInsignia`). */
+const SLUG_GLOW_RGB: Record<string, string> = {
+  mecha: '255, 180, 60',
+  boom: '255, 120, 40',
+  fuego: '255, 70, 50',
+  impacto: '232, 121, 249',
+  estrella: '250, 204, 21',
+  corona: '251, 191, 36',
+  diamante: '34, 211, 238',
+  titan: '52, 211, 153',
+  leyenda: '252, 211, 77',
+  pro: '0, 240, 255',
+};
+
+export function levelGlowRgb(slug: string): string {
+  return SLUG_GLOW_RGB[String(slug || '').toLowerCase()] ?? '255, 120, 80';
+}
+
+export function levelThemeFromSlug(slug: string) {
+  const rgb = levelGlowRgb(slug);
+  return {
+    primary: `rgb(${rgb})`,
+    secondary: `rgba(${rgb}, 0.88)`,
+    accent: `rgba(${rgb}, 0.62)`,
+    rgb,
+  };
+}
+
 function formatXp(n: number) {
   return Math.max(0, Math.floor(Number(n) || 0)).toLocaleString('es-CO');
 }

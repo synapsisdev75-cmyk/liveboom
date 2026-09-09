@@ -21,6 +21,7 @@ import { useAuthStore } from '../../store/authStore';
 import { sweepAuthorReelLifecycle } from '../../lib/socialFirestore';
 import { useUiStore } from '../../store/uiStore';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { VP_LG } from '../../responsive/viewport';
 import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { CoinModal } from '../wallet/CoinModal';
 import { NotificationBell } from '../social/NotificationBell';
@@ -251,6 +252,9 @@ export function MainLayout() {
   const location = useLocation();
   const onMessages = location.pathname.startsWith('/mensajes');
   const onExplore = location.pathname.startsWith('/explorar');
+  const onProfilePage =
+    location.pathname.startsWith('/u/') ||
+    (location.pathname.startsWith('/perfil') && !location.pathname.startsWith('/perfil/editar'));
   const immersiveMain = onMessages || onExplore;
   const breakpoint = useBreakpoint();
   const [deviceLandscape, setDeviceLandscape] = useState(false);
@@ -270,7 +274,7 @@ export function MainLayout() {
 
   useEffect(() => {
     const mq = window.matchMedia('(orientation: landscape)');
-    const sync = () => setDeviceLandscape(mq.matches && window.innerWidth < 1024);
+    const sync = () => setDeviceLandscape(mq.matches && window.innerWidth < VP_LG);
     sync();
     mq.addEventListener('change', sync);
     window.addEventListener('resize', sync);
@@ -284,7 +288,11 @@ export function MainLayout() {
   const hideMobileChrome = onExplore && deviceLandscape;
 
   return (
-    <div className="lb-shell flex h-[100dvh] w-full flex-col overflow-hidden font-sans lg:flex-row">
+    <div
+      className={`lb-shell flex h-[100dvh] w-full flex-col overflow-hidden font-sans lg:flex-row${
+        onProfilePage ? ' lb-shell--profile' : ''
+      }`}
+    >
       {!hideMobileChrome ? (
       <header className="lb-shell-header flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 lg:hidden">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -411,7 +419,7 @@ export function MainLayout() {
       ) : null}
 
       {menuOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="lb-shell-mobile-layer fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-black/70"

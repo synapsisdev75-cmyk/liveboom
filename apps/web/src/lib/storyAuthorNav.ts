@@ -2,6 +2,9 @@
 
 export const STORY_WHEEL_COOLDOWN_MS = 420;
 export const STORY_WHEEL_MIN_DELTA = 24;
+/** Swipe/drag horizontal para seek ±10s (Explorar / Boom Clip). */
+export const HORIZONTAL_SEEK_THRESHOLD_PX = 52;
+export const GESTURE_AXIS_LOCK_PX = 12;
 
 export type StoryGesture = 'user-next' | 'user-prev' | 'item-next' | 'item-prev';
 

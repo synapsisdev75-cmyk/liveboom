@@ -12,12 +12,9 @@ function readLiveViewport(): LiveViewportState {
   if (typeof window === 'undefined') {
     return { orientation: 'portrait', surface: 'desktop' };
   }
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const orientation: LiveViewportOrientation = window.matchMedia('(orientation: portrait)')
-    .matches
-    ? 'portrait'
-    : 'landscape';
+  const width = window.visualViewport?.width ?? window.innerWidth;
+  const height = window.visualViewport?.height ?? window.innerHeight;
+  const orientation: LiveViewportOrientation = height >= width ? 'portrait' : 'landscape';
   return classifyLiveViewport({
     width,
     height,

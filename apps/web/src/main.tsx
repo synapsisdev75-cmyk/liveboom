@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
 import './appearance.css';
+import './responsive/universal.css';
 import './responsive/mobile-tablet/landscape-explore.css';
+import { installViewportSync } from './responsive/syncViewport';
 
 // Fuerza HTTPS en producción (evita “No es seguro” y Failed to fetch por mixed content).
 if (
@@ -22,6 +24,8 @@ const root = document.getElementById('root');
 if (!root) {
   throw new Error('No se encontró #root');
 }
+
+installViewportSync();
 
 createRoot(root).render(
   <StrictMode>

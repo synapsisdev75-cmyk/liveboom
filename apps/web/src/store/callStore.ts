@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { releaseOwnCallPresence } from '../lib/callAvailability';
+import { releasePendingCallMicrophone } from '../lib/callMedia';
 import { releaseCallSession, logCallConnect } from '../lib/liveKitCallService';
 import { clearCallSession, readCallSession, saveCallSession } from '../lib/callSessionPersist';
 import {
@@ -235,6 +236,7 @@ export const useCallStore = create<CallState>((set, get) => ({
     const wasRingingOut = prev.status === 'ringing-out';
     const wasRingingIn = prev.status === 'ringing-in';
     hangupBusy = true;
+    releasePendingCallMicrophone();
     console.info('[CALL] cleanup', {
       callId,
       reason: forcedOutcome || opts?.error || (wasActive ? 'ended' : wasRingingOut ? 'cancelled' : wasRingingIn ? 'declined' : 'hangup'),

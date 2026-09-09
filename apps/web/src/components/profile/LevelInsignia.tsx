@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { levelFromXp } from '../../lib/userLevels';
+import { levelFromXp, levelGlowRgb } from '../../lib/userLevels';
 
 type Props = {
   levelXp: number;
@@ -12,20 +12,6 @@ type Props = {
     mobile: { width: number; height: number };
     desktop: { width: number; height: number };
   };
-};
-
-/** Tinte de glow por slug (efectos CSS al hover/toque). */
-const SLUG_GLOW: Record<string, string> = {
-  mecha: '255, 180, 60',
-  boom: '255, 120, 40',
-  fuego: '255, 70, 50',
-  impacto: '232, 121, 249',
-  estrella: '250, 204, 21',
-  corona: '251, 191, 36',
-  diamante: '34, 211, 238',
-  titan: '52, 211, 153',
-  leyenda: '252, 211, 77',
-  pro: '0, 240, 255',
 };
 
 export function LevelInsignia({
@@ -42,7 +28,7 @@ export function LevelInsignia({
   const animWebm = previewAnimWebm !== undefined ? previewAnimWebm : info.badgeAnimWebm;
   const animMp4 = previewAnimMp4 !== undefined ? previewAnimMp4 : info.badgeAnimMp4;
   const hasVideo = Boolean(animWebm || animMp4);
-  const glowRgb = SLUG_GLOW[info.slug] ?? '255, 120, 80';
+  const glowRgb = levelGlowRgb(info.slug);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const [active, setActive] = useState(false);

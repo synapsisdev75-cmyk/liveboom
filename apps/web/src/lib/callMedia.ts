@@ -1,9 +1,5 @@
 /** Pide permiso de micrófono (y cámara si es video) antes de conectar la llamada. */
 
-function stopStream(stream: MediaStream) {
-  stream.getTracks().forEach((track) => track.stop());
-}
-
 function micDeniedMessage(error: unknown): string {
   const name = error instanceof DOMException ? error.name : '';
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
@@ -15,26 +11,71 @@ function micDeniedMessage(error: unknown): string {
   return 'No se pudo acceder al micrófono.';
 }
 
-/** Micrófono es obligatorio. La cámara de videollamada no debe abortar la conexión. */
+let pendingCallMic: MediaStreamTrack | null = null;
+
+function stopPendingCallMic() {
+  const track = pendingCallMic;
+  pendingCallMic = null;
+  try {
+    track?.stop();
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Entrega el mic abierto en el gesto del usuario para publicarlo en LiveKit (no volver a abrirlo). */
+export function takePendingCallMicrophone(): MediaStreamTrack | null {
+  const track = pendingCallMic;
+  pendingCallMic = null;
+  return track;
+}
+
+export function releasePendingCallMicrophone() {
+  stopPendingCallMic();
+}
+
+/**
+ * Abre el micrófono en el clic (gesto) y lo deja vivo.
+ * No se detiene aquí: en Windows/Chrome stop()+reopen deja el dispositivo ocupado y LiveKit publica silencio.
+ * La cámara no se toca.
+ */
 export async function ensureCallMediaPermission(video: boolean): Promise<string | null> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     return 'Este dispositivo no puede iniciar llamadas desde el navegador.';
   }
   try {
-    const audio = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    stopStream(audio);
-  } catch (error) {
-    console.error('[ERROR]', {
-      name: error instanceof Error ? error.name : 'Error',
-      message: error instanceof Error ? error.message : String(error),
-      stage: 'microphone-permission',
+    const status = await navigator.permissions?.query?.({ name: 'microphone' as PermissionName });
+    if (status?.state === 'denied') {
+      return video
+        ? 'LiveBoom necesita acceso al micrófono. Revisa los permisos del navegador.'
+        : micDeniedMessage(new DOMException('', 'NotAllowedError'));
+    }
+  } catch {
+    /* Safari / Firefox no siempre exponen permissions.query. */
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const track = stream.getAudioTracks()[0] || null;
+    stream.getTracks().forEach((item) => {
+      if (item !== track) item.stop();
     });
+    if (!track || track.readyState !== 'live') {
+      stream.getTracks().forEach((item) => item.stop());
+      return micDeniedMessage(new DOMException('', 'NotFoundError'));
+    }
+    stopPendingCallMic();
+    pendingCallMic = track;
+    track.addEventListener(
+      'ended',
+      () => {
+        if (pendingCallMic === track) pendingCallMic = null;
+      },
+      { once: true },
+    );
+    return null;
+  } catch (error) {
     return micDeniedMessage(error);
   }
-  if (!video) return null;
-  // No abrir/cerrar la cámara aquí: en Windows/Chrome deja el dispositivo ocupado
-  // y el boot de la videollamada no llega a publicarla.
-  return null;
 }
 
 export function canShareScreen() {

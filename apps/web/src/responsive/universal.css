@@ -1,0 +1,58 @@
+/**
+ * Infraestructura responsive universal.
+ * Tokens de viewport disponible; no redefine módulos ni colores.
+ */
+
+:root {
+  --lb-vv-width: 100vw;
+  --lb-vv-height: 100vh;
+  --lb-vv-height: 100dvh;
+  --lb-keyboard-inset: 0px;
+  --lb-app-min: 320px;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --lb-vv-height: 100dvh;
+  }
+}
+
+html {
+  min-height: 100%;
+  min-height: 100dvh;
+  max-width: 100%;
+}
+
+html,
+body,
+#root {
+  min-width: 0;
+}
+
+.lb-shell {
+  min-width: 0;
+  max-width: 100%;
+}
+
+html[data-lb-keyboard='open'] .lb-shell {
+  height: var(--lb-vv-height);
+  max-height: var(--lb-vv-height);
+}
+
+html[data-lb-keyboard='open'] input:focus,
+html[data-lb-keyboard='open'] textarea:focus,
+html[data-lb-keyboard='open'] [contenteditable='true']:focus {
+  scroll-margin-bottom: calc(0.75rem + var(--lb-safe-bottom, 0px) + var(--lb-keyboard-inset, 0px));
+}
+
+html[data-lb-height='compact'] {
+  --lb-vp-height-band: compact;
+}
+
+html[data-lb-height='medium'] {
+  --lb-vp-height-band: medium;
+}
+
+html[data-lb-height='expanded'] {
+  --lb-vp-height-band: expanded;
+}

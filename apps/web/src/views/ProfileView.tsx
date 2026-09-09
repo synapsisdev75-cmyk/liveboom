@@ -11,6 +11,7 @@ import {
   Lock,
   LogOut,
   MoreHorizontal,
+  Share2,
   Palette,
   Shield,
   Trash2,
@@ -42,6 +43,7 @@ import {
   updateFirestoreProfileFields,
 } from '../lib/profileFirestore';
 import { dataUrlToBlob, isHttpUrl, uploadUserAvatar } from '../lib/storage';
+import { cropToAvatar } from '../lib/avatarCrop';
 import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
 import { LanguageSelector } from '../components/i18n/LanguageSelector';
@@ -117,36 +119,6 @@ const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings
   { id: 'apariencia', labelKey: 'settings.tabAppearance', icon: Palette },
 ];
 
-function cropToAvatar(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const image = document.createElement('img');
-    const objectUrl = URL.createObjectURL(file);
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      const size = 256;
-      canvas.width = size;
-      canvas.height = size;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error('No se pudo procesar la imagen'));
-        return;
-      }
-      const scale = Math.max(size / image.width, size / image.height);
-      const width = image.width * scale;
-      const height = image.height * scale;
-      context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
-      URL.revokeObjectURL(objectUrl);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Imagen inválida'));
-    };
-    image.src = objectUrl;
-  });
-}
-
 function Card({
   title,
   subtitle,
@@ -199,7 +171,7 @@ function RowLink({
     </>
   );
   const className =
-    'flex w-full items-center gap-3 rounded-xl border border-white/[0.06] bg-[#0f1016] px-3 py-3 transition hover:bg-white/[0.03]';
+    'lb-settings-row flex w-full items-center gap-3 rounded-xl px-3 py-3 transition';
   if (to) {
     return (
       <Link to={to} className={className}>
@@ -556,6 +528,13 @@ export function ProfileView() {
     }
   }
 
+  function shareOwnProfile() {
+    const handle = profile?.handle?.replace(/^@/, '');
+    if (!handle) return;
+    const url = `${window.location.origin}/u/${encodeURIComponent(handle)}`;
+    void navigator.clipboard?.writeText(url).catch(() => undefined);
+  }
+
   async function copyReferral() {
     try {
       await navigator.clipboard.writeText(referralUrl);
@@ -602,7 +581,7 @@ export function ProfileView() {
   const emailVerified = Boolean(firebaseUser?.emailVerified);
 
   return (
-    <div className="lb-page mx-auto w-full max-w-5xl space-y-5 pb-2">
+    <div className="lb-page lb-settings-page mx-auto w-full max-w-5xl space-y-5 pb-2">
       <header>
         <h1 className="text-2xl font-bold text-white sm:text-3xl">{t('settings.title')}</h1>
         <p className="mt-1 text-sm text-zinc-400">{t('settings.subtitle')}</p>
@@ -852,6 +831,7 @@ export function ProfileView() {
             </Card>
           </div>
 
+          <div className="space-y-4">
           <Card className="h-fit">
             <header className="mb-4 flex items-center gap-2">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-500/20 text-violet-300">
@@ -864,7 +844,7 @@ export function ProfileView() {
             </header>
 
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-white/[0.06] bg-[#0f1016] p-3">
+              <div className="lb-settings-stat rounded-xl p-3">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                   Tus referidos
                 </p>
@@ -872,7 +852,7 @@ export function ProfileView() {
                   <Users size={16} className="text-violet-400" /> 0
                 </p>
               </div>
-              <div className="rounded-xl border border-white/[0.06] bg-[#0f1016] p-3">
+              <div className="lb-settings-stat rounded-xl p-3">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                   Coins ganados
                 </p>
@@ -947,6 +927,19 @@ export function ProfileView() {
               Ver mis referidos <ChevronRight size={14} />
             </button>
           </Card>
+          <RowLink
+            icon={<Share2 size={18} />}
+            title={t('actions.shareProfile')}
+            subtitle="Comparte tu perfil de LiveBoom"
+            onClick={() => shareOwnProfile()}
+          />
+          <RowLink
+            icon={<LogOut size={18} />}
+            title={t('settings.logOut')}
+            subtitle="Salir de esta cuenta"
+            onClick={() => void logout()}
+          />
+          </div>
         </div>
       ) : null}
 

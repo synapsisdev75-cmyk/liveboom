@@ -51,17 +51,17 @@ export function OutgoingVoiceCallScreen({
       onClose={onClose}
       maximized={maximized}
       actions={
-        <div className="lb-video-ring-screen__actions is-out">
-          <div className="lb-video-ring-screen__action is-end">
-            <button type="button" className="lb-video-ring-end" data-no-drag onClick={onCancel} aria-label="Cancelar">
+        <div className="lb-voice-out-screen__actions">
+          <div className="lb-voice-out-screen__action is-end">
+            <button type="button" className="lb-voice-out-end" data-no-drag onClick={onCancel} aria-label="Cancelar">
               <PhoneOff size={22} />
             </button>
             <span>Cancelar</span>
           </div>
-          <div className="lb-video-ring-screen__action is-speaker">
+          <div className="lb-voice-out-screen__action is-speaker">
             <button
               type="button"
-              className={`lb-video-ring-speaker${speakerOn ? '' : ' is-off'}`}
+              className={`lb-voice-out-speaker${speakerOn ? '' : ' is-off'}`}
               data-no-drag
               onClick={() => {
                 const next = !speakerOn;

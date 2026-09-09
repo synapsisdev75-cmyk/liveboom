@@ -587,7 +587,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     const caretEl =
       showCustomCaret && caretBox ? (
         <span
-          className="pointer-events-none absolute z-[2] w-px bg-white"
+          className="lb-emoji-caret pointer-events-none absolute z-[2] w-px bg-white"
           style={{
             left: caretBox.left,
             top: caretBox.top,
@@ -653,7 +653,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               }}
               className={`${inputInner} ${caretClass} resize-none ${padClassName} ${
                 resolvedGrow === 'publication'
-                  ? 'publication-composer-field min-h-[4.5rem] overflow-y-auto'
+                  ? 'publication-composer-input min-h-[4.5rem] overflow-y-auto'
                   : resolvedGrow === 'comment'
                     ? 'lb-comment-composer-field overflow-y-auto'
                     : resolvedGrow === 'message'

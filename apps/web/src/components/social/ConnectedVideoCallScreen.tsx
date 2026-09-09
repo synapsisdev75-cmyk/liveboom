@@ -1,5 +1,5 @@
 import { BadgeCheck, MessageSquare, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useMaybeRoomContext } from '@livekit/components-react';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CallWinBar } from './FloatingCallFrame';
@@ -43,7 +43,10 @@ function applySpeakerOutput(room: NonNullable<ReturnType<typeof useMaybeRoomCont
     /* Sala aún sin participantes. */
   }
   const root = document.querySelector('.lb-call-room');
-  const nodes = root?.querySelectorAll<HTMLAudioElement>('audio') ?? [];
+  const nodes = [
+    ...(root?.querySelectorAll<HTMLAudioElement>('audio') ?? []),
+    ...document.querySelectorAll<HTMLAudioElement>('.lb-call-remote-audio audio'),
+  ];
   nodes.forEach((audio) => {
     audio.muted = !speakerOn;
     audio.volume = volume;
@@ -102,6 +105,51 @@ export function ConnectedVideoCallHeader({
         maximized={maximized}
       />
     </header>
+  );
+}
+
+/** Contenedor visual maestro de videollamada. Solo layout; los handlers los pasa el padre. */
+export function VideoCallShell({
+  person,
+  elapsedLabel,
+  statusLabel,
+  onMinimize,
+  onMaximize,
+  onClose,
+  maximized,
+  stageRef,
+  stage,
+  footer,
+  className,
+}: {
+  person: ConnectedVideoPerson;
+  elapsedLabel: string;
+  statusLabel?: string;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
+  maximized?: boolean;
+  stageRef?: Ref<HTMLDivElement | null>;
+  stage: ReactNode;
+  footer: ReactNode;
+  className?: string;
+}) {
+  return (
+    <article className={['lb-video-connected-screen', className].filter(Boolean).join(' ')}>
+      <ConnectedVideoCallHeader
+        person={person}
+        elapsedLabel={elapsedLabel}
+        statusLabel={statusLabel}
+        onMinimize={onMinimize}
+        onMaximize={onMaximize}
+        onClose={onClose}
+        maximized={maximized}
+      />
+      <div className="lb-call-video-stage" data-call-drag ref={stageRef}>
+        {stage}
+      </div>
+      {footer}
+    </article>
   );
 }
 

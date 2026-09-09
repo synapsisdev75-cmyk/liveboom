@@ -195,7 +195,7 @@ export const zh: Catalog = {
   },
   create: {
     title: '创作',
-    subtitle: '{flash}、{clip} 或直播。选择你要分享的内容。',
+    subtitle: '直播或新动态。选择你要分享的内容。',
     signInToCreate: '以创建内容。',
   },
   search: {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import {
   computeImmersiveMediaBox,
   immersiveMediaBoxStyle,
@@ -7,6 +7,15 @@ import {
 } from '../../lib/immersiveMediaLayout';
 import { exploreLandscape } from '../../responsive/mobile-tablet';
 import { classifyVideoOrientation } from '../../lib/videoAspect';
+import { GESTURE_AXIS_LOCK_PX, HORIZONTAL_SEEK_THRESHOLD_PX } from '../../lib/storyAuthorNav';
+
+export type ImmersivePointerGesture = {
+  dx: number;
+  dy: number;
+  axis: 'horizontal' | 'vertical' | null;
+  isTap: boolean;
+  startedOnControl: boolean;
+};
 
 type Props = {
   mediaWidth: number;
@@ -19,6 +28,8 @@ type Props = {
   landscapeRailAside?: boolean;
   onSwipeStart?: (x: number, y: number) => void;
   onSwipeEnd?: (x: number, y: number) => void;
+  /** Pointer unificado (touch/mouse/lápiz) con eje bloqueado. */
+  onPointerGesture?: (info: ImmersivePointerGesture) => void;
   onWheel?: (deltaY: number) => void;
   children: ReactNode;
   /** Controles superpuestos (seek zones, etc.) */
@@ -32,6 +43,16 @@ type Props = {
    */
   fillMode?: 'auto' | 'contain';
 };
+
+function isImmersiveControlTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('[data-lb-gesture-pass]')) return false;
+  return Boolean(
+    target.closest(
+      'button, a, input, textarea, select, label, [role="button"], [role="link"], .lb-media-mute-fab, .lb-action-rail, .lb-gift-action',
+    ),
+  );
+}
 
 /**
  * Escenario inmersivo responsive: media protagonista + action rail cercano.
@@ -47,6 +68,7 @@ export function ImmersiveMediaStage({
   landscapeRailAside = true,
   onSwipeStart,
   onSwipeEnd,
+  onPointerGesture,
   onWheel,
   children,
   mediaOverlay,
@@ -145,6 +167,45 @@ export function ImmersiveMediaStage({
     };
   }, [mediaWidth, mediaHeight, insets, useRailAside, fillMode]);
 
+  const pointerRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    axis: 'horizontal' | 'vertical' | null;
+    onControl: boolean;
+  } | null>(null);
+
+  function endPointerGesture(event: PointerEvent<HTMLDivElement>) {
+    const gesture = pointerRef.current;
+    if (!gesture || gesture.id !== event.pointerId) return;
+    pointerRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      /* already released */
+    }
+    const dx = event.clientX - gesture.x;
+    const dy = event.clientY - gesture.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    const axis =
+      gesture.axis ??
+      (absX < GESTURE_AXIS_LOCK_PX && absY < GESTURE_AXIS_LOCK_PX
+        ? null
+        : absX > absY
+          ? 'horizontal'
+          : 'vertical');
+    const isTap = !gesture.axis && absX < HORIZONTAL_SEEK_THRESHOLD_PX && absY < HORIZONTAL_SEEK_THRESHOLD_PX;
+    onPointerGesture?.({
+      dx,
+      dy,
+      axis,
+      isTap,
+      startedOnControl: gesture.onControl,
+    });
+    if (!gesture.onControl) onSwipeEnd?.(event.clientX, event.clientY);
+  }
+
   return (
     <div
       ref={stageRef}
@@ -177,16 +238,39 @@ export function ImmersiveMediaStage({
         className={`lb-immersive-stage__center relative z-[1] flex min-h-0 flex-1 items-center justify-center ${
           fillCover ? 'px-0' : 'px-[max(0.25rem,env(safe-area-inset-left))]'
         }`}
-        onTouchStart={(event) => {
-          const touch = event.touches[0];
-          if (!touch) return;
-          onSwipeStart?.(touch.clientX, touch.clientY);
+        style={{ touchAction: 'none' }}
+        onPointerDown={(event) => {
+          if (event.pointerType === 'mouse' && event.button !== 0) return;
+          const onControl = isImmersiveControlTarget(event.target);
+          pointerRef.current = {
+            id: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            axis: null,
+            onControl,
+          };
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          } catch {
+            /* ignore */
+          }
+          if (!onControl) onSwipeStart?.(event.clientX, event.clientY);
         }}
-        onTouchEnd={(event) => {
-          const touch = event.changedTouches[0];
-          if (!touch) return;
-          onSwipeEnd?.(touch.clientX, touch.clientY);
+        onPointerMove={(event) => {
+          const gesture = pointerRef.current;
+          if (!gesture || gesture.id !== event.pointerId) return;
+          const dx = event.clientX - gesture.x;
+          const dy = event.clientY - gesture.y;
+          const absX = Math.abs(dx);
+          const absY = Math.abs(dy);
+          if (!gesture.axis) {
+            if (absX < GESTURE_AXIS_LOCK_PX && absY < GESTURE_AXIS_LOCK_PX) return;
+            gesture.axis = absX > absY ? 'horizontal' : 'vertical';
+          }
+          if (gesture.axis === 'horizontal') event.preventDefault();
         }}
+        onPointerUp={endPointerGesture}
+        onPointerCancel={endPointerGesture}
         onWheel={(event) => {
           if (!onWheel) return;
           event.preventDefault();

@@ -12,7 +12,7 @@ export type RingPerson = {
 
 export function VoiceCallWave() {
   return (
-    <div className="lb-video-ring-wave" aria-hidden>
+    <div className="lb-voice-ring-wave" aria-hidden>
       <span />
       <span />
       <span />
@@ -28,8 +28,8 @@ export function VoiceCallWave() {
 
 export function VoiceCallAvatar({ person }: { person: RingPerson }) {
   return (
-    <div className="lb-video-ring-avatar">
-      <span className="lb-video-ring-avatar__halo" aria-hidden />
+    <div className="lb-voice-out-avatar">
+      <span className="lb-voice-out-avatar__ring" aria-hidden />
       <UserAvatar
         src={person.avatar}
         uid={person.uid}
@@ -38,7 +38,7 @@ export function VoiceCallAvatar({ person }: { person: RingPerson }) {
         size={128}
         ringClassName="ring-0"
       />
-      <span className="lb-video-ring-avatar__badge is-voice" aria-hidden>
+      <span className="lb-voice-out-avatar__badge" aria-hidden>
         <Phone size={14} />
       </span>
     </div>
@@ -62,8 +62,10 @@ export function VoiceCallFrame({
   onClose?: () => void;
   maximized?: boolean;
 }) {
+  const screen = variant === 'in' ? 'lb-voice-in-screen' : 'lb-voice-out-screen';
+  const body = variant === 'in' ? 'lb-voice-in-screen__body' : 'lb-voice-out-screen__body';
   return (
-    <article className={`lb-video-ring-screen is-voice is-${variant}`} data-call-drag>
+    <article className={`lb-voice-card is-float lb-voice-ring-screen ${screen} is-${variant}`} data-call-kind="voice" data-call-drag>
       <CallWinBar
         showLogo={false}
         onMinimize={onMinimize}
@@ -71,7 +73,7 @@ export function VoiceCallFrame({
         onClose={onClose}
         maximized={maximized}
       />
-      <div className="lb-video-ring-screen__body">{children}</div>
+      <div className={body}>{children}</div>
       {actions}
     </article>
   );
@@ -82,20 +84,20 @@ export function VoiceCallIdentity({ person, status }: { person: RingPerson; stat
   return (
     <>
       <VoiceCallAvatar person={person} />
-      <p className="lb-video-ring-screen__name">
+      <p className="lb-voice-out-screen__name">
         <span>{person.name || (handle ? `@${handle}` : 'LiveBoom')}</span>
-        <BadgeCheck size={16} className="lb-video-ring-screen__badge" aria-hidden />
+        <BadgeCheck size={16} className="lb-voice-out-screen__badge" aria-hidden />
       </p>
-      {handle ? <p className="lb-video-ring-screen__handle">@{handle}</p> : null}
-      <p className="lb-video-ring-screen__type">
+      {handle ? <p className="lb-voice-out-screen__handle">@{handle}</p> : null}
+      <p className="lb-voice-out-screen__type">
         <Phone size={15} aria-hidden />
         Llamada de voz
       </p>
-      <p className="lb-video-ring-screen__status" aria-live="polite">
+      <p className="lb-voice-out-screen__status" aria-live="polite">
         {status}
       </p>
       <VoiceCallWave />
-      <p className="lb-video-ring-screen__quote">Las mejores conexiones se viven en video 💜</p>
+      <p className="lb-voice-in-screen__quote">Las mejores conexiones se viven en video 💜</p>
     </>
   );
 }

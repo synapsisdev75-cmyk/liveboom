@@ -161,7 +161,7 @@ function isDragFrom(target: EventTarget | null) {
   if (el.closest('a, input, textarea, select, option')) return false;
   if (
     el.closest(
-      '.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop, .lb-call-resize, .lb-voice-out-end, .lb-voice-out-speaker, .lb-voice-in-decline, .lb-voice-in-accept, .lb-video-ring-end, .lb-video-ring-speaker, .lb-video-ring-decline, .lb-video-ring-accept',
+      '.lb-call-video-local, .lb-call-more, .lb-call-device-bar, .lb-call-controls, .lb-video-controls, .lb-voice-card__controls, .lb-voice-follow, .lb-voice-mini__gift, .lb-voice-mini__dots, .lb-voice-mini__menu, .lb-video-mini__end, .lb-video-chip, .lb-video-sheet, .lb-video-sheet-backdrop, .lb-call-resize, .lb-voice-out-end, .lb-voice-out-speaker, .lb-voice-in-decline, .lb-voice-in-accept, .lb-video-ring-end, .lb-video-ring-speaker, .lb-video-ring-decline, .lb-video-ring-accept, .lb-video-connected-btn, .lb-video-connected-end, .lb-video-connected-accept, .lb-video-connected-actions',
     )
   ) {
     return false;

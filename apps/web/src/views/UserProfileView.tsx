@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { Ban, ChevronRight, LogOut, MessageCircle, Plus, Share2, User, Users } from 'lucide-react';
+import { updateProfile } from 'firebase/auth';
+import { Ban, Camera, ChevronRight, MessageCircle, Plus, User, Users } from 'lucide-react';
 import { ActivityHistory } from '../components/live/ActivityHistory';
 import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { CreatePostModal } from '../components/social/CreatePostModal';
@@ -23,9 +24,10 @@ import {
   probeCoverFile,
   type CoverMediaKind,
 } from '../lib/profileCover';
-import { saveFirestoreCover, type PublicFsUser } from '../lib/profileFirestore';
-import { uploadUserCover } from '../lib/storage';
-import { levelFromXp, nextTierFromXp, xpProgressInTier, xpToNextLevel } from '../lib/userLevels';
+import { saveFirestoreAvatar, saveFirestoreCover, type PublicFsUser } from '../lib/profileFirestore';
+import { dataUrlToBlob, uploadUserAvatar, uploadUserCover } from '../lib/storage';
+import { cropToAvatar } from '../lib/avatarCrop';
+import { levelFromXp, levelThemeFromSlug, nextTierFromXp, xpProgressInTier, xpToNextLevel } from '../lib/userLevels';
 import {
   blockUser,
   deletePost as deleteFsPost,
@@ -49,20 +51,6 @@ import { useUiStore } from '../store/uiStore';
 import { isBoomClipPost, isPublicationPost, canEditOwnedPublication } from '../lib/contentType';
 import { isStoryPost } from '../lib/storyLifecycle';
 import { BOOM_CLIP_LABEL } from '../lib/brand';
-
-function LogoutProfileButton() {
-  const logout = useAuthStore((state) => state.logout);
-  return (
-    <button
-      type="button"
-      onClick={() => void logout()}
-      className="lb-profile-action lb-profile-action--logout"
-    >
-      <LogOut size={11} strokeWidth={2.25} />
-      Cerrar sesión
-    </button>
-  );
-}
 
 type PublicProfile = {
   username: string;
@@ -120,6 +108,8 @@ export function UserProfileView() {
   const defaultCreateKind =
     crearParam === 'foto' ? ('photo' as const) : crearParam === 'texto' ? ('text' as const) : undefined;
   const profile = useAuthStore((state) => state.profile);
+  const firebaseUser = useAuthStore((state) => state.firebaseUser);
+  const setProfile = useAuthStore((state) => state.setProfile);
   const ready = useAuthStore((state) => state.ready);
   const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
   const [posts, setPosts] = useState<SocialPost[]>([]);
@@ -136,7 +126,9 @@ export function UserProfileView() {
   const [feedTab, setFeedTab] = useState<'posts' | 'clips' | 'photos'>('posts');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const highlightPostRef = useRef<HTMLDivElement | null>(null);
   const friendsBtnRef = useRef<HTMLButtonElement>(null);
   const setToast = useUiStore((s) => s.setToast);
@@ -211,6 +203,11 @@ export function UserProfileView() {
   useEffect(() => {
     if (autoOpenCreate) setCreateOpen(true);
   }, [autoOpenCreate]);
+
+  function openCreatePost() {
+    setEditingPost(null);
+    setCreateOpen(true);
+  }
 
   function closeCreateModal() {
     setCreateOpen(false);
@@ -489,6 +486,29 @@ export function UserProfileView() {
     }
   }
 
+  async function onPickAvatar(file: File | undefined) {
+    if (!file || !profile || !publicProfile?.isOwnProfile) return;
+    setAvatarBusy(true);
+    try {
+      const dataUrl = await cropToAvatar(file);
+      const blob = await dataUrlToBlob(dataUrl);
+      const url = await uploadUserAvatar(profile.firebaseUid, blob);
+      await saveFirestoreAvatar(profile.firebaseUid, url);
+      if (firebaseUser) {
+        await updateProfile(firebaseUser, { photoURL: url }).catch(() => undefined);
+      }
+      setProfile({ ...profile, avatarUrl: url });
+      setPublicProfile((current) => (current ? { ...current, avatarUrl: url } : current));
+      setToast('Foto de perfil guardada.', 'success');
+      window.setTimeout(() => setToast(null), 2800);
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'No se pudo guardar la foto', 'error');
+      window.setTimeout(() => setToast(null), 3200);
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
   if (!ready) {
     return <div className="p-6 text-sm text-zinc-400">Cargando perfil…</div>;
   }
@@ -544,7 +564,7 @@ export function UserProfileView() {
           }}
         />
         <div className="lb-profile-identity relative z-[1] px-4 pb-2.5 sm:px-6 sm:pb-3">
-        <div className="lb-profile-identity__emblems">
+        <div className="lb-profile-identity__row">
           <div className="lb-profile-identity__avatar">
             <LevelAvatarFrame
               levelXp={publicProfile.levelXp}
@@ -552,119 +572,132 @@ export function UserProfileView() {
               fallbackLetter={publicProfile.username}
               size="2xl"
             />
+            {publicProfile.isOwnProfile ? (
+              <>
+                <button
+                  type="button"
+                  className="lb-profile-identity__photo-edit"
+                  disabled={avatarBusy}
+                  onClick={() => avatarInputRef.current?.click()}
+                  aria-label="Cambiar foto de perfil"
+                  title="Cambiar foto de perfil"
+                >
+                  <Camera size={14} strokeWidth={2.2} />
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const next = event.target.files?.[0];
+                    event.target.value = '';
+                    void onPickAvatar(next);
+                  }}
+                />
+              </>
+            ) : null}
           </div>
-          <div className="lb-profile-identity__badge">
-            <LevelInsignia levelXp={publicProfile.levelXp} />
+          <div className="lb-profile-identity__info">
+          <div className="lb-profile-identity__name-row">
+            <h1 className="text-xl font-bold leading-tight text-white sm:text-2xl">
+              {publicProfile.displayName !== publicProfile.username
+                ? publicProfile.displayName
+                : `@${publicProfile.username}`}
+            </h1>
+            {publicProfile.isOwnProfile ? (
+              <Link
+                to="/perfil/editar"
+                className="lb-profile-edit-boom"
+                aria-label={t('actions.editProfile')}
+                title={t('actions.editProfile')}
+              >
+                <img src="/brand/lapiz-boom.png" alt="" draggable={false} />
+              </Link>
+            ) : null}
           </div>
-        </div>
-        <div className="lb-profile-identity__info">
-          <h1 className="text-xl font-bold text-white sm:text-2xl">
-            {publicProfile.displayName !== publicProfile.username
-              ? publicProfile.displayName
-              : null}
-            <span
-              className={
-                publicProfile.displayName !== publicProfile.username
-                  ? 'mt-0.5 block text-base font-medium text-zinc-400'
-                  : ''
-              }
-            >
-              @{publicProfile.username}
-            </span>
-          </h1>
+          {publicProfile.displayName !== publicProfile.username ? (
+            <p className="text-base font-medium leading-snug text-zinc-400">@{publicProfile.username}</p>
+          ) : null}
+          {publicProfile.isOwnProfile && profile?.birthDate && ageFromIsoDate(profile.birthDate) != null ? (
+            <p className="text-xs leading-snug text-cyan-400">
+              {t('profile.yearsOld', { age: ageFromIsoDate(profile.birthDate) as number })}
+            </p>
+          ) : null}
           {(() => {
             const info = levelFromXp(publicProfile.levelXp);
+            const theme = levelThemeFromSlug(info.slug);
             const progress = xpProgressInTier(publicProfile.levelXp);
             const remaining = xpToNextLevel(publicProfile.levelXp);
             const next = nextTierFromXp(publicProfile.levelXp);
             return (
-              <div className="mt-2 w-full">
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <span className="font-semibold text-cyan-300">{info.title}</span>
-                  <span className="text-[10px] text-zinc-500">· {info.rangeLabel}</span>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-zinc-400">
-                  <span>{publicProfile.levelXp.toLocaleString('es-CO')} XP</span>
-                  <span>
-                    {next
-                      ? `${remaining.toLocaleString('es-CO')} XP para ${next.title}`
-                      : 'Nivel máximo PRO'}
+              <div className="lb-profile-identity__xp">
+                <p
+                  className="flex w-full items-baseline justify-center gap-1.5 text-center text-[11px] leading-tight tracking-wide"
+                  style={{
+                    color: theme.primary,
+                    textShadow: `0 0 10px rgba(${theme.rgb}, 0.28)`,
+                  }}
+                >
+                  <span className="font-bold">{info.title}</span>
+                  <span aria-hidden style={{ color: theme.accent }}>
+                    ·
                   </span>
-                </div>
-                <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-800">
+                  <span className="font-semibold" style={{ color: theme.secondary }}>
+                    {info.rangeLabel}
+                  </span>
+                </p>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-cyan-400 transition-[width] duration-500"
                     style={{ width: `${progress.pct}%` }}
                   />
                 </div>
+                <div className="flex w-full items-center justify-between gap-2 text-[11px] leading-tight text-zinc-400">
+                  <span className="min-w-0 truncate">{publicProfile.levelXp.toLocaleString('es-CO')} XP</span>
+                  <span className="shrink-0 text-right">
+                    {next
+                      ? `${remaining.toLocaleString('es-CO')} XP para ${next.title}`
+                      : 'Nivel máximo PRO'}
+                  </span>
+                </div>
               </div>
             );
           })()}
-          {publicProfile.isOwnProfile && profile?.birthDate && ageFromIsoDate(profile.birthDate) != null ? (
-            <p className="mt-2 text-xs text-cyan-400">
-              {t('profile.yearsOld', { age: ageFromIsoDate(profile.birthDate) as number })}
-            </p>
-          ) : null}
-          {publicProfile.bio ? <p className="mt-1 text-sm text-zinc-400">{publicProfile.bio}</p> : null}
+          {publicProfile.bio ? <p className="text-sm leading-snug text-zinc-400">{publicProfile.bio}</p> : null}
+          <div className="lb-profile-social-stats">
+            <button type="button" onClick={() => void openFollowers()} className="lb-profile-stat is-followers">
+              <Users size={9} strokeWidth={2.25} />
+              <strong>{publicProfile.followersCount}</strong>
+              <span>{t('profile.followers')}</span>
+              <ChevronRight size={8} strokeWidth={2.4} />
+            </button>
+            <button type="button" onClick={() => void openFollowing()} className="lb-profile-stat is-following">
+              <User size={9} strokeWidth={2.25} />
+              <strong>{publicProfile.followingCount}</strong>
+              <span>{t('profile.following')}</span>
+              <ChevronRight size={8} strokeWidth={2.4} />
+            </button>
+            <button
+              ref={friendsBtnRef}
+              type="button"
+              onClick={() => void openFriends()}
+              className="lb-profile-stat is-friends"
+            >
+              <Users size={9} strokeWidth={2.25} />
+              <strong>{publicProfile.friendsCount}</strong>
+              <span>{t('profile.friends')}</span>
+              <ChevronRight size={8} strokeWidth={2.4} />
+            </button>
+          </div>
+          </div>
+          <div className="lb-profile-identity__badge">
+            <LevelInsignia levelXp={publicProfile.levelXp} />
+          </div>
         </div>
+        {publicProfile.isOwnProfile ? null : (
         <div className="lb-profile-identity__body">
             <div className="lb-profile-toolbar">
-              <div className="lb-profile-toolbar__stats">
-                <button type="button" onClick={() => void openFollowers()} className="lb-profile-stat is-followers">
-                  <Users size={11} strokeWidth={2.25} />
-                  <strong>{publicProfile.followersCount}</strong>
-                  <span>{t('profile.followers')}</span>
-                  <ChevronRight size={10} strokeWidth={2.4} />
-                </button>
-                <button type="button" onClick={() => void openFollowing()} className="lb-profile-stat is-following">
-                  <User size={11} strokeWidth={2.25} />
-                  <strong>{publicProfile.followingCount}</strong>
-                  <span>{t('profile.following')}</span>
-                  <ChevronRight size={10} strokeWidth={2.4} />
-                </button>
-                <button
-                  ref={friendsBtnRef}
-                  type="button"
-                  onClick={() => void openFriends()}
-                  className="lb-profile-stat is-friends"
-                >
-                  <Users size={11} strokeWidth={2.25} />
-                  <strong>{publicProfile.friendsCount}</strong>
-                  <span>{t('profile.friends')}</span>
-                  <ChevronRight size={10} strokeWidth={2.4} />
-                </button>
-              </div>
-              {publicProfile.isOwnProfile ? (
-                <div className="lb-profile-toolbar__actions">
-                  <Link to="/perfil/editar" className="lb-profile-action lb-profile-action--edit">
-                    <User size={11} strokeWidth={2.25} />
-                    {t('actions.editProfile')}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingPost(null);
-                      setCreateOpen(true);
-                    }}
-                    className="lb-profile-action lb-profile-action--post"
-                  >
-                    <Plus size={11} strokeWidth={2.5} />
-                    {t('actions.newPost')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const url = `${window.location.origin}/u/${encodeURIComponent(publicProfile.username)}`;
-                      void navigator.clipboard?.writeText(url).catch(() => undefined);
-                    }}
-                    className="lb-profile-action lb-profile-action--share"
-                  >
-                    <Share2 size={11} strokeWidth={2.25} />
-                    {t('actions.shareProfile')}
-                  </button>
-                  <LogoutProfileButton />
-                </div>
-              ) : (
                 <div className="lb-profile-toolbar__actions">
               {publicProfile.friendshipStatus === 'blocked' ? (
                 <button
@@ -797,9 +830,9 @@ export function UserProfileView() {
                 </>
               )}
                 </div>
-              )}
             </div>
         </div>
+        )}
         </div>
       </section>
 
@@ -874,7 +907,7 @@ export function UserProfileView() {
             }}
           />
         ) : null}
-        <div className={`flex flex-wrap items-center gap-3 ${publicProfile.isOwnProfile ? 'mb-3' : 'mb-4'}`}>
+        <div className="lb-profile-feed-header">
           <div className="lb-profile-feed-tabs flex flex-wrap gap-1 rounded-full border border-white/10 bg-black/20 p-1">
             {(
               [
@@ -897,6 +930,16 @@ export function UserProfileView() {
               </button>
             ))}
           </div>
+          {publicProfile.isOwnProfile ? (
+            <button
+              type="button"
+              onClick={openCreatePost}
+              className="lb-profile-action lb-profile-action--post lb-profile-feed-header__post"
+            >
+              <Plus size={11} strokeWidth={2.5} />
+              {t('actions.newPost')}
+            </button>
+          ) : null}
         </div>
         {libraryError ? <p className="mb-3 text-sm text-fuchsia-400">{libraryError}</p> : null}
         {(() => {

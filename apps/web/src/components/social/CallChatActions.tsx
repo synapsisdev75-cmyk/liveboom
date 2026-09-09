@@ -18,7 +18,7 @@ import {
 } from '../../lib/callSettingsFirestore';
 import { assertCanStartCall, CallBusyError, claimOwnCallBusy, releaseOwnCallPresence } from '../../lib/callAvailability';
 import { formatCallApiError, createCall, readCallBusyCode, releaseCallSession } from '../../lib/liveKitCallService';
-import { ensureCallMediaPermission } from '../../lib/callMedia';
+import { ensureCallMediaPermission, releasePendingCallMicrophone } from '../../lib/callMedia';
 import { startPrivateCall, type FriendChip } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
@@ -120,6 +120,11 @@ export function CallChatActions({
     if (video) console.info('[VIDEO CALL] start clicked');
     let startedCallId: string | null = null;
     try {
+      const denied = await ensureCallMediaPermission(video);
+      if (denied) {
+        onError(denied);
+        return;
+      }
       await assertCanStartCall(profile.firebaseUid, peer.uid, {
         localInCall: localStatus !== 'idle' || useCallStore.getState().recovering,
         handle: peer.username,
@@ -134,13 +139,6 @@ export function CallChatActions({
       });
       startedCallId = session.callId;
       await claimOwnCallBusy(profile.firebaseUid, { callId: session.callId, chatId, peerUid: peer.uid });
-      const denied = await ensureCallMediaPermission(video);
-      if (denied) {
-        await releaseOwnCallPresence(profile.firebaseUid, session.callId);
-        await releaseCallSession(session.callId);
-        onError(denied);
-        return;
-      }
       const callId = await startPrivateCall(
         chatId,
         {
@@ -165,6 +163,7 @@ export function CallChatActions({
       });
       setAuthId(null);
     } catch (err) {
+      releasePendingCallMicrophone();
       if (startedCallId) {
         await releaseOwnCallPresence(profile.firebaseUid, startedCallId);
         await releaseCallSession(startedCallId);

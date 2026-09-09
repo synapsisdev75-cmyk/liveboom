@@ -223,7 +223,7 @@ export function WalletView() {
                 type="button"
                 aria-label="Paquetes anteriores"
                 onClick={() => scrollPacks('left')}
-                className="absolute -left-1 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-white/10 bg-zinc-900/95 text-white shadow-lg md:grid"
+                className="lb-wallet-carousel-nav absolute -left-1 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full md:grid"
               >
                 <ChevronLeft size={18} />
               </button>
@@ -273,34 +273,34 @@ export function WalletView() {
                 type="button"
                 aria-label="Ver más paquetes"
                 onClick={() => scrollPacks('right')}
-                className="absolute -right-1 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full border border-white/10 bg-zinc-900/95 text-white shadow-lg md:grid"
+                className="lb-wallet-carousel-nav absolute -right-1 top-1/2 z-10 hidden h-9 w-9 -translate-y-1/2 place-items-center rounded-full md:grid"
               >
                 <ChevronRight size={18} />
               </button>
             </div>
           </section>
 
-          <section className="rounded-2xl border border-transparent bg-[#14151c] p-4 [background:linear-gradient(#14151c,#14151c)_padding-box,linear-gradient(90deg,#a855f7,#06b6d4)_border-box] sm:p-5">
+          <section className="lb-wallet-benefits rounded-2xl p-4 sm:p-5">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {(
                 [
                   {
-                    icon: <Gift className="text-violet-400" size={20} />,
+                    icon: <Gift size={20} />,
                     title: 'Envía regalos',
                     desc: 'Apoya a tus creadores favoritos',
                   },
                   {
-                    icon: <Zap className="text-fuchsia-400" size={20} />,
+                    icon: <Zap size={20} />,
                     title: 'Destaca en el chat',
                     desc: 'Usa efectos y mensajes especiales',
                   },
                   {
-                    icon: <Crown className="text-amber-300" size={20} />,
+                    icon: <Crown size={20} />,
                     title: 'Súbete al top',
                     desc: 'Consigue más visibilidad en los rankings',
                   },
                   {
-                    icon: <Shield className="text-emerald-400" size={20} />,
+                    icon: <Shield size={20} />,
                     title: 'Más beneficios',
                     desc: 'Accede a eventos y promociones exclusivas',
                   },
@@ -309,8 +309,8 @@ export function WalletView() {
                 <div key={item.title} className="flex items-start gap-3">
                   <span className="mt-0.5 shrink-0">{item.icon}</span>
                   <div>
-                    <p className="text-sm font-bold text-cyan-300">{item.title}</p>
-                    <p className="mt-0.5 text-[11px] leading-snug text-zinc-500">{item.desc}</p>
+                    <p className="lb-wallet-benefits__title text-sm font-bold">{item.title}</p>
+                    <p className="lb-wallet-benefits__desc mt-0.5 text-[11px] leading-snug">{item.desc}</p>
                   </div>
                 </div>
               ))}
@@ -318,7 +318,7 @@ export function WalletView() {
           </section>
 
           <section>
-            <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">
+            <h2 className="lb-wallet-payments-title mb-3 text-[11px] font-bold uppercase tracking-[0.16em]">
               Métodos de pago aceptados
             </h2>
             <PaymentMethodsStrip />

@@ -4,8 +4,6 @@ import {
   MessageCircle,
   Pause,
   Play,
-  RotateCcw,
-  RotateCw,
   Volume2,
   VolumeX,
   X,
@@ -43,13 +41,13 @@ import { CommentBoomReaction } from './CommentBoomButton';
 import { PublicationCaption } from './PublicationCaption';
 import { StorySegmentBar } from './StorySegmentBar';
 import {
-  classifyStoryGesture,
+  HORIZONTAL_SEEK_THRESHOLD_PX,
   STORY_WHEEL_COOLDOWN_MS,
   STORY_WHEEL_MIN_DELTA,
 } from '../../lib/storyAuthorNav';
 import { COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
 import { PostActionRail } from './PostActionRail';
-import { ImmersiveMediaStage } from './ImmersiveMediaStage';
+import { ImmersiveMediaStage, type ImmersivePointerGesture } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
@@ -211,7 +209,6 @@ export function PostVideoPlayer({
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const posterCapturedRef = useRef(false);
-  const swipeRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
   const wheelLockRef = useRef(0);
   const gestureLockRef = useRef(false);
   const playbackSnapshotRef = useRef({
@@ -287,7 +284,7 @@ export function PostVideoPlayer({
 
   useEffect(() => {
     if (!seekHint) return;
-    const timer = window.setTimeout(() => setSeekHint(null), 900);
+    const timer = window.setTimeout(() => setSeekHint(null), 700);
     return () => window.clearTimeout(timer);
   }, [seekHint]);
 
@@ -418,7 +415,9 @@ export function PostVideoPlayer({
   const seekExpanded = useCallback((deltaSec: number) => {
     const video = videoRef.current;
     if (!video) return;
-    const next = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + deltaSec));
+    const duration =
+      Number.isFinite(video.duration) && video.duration > 0 ? video.duration : Number.POSITIVE_INFINITY;
+    const next = Math.max(0, Math.min(duration, video.currentTime + deltaSec));
     if (!Number.isFinite(next)) return;
     video.currentTime = next;
     setSeekHint(deltaSec < 0 ? `-${SEEK_STEP_SEC}s` : `+${SEEK_STEP_SEC}s`);
@@ -518,37 +517,49 @@ export function PostVideoPlayer({
     onCloseExpand?.();
   }
 
-  const handleSwipeStart = useCallback((clientX: number, clientY: number) => {
-    if (!reelNavigation && !userNavigation) return;
-    swipeRef.current = { x: clientX, y: clientY, active: true };
-  }, [reelNavigation, userNavigation]);
-
-  const handleSwipeEnd = useCallback((clientX: number, clientY: number) => {
-    if (!swipeRef.current.active) return;
-    swipeRef.current.active = false;
-    if (storyHeld) return;
-    const dx = clientX - swipeRef.current.x;
-    const dy = clientY - swipeRef.current.y;
-    const gesture = classifyStoryGesture(dx, dy);
-    if (!gesture) return;
-    if (gesture === 'user-next' || gesture === 'user-prev') {
-      if (!userNavigation) return;
-      gestureLockRef.current = true;
-      window.setTimeout(() => {
-        gestureLockRef.current = false;
-      }, 80);
-      if (gesture === 'user-next') userNavigation.onNextUser();
-      else userNavigation.onPrevUser();
-      return;
-    }
-    if (!reelNavigation) return;
+  const lockGestureClicks = useCallback(() => {
     gestureLockRef.current = true;
     window.setTimeout(() => {
       gestureLockRef.current = false;
     }, 80);
-    if (gesture === 'item-next') reelNavigation.onNext();
-    else reelNavigation.onPrev();
-  }, [reelNavigation, userNavigation, storyHeld]);
+  }, []);
+
+  const handlePointerGesture = useCallback(
+    (info: ImmersivePointerGesture) => {
+      if (storyHeld || info.startedOnControl) return;
+      if (info.isTap) {
+        if (itemSideNav) return;
+        toggleExpandedPlayback();
+        return;
+      }
+      const absX = Math.abs(info.dx);
+      const absY = Math.abs(info.dy);
+      if (info.axis === 'horizontal' && absX >= HORIZONTAL_SEEK_THRESHOLD_PX && absX > absY) {
+        lockGestureClicks();
+        if (userNavigation) {
+          if (info.dx < 0) userNavigation.onNextUser();
+          else userNavigation.onPrevUser();
+          return;
+        }
+        seekExpanded(info.dx < 0 ? -SEEK_STEP_SEC : SEEK_STEP_SEC);
+        return;
+      }
+      if (info.axis === 'vertical' && reelNavigation && absY >= 48 && absY > absX) {
+        lockGestureClicks();
+        if (info.dy < 0) reelNavigation.onNext();
+        else reelNavigation.onPrev();
+      }
+    },
+    [
+      storyHeld,
+      itemSideNav,
+      userNavigation,
+      reelNavigation,
+      toggleExpandedPlayback,
+      seekExpanded,
+      lockGestureClicks,
+    ],
+  );
 
   const handleWheelNavigate = useCallback((deltaY: number) => {
     if (!reelNavigation || storyHeld || Math.abs(deltaY) < STORY_WHEEL_MIN_DELTA) return;
@@ -684,8 +695,7 @@ export function PostVideoPlayer({
             right: 4,
             actionRail: 56,
           }}
-          onSwipeStart={handleSwipeStart}
-          onSwipeEnd={handleSwipeEnd}
+          onPointerGesture={handlePointerGesture}
           onWheel={reelNavigation ? handleWheelNavigate : undefined}
           mediaOverlay={
             <>
@@ -696,10 +706,22 @@ export function PostVideoPlayer({
                 muteLabel={t('actions.mute')}
                 onToggle={toggleMute}
               />
+              {seekHint ? (
+                <div
+                  className={`pointer-events-none absolute inset-y-0 z-[6] flex w-[42%] items-center justify-center ${
+                    seekHint.startsWith('-') ? 'left-0' : 'right-0'
+                  }`}
+                >
+                  <span className="rounded-full bg-black/55 px-3 py-1.5 text-sm font-bold tabular-nums text-white/90 backdrop-blur-sm">
+                    {seekHint.startsWith('-') ? '← 10 s' : '10 s →'}
+                  </span>
+                </div>
+              ) : null}
               {itemSideNav && reelNavigation && !storyHeld ? (
               <>
                 <button
                   type="button"
+                  data-lb-gesture-pass=""
                   className="absolute inset-y-0 left-0 z-[4] w-[32%] bg-transparent"
                   aria-label="Anterior"
                   onClick={(event) => {
@@ -710,6 +732,7 @@ export function PostVideoPlayer({
                 />
                 <button
                   type="button"
+                  data-lb-gesture-pass=""
                   className="absolute inset-y-0 right-0 z-[4] w-[50%] bg-transparent"
                   aria-label="Siguiente"
                   onClick={(event) => {
@@ -729,44 +752,9 @@ export function PostVideoPlayer({
                     </div>
                   </div>
                 ) : null}
-                <button
-                  type="button"
-                  className="absolute bottom-0 left-[32%] right-[50%] top-0 z-[3] bg-transparent"
-                  aria-label="Reproducir o pausar"
-                  onClick={toggleExpandedPlayback}
-                />
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  className={`absolute left-0 z-[4] w-[28%] bg-transparent ${
-                    reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
-                  }`}
-                  aria-label={`Retroceder ${SEEK_STEP_SEC} segundos`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    seekExpanded(-SEEK_STEP_SEC);
-                  }}
-                />
-                <button
-                  type="button"
-                  className={`absolute right-0 z-[4] w-[28%] bg-transparent ${
-                    reelNavigation ? 'top-[18%] bottom-[18%]' : 'inset-y-0'
-                  }`}
-                  aria-label={`Adelantar ${SEEK_STEP_SEC} segundos`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    seekExpanded(SEEK_STEP_SEC);
-                  }}
-                />
-                {seekHint ? (
-                  <div className="pointer-events-none absolute inset-0 z-[6] grid place-items-center">
-                    <span className="rounded-full bg-black/65 px-4 py-2 text-lg font-bold tabular-nums text-white backdrop-blur-sm">
-                      {seekHint}
-                    </span>
-                  </div>
-                ) : null}
                 {playbackFlash ? (
                   <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
                     <div className="lb-playback-flash grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm sm:h-[4.5rem] sm:w-[4.5rem]">
@@ -777,36 +765,6 @@ export function PostVideoPlayer({
                       )}
                     </div>
                   </div>
-                ) : null}
-                <button
-                  type="button"
-                  className={`absolute inset-x-[28%] z-[3] bg-transparent ${
-                    reelNavigation ? 'inset-y-[18%] md:inset-y-0' : 'inset-y-0'
-                  }`}
-                  aria-label="Reproducir o pausar"
-                  onClick={toggleExpandedPlayback}
-                />
-                {reelNavigation ? (
-                  <>
-                    <button
-                      type="button"
-                      className="absolute inset-x-0 top-0 z-[5] h-[18%] lg:hidden"
-                      aria-label="Clip siguiente"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        reelNavigation.onNext();
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-x-0 bottom-0 z-[5] h-[18%] lg:hidden"
-                      aria-label="Clip anterior"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        reelNavigation.onPrev();
-                      }}
-                    />
-                  </>
                 ) : null}
               </>
             )}
@@ -889,28 +847,6 @@ export function PostVideoPlayer({
                   {reelPosition.current}/{reelPosition.total}
                 </span>
               ) : null}
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  seekExpanded(-SEEK_STEP_SEC);
-                }}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm lg:hidden"
-                aria-label={`Retroceder ${SEEK_STEP_SEC} segundos`}
-              >
-                <RotateCcw size={17} />
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  seekExpanded(SEEK_STEP_SEC);
-                }}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm lg:hidden"
-                aria-label={`Adelantar ${SEEK_STEP_SEC} segundos`}
-              >
-                <RotateCw size={17} />
-              </button>
             </div>
           </div>
 
@@ -1076,16 +1012,18 @@ export function PostVideoPlayer({
                 width={pubW}
                 height={pubH}
                 posterUrl={resolvedPoster}
-              >
-                <div className="relative h-full w-full">
-                  {videoNode}
-                  <MediaOverlayLayer overlays={overlays} />
+                overlay={
                   <MediaMuteFab
                     muted={muted}
                     unmuteLabel={t('actions.unmute')}
                     muteLabel={t('actions.mute')}
                     onToggle={toggleMute}
                   />
+                }
+              >
+                <div className="relative h-full w-full">
+                  {videoNode}
+                  <MediaOverlayLayer overlays={overlays} />
                 </div>
               </PublicationMedia>
             ) : null}
