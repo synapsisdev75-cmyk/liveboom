@@ -1,7 +1,6 @@
 import { useMaybeRoomContext } from '@livekit/components-react';
 import { RoomEvent, Track, type RemoteTrack } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
-import { UserAvatar } from '../profile/UserAvatar';
 
 function pickRemoteVideo(room: NonNullable<ReturnType<typeof useMaybeRoomContext>>): RemoteTrack | null {
   try {
@@ -20,13 +19,9 @@ function pickRemoteVideo(room: NonNullable<ReturnType<typeof useMaybeRoomContext
   }
 }
 
-/** Video remoto de llamada privada. El <video> queda montado antes de que exista el stream. */
+/** Video remoto de llamada privada. El <video> queda montado y visible; sin avatar encima. */
 export function PrivateCallRemoteVideo({
-  name,
-  handle,
-  avatar,
-  peerUid,
-  waitingLabel,
+  waitingLabel: _waitingLabel,
 }: {
   name?: string;
   handle?: string;
@@ -37,7 +32,6 @@ export function PrivateCallRemoteVideo({
   const room = useMaybeRoomContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const attachedRef = useRef<RemoteTrack | null>(null);
-  const [hasRemote, setHasRemote] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
 
   useEffect(() => {
@@ -60,18 +54,7 @@ export function PrivateCallRemoteVideo({
 
     function markRemoteReady() {
       if (!el) return;
-      const stream = el.srcObject instanceof MediaStream ? el.srcObject : null;
-      const videoTracks = stream?.getVideoTracks() ?? [];
-      const hasLiveTrack = videoTracks.some((track) => track.readyState === 'live');
-      const hasFrames = el.videoWidth > 0 || el.videoHeight > 0;
-      if (hasLiveTrack || hasFrames) {
-        setHasRemote(true);
-        console.info('[CALL] remote frames', {
-          width: el.videoWidth,
-          height: el.videoHeight,
-          videoTracks: videoTracks.length,
-        });
-      }
+      void el.play().catch((error) => console.warn('[VIDEO CALL] remote play() failed', error));
     }
 
     function cameraIsOff(track: RemoteTrack | null) {
@@ -93,12 +76,10 @@ export function PrivateCallRemoteVideo({
           }
           attachedRef.current = null;
         }
-        setHasRemote(false);
         setCameraOff(false);
         return;
       }
       if (cameraIsOff(next)) {
-        setHasRemote(false);
         setCameraOff(true);
         console.info('[CALL] remote camera off', { callId: liveRoom.name || null });
         return;
@@ -195,8 +176,6 @@ export function PrivateCallRemoteVideo({
     };
   }, []);
 
-  const showPlaceholder = !hasRemote || cameraOff;
-
   return (
     <div className="lb-call-video-remote">
       <video
@@ -206,19 +185,8 @@ export function PrivateCallRemoteVideo({
         muted
         autoPlay
       />
-      {showPlaceholder ? (
-        <div className="lb-call-video-wait">
-          <UserAvatar
-            src={avatar || null}
-            uid={peerUid}
-            username={handle}
-            displayName={name}
-            size={96}
-            ringClassName="ring-0"
-          />
-          <p>{name || (handle ? `@${handle}` : 'LiveBoom')}</p>
-          <p>{cameraOff ? 'Cámara apagada' : waitingLabel}</p>
-        </div>
+      {cameraOff ? (
+        <p className="lb-call-video-caption">Cámara apagada</p>
       ) : null}
     </div>
   );
