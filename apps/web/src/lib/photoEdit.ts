@@ -158,7 +158,7 @@ export async function bakePhotoEdit(file: File, edit: PhotoEditValues): Promise<
       }
     }
     const longEdge = Math.max(outW, outH);
-    const scaleDown = longEdge > 1920 ? 1920 / longEdge : 1;
+    const scaleDown = longEdge > 1440 ? 1440 / longEdge : 1;
     outW = Math.max(2, Math.round(outW * scaleDown));
     outH = Math.max(2, Math.round(outH * scaleDown));
 
@@ -199,7 +199,7 @@ export async function bakePhotoEdit(file: File, edit: PhotoEditValues): Promise<
           else reject(new Error('No se pudo guardar la foto editada.'));
         },
         'image/jpeg',
-        0.92,
+        0.8,
       );
     });
     return new File([blob], file.name.replace(/\.[^.]+$/, '') + '-edit.jpg', { type: 'image/jpeg' });

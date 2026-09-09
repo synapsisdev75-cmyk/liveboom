@@ -79,7 +79,12 @@ export async function trimVideoFile(
     const stream = capture.call(video);
     const mimeType = pickRecorderMimeType();
     const chunks: BlobPart[] = [];
-    const recorder = new MediaRecorder(stream, { mimeType });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000 });
+    } catch {
+      recorder = new MediaRecorder(stream, { mimeType });
+    }
 
     const recorded = new Promise<Blob>((resolve, reject) => {
       recorder.ondataavailable = (event) => {

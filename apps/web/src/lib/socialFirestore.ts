@@ -37,8 +37,6 @@ import {
   isStoryPost,
   STORY_STATUS_ACTIVE,
   STORY_STATUS_EXPIRED,
-  STORY_TTL_MS,
-  storyCreatedAtMs,
   storyExpiresAtFromNow,
 } from './storyLifecycle';
 import { getCommunicationPermissions } from './communicationPermissions';
@@ -2619,6 +2617,8 @@ export async function createPost(input: {
   }
 
   const overlayPayload = serializeMediaOverlays(input.overlays || []);
+  const createdAtMs = Date.now();
+  const storyExpiresAtMs = isStory ? storyExpiresAtFromNow(createdAtMs) : undefined;
   const ref = await addDoc(collection(db, 'posts'), {
     authorUid: input.authorUid,
     username: input.username.toLowerCase(),
@@ -2639,14 +2639,14 @@ export async function createPost(input: {
     ...(isStory
       ? {
           storyStatus: STORY_STATUS_ACTIVE,
-          createdAtMs: Date.now(),
-          storyExpiresAtMs: storyExpiresAtFromNow(),
+          createdAtMs,
+          storyExpiresAtMs,
           ...(input.type === 'video' ? { durationSec } : {}),
         }
       : {}),
     ...(isBoomClip
       ? {
-          ...reelLifecycleFromCreatedAt(Date.now()),
+          ...reelLifecycleFromCreatedAt(createdAtMs),
           durationSec,
         }
       : {}),
@@ -2680,64 +2680,50 @@ export async function createPost(input: {
   }).catch(() => undefined);
 
   if (input.notifyFriends && visibility !== 'private' && (visibility !== 'circle' || isStory)) {
-    const friends = await listFriends(input.authorUid);
-    void notifyFriendsAboutPost({
-      authorUid: input.authorUid,
-      authorUsername: input.username,
-      authorName: input.authorDisplayName?.trim() || input.username,
-      postId: ref.id,
-      recipientUids: friends.map((friend) => friend.uid),
-      postFormat: postFormat || undefined,
-      mediaType: input.type,
-    }).catch(() => undefined);
+    void (async () => {
+      try {
+        if (isStory) {
+          const [friends, followers] = await Promise.all([
+            listFriends(input.authorUid),
+            listFollowers(input.authorUid),
+          ]);
+          const recipientUids = [
+            ...new Set([
+              ...friends.map((friend) => friend.uid),
+              ...followers.map((follower) => follower.uid),
+            ]),
+          ].filter((id) => id && id !== input.authorUid);
+          if (recipientUids.length === 0) return;
+          await notifyFriendsAboutPost({
+            authorUid: input.authorUid,
+            authorUsername: input.username,
+            authorName: input.authorDisplayName?.trim() || input.username,
+            postId: ref.id,
+            recipientUids,
+            story: true,
+            postFormat: 'story',
+            mediaType: input.type,
+          });
+          return;
+        }
+        const friends = await listFriends(input.authorUid);
+        await notifyFriendsAboutPost({
+          authorUid: input.authorUid,
+          authorUsername: input.username,
+          authorName: input.authorDisplayName?.trim() || input.username,
+          postId: ref.id,
+          recipientUids: friends.map((friend) => friend.uid),
+          postFormat: postFormat || undefined,
+          mediaType: input.type,
+        });
+      } catch {
+        /* Avisos no bloquean publicar. */
+      }
+    })();
   }
 
   if (input.type === 'video' || isBoomClip) {
     void sweepAuthorReelLifecycle(input.authorUid).catch(() => undefined);
-  }
-
-  if (isStory && input.notifyFriends) {
-    const [friends, followers] = await Promise.all([
-      listFriends(input.authorUid),
-      listFollowers(input.authorUid),
-    ]);
-    const recipientUids = [
-      ...new Set([
-        ...friends.map((friend) => friend.uid),
-        ...followers.map((follower) => follower.uid),
-      ]),
-    ].filter((id) => id && id !== input.authorUid);
-    if (recipientUids.length > 0) {
-      void notifyFriendsAboutPost({
-        authorUid: input.authorUid,
-        authorUsername: input.username,
-        authorName: input.authorDisplayName?.trim() || input.username,
-        postId: ref.id,
-        recipientUids,
-        story: true,
-        postFormat: 'story',
-        mediaType: input.type,
-      }).catch(() => undefined);
-    }
-  }
-
-  let createdAtIso = new Date().toISOString();
-  let storyExpiresAtMs: number | undefined;
-  if (isStory) {
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      const written = postFromDoc(ref.id, snap.data() as Record<string, unknown>);
-      const createdMs = storyCreatedAtMs(written) || Date.now();
-      createdAtIso = written.createdAt || new Date(createdMs).toISOString();
-      storyExpiresAtMs = createdMs + STORY_TTL_MS;
-      await updateDoc(ref, {
-        createdAtMs: createdMs,
-        storyExpiresAtMs,
-        storyStatus: STORY_STATUS_ACTIVE,
-      }).catch(() => undefined);
-    } else {
-      storyExpiresAtMs = storyExpiresAtFromNow();
-    }
   }
 
   return {
@@ -2746,7 +2732,9 @@ export async function createPost(input: {
     storagePath,
     visibility,
     postFormat,
-    ...(isStory ? { createdAt: createdAtIso, storyExpiresAtMs } : {}),
+    ...(isStory
+      ? { createdAt: new Date(createdAtMs).toISOString(), storyExpiresAtMs }
+      : {}),
   };
 }
 

@@ -1,4 +1,13 @@
-import { deleteObject, getDownloadURL, ref, updateMetadata, uploadBytes, uploadBytesResumable } from 'firebase/storage';
+import {
+  deleteObject,
+  getDownloadURL,
+  ref,
+  updateMetadata,
+  uploadBytes,
+  uploadBytesResumable,
+  type StorageReference,
+  type UploadMetadata,
+} from 'firebase/storage';
 import { mimeFromFileName } from './chatAttachments';
 import { storage } from './firebase';
 
@@ -75,20 +84,20 @@ function imageUploadBudget(): ImageUploadBudget {
       }
     ).connection;
     if (connection?.saveData) {
-      return { maxEdge: 1080, quality: 0.7, maxBytes: 550_000 };
+      return { maxEdge: 1080, quality: 0.7, maxBytes: 520_000 };
     }
     const type = connection?.effectiveType;
     const downlink = connection?.downlink;
     if (type === 'slow-2g' || type === '2g') {
-      return { maxEdge: 1080, quality: 0.7, maxBytes: 550_000 };
+      return { maxEdge: 1080, quality: 0.7, maxBytes: 520_000 };
     }
     if (type === '3g' || (typeof downlink === 'number' && downlink > 0 && downlink < 1.5)) {
-      return { maxEdge: 1440, quality: 0.76, maxBytes: 900_000 };
+      return { maxEdge: 1280, quality: 0.74, maxBytes: 700_000 };
     }
   } catch {
     /* Network Information API no está en todos los navegadores. */
   }
-  return { maxEdge: 1920, quality: 0.82, maxBytes: 1_500_000 };
+  return { maxEdge: 1440, quality: 0.78, maxBytes: 850_000 };
 }
 
 function canSkipImageReencode(
@@ -223,8 +232,16 @@ export async function normalizeImageOrientation(blob: Blob): Promise<Blob> {
   }
 }
 
-/** Prepara una foto: un solo pase a resolución de feed (o se omite si ya es liviana). */
-export async function prepareImageForUpload(blob: Blob, label = 'La foto'): Promise<Blob> {
+const imagePrepareCache = new WeakMap<Blob, Promise<Blob>>();
+
+/** Comprime en segundo plano al elegir la foto, para no esperar al pulsar Publicar. */
+export function prefetchImageForUpload(blob: Blob): void {
+  const type = (blob.type || '').toLowerCase();
+  if (!type.startsWith('image/') || type === 'image/gif') return;
+  void prepareImageForUpload(blob).catch(() => undefined);
+}
+
+async function prepareImageForUploadUncached(blob: Blob, label: string): Promise<Blob> {
   const type = blob.type || '';
   if (!type.startsWith('image/')) {
     throw new Error(`${label}: solo se permiten imágenes.`);
@@ -289,6 +306,22 @@ export async function prepareImageForUpload(blob: Blob, label = 'La foto'): Prom
   }
 }
 
+/** Prepara una foto: un solo pase a resolución de feed (o se omite si ya es liviana). */
+export async function prepareImageForUpload(blob: Blob, label = 'La foto'): Promise<Blob> {
+  const cached = imagePrepareCache.get(blob);
+  if (cached) return cached;
+  const task = prepareImageForUploadUncached(blob, label);
+  imagePrepareCache.set(blob, task);
+  try {
+    const prepared = await task;
+    if (prepared !== blob) imagePrepareCache.set(prepared, Promise.resolve(prepared));
+    return prepared;
+  } catch (err) {
+    imagePrepareCache.delete(blob);
+    throw err;
+  }
+}
+
 export async function uploadUserAvatar(uid: string, blob: Blob, ext = 'jpg'): Promise<string> {
   const prepared = await prepareImageForUpload(blob, 'La foto de perfil');
   void ensureUserStorageFolder(uid);
@@ -323,6 +356,22 @@ export async function uploadUserCover(
   return getDownloadURL(objectRef);
 }
 
+/** Videos y fotos grandes: reanudable. Fotos chicas: un solo PUT (menos roundtrips). */
+async function putStorageBlob(
+  objectRef: StorageReference,
+  payload: Blob,
+  metadata: UploadMetadata,
+): Promise<void> {
+  if (payload.size < 768 * 1024) {
+    await uploadBytes(objectRef, payload, metadata);
+    return;
+  }
+  const task = uploadBytesResumable(objectRef, payload, metadata);
+  await new Promise<void>((resolve, reject) => {
+    task.on('state_changed', undefined, reject, () => resolve());
+  });
+}
+
 export async function uploadUserMedia(
   uid: string,
   file: Blob,
@@ -344,13 +393,13 @@ export async function uploadUserMedia(
     throw new Error('El video debe pesar menos de 50 MB.');
   }
 
-  void ensureUserStorageFolder(uid);
   const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || (isVideo ? 'clip.mp4' : 'photo.jpg');
   const storagePath = `${userMediaStorageFolder(uid, kind)}/${Date.now()}_${safeName}`;
   const objectRef = ref(storage, storagePath);
   const contentType = isImage ? payload.type || 'image/jpeg' : type;
-  await uploadBytes(objectRef, payload, {
+  await putStorageBlob(objectRef, payload, {
     contentType,
+    cacheControl: 'public,max-age=31536000,immutable',
     customMetadata: { visibility, contentKind: kind },
   });
   const url = await getDownloadURL(objectRef);

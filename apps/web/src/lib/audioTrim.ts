@@ -88,7 +88,12 @@ export async function mergeVideoWithMusicClip(
 
     const mimeType = pickRecorderMimeType();
     const chunks: BlobPart[] = [];
-    const recorder = new MediaRecorder(combined, { mimeType });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 2_500_000 });
+    } catch {
+      recorder = new MediaRecorder(combined, { mimeType });
+    }
 
     const recorded = new Promise<Blob>((resolve, reject) => {
       recorder.ondataavailable = (event) => {

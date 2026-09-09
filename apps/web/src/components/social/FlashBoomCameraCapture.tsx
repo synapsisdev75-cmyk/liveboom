@@ -282,11 +282,19 @@ export function FlashBoomCameraCapture({
     cleanupPreview();
     const mimeType = pickMime();
     let recorder: MediaRecorder;
+    const recordOpts: MediaRecorderOptions = {
+      videoBitsPerSecond: 2_500_000,
+    };
+    if (mimeType) recordOpts.mimeType = mimeType;
     try {
-      recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorder = new MediaRecorder(stream, recordOpts);
     } catch {
-      setError('No se pudo grabar video en este navegador.');
-      return;
+      try {
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      } catch {
+        setError('No se pudo grabar video en este navegador.');
+        return;
+      }
     }
     const usedType = recorder.mimeType || mimeType || 'video/webm';
     chunksRef.current = [];

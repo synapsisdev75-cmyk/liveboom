@@ -10,7 +10,7 @@ import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MA
 import { BOOM_CLIP_MAX_DURATION_SEC } from '../../lib/videoTrim';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/mediaFile';
-import { uploadUserMedia } from '../../lib/storage';
+import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput } from './EmojiInput';
@@ -513,6 +513,7 @@ export function CreatePostModal({
       setKind('video');
     } else {
       setKind('photo');
+      prefetchImageForUpload(file);
     }
   }
 
@@ -664,6 +665,7 @@ export function CreatePostModal({
     setPhotoEdits({});
     setKind('photo');
     videoDurationSecRef.current = 0;
+    picked.forEach((file) => prefetchImageForUpload(file));
   }
 
   function onGalleryPhotoChange(files: FileList | null) {
@@ -818,6 +820,7 @@ export function CreatePostModal({
       setEditHistory([DEFAULT_PHOTO_EDIT]);
       setHistoryIndex(0);
       setPhotoEditOpen(false);
+      prefetchImageForUpload(baked);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo aplicar la edición.');
     } finally {
