@@ -377,11 +377,29 @@ service cloud.firestore {
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.username is string
         && validVisibility(postVis());
-      allow update: if signedIn()
-        && resource.data.authorUid == request.auth.uid
-        && request.resource.data.authorUid == resource.data.authorUid
-        && validVisibility(postVis());
+      allow update: if signedIn() && (
+        (
+          resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorUid == resource.data.authorUid
+          && validVisibility(postVis())
+        )
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+          && request.resource.data.views is number
+          && request.resource.data.views == resource.data.get('views', 0) + 1
+        )
+      );
       allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+
+      match /views/{viewerId} {
+        allow read: if signedIn() && (
+          request.auth.uid == viewerId || canReadLoadedPost()
+        );
+        allow create, update: if signedIn()
+          && request.auth.uid == viewerId
+          && request.resource.data.atMs is number;
+        allow delete: if false;
+      }
 
       match /reactions/{reactorId} {
         allow read: if canReadLoadedPost();

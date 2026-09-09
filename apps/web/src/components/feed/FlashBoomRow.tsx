@@ -12,7 +12,7 @@ import {
   type FsPost,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
-import { isStoryActive, STORY_TTL_MS } from '../../lib/storyLifecycle';
+import { isStoryActive, STORY_TTL_MS, storyExpiryMs } from '../../lib/storyLifecycle';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { AutoplayMuteVideo } from './AutoplayMuteVideo';
 import { HorizontalScrollRail } from './HorizontalScrollRail';
@@ -44,10 +44,8 @@ function toStoryReel(post: FsPost): StoryReel {
 
 function isStoryReelActive(reel: StoryReel, now = Date.now()) {
   if (!reel.mediaUrl) return false;
-  const created = Date.parse(reel.createdAt);
-  const expires =
-    reel.storyExpiresAtMs ?? (Number.isFinite(created) ? created + STORY_TTL_MS : 0);
-  return now < expires;
+  const expires = storyExpiryMs(reel);
+  return expires > 0 && now < expires;
 }
 
 function StoryThumb({
@@ -102,16 +100,19 @@ function StoryThumb({
 function PublishCard({
   avatarUrl,
   handle,
-  hasOwnStory,
+  ownReel,
   onOpenOwn,
   onPublish,
 }: {
   avatarUrl: string | null;
   handle: string;
-  hasOwnStory: boolean;
+  ownReel?: StoryReel | null;
   onOpenOwn?: () => void;
   onPublish: () => void;
 }) {
+  const hasOwnStory = Boolean(ownReel?.mediaUrl);
+  const videoAspect = useVideoAspect(ownReel?.mediaType === 'video' ? ownReel.mediaUrl : null);
+
   return (
     <div className="flex w-[4.75rem] shrink-0 flex-col items-center gap-1.5 sm:w-20">
       <div className="relative">
@@ -122,8 +123,15 @@ function PublishCard({
             hasOwnStory ? 'story-ring p-[2.5px]' : 'ring-2 ring-white/15'
           }`}
         >
-          <span className="h-full w-full overflow-hidden rounded-full bg-zinc-800">
-            {avatarUrl ? (
+          <span
+            className="h-full w-full overflow-hidden rounded-full bg-zinc-800"
+            style={hasOwnStory && ownReel?.mediaType === 'video' && videoAspect.isReady ? videoAspect.aspectStyle : undefined}
+          >
+            {hasOwnStory && ownReel?.mediaType === 'photo' ? (
+              <img src={ownReel.mediaUrl} alt="" className="h-full w-full object-cover" />
+            ) : hasOwnStory && ownReel?.mediaType === 'video' ? (
+              <AutoplayMuteVideo src={ownReel.mediaUrl} className="h-full w-full object-cover" />
+            ) : avatarUrl ? (
               <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
               <span className="grid h-full w-full place-items-center text-lg font-black uppercase text-zinc-400">
@@ -189,8 +197,18 @@ export function FlashBoomRow() {
       setStories([]);
       return;
     }
+    const uid = profile.firebaseUid;
     return listenActiveStories((posts) =>
-      setStories(posts.filter((post) => isStoryActive(post) && post.mediaUrl).map(toStoryReel)),
+      setStories((current) => {
+        const fromServer = posts
+          .filter((post) => isStoryActive(post) && post.mediaUrl)
+          .map(toStoryReel);
+        const serverIds = new Set(fromServer.map((item) => item.id));
+        const pendingOwn = current.filter(
+          (reel) => reel.authorUid === uid && !serverIds.has(reel.id) && isStoryReelActive(reel),
+        );
+        return pendingOwn.length ? [...pendingOwn, ...fromServer] : fromServer;
+      }),
     );
   }, [profile?.firebaseUid]);
 
@@ -203,9 +221,21 @@ export function FlashBoomRow() {
       });
     };
     prune();
-    const timer = window.setInterval(prune, 20_000);
-    return () => window.clearInterval(timer);
-  }, []);
+    const now = Date.now();
+    let soonest = Number.POSITIVE_INFINITY;
+    for (const reel of stories) {
+      const expires = storyExpiryMs(reel);
+      if (expires > now && expires < soonest) soonest = expires;
+    }
+    const wait = soonest - now;
+    const delay = Number.isFinite(soonest)
+      ? wait <= 15_000
+        ? Math.max(wait + 40, 200)
+        : 15_000
+      : 15_000;
+    const timer = window.setTimeout(prune, delay);
+    return () => window.clearTimeout(timer);
+  }, [stories]);
 
   const storiesByAuthor = useMemo(() => {
     const map = new Map<string, StoryReel[]>();
@@ -239,7 +269,15 @@ export function FlashBoomRow() {
   const ownStories = profile ? storiesByAuthor.get(profile.firebaseUid) ?? [] : [];
 
   const networkWithStories = useMemo(() => {
-    return networkPeople.filter((person) => (storiesByAuthor.get(person.uid)?.length ?? 0) > 0);
+    return networkPeople
+      .filter((person) => (storiesByAuthor.get(person.uid)?.length ?? 0) > 0)
+      .sort((a, b) => {
+        const aLast = storiesByAuthor.get(a.uid)?.slice(-1)[0];
+        const bLast = storiesByAuthor.get(b.uid)?.slice(-1)[0];
+        const aAt = aLast ? Date.parse(aLast.createdAt) : 0;
+        const bAt = bLast ? Date.parse(bLast.createdAt) : 0;
+        return bAt - aAt;
+      });
   }, [networkPeople, storiesByAuthor]);
 
   /** Historias visibles: propias + amigos + quien sigues. */
@@ -329,14 +367,14 @@ export function FlashBoomRow() {
             <PublishCard
               avatarUrl={profile.avatarUrl ?? null}
               handle={profile.handle}
-              hasOwnStory={ownStories.length > 0}
+              ownReel={ownStories.slice(-1)[0] ?? null}
               onOpenOwn={() => openRingFromAuthor(profile.firebaseUid)}
               onPublish={() => setCreateOpen(true)}
             />
           </div>
 
           {networkWithStories.map((person) => {
-            const reel = storiesByAuthor.get(person.uid)?.[0];
+            const reel = storiesByAuthor.get(person.uid)?.slice(-1)[0];
             if (!reel) return null;
             return (
               <StoryThumb
@@ -369,7 +407,31 @@ export function FlashBoomRow() {
           hideTrigger
           defaultVideoMode="story"
           onClose={() => setCreateOpen(false)}
-          onCreated={() => setCreateOpen(false)}
+          onCreated={(post) => {
+            setCreateOpen(false);
+            if (
+              post.postFormat !== 'story' ||
+              !post.mediaUrl ||
+              (post.type !== 'photo' && post.type !== 'video')
+            ) {
+              return;
+            }
+            const reel: StoryReel = {
+              id: post.id,
+              username: profile.handle,
+              authorUid: post.authorUid || profile.firebaseUid,
+              caption: post.caption || FLASH_BOOM_LABEL,
+              mediaUrl: post.mediaUrl,
+              mediaType: post.type === 'photo' ? 'photo' : 'video',
+              createdAt: post.createdAt,
+              durationSec: post.durationSec ?? null,
+              overlays: post.overlays,
+              storyExpiresAtMs: post.storyExpiresAtMs ?? Date.parse(post.createdAt) + STORY_TTL_MS,
+            };
+            setStories((current) =>
+              current.some((item) => item.id === reel.id) ? current : [reel, ...current],
+            );
+          }}
         />
       ) : null}
     </section>

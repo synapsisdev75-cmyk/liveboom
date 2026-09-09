@@ -38,6 +38,7 @@ import { useT } from '../../i18n';
 import { GifPickerSheet } from './GifPickerSheet';
 import { CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
+import { patchChatNotifyContext } from '../../lib/chatNotifyContext';
 import { api } from '../../lib/api';
 import {
   CHAT_FILE_ACCEPT,
@@ -846,6 +847,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     registerChatCallSurface({ chatId, host, dock });
     return () => registerChatCallSurface(null);
   }, [chatId, activeFriend?.uid]);
+
+  useEffect(() => {
+    if (!isPage) return;
+    patchChatNotifyContext({
+      activeChatId: chatId,
+      activePeerUid: activeUid,
+    });
+    return () => {
+      patchChatNotifyContext({ activeChatId: null, activePeerUid: null });
+    };
+  }, [isPage, chatId, activeUid]);
 
   useEffect(() => {
     if (!profile || !activeFriend) {
@@ -1703,7 +1715,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                         className={`mt-0.5 block truncate text-xs ${
                           rowInCall
                             ? 'font-semibold text-cyan-300'
-                            : friend.unread > 0
+                            : friend.unread > 0 && friend.uid !== activeUid
                               ? 'font-medium text-zinc-300'
                               : 'text-zinc-500'
                         }`}
@@ -1725,7 +1737,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                         <span className="rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
                           Live
                         </span>
-                      ) : friend.unread > 0 ? (
+                      ) : friend.unread > 0 && friend.uid !== activeUid ? (
                         <span className="grid h-5 min-w-5 place-items-center rounded-full bg-violet-500 px-1 text-[10px] font-black text-white">
                           {friend.unread > 9 ? '9+' : friend.unread}
                         </span>

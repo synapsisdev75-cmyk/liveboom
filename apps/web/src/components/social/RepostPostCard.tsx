@@ -25,6 +25,7 @@ import { PostPhotoViewer } from './PostPhotoViewer';
 import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
 import { PublicationCaption } from './PublicationCaption';
 import { ShareContentButton } from './ShareContentButton';
+import { PostViewsIndicator } from './PostViewsIndicator';
 
 export type RepostSourcePost = {
   id: string;
@@ -281,7 +282,12 @@ function OriginalPostEmbed({
                 />
               </span>
             ) : null}
-            <span className="ml-auto" onClick={() => onInteracted?.()}>
+            <span className="ml-auto inline-flex items-center gap-1.5" onClick={() => onInteracted?.()}>
+              <PostViewsIndicator
+                postId={origin.id}
+                variant="pill"
+                recordMode="visible"
+              />
               <ShareContentButton
                 url={buildPostShareUrl(origin.username, origin.id, origin.authorUid)}
                 title={`@${origin.username} en LiveBoom`}

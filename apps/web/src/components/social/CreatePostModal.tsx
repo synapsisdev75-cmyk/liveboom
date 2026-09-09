@@ -664,9 +664,6 @@ export function CreatePostModal({
     setPhotoEdits({});
     setKind('photo');
     videoDurationSecRef.current = 0;
-    if (composeTab === 'flashboom') {
-      setComposeTab('publication');
-    }
   }
 
   function onGalleryPhotoChange(files: FileList | null) {
@@ -1238,12 +1235,13 @@ export function CreatePostModal({
         caption: caption.trim().slice(0, captionMax ?? 2000) || null,
         mediaUrl: created.mediaUrl,
         visibility: created.visibility,
-        createdAt: new Date().toISOString(),
+        createdAt: created.createdAt || new Date().toISOString(),
         likes: 0,
         dislikes: 0,
         viewerReaction: null,
         postFormat: publishPostFormat || null,
         durationSec: durationSec || null,
+        storyExpiresAtMs: created.storyExpiresAtMs ?? null,
         overlays,
         reconstruction3d: reconstructionPayload,
       });

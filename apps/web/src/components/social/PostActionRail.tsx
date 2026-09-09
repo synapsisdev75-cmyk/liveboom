@@ -6,6 +6,7 @@ import { profileHref } from '../../lib/profileFirestore';
 import { UserAvatar } from '../profile/UserAvatar';
 import { LiveBoomReactionControl } from './LiveBoomReactionControl';
 import { ShareContentButton } from './ShareContentButton';
+import { PostViewsIndicator } from './PostViewsIndicator';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
 import { useT } from '../../i18n';
 
@@ -191,6 +192,8 @@ export function PostActionRail({
           {commentCount > 0 ? commentCount : t('actions.comment')}
         </span>
       </div>
+
+      <PostViewsIndicator postId={postId} variant="rail" recordMode="open" />
 
       {shareUrl ? (
         <ShareContentButton

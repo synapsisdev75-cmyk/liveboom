@@ -32,7 +32,15 @@ import {
   targetReelVisibility,
 } from './reelLifecycle';
 import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from './contentType';
-import { isStoryActive, isStoryPost, storyExpiresAtFromNow } from './storyLifecycle';
+import {
+  isStoryActive,
+  isStoryPost,
+  STORY_STATUS_ACTIVE,
+  STORY_STATUS_EXPIRED,
+  STORY_TTL_MS,
+  storyCreatedAtMs,
+  storyExpiresAtFromNow,
+} from './storyLifecycle';
 import { getCommunicationPermissions } from './communicationPermissions';
 import type { CallRateSnapshot } from './callPricing';
 import { readCallAuthorization } from './callSettingsFirestore';
@@ -147,6 +155,7 @@ export type Conversation = FriendChip & {
   chatId: string;
   lastMessage: string | null;
   lastAt: string | null;
+  lastFromUid?: string | null;
   call: PrivateCall | null;
   /** Mensajes no leídos para el viewer actual. */
   unread: number;
@@ -169,9 +178,12 @@ export type FsPost = {
   createdAt: string;
   likes: number;
   viewerReaction: string | null;
+  views?: number;
   /** story = historia 24h; post = video publicación normal */
   postFormat?: 'story' | 'post';
   storyExpiresAtMs?: number;
+  createdAtMs?: number;
+  storyStatus?: 'active' | 'expired';
   durationSec?: number;
   reelFeedUntilMs?: number;
   reelFriendsAtMs?: number;
@@ -1021,6 +1033,7 @@ export function listenConversations(
         profiles?: Record<string, { username?: string; displayName?: string; avatarUrl?: string | null }>;
         lastMessage?: string | null;
         lastAt?: unknown;
+        lastFromUid?: string;
         call?: unknown;
         unread?: Record<string, number>;
         clearedAtMs?: unknown;
@@ -1037,6 +1050,7 @@ export function listenConversations(
         avatarUrl: profile.avatarUrl ?? null,
         lastMessage: data.lastMessage ?? null,
         lastAt: data.lastAt ? asIso(data.lastAt) : null,
+        lastFromUid: data.lastFromUid ? String(data.lastFromUid) : null,
         call: parseCall(data.call),
         unread: Math.max(0, Number(data.unread?.[uid] || 0)),
         clearedAtMs: Math.max(0, Math.floor(Number(data.clearedAtMs) || 0)),
@@ -1603,9 +1617,15 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     storagePath: (data.storagePath as string | null) ?? null,
     createdAt: asIso(data.createdAt),
     likes: Number(data.likes ?? 0),
+    views: Number(data.views ?? 0),
     viewerReaction: null,
     postFormat: (data.postFormat as FsPost['postFormat']) || undefined,
     storyExpiresAtMs: Number(data.storyExpiresAtMs) || undefined,
+    createdAtMs: Number(data.createdAtMs) || undefined,
+    storyStatus:
+      data.storyStatus === 'active' || data.storyStatus === 'expired'
+        ? data.storyStatus
+        : undefined,
     durationSec: Number(data.durationSec) || undefined,
     reelFeedUntilMs: Number(data.reelFeedUntilMs) || undefined,
     reelFriendsAtMs: Number(data.reelFriendsAtMs) || undefined,
@@ -1978,11 +1998,7 @@ export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubs
           if (post.visibility === 'friends' && !friendSet.has(post.authorUid)) return false;
           return true;
         })
-        .sort(
-          (a, b) =>
-            (b.storyExpiresAtMs ?? Date.parse(b.createdAt)) -
-            (a.storyExpiresAtMs ?? Date.parse(a.createdAt)),
-        ),
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     );
   }
 
@@ -2008,7 +2024,6 @@ export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubs
         },
         (err) => {
           console.warn('[listenActiveStories]', key, err);
-          storyBuckets.set(key, []);
           emitStories();
         },
       ),
@@ -2020,14 +2035,15 @@ export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubs
     storyUnsubs.length = 0;
     storyBuckets.clear();
 
+    // Propias: todos los posts del autor son legibles. No filtrar solo por circle:
+    // el compositor guarda "Público" y antes se perdían al instante.
     attachRecentPostsQuery(
-      '__own__',
+      '__own_recent__',
       query(
         collection(db, 'posts'),
         where('authorUid', '==', uid),
-        where('visibility', '==', 'circle'),
         orderBy('createdAt', 'desc'),
-        limit(40),
+        limit(50),
       ),
     );
     attachRecentPostsQuery(
@@ -2040,33 +2056,59 @@ export function listenActiveStories(onChange: (posts: FsPost[]) => void): Unsubs
         limit(40),
       ),
     );
+    // Sin orderBy(createdAt): un serverTimestamp pendiente excluye el doc del
+    // snapshot local y el Flash no aparecería hasta confirmar el servidor.
+    attachRecentPostsQuery(
+      '__own_story__',
+      query(
+        collection(db, 'posts'),
+        where('authorUid', '==', uid),
+        where('postFormat', '==', 'story'),
+        limit(40),
+      ),
+    );
 
     const others = [...new Set([...friendUids, ...followingUids, ...followerUids])]
       .filter((id) => id !== uid)
       .slice(0, MAX_STORY_AUTHORS);
+    const friendSet = new Set(friendUids);
 
-    // Una query por autor: si un lote `in` incluye alguien con posts ilegibles, Firestore falla entero.
+    // Una query por autor y visibilidad. Mezclar public+circle+friends en un
+    // postFormat==story hace que Firestore rechace el snapshot entero si hay
+    // un documento ilegible, y la red queda en 0.
     for (const authorUid of others) {
       attachRecentPostsQuery(
-        `author-${authorUid}`,
+        `author-circle-${authorUid}`,
         query(
           collection(db, 'posts'),
           where('authorUid', '==', authorUid),
           where('visibility', '==', 'circle'),
           orderBy('createdAt', 'desc'),
-          limit(12),
+          limit(16),
         ),
       );
       attachRecentPostsQuery(
-        `author-format-${authorUid}`,
+        `author-public-${authorUid}`,
         query(
           collection(db, 'posts'),
           where('authorUid', '==', authorUid),
-          where('postFormat', '==', 'story'),
-          orderBy('storyExpiresAtMs', 'desc'),
-          limit(12),
+          where('visibility', '==', 'public'),
+          orderBy('createdAt', 'desc'),
+          limit(30),
         ),
       );
+      if (friendSet.has(authorUid)) {
+        attachRecentPostsQuery(
+          `author-friends-${authorUid}`,
+          query(
+            collection(db, 'posts'),
+            where('authorUid', '==', authorUid),
+            where('visibility', '==', 'friends'),
+            orderBy('createdAt', 'desc'),
+            limit(16),
+          ),
+        );
+      }
     }
   }
 
@@ -2168,12 +2210,13 @@ export async function sweepAuthorReelLifecycle(authorUid: string) {
   for (const item of snap.docs) {
     const post = postFromDoc(item.id, item.data() as Record<string, unknown>);
     if (post.type !== 'video' && post.type !== 'photo') continue;
-    if (isStoryPost(post) && !isStoryActive(post, now)) {
-      batch.update(item.ref, { visibility: 'private', storyExpiresAtMs: now });
-      pending += 1;
+    if (isStoryPost(post)) {
+      if (!isStoryActive(post, now) && post.storyStatus !== STORY_STATUS_EXPIRED) {
+        batch.update(item.ref, { storyStatus: STORY_STATUS_EXPIRED });
+        pending += 1;
+      }
       continue;
     }
-    if (isStoryPost(post)) continue;
 
     const nextVisibility = targetReelVisibility(post, now);
     if (nextVisibility === post.visibility) continue;
@@ -2463,6 +2506,8 @@ export async function createPost(input: {
   storagePath: string | null;
   visibility: 'public' | 'friends' | 'private' | 'circle';
   postFormat?: 'story' | 'post';
+  createdAt?: string;
+  storyExpiresAtMs?: number;
 }> {
   let mediaUrl: string | null = null;
   let mediaUrls: string[] | undefined;
@@ -2473,7 +2518,15 @@ export async function createPost(input: {
   const isStory = input.postFormat === 'story';
   // Boom Clip = solo video con postFormat post (nunca foto)
   const isBoomClip = input.postFormat === 'post' && input.type === 'video';
-  const visibility = input.visibility || (isStory ? 'circle' : 'public');
+  // Flash Boom = amigos y seguidores (circle). Público en el compositor se mapea a circle
+  // para que la fila lo encuentre; amigos/privado se respetan.
+  const visibility = isStory
+    ? input.visibility === 'private'
+      ? 'private'
+      : input.visibility === 'friends'
+        ? 'friends'
+        : 'circle'
+    : input.visibility || 'public';
   const durationSec = Math.max(0, Math.floor(Number(input.durationSec) || 0));
   const postFormat = isStory
     ? 'story'
@@ -2577,6 +2630,7 @@ export async function createPost(input: {
     storagePath,
     visibility,
     likes: 0,
+    views: 0,
     createdAt: serverTimestamp(),
     ...(mediaUrls?.length ? { mediaUrls } : {}),
     ...(postFormat ? { postFormat } : {}),
@@ -2584,6 +2638,8 @@ export async function createPost(input: {
     ...(mediaWidth > 0 && mediaHeight > 0 ? { mediaWidth, mediaHeight } : {}),
     ...(isStory
       ? {
+          storyStatus: STORY_STATUS_ACTIVE,
+          createdAtMs: Date.now(),
           storyExpiresAtMs: storyExpiresAtFromNow(),
           ...(input.type === 'video' ? { durationSec } : {}),
         }
@@ -2623,7 +2679,7 @@ export async function createPost(input: {
     mediaType: input.type,
   }).catch(() => undefined);
 
-  if (input.notifyFriends && visibility !== 'private' && visibility !== 'circle') {
+  if (input.notifyFriends && visibility !== 'private' && (visibility !== 'circle' || isStory)) {
     const friends = await listFriends(input.authorUid);
     void notifyFriendsAboutPost({
       authorUid: input.authorUid,
@@ -2665,7 +2721,33 @@ export async function createPost(input: {
     }
   }
 
-  return { id: ref.id, mediaUrl, storagePath, visibility, postFormat };
+  let createdAtIso = new Date().toISOString();
+  let storyExpiresAtMs: number | undefined;
+  if (isStory) {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const written = postFromDoc(ref.id, snap.data() as Record<string, unknown>);
+      const createdMs = storyCreatedAtMs(written) || Date.now();
+      createdAtIso = written.createdAt || new Date(createdMs).toISOString();
+      storyExpiresAtMs = createdMs + STORY_TTL_MS;
+      await updateDoc(ref, {
+        createdAtMs: createdMs,
+        storyExpiresAtMs,
+        storyStatus: STORY_STATUS_ACTIVE,
+      }).catch(() => undefined);
+    } else {
+      storyExpiresAtMs = storyExpiresAtFromNow();
+    }
+  }
+
+  return {
+    id: ref.id,
+    mediaUrl,
+    storagePath,
+    visibility,
+    postFormat,
+    ...(isStory ? { createdAt: createdAtIso, storyExpiresAtMs } : {}),
+  };
 }
 
 /**
@@ -2703,6 +2785,7 @@ export async function createRepost(input: {
     storagePath: null,
     visibility,
     likes: 0,
+    views: 0,
     createdAt: serverTimestamp(),
     isRepost: true,
     sharedFromPostId: originId,

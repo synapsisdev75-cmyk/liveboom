@@ -853,6 +853,20 @@ html[data-lb-theme='light'] .lb-action-pill--share {
   color: var(--text-secondary);
 }
 
+html[data-lb-theme='light'] .lb-views-indicator {
+  color: var(--text-primary);
+}
+
+html[data-lb-theme='light'] .lb-views-indicator .lb-views-icon {
+  color: var(--text-on-accent);
+  filter: drop-shadow(0 0 5px var(--accent-soft));
+}
+
+html[data-lb-theme='light'] .lb-views-indicator--rail,
+html[data-lb-theme='light'] .lb-views-indicator--rail .lb-views-indicator__count {
+  color: var(--text-on-dark, #f4f4f5);
+}
+
 html[data-lb-theme='light'] .lb-action-pill--edit {
   background: var(--bg-card-elevated);
   color: var(--accent-cyan);

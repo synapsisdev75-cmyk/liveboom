@@ -378,6 +378,7 @@ export function UserProfileView() {
             createdAt: item.createdAt,
             likes: item.likes,
             dislikes: 0,
+            views: item.views,
             viewerReaction: null,
             postFormat: item.postFormat,
             durationSec: item.durationSec,

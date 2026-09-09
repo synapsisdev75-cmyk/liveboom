@@ -26,6 +26,7 @@ function toSocial(post: FsPost): SocialPost {
     createdAt: post.createdAt,
     likes: post.likes,
     dislikes: 0,
+    views: post.views,
     viewerReaction: null,
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,

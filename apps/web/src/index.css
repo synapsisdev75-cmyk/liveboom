@@ -361,6 +361,73 @@
   width: var(--lb-action-size);
 }
 
+.lb-views-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.lb-views-indicator--pill {
+  min-height: 2.5rem;
+  padding-inline: 0.1rem;
+}
+
+.lb-views-indicator--rail {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.18rem;
+  min-height: 0;
+  color: var(--text-on-dark, #f4f4f5);
+}
+
+.lb-views-indicator__count {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 6px color-mix(in srgb, var(--bg-primary) 55%, transparent);
+}
+
+.lb-views-indicator .lb-views-icon {
+  display: block;
+  flex-shrink: 0;
+  color: var(--text-on-accent, #fafafa);
+  filter: drop-shadow(0 0 6px var(--accent-soft));
+  transition: filter 0.25s ease;
+}
+
+.lb-views-indicator--pill .lb-views-icon {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.lb-views-indicator--rail .lb-views-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.lb-action-rail--fit .lb-views-indicator--rail .lb-views-icon {
+  width: calc(var(--lb-action-size) * 0.78);
+  height: calc(var(--lb-action-size) * 0.78);
+}
+
+.lb-views-indicator--rail .lb-views-indicator__count {
+  min-height: 14px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: var(--text-on-dark, #fff);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.65));
+}
+
 .lb-action-rail--fit .lb-action-rail__avatar-wrap {
   width: var(--lb-action-size);
   height: var(--lb-action-size);
@@ -5636,7 +5703,7 @@ a.lb-entity:active,
   height: 1.35rem;
 }
 
-/* Inicio → Publicaciones: único CTA destacado de crear. */
+/* Inicio → Publicaciones: único CTA destacado de crear. Hereda acento + contraste del tema. */
 .lb-new-post-btn {
   position: relative;
   isolation: isolate;
@@ -5649,25 +5716,30 @@ a.lb-entity:active,
   gap: 0.35rem;
   overflow: hidden;
   border-radius: 999px;
-  border: 1.5px solid transparent;
+  border: 1.5px solid color-mix(in srgb, var(--accent-secondary) 52%, var(--accent-primary));
   padding: 0.4rem 0.95rem;
-  background:
-    linear-gradient(#0c0c12, #0c0c12) padding-box,
-    linear-gradient(90deg, #ec4899 0%, #8b5cf6 48%, #22d3ee 100%) border-box;
-  color: #fff;
+  background: linear-gradient(
+    100deg,
+    var(--accent-primary),
+    var(--lb-accent-mid, var(--accent-primary)) 52%,
+    var(--accent-secondary)
+  );
+  color: var(--text-on-accent, var(--button-primary-text, #fafafa));
   font-size: clamp(0.68rem, 2.4vw, 0.75rem);
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1;
   white-space: nowrap;
   box-shadow:
-    0 0 10px rgba(236, 72, 153, 0.28),
-    0 0 16px rgba(139, 92, 246, 0.18),
-    0 0 14px rgba(34, 211, 238, 0.16);
+    0 0 12px var(--accent-soft),
+    0 0 18px color-mix(in srgb, var(--accent-primary) 32%, transparent);
   transition:
     transform 0.2s ease,
-    box-shadow 0.2s ease,
-    filter 0.2s ease;
+    box-shadow 0.25s ease,
+    filter 0.2s ease,
+    background 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease;
 }
 
 .lb-new-post-btn__shine {
@@ -5688,9 +5760,9 @@ a.lb-entity:active,
   background: linear-gradient(
     105deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.08) 42%,
-    rgba(255, 255, 255, 0.38) 50%,
-    rgba(255, 255, 255, 0.08) 58%,
+    color-mix(in srgb, var(--text-on-accent, #fff) 10%, transparent) 42%,
+    color-mix(in srgb, var(--text-on-accent, #fff) 42%, transparent) 50%,
+    color-mix(in srgb, var(--text-on-accent, #fff) 10%, transparent) 58%,
     transparent 100%
   );
   transform: translateX(0) rotate(12deg);
@@ -5706,7 +5778,12 @@ a.lb-entity:active,
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0%, rgba(34, 211, 238, 0.35) 55%, transparent 70%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--text-on-accent, #fff) 85%, transparent) 0%,
+    color-mix(in srgb, var(--accent-secondary) 40%, transparent) 55%,
+    transparent 70%
+  );
   filter: blur(0.3px);
   opacity: 0.7;
   animation: lb-new-post-spark 3.6s ease-in-out infinite;
@@ -5716,6 +5793,7 @@ a.lb-entity:active,
 .lb-new-post-btn > span:not(.lb-new-post-btn__shine) {
   position: relative;
   z-index: 1;
+  color: inherit;
 }
 
 .lb-new-post-btn:active {
@@ -5727,13 +5805,12 @@ a.lb-entity:active,
     transform: translateY(-1px);
     filter: brightness(1.06);
     box-shadow:
-      0 0 14px rgba(236, 72, 153, 0.4),
-      0 0 22px rgba(139, 92, 246, 0.26),
-      0 0 18px rgba(34, 211, 238, 0.22);
+      0 0 16px color-mix(in srgb, var(--accent-primary) 45%, transparent),
+      0 0 24px var(--accent-soft);
   }
 
   .lb-new-post-btn:focus-visible {
-    outline: 2px solid rgba(34, 211, 238, 0.7);
+    outline: 2px solid var(--focus-ring, var(--accent-secondary));
     outline-offset: 2px;
   }
 }

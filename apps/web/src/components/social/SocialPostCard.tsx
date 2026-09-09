@@ -19,6 +19,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
 import { ShareContentButton } from './ShareContentButton';
+import { PostViewsIndicator } from './PostViewsIndicator';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { PostPhotoViewer } from './PostPhotoViewer';
 import { PostMediaCarousel } from './PostMediaCarousel';
@@ -454,9 +455,11 @@ export type SocialPost = {
   createdAt: string;
   likes: number;
   dislikes: number;
+  views?: number;
   viewerReaction: 'like' | 'dislike' | null;
   postFormat?: 'story' | 'post' | null;
   durationSec?: number | null;
+  storyExpiresAtMs?: number | null;
   reelFeedUntilMs?: number | null;
   sharedFromPostId?: string;
   sharedFromAuthorUid?: string;
@@ -899,6 +902,12 @@ function StandardPostCard({
               inline
             />
           ) : null}
+          <PostViewsIndicator
+            postId={post.id}
+            variant="pill"
+            initialViews={post.views}
+            recordMode="visible"
+          />
           <ShareContentButton
             url={shareUrl}
             title={`@${post.authorUsername} en LiveBoom`}

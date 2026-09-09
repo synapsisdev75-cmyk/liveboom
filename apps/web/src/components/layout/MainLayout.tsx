@@ -19,13 +19,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { sweepAuthorReelLifecycle } from '../../lib/socialFirestore';
+import { isMessagesPath, patchChatNotifyContext } from '../../lib/chatNotifyContext';
 import { useUiStore } from '../../store/uiStore';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { VP_LG } from '../../responsive/viewport';
 import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { CoinModal } from '../wallet/CoinModal';
 import { NotificationBell } from '../social/NotificationBell';
-import { MessageInboxBadge, useUnreadMessageCount } from '../social/MessageInboxBadge';
+import { useUnreadMessageCount } from '../social/MessageInboxBadge';
 import { SideRailPanel } from './SideRailPanel';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { Logo } from '../brand/Logo';
@@ -248,7 +249,7 @@ export function MainLayout() {
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
-  const onMessages = location.pathname.startsWith('/mensajes');
+  const onMessages = isMessagesPath(location.pathname);
   const onExplore = location.pathname.startsWith('/explorar');
   const onProfilePage =
     location.pathname.startsWith('/u/') ||
@@ -264,6 +265,10 @@ export function MainLayout() {
     onRefresh: reloadApp,
     enabled: pullToRefreshEnabled,
   });
+
+  useEffect(() => {
+    patchChatNotifyContext({ inMessagesRoute: onMessages });
+  }, [onMessages]);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -300,7 +305,6 @@ export function MainLayout() {
           <AppearanceControl />
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-          {profile ? <MessageInboxBadge /> : null}
           {profile ? <NotificationBell /> : null}
           {profile ? (
             <button

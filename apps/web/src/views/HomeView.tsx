@@ -21,6 +21,7 @@ import { NotificationBell } from '../components/social/NotificationBell';
 import { PostReactionButtons } from '../components/social/PostReactionButtons';
 import { PostComments, PostVideoPlayer } from '../components/social/PostVideoPlayer';
 import { ShareContentButton } from '../components/social/ShareContentButton';
+import { PostViewsIndicator } from '../components/social/PostViewsIndicator';
 import { ReelGiftControls } from '../components/feed/ReelGiftControls';
 import { buildPostShareUrl } from '../lib/shareContent';
 import { PostPhotoViewer } from '../components/social/PostPhotoViewer';
@@ -87,6 +88,7 @@ function toSocial(post: FsPost): SocialPost {
     createdAt: post.createdAt,
     likes: post.likes,
     dislikes: 0,
+    views: post.views,
     viewerReaction: null,
     postFormat: post.postFormat,
     durationSec: post.durationSec,
@@ -343,6 +345,12 @@ function HomePublicationCard({
             />
           </span>
         ) : null}
+        <PostViewsIndicator
+          postId={post.id}
+          variant="pill"
+          initialViews={post.views}
+          recordMode="visible"
+        />
         <span
           onClick={() => {
             if (profile) markHomeFeedInteracted(profile.firebaseUid, post.id);

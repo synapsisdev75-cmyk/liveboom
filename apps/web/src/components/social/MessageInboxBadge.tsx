@@ -1,18 +1,14 @@
 import { MessageCircle } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { countInboxUnread } from '../../lib/chatNotifyContext';
 import { listenConversations } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
-import { useUiStore } from '../../store/uiStore';
 
 /** Badge de mensajes no leídos + toast visual notorio. */
 export function MessageInboxBadge({ className = '' }: { className?: string }) {
   const profile = useAuthStore((state) => state.profile);
-  const location = useLocation();
-  const setToast = useUiStore((state) => state.setToast);
   const [unread, setUnread] = useState(0);
-  const knownTotal = useRef(-1);
-  const onMessages = location.pathname.startsWith('/mensajes');
 
   useEffect(() => {
     if (!profile) {
@@ -20,21 +16,9 @@ export function MessageInboxBadge({ className = '' }: { className?: string }) {
       return;
     }
     return listenConversations(profile.firebaseUid, (list) => {
-      const total = list.reduce((sum, chat) => sum + (chat.unread || 0), 0);
-      if (knownTotal.current >= 0 && total > knownTotal.current && !onMessages) {
-        const fresh = list.find((chat) => (chat.unread || 0) > 0);
-        setToast(
-          fresh
-            ? `💬 Nuevo mensaje de @${fresh.username}: ${fresh.lastMessage || '…'}`
-            : '💬 Tienes mensajes nuevos',
-          'info',
-        );
-        window.setTimeout(() => setToast(null), 4200);
-      }
-      knownTotal.current = total;
-      setUnread(total);
+      setUnread(countInboxUnread(list));
     });
-  }, [profile?.firebaseUid, onMessages, setToast]);
+  }, [profile?.firebaseUid]);
 
   if (!profile) return null;
 
@@ -67,7 +51,7 @@ export function useUnreadMessageCount() {
       return;
     }
     return listenConversations(profile.firebaseUid, (list) => {
-      setUnread(list.reduce((sum, chat) => sum + (chat.unread || 0), 0));
+      setUnread(countInboxUnread(list));
     });
   }, [profile?.firebaseUid]);
   return unread;

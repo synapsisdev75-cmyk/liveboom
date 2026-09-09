@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { playFriendRequestAlert, playIncomingMessageSound, playLiveAlert, playPostAlert } from '../../lib/alertSound';
+import { decideChatMessageNotify, isMessagesPath, patchChatNotifyContext } from '../../lib/chatNotifyContext';
 import { api } from '../../lib/api';
 import {
   acceptFriendRequest,
@@ -54,9 +55,11 @@ export function NotificationBell() {
   const profile = useAuthStore((state) => state.profile);
   const location = useLocation();
   const navigate = useNavigate();
-  const pathRef = useRef(location.pathname);
-  pathRef.current = location.pathname;
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    patchChatNotifyContext({ inMessagesRoute: isMessagesPath(location.pathname) });
+  }, [location.pathname]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [items, setItems] = useState<NotiItem[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -135,29 +138,54 @@ export function NotificationBell() {
     const unsubChats = listenConversations(profile.firebaseUid, (list) => {
       for (const chat of list) {
         if (!chat.lastMessage || !chat.lastAt) continue;
+        const decision = decideChatMessageNotify({
+          chatId: chat.chatId,
+          peerUid: chat.uid,
+          lastFromUid: chat.lastFromUid,
+          myUid: profile.firebaseUid,
+        });
         const prev = knownMsgAt.current.get(chat.chatId);
         if (prev == null) {
           knownMsgAt.current.set(chat.chatId, chat.lastAt);
+          if (decision === 'bell' && chat.unread > 0) {
+            const seedId = `msg-${chat.chatId}-${chat.lastAt}`;
+            if (!dismissedMsgIds.current.has(seedId)) {
+              setItems((current) =>
+                [
+                  {
+                    id: seedId,
+                    kind: 'message' as const,
+                    text: `@${chat.username}: ${chat.lastMessage}`,
+                    href: `/mensajes?con=${encodeURIComponent(chat.username)}`,
+                    at: Date.now(),
+                  },
+                  ...current.filter(
+                    (item) => item.id !== seedId && !item.id.startsWith(`msg-${chat.chatId}-`),
+                  ),
+                ].slice(0, 40),
+              );
+            }
+          }
           continue;
         }
-        if (chat.lastAt > prev) {
-          knownMsgAt.current.set(chat.chatId, chat.lastAt);
-          playIncomingMessageSound(pathRef.current.startsWith('/mensajes'));
-          const msgId = `msg-${chat.chatId}-${chat.lastAt}`;
-          if (dismissedMsgIds.current.has(msgId)) continue;
-          setItems((current) =>
-            [
-              {
-                id: msgId,
-                kind: 'message' as const,
-                text: `@${chat.username}: ${chat.lastMessage}`,
-                href: `/mensajes?con=${encodeURIComponent(chat.username)}`,
-                at: Date.now(),
-              },
-              ...current.filter((item) => item.id !== msgId),
-            ].slice(0, 40),
-          );
-        }
+        if (chat.lastAt <= prev) continue;
+        knownMsgAt.current.set(chat.chatId, chat.lastAt);
+        if (decision !== 'bell') continue;
+        playIncomingMessageSound(false);
+        const msgId = `msg-${chat.chatId}-${chat.lastAt}`;
+        if (dismissedMsgIds.current.has(msgId)) continue;
+        setItems((current) =>
+          [
+            {
+              id: msgId,
+              kind: 'message' as const,
+              text: `@${chat.username}: ${chat.lastMessage}`,
+              href: `/mensajes?con=${encodeURIComponent(chat.username)}`,
+              at: Date.now(),
+            },
+            ...current.filter((item) => item.id !== msgId && !item.id.startsWith(`msg-${chat.chatId}-`)),
+          ].slice(0, 40),
+        );
       }
     });
 
