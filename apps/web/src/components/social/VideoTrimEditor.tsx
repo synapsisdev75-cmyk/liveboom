@@ -25,7 +25,7 @@ type Props = {
   title?: string;
   productLabel?: string;
   onCancel: () => void;
-  onSave: (file: File) => void;
+  onSave: (file: File, durationSec?: number) => void;
   onSaveMany?: (files: File[]) => void;
 };
 
@@ -130,6 +130,10 @@ export function VideoTrimEditor({
   const videoRef = useRef<HTMLVideoElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ edge: 'start' | 'end' | 'range'; x: number; start: number; end: number } | null>(null);
+  const draggingRef = useRef(false);
+  const dragRafRef = useRef(0);
+  const pendingRangeRef = useRef<{ start: number; end: number } | null>(null);
+  const trimAbortRef = useRef<AbortController | null>(null);
 
   const [durationSec, setDurationSec] = useState(() =>
     durationHint > 0 ? durationHint : maxDurationSec,
@@ -182,7 +186,7 @@ export function VideoTrimEditor({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || loadingMeta) return;
+    if (!video || loadingMeta || draggingRef.current) return;
     video.currentTime = startSec;
     video.playbackRate = adjust.speed;
   }, [startSec, loadingMeta, adjust.speed]);
@@ -199,7 +203,14 @@ export function VideoTrimEditor({
     video.src = previewUrl;
     video.muted = true;
     video.playsInline = true;
-    const count = durationSec > 90 ? 12 : 8;
+    video.preload = 'metadata';
+    const saveData = Boolean(
+      (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData,
+    );
+    const lowPower = (navigator.hardwareConcurrency || 4) <= 4 || saveData;
+    const count = lowPower ? (durationSec > 90 ? 8 : 6) : durationSec > 90 ? 12 : 8;
+    const frameW = lowPower ? 56 : 72;
+    const frameH = lowPower ? 32 : 40;
     void (async () => {
       await new Promise<void>((resolve, reject) => {
         video.onloadeddata = () => resolve();
@@ -207,8 +218,8 @@ export function VideoTrimEditor({
       });
       const frames: string[] = [];
       const canvas = document.createElement('canvas');
-      canvas.width = 72;
-      canvas.height = 40;
+      canvas.width = frameW;
+      canvas.height = frameH;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       for (let i = 0; i < count; i += 1) {
@@ -217,16 +228,28 @@ export function VideoTrimEditor({
         await new Promise((resolve) => {
           video.onseeked = () => resolve(undefined);
         });
+        if (cancelled) return;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        frames.push(canvas.toDataURL('image/jpeg', 0.6));
+        frames.push(canvas.toDataURL('image/jpeg', lowPower ? 0.45 : 0.55));
+        setThumbs(frames.slice());
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
       }
-      if (!cancelled) setThumbs(frames);
     })().catch(() => undefined);
     return () => {
       cancelled = true;
-      video.src = '';
+      video.removeAttribute('src');
+      video.load();
     };
   }, [previewUrl, durationSec, loadingMeta]);
+
+  useEffect(() => {
+    return () => {
+      trimAbortRef.current?.abort();
+      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current);
+    };
+  }, []);
 
   const runAi = useCallback(async () => {
     setAiBusy(true);
@@ -263,10 +286,27 @@ export function VideoTrimEditor({
     else setMobileSection((current) => (current === 'ai' ? 'color' : current));
   }
 
+  function flushPendingRange() {
+    const pending = pendingRangeRef.current;
+    if (!pending) return;
+    setStartSec(pending.start);
+    setEndSec(pending.end);
+  }
+
+  function commitDragVisual(start: number, end: number) {
+    pendingRangeRef.current = { start, end };
+    if (dragRafRef.current) return;
+    dragRafRef.current = requestAnimationFrame(() => {
+      dragRafRef.current = 0;
+      flushPendingRange();
+    });
+  }
+
   function onHandleDown(edge: 'start' | 'end' | 'range', event: ReactPointerEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
+    draggingRef.current = true;
     dragRef.current = { edge, x: event.clientX, start: startSec, end: endSec };
   }
 
@@ -279,25 +319,43 @@ export function VideoTrimEditor({
     const span = drag.end - drag.start;
     if (drag.edge === 'range') {
       const nextStart = Math.min(Math.max(0, drag.start + deltaSec), Math.max(0, durationSec - span));
-      setStartSec(nextStart);
-      setEndSec(Math.min(nextStart + span, durationSec));
+      commitDragVisual(nextStart, Math.min(nextStart + span, durationSec));
       return;
     }
     if (drag.edge === 'start') {
-      setStartSec(Math.min(Math.max(0, drag.start + deltaSec), drag.end - 1));
+      commitDragVisual(Math.min(Math.max(0, drag.start + deltaSec), drag.end - 1), drag.end);
       return;
     }
-    setEndSec(Math.max(Math.min(Math.min(durationSec, drag.start + maxDurationSec), drag.end + deltaSec), drag.start + 1));
+    commitDragVisual(
+      drag.start,
+      Math.max(Math.min(Math.min(durationSec, drag.start + maxDurationSec), drag.end + deltaSec), drag.start + 1),
+    );
   }
 
   function onHandleUp() {
     dragRef.current = null;
+    draggingRef.current = false;
+    if (dragRafRef.current) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = 0;
+    }
+    flushPendingRange();
+    const video = videoRef.current;
+    const next = pendingRangeRef.current;
+    if (video && next) video.currentTime = next.start;
   }
 
   async function exportRange(from: number, to: number) {
     const { trimVideoFile } = await import('../../lib/videoTrim');
     if (to - from >= durationSec - 0.25 && from < 0.25) return file;
-    return trimVideoFile(file, from, to);
+    trimAbortRef.current?.abort();
+    const abort = new AbortController();
+    trimAbortRef.current = abort;
+    return trimVideoFile(file, from, to, abort.signal);
+  }
+
+  function isAbortError(err: unknown) {
+    return err instanceof DOMException && err.name === 'AbortError';
   }
 
   async function handleSaveManual() {
@@ -322,10 +380,11 @@ export function VideoTrimEditor({
     setBusy(true);
     setError(null);
     try {
-      onSave(await exportRange(startSec, endSec));
+      onSave(await exportRange(startSec, endSec), clipDuration);
     } catch (err) {
+      if (isAbortError(err)) return;
       if (clipDuration >= durationSec - 0.25 && startSec < 0.25) {
-        onSave(file);
+        onSave(file, clipDuration);
         return;
       }
       setError(err instanceof Error ? err.message : 'No se pudo recortar el video');
@@ -351,6 +410,7 @@ export function VideoTrimEditor({
       else if (onSaveMany) onSaveMany(files);
       else if (files[0]) onSave(files[0]);
     } catch (err) {
+      if (isAbortError(err)) return;
       setError(err instanceof Error ? err.message : 'No se pudieron crear los clips');
     } finally {
       setBusy(false);

@@ -127,6 +127,7 @@ export function CreatePostModal({
   const [previewIndex, setPreviewIndex] = useState(0);
   const [editMenuOpen, setEditMenuOpen] = useState(false);
   const videoDurationSecRef = useRef(0);
+  const mediaPickGenRef = useRef(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false);
@@ -351,10 +352,14 @@ export function CreatePostModal({
   }, [mediaMenuOpen]);
 
   function reset() {
+    const trimUrl = trimDraft?.url;
+    const trimShared = Boolean(trimUrl && (trimUrl === previewUrl || albumUrls.includes(trimUrl)));
     revokeLocalUrl(previewUrl);
     for (const url of albumUrls) {
       if (url !== previewUrl) revokeLocalUrl(url);
     }
+    if (trimUrl && !trimShared) revokeLocalUrl(trimUrl);
+    mediaPickGenRef.current += 1;
     setCaption('');
     setMediaFile(null);
     setMediaFiles([]);
@@ -405,10 +410,15 @@ export function CreatePostModal({
   }
 
   function removeAttachedMedia() {
+    mediaPickGenRef.current += 1;
+    const trimUrl = trimDraft?.url;
+    const trimShared = Boolean(trimUrl && (trimUrl === previewUrl || albumUrls.includes(trimUrl)));
     revokeLocalUrl(previewUrl);
     for (const url of albumUrls) {
       if (url !== previewUrl) revokeLocalUrl(url);
     }
+    if (trimUrl && !trimShared) revokeLocalUrl(trimUrl);
+    setTrimDraft(null);
     setMediaFile(null);
     setMediaFiles([]);
     setAlbumUrls([]);
@@ -465,16 +475,16 @@ export function CreatePostModal({
     setError(null);
   }
 
-  function applyMediaFile(file: File, forcedKind?: PostKind, durationSec = 0) {
+  function applyMediaFile(file: File, forcedKind?: PostKind, durationSec = 0, existingUrl?: string) {
     const detected = mediaKindFromFile(file);
     if (composeTab === 'boomclip' && detected === 'photo' && forcedKind !== 'video') {
       setError(
         `${BOOM_CLIP_LABEL} solo permite video. Si deseas publicar aquí, cambia el archivo o vuelve a Publicación.`,
       );
     }
-    revokeLocalUrl(previewUrl);
+    if (previewUrl && previewUrl !== existingUrl) revokeLocalUrl(previewUrl);
     for (const url of albumUrls) {
-      if (url !== previewUrl) revokeLocalUrl(url);
+      if (url !== previewUrl && url !== existingUrl) revokeLocalUrl(url);
     }
     if (gifAttach) {
       const attached = gifAttach;
@@ -496,9 +506,17 @@ export function CreatePostModal({
       );
       setGifAttach(null);
     }
+    const nextUrl =
+      existingUrl?.startsWith('blob:') || existingUrl?.startsWith('http')
+        ? existingUrl
+        : URL.createObjectURL(file);
+    const staleTrimUrl = trimDraft?.url;
+    if (staleTrimUrl && staleTrimUrl !== nextUrl && staleTrimUrl !== existingUrl) {
+      revokeLocalUrl(staleTrimUrl);
+    }
+    setTrimDraft(null);
     setMediaFiles([]);
     setMediaFile(file);
-    const nextUrl = URL.createObjectURL(file);
     setAlbumUrls([nextUrl]);
     setPreviewIndex(0);
     setPreviewUrl(nextUrl);
@@ -523,6 +541,7 @@ export function CreatePostModal({
     knownDurationSec?: number,
   ) {
     if (!file) return;
+    const pickId = ++mediaPickGenRef.current;
     setError(null);
     setMediaMenuOpen(false);
 
@@ -533,42 +552,37 @@ export function CreatePostModal({
     }
 
     if (detected === 'video' || forcedKind === 'video' || isVideoFile(file)) {
-      try {
-        const durationSec = await readVideoDurationSec(
-          file,
-          knownDurationSec && knownDurationSec > 0 ? knownDurationSec : 0,
-        );
-        // Solo Flash Boom / Boom Clip obligan a recortar; Publicación acepta video largo
-        const clipCapSec =
-          composeTab === 'flashboom'
-            ? STORY_MAX_DURATION_SEC
-            : composeTab === 'boomclip'
-              ? MAX_CLIP_DURATION_SECONDS
-              : 0;
-        const needsEditor = clipCapSec > 0 && durationSec > clipCapSec;
-
-        if (needsEditor) {
-          if (previewUrl) URL.revokeObjectURL(previewUrl);
-          setTrimDraft({
-            file,
-            url: URL.createObjectURL(file),
-            durationSec,
-            maxDurationSec: clipCapSec,
-          });
-          if (isMediaTab) {
-            setKind('video');
+      const localUrl = URL.createObjectURL(file);
+      applyMediaFile(file, 'video', knownDurationSec && knownDurationSec > 0 ? knownDurationSec : 0, localUrl);
+      void (async () => {
+        try {
+          const durationSec =
+            knownDurationSec && knownDurationSec > 0
+              ? knownDurationSec
+              : await readVideoDurationSec(file, 0);
+          if (pickId !== mediaPickGenRef.current) return;
+          videoDurationSecRef.current = durationSec;
+          const clipCapSec =
+            composeTab === 'flashboom'
+              ? STORY_MAX_DURATION_SEC
+              : composeTab === 'boomclip'
+                ? MAX_CLIP_DURATION_SECONDS
+                : 0;
+          if (clipCapSec > 0 && durationSec > clipCapSec) {
+            setTrimDraft({
+              file,
+              url: localUrl,
+              durationSec,
+              maxDurationSec: clipCapSec,
+            });
+            if (isMediaTab) setKind('video');
           }
-          return;
+        } catch (err) {
+          if (pickId !== mediaPickGenRef.current) return;
+          if (isVideoFile(file) && file.size > 800) return;
+          setError(err instanceof Error ? err.message : 'No se pudo leer el video');
         }
-
-        applyMediaFile(file, 'video', durationSec);
-      } catch (err) {
-        if (isVideoFile(file) && file.size > 800) {
-          applyMediaFile(file, 'video');
-          return;
-        }
-        setError(err instanceof Error ? err.message : 'No se pudo leer el video');
-      }
+      })();
       return;
     }
 
@@ -687,14 +701,20 @@ export function CreatePostModal({
   }
 
   function cancelTrim() {
-    if (trimDraft?.url) URL.revokeObjectURL(trimDraft.url);
+    const draft = trimDraft;
     setTrimDraft(null);
+    if (draft?.url && draft.url !== previewUrl && !albumUrls.includes(draft.url)) {
+      revokeLocalUrl(draft.url);
+    }
   }
 
-  function acceptTrim(file: File) {
-    if (trimDraft?.url) URL.revokeObjectURL(trimDraft.url);
+  function acceptTrim(file: File, durationSec?: number) {
+    const draft = trimDraft;
     setTrimDraft(null);
-    applyMediaFile(file);
+    applyMediaFile(file, 'video', durationSec && durationSec > 0 ? durationSec : 0);
+    if (draft?.url && draft.url !== previewUrl && !albumUrls.includes(draft.url)) {
+      revokeLocalUrl(draft.url);
+    }
   }
 
   function openGallery(mode: 'photo' | 'video' | 'any' = 'any') {
@@ -935,11 +955,13 @@ export function CreatePostModal({
   function startVideoTrim() {
     setEditMenuOpen(false);
     void (async () => {
+      const pickId = mediaPickGenRef.current;
       let file = mediaFile;
       if (!file || mediaKindFromFile(file) !== 'video') {
         if (kind !== 'video' || !previewUrl) return;
         try {
           file = await fileFromMediaUrl(previewUrl, 'clip.mp4');
+          if (pickId !== mediaPickGenRef.current) return;
           setMediaFile(file);
         } catch {
           setError('No se pudo cargar el video original para recortar.');
@@ -952,22 +974,15 @@ export function CreatePostModal({
           : composeTab === 'boomclip'
             ? MAX_CLIP_DURATION_SECONDS
             : BOOM_CLIP_MAX_DURATION_SEC;
-      try {
-        const durationSec = await readVideoDurationSec(file, maxSec);
-        setTrimDraft({
-          file,
-          url: previewUrl?.startsWith('blob:') ? previewUrl : URL.createObjectURL(file),
-          durationSec: Math.max(1, durationSec),
-          maxDurationSec: maxSec,
-        });
-      } catch {
-        setTrimDraft({
-          file,
-          url: previewUrl?.startsWith('blob:') ? previewUrl : URL.createObjectURL(file),
-          durationSec: 0,
-          maxDurationSec: maxSec,
-        });
-      }
+      const sharedUrl = previewUrl?.startsWith('blob:') ? previewUrl : undefined;
+      const url = sharedUrl || URL.createObjectURL(file);
+      const known = videoDurationSecRef.current;
+      setTrimDraft({
+        file,
+        url,
+        durationSec: known > 0 ? known : 0,
+        maxDurationSec: maxSec,
+      });
     })();
   }
 

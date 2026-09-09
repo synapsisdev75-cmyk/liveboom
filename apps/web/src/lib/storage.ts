@@ -234,11 +234,27 @@ export async function normalizeImageOrientation(blob: Blob): Promise<Blob> {
 
 const imagePrepareCache = new WeakMap<Blob, Promise<Blob>>();
 
+function scheduleAfterPaint(run: () => void) {
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 900 });
+        return;
+      }
+      run();
+    });
+    return;
+  }
+  window.setTimeout(run, 0);
+}
+
 /** Comprime en segundo plano al elegir la foto, para no esperar al pulsar Publicar. */
 export function prefetchImageForUpload(blob: Blob): void {
   const type = (blob.type || '').toLowerCase();
   if (!type.startsWith('image/') || type === 'image/gif') return;
-  void prepareImageForUpload(blob).catch(() => undefined);
+  scheduleAfterPaint(() => {
+    void prepareImageForUpload(blob).catch(() => undefined);
+  });
 }
 
 async function prepareImageForUploadUncached(blob: Blob, label: string): Promise<Blob> {

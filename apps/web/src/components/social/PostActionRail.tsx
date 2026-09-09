@@ -110,7 +110,7 @@ export function PostActionRail({
 
   return (
     <div
-      className={`pointer-events-auto z-20 flex flex-col items-center ${
+      className={`lb-action-rail pointer-events-auto z-20 flex flex-col items-center ${
         isMediaRail ? 'lb-action-rail--fit' : ''
       } ${
         isAsideRail

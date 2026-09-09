@@ -1,11 +1,11 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { publicationFeedPlaceholderStyle } from '../../lib/publicationMedia';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { PostActionRail } from './PostActionRail';
-import { ImmersiveMediaStage } from './ImmersiveMediaStage';
+import { ImmersiveMediaStage, type ImmersivePointerGesture } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
@@ -77,7 +77,6 @@ export function PostMediaCarousel({
   const [likers, setLikers] = useState<PostReactionUser[]>([]);
   const [dislikers, setDislikers] = useState<PostReactionUser[]>([]);
   const [busy, setBusy] = useState(false);
-  const swipeRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
 
   const total = sources.length;
   const shareUrl =
@@ -132,6 +131,16 @@ export function PostMediaCarousel({
   const goPrev = useCallback(() => {
     setIndex((current) => (current > 0 ? current - 1 : current));
   }, []);
+
+  const handleCarouselGesture = useCallback(
+    (info: ImmersivePointerGesture) => {
+      if (info.startedOnControl || info.isTap) return;
+      if (info.axis !== 'horizontal' || Math.abs(info.dx) < 48) return;
+      if (info.dx < 0) goNext();
+      else goPrev();
+    },
+    [goNext, goPrev],
+  );
 
   useEffect(() => {
     if (!expanded) return;
@@ -263,21 +272,6 @@ export function PostMediaCarousel({
             role="dialog"
             aria-modal
             aria-label="Publicación"
-            onTouchStart={(e) => {
-              const t = e.changedTouches[0];
-              if (!t) return;
-              swipeRef.current = { x: t.clientX, y: t.clientY, active: true };
-            }}
-            onTouchEnd={(e) => {
-              if (!swipeRef.current.active) return;
-              swipeRef.current.active = false;
-              const t = e.changedTouches[0];
-              if (!t) return;
-              const dx = t.clientX - swipeRef.current.x;
-              if (Math.abs(dx) < 48) return;
-              if (dx < 0) goNext();
-              else goPrev();
-            }}
           >
             <ImmersiveMediaStage
               mediaWidth={frameW || 9}
@@ -287,6 +281,7 @@ export function PostMediaCarousel({
               landscapeRailAside
               fillMode="contain"
               insets={{ top: 56, bottom: caption ? 132 : 100, left: 4, right: 4, actionRail: 56 }}
+              onPointerGesture={handleCarouselGesture}
               sideChrome={
                 postId ? (
                   <PostActionRail

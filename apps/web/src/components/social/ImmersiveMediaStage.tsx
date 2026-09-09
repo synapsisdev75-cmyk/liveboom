@@ -44,14 +44,18 @@ type Props = {
   fillMode?: 'auto' | 'contain';
 };
 
+const IMMERSIVE_INTERACTIVE_SELECTOR =
+  'button, a, input, textarea, select, label, [role="button"], [role="link"], .lb-media-mute-fab, .lb-action-rail, .lb-gift-action, .lb-views-indicator';
+
+function isInteractiveHit(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest(IMMERSIVE_INTERACTIVE_SELECTOR));
+}
+
+/** Rail / mute / comentarios: no son gesto. Zonas `data-lb-gesture-pass` sí (swipe), pero el click nativo debe llegar al botón. */
 function isImmersiveControlTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
   if (target.closest('[data-lb-gesture-pass]')) return false;
-  return Boolean(
-    target.closest(
-      'button, a, input, textarea, select, label, [role="button"], [role="link"], .lb-media-mute-fab, .lb-action-rail, .lb-gift-action',
-    ),
-  );
+  return isInteractiveHit(target);
 }
 
 /**
@@ -173,6 +177,7 @@ export function ImmersiveMediaStage({
     y: number;
     axis: 'horizontal' | 'vertical' | null;
     onControl: boolean;
+    interactive: boolean;
   } | null>(null);
 
   function endPointerGesture(event: PointerEvent<HTMLDivElement>) {
@@ -242,17 +247,23 @@ export function ImmersiveMediaStage({
         onPointerDown={(event) => {
           if (event.pointerType === 'mouse' && event.button !== 0) return;
           const onControl = isImmersiveControlTarget(event.target);
+          const interactive = isInteractiveHit(event.target);
           pointerRef.current = {
             id: event.pointerId,
             x: event.clientX,
             y: event.clientY,
             axis: null,
             onControl,
+            interactive,
           };
-          try {
-            event.currentTarget.setPointerCapture(event.pointerId);
-          } catch {
-            /* ignore */
+          // Capturar el puntero en el escenario redirige el click del ratón y Boom/mute/comentar no llegan.
+          // Tap en botón: sin capture. Swipe en zona gesto: capture al bloquear eje.
+          if (!interactive) {
+            try {
+              event.currentTarget.setPointerCapture(event.pointerId);
+            } catch {
+              /* ignore */
+            }
           }
           if (!onControl) onSwipeStart?.(event.clientX, event.clientY);
         }}
@@ -266,6 +277,13 @@ export function ImmersiveMediaStage({
           if (!gesture.axis) {
             if (absX < GESTURE_AXIS_LOCK_PX && absY < GESTURE_AXIS_LOCK_PX) return;
             gesture.axis = absX > absY ? 'horizontal' : 'vertical';
+            if (gesture.interactive && !gesture.onControl) {
+              try {
+                event.currentTarget.setPointerCapture(event.pointerId);
+              } catch {
+                /* ignore */
+              }
+            }
           }
           if (gesture.axis === 'horizontal') event.preventDefault();
         }}
