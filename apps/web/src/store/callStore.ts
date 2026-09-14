@@ -11,6 +11,7 @@ import {
   readCallBillingSnapshot,
   type FriendChip,
 } from '../lib/socialFirestore';
+import { stopCallBilling } from '../lib/callBillingApi';
 import { useAuthStore } from './authStore';
 
 export type CallPeer = FriendChip;
@@ -35,6 +36,8 @@ export type VideoCallEndedSummary = {
   totalBlasts: number;
   giftName: string | null;
   received: boolean;
+  video?: boolean;
+  creatorValueCop?: number;
 };
 
 export type CallBillingLive = {
@@ -43,6 +46,9 @@ export type CallBillingLive = {
   blocksCharged: number;
   giftName: string;
   payerUid: string | null;
+  callType?: string;
+  creatorValueCop?: number;
+  connectedSeconds?: number;
 };
 
 type CallState = {
@@ -261,7 +267,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       else outcome = 'cancelled';
     }
     const summary: VideoCallEndedSummary | null =
-      video && wasActive
+      wasActive && (live?.rateBlasts || 0) > 0
         ? {
             handle: prev.peer?.username || prev.incoming?.peer.username || '',
             durationSec,
@@ -270,8 +276,22 @@ export const useCallStore = create<CallState>((set, get) => ({
             totalBlasts: live?.spentBlasts || 0,
             giftName: live?.giftName || null,
             received: Boolean(live?.payerUid && me?.firebaseUid && live.payerUid !== me.firebaseUid),
+            video,
+            creatorValueCop: live?.creatorValueCop || 0,
           }
-        : null;
+        : video && wasActive
+          ? {
+              handle: prev.peer?.username || prev.incoming?.peer.username || '',
+              durationSec,
+              rateBlasts: live?.rateBlasts || 0,
+              blocksCharged: live?.blocksCharged || 0,
+              totalBlasts: live?.spentBlasts || 0,
+              giftName: live?.giftName || null,
+              received: Boolean(live?.payerUid && me?.firebaseUid && live.payerUid !== me.firebaseUid),
+              video: true,
+              creatorValueCop: live?.creatorValueCop || 0,
+            }
+          : null;
 
     hangupBusy = true;
     releasePendingCallMicrophone();
@@ -280,6 +300,28 @@ export const useCallStore = create<CallState>((set, get) => ({
       reason: outcome || opts?.error || 'hangup',
       status: prev.status,
     });
+    if (wasActive && callId && live?.payerUid && me?.firebaseUid && live.payerUid === me.firebaseUid) {
+      void stopCallBilling({
+        callId,
+        connectedSeconds: durationSec,
+      })
+        .then((final) => {
+          if (final?.callerBalance != null && final.callerBalance >= 0) {
+            useAuthStore.getState().setCoins(final.callerBalance);
+          }
+          if (final && summary) {
+            set({
+              endedSummary: {
+                ...summary,
+                totalBlasts: final.blastAlreadyCharged || summary.totalBlasts,
+                rateBlasts: final.rateBlasts || summary.rateBlasts,
+                creatorValueCop: final.creatorValueCop || summary.creatorValueCop || 0,
+              },
+            });
+          }
+        })
+        .catch(() => undefined);
+    }
     clearCallSession();
     set({
       status: 'idle',
@@ -319,9 +361,13 @@ export const useCallStore = create<CallState>((set, get) => ({
           rateBlasts: summary?.rateBlasts,
           blocksCharged: summary?.blocksCharged,
           totalBlasts: summary?.totalBlasts,
+          blastSpent: summary && !summary.received ? summary.totalBlasts : undefined,
+          blastEarned: summary?.received ? summary.totalBlasts : undefined,
+          creatorValueCop: summary?.creatorValueCop,
+          callType: live?.callType,
         }).catch(() => undefined);
       }
-      if (video && wasActive && chatId) {
+      if (wasActive && chatId && (live?.rateBlasts || 0) > 0) {
         void readCallBillingSnapshot(chatId)
           .then((billing) => {
             if (!billing || !summary) return;
@@ -332,6 +378,7 @@ export const useCallStore = create<CallState>((set, get) => ({
                 blocksCharged: billing.blocksCharged || summary.blocksCharged,
                 totalBlasts: billing.totalBlasts || summary.totalBlasts,
                 giftName: billing.giftName || summary.giftName,
+                creatorValueCop: billing.creatorValueCop || summary.creatorValueCop || 0,
                 received: Boolean(
                   billing.payerUid && me?.firebaseUid && billing.payerUid !== me.firebaseUid,
                 ),

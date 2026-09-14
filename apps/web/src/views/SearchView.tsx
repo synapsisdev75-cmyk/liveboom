@@ -24,16 +24,24 @@ import { playFriendRequestAlert } from '../lib/alertSound';
 import {
   acceptFriendRequest,
   cancelFriendRequest,
+  listenFriends,
   listenIncomingRequests,
   listenOutgoingRequests,
+  rankFriendsByCloseness,
   rejectFriendRequest,
   sendFriendRequest,
+  type FriendChip,
   type FriendRequest,
 } from '../lib/socialFirestore';
 import { profileHref } from '../lib/profileFirestore';
 import { ignoreSuggestedCreator, readIgnoredSuggestionUids } from '../lib/ignoredSuggestions';
 import { useAuthStore } from '../store/authStore';
+import { useAppearanceStore } from '../store/appearanceStore';
+import { useCommunityHeaderStore } from '../store/communityHeaderStore';
 import { useT } from '../i18n';
+import { CommunityOrbitNeonFrame } from '../components/community/CommunityOrbitNeonFrame';
+import type { OrbitLayout } from '../components/community/CommunityOrbitNeonFrame';
+import { DEFAULT_ORBIT_LAYOUT } from '../lib/communityHeaderFirestore';
 
 type SearchUser = {
   uid?: string;
@@ -119,9 +127,93 @@ function Avatar({
   );
 }
 
+/** Órbita neón: centro = yo; satélites = amigos (arriba + corona = más cercano). */
+function OrbitPhoto({
+  url,
+  name,
+}: {
+  url: string | null;
+  name: string;
+}) {
+  return url ? (
+    <img
+      src={url}
+      alt=""
+      className="block h-full w-full rounded-full object-cover"
+      draggable={false}
+    />
+  ) : (
+    <span className="grid h-full w-full place-items-center rounded-full bg-black/35 text-[0.65rem] font-black text-violet-200">
+      {(name || '?').slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+function CommunityOrbit({
+  meAvatar,
+  meUsername,
+  meName,
+  friends,
+  layout,
+}: {
+  meAvatar: string | null;
+  meUsername: string;
+  meName: string;
+  friends: FriendChip[];
+  layout: OrbitLayout;
+}) {
+  function slotStyle(slot: { x: number; y: number; size: number }) {
+    return {
+      left: `${slot.x}%`,
+      top: `${slot.y}%`,
+      width: `${slot.size}%`,
+      height: `${slot.size}%`,
+      transform: 'translate(-50%, -50%)',
+    } as const;
+  }
+
+  return (
+    <div className="lb-community-orbit relative aspect-square w-[min(32vw,7.25rem)] shrink-0 sm:w-[13.25rem]">
+      <Link
+        to={profileHref(meUsername)}
+        className="absolute z-[1] overflow-hidden rounded-full bg-transparent"
+        style={slotStyle(layout.center)}
+        aria-label={`Tu perfil @${meUsername}`}
+        title={meName || meUsername}
+      >
+        <OrbitPhoto url={meAvatar} name={meName || meUsername} />
+      </Link>
+
+      {layout.friends.map((slot, index) => {
+        const friend = friends[index];
+        if (!friend) return null;
+        return (
+          <Link
+            key={friend.uid}
+            to={profileHref(friend.username)}
+            title={friend.displayName || `@${friend.username}`}
+            aria-label={index === 0 ? `Más cercano @${friend.username}` : `@${friend.username}`}
+            className="absolute z-[1] overflow-hidden rounded-full bg-transparent"
+            style={slotStyle(slot)}
+          >
+            <OrbitPhoto url={friend.avatarUrl} name={friend.displayName || friend.username} />
+          </Link>
+        );
+      })}
+
+      <CommunityOrbitNeonFrame layout={layout} />
+    </div>
+  );
+}
+
 export function SearchView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
+  const theme = useAppearanceStore((s) => s.theme);
+  const isDark = theme === 'dark';
+  const headerTheme = useCommunityHeaderStore((s) =>
+    isDark ? s.config.dark : s.config.light,
+  );
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
   const [showMoreCats, setShowMoreCats] = useState(false);
@@ -137,6 +229,7 @@ export function SearchView() {
   const [reqPage, setReqPage] = useState(0);
   const [qrNote, setQrNote] = useState<string | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
+  const [orbitFriends, setOrbitFriends] = useState<FriendChip[]>([]);
 
   useEffect(() => {
     if (!profile) return;
@@ -157,6 +250,23 @@ export function SearchView() {
     return () => {
       stopIn();
       stopOut();
+    };
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!profile?.firebaseUid) {
+      setOrbitFriends([]);
+      return;
+    }
+    let cancelled = false;
+    const stop = listenFriends(profile.firebaseUid, (friends) => {
+      void rankFriendsByCloseness(profile.firebaseUid, friends, 6).then((ranked) => {
+        if (!cancelled) setOrbitFriends(ranked);
+      });
+    });
+    return () => {
+      cancelled = true;
+      stop();
     };
   }, [profile?.firebaseUid]);
 
@@ -328,40 +438,114 @@ export function SearchView() {
   return (
     <div className="lb-page mx-auto flex w-full max-w-3xl flex-col gap-4 pb-2 sm:gap-5">
       {/* Header */}
-      <header className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#14151c] p-4 sm:rounded-3xl sm:p-6">
-        <div className="pointer-events-none absolute -right-6 -top-10 h-44 w-44 rounded-full bg-violet-600/25 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-0 right-16 h-28 w-28 rounded-full bg-fuchsia-500/20 blur-3xl" />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 max-w-xl">
-            <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-violet-400">
-              <Users size={12} />
-              Comunidad
-            </p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              {t('search.title')}
-            </h1>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-500">
-              Encuentra creadores por @usuario, nombre, biografía o categoría. Abajo ves las
-              solicitudes recibidas y las que tú enviaste, en tiempo real.
-            </p>
+      <header
+        className={`lb-community-header relative overflow-hidden rounded-2xl border p-3 sm:rounded-3xl sm:p-6 ${
+          isDark ? 'border-white/[0.06] bg-[#14151c]' : 'border-violet-200/50 bg-white'
+        }`}
+      >
+        {headerTheme.bgKind === 'video' && headerTheme.bgUrl ? (
+          <video
+            src={headerTheme.bgUrl}
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
+        ) : headerTheme.bgKind === 'image' && headerTheme.bgUrl ? (
+          <img
+            src={headerTheme.bgUrl}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+            draggable={false}
+          />
+        ) : null}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: isDark
+              ? `linear-gradient(90deg, rgba(20,21,28,${headerTheme.overlayOpacity}) 0%, rgba(20,21,28,${headerTheme.overlayOpacity * 0.55}) 55%, rgba(20,21,28,${headerTheme.overlayOpacity * 0.3}) 100%)`
+              : `linear-gradient(90deg, rgba(255,255,255,${headerTheme.overlayOpacity}) 0%, rgba(255,255,255,${headerTheme.overlayOpacity * 0.65}) 55%, rgba(255,255,255,${headerTheme.overlayOpacity * 0.3}) 100%)`,
+          }}
+        />
+
+        {headerTheme.stickers.map((sticker) => (
+          <div
+            key={sticker.id}
+            className="pointer-events-none absolute"
+            style={{
+              left: `${sticker.x}%`,
+              top: `${sticker.y}%`,
+              width: `${sticker.w}%`,
+              height: `${sticker.h}%`,
+              zIndex: 4 + sticker.z,
+              transform: 'translate(-50%, -50%)',
+            }}
+            aria-hidden
+          >
+            {sticker.kind === 'image' && sticker.url ? (
+              <img
+                src={sticker.url}
+                alt=""
+                className="h-full w-full object-contain"
+                draggable={false}
+              />
+            ) : (
+              <div
+                className={`grid h-full w-full place-items-center rounded-lg px-1 text-center text-[clamp(0.55rem,1.8vw,0.85rem)] font-bold ${
+                  isDark ? 'bg-black/35 text-white' : 'bg-white/70 text-zinc-900'
+                }`}
+              >
+                {sticker.text || ''}
+              </div>
+            )}
           </div>
-          <div className="relative hidden h-24 w-36 shrink-0 md:block">
-            <span className="absolute left-2 top-2 h-14 w-14 overflow-hidden rounded-full ring-2 ring-violet-400/50">
-              <span className="grid h-full w-full place-items-center bg-gradient-to-br from-violet-600 to-fuchsia-500 text-lg font-black text-white">
-                LB
-              </span>
-            </span>
-            <span className="absolute right-1 top-0 h-12 w-12 overflow-hidden rounded-full ring-2 ring-cyan-400/40">
-              <span className="grid h-full w-full place-items-center bg-gradient-to-br from-cyan-500 to-violet-600 text-sm font-black text-white">
-                ★
-              </span>
-            </span>
-            <span className="absolute bottom-0 left-10 h-11 w-11 overflow-hidden rounded-full ring-2 ring-fuchsia-400/40">
-              <span className="grid h-full w-full place-items-center bg-gradient-to-br from-fuchsia-500 to-amber-400 text-sm font-black text-white">
-                ♥
-              </span>
-            </span>
+        ))}
+
+        {/* Móvil: fila compacta título+órbita; subtítulo corto debajo. sm+: layout ancho original. */}
+        <div className="relative z-[5] flex flex-col gap-2 sm:gap-4">
+          <div className="flex items-center justify-between gap-2.5 sm:items-start sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <p
+                className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] sm:text-[11px] sm:tracking-[0.2em] ${
+                  isDark ? 'text-violet-300' : 'text-violet-700'
+                }`}
+              >
+                <Users size={12} />
+                {headerTheme.eyebrow || 'Comunidad'}
+              </p>
+              <h1
+                className={`mt-0.5 text-xl font-bold tracking-tight sm:mt-1 sm:text-3xl ${
+                  isDark ? 'text-white' : 'text-zinc-900'
+                }`}
+              >
+                {headerTheme.title || t('search.title')}
+              </h1>
+              <p
+                className={`mt-1.5 hidden text-sm leading-relaxed sm:mt-2 sm:block ${
+                  isDark ? 'text-zinc-300' : 'text-zinc-600'
+                }`}
+              >
+                {headerTheme.subtitle}
+              </p>
+            </div>
+            {profile && headerTheme.showOrbit ? (
+              <CommunityOrbit
+                meAvatar={profile.avatarUrl}
+                meUsername={profile.handle}
+                meName={profile.displayName || profile.handle}
+                friends={orbitFriends}
+                layout={headerTheme.orbitLayout ?? DEFAULT_ORBIT_LAYOUT}
+              />
+            ) : null}
           </div>
+          <p
+            className={`line-clamp-2 text-[11px] leading-snug sm:hidden ${
+              isDark ? 'text-zinc-300/90' : 'text-zinc-600'
+            }`}
+          >
+            {headerTheme.subtitle}
+          </p>
         </div>
       </header>
 

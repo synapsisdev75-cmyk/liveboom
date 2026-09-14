@@ -23,6 +23,7 @@ import { GroupsView } from './views/GroupsView';
 import { SuperAdminView } from './views/SuperAdminView';
 import { SuperAdminRoute } from './components/auth/SuperAdminRoute';
 import { useLevelsConfigStore } from './store/levelsConfigStore';
+import { useCommunityHeaderStore } from './store/communityHeaderStore';
 import { useAppearanceStore } from './store/appearanceStore';
 import { ThemeProvider } from './components/appearance/ThemeProvider';
 import { useLocaleStore } from './store/localeStore';
@@ -30,6 +31,7 @@ import { useLocaleStore } from './store/localeStore';
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
   const hydrateLevels = useLevelsConfigStore((state) => state.hydrate);
+  const hydrateCommunityHeader = useCommunityHeaderStore((state) => state.hydrate);
   const hydrateAppearance = useAppearanceStore((state) => state.hydrateFromCloud);
   const hydrateLocale = useLocaleStore((state) => state.hydrateFromCloud);
   const uid = useAuthStore((state) => state.profile?.firebaseUid ?? null);
@@ -37,12 +39,14 @@ function AuthHydrator() {
 
   useEffect(() => {
     const unsubLevels = hydrateLevels();
+    const unsubCommunity = hydrateCommunityHeader();
     const unsubAuth = hydrate();
     return () => {
       unsubLevels();
+      unsubCommunity();
       unsubAuth();
     };
-  }, [hydrate, hydrateLevels]);
+  }, [hydrate, hydrateLevels, hydrateCommunityHeader]);
 
   useEffect(() => {
     if (!ready) return;

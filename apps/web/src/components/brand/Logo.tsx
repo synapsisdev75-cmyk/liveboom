@@ -10,7 +10,7 @@ type LogoProps = {
 /** Logo oficial Liveboom (wordmark LIVE + BOOM). */
 export function Logo({ compact = false, iconOnly = false, large = false, className = '' }: LogoProps) {
   const sizeClass = large
-    ? 'h-44 w-auto max-w-[min(92vw,24rem)] sm:h-52'
+    ? 'h-56 w-auto max-w-[min(94vw,28rem)] sm:h-64 md:h-72'
     : compact
       ? 'h-14 w-auto max-w-[11rem]'
       : iconOnly

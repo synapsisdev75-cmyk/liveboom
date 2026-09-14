@@ -33,6 +33,11 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
+    match /config/communityHeader {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
     match /config/superAdmins {
       allow read: if isOwner()
         || (signedIn() && request.auth.token.email in resource.data.get('emails', []));

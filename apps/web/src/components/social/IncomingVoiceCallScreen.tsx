@@ -6,6 +6,7 @@ export function IncomingVoiceCallScreen({
   accepting,
   connecting,
   error,
+  paidLabel,
   onAccept,
   onDecline,
   onMinimize,
@@ -17,6 +18,7 @@ export function IncomingVoiceCallScreen({
   accepting?: boolean;
   connecting?: boolean;
   error?: string | null;
+  paidLabel?: string | null;
   onAccept: () => void;
   onDecline: () => void;
   onMinimize?: () => void;
@@ -66,6 +68,7 @@ export function IncomingVoiceCallScreen({
       }
     >
       <VoiceCallIdentity person={person} status={status} />
+      {paidLabel && !pending ? <p className="lb-voice-card__hint">{paidLabel}</p> : null}
       {error ? <p className="lb-voice-card__error">{error}</p> : null}
     </VoiceCallFrame>
   );

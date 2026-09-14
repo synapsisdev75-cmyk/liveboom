@@ -1,70 +1,79 @@
 import { useEffect, useRef, useState } from 'react';
 import { openRechargeCoins } from '../../lib/giftsFirestore';
-import { processCallGiftPayment } from '../../lib/callSettingsFirestore';
+import {
+  startCallBilling,
+  syncCallBilling,
+} from '../../lib/callBillingApi';
+import {
+  blastPerMinute,
+  estimateRemainingSeconds,
+  normalizePlatformCallType,
+  platformCallTypeForMedia,
+} from '../../lib/callPricing';
 import { listenConversations } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
 import { VideoCallLowBalance, VideoCallNoBalance } from './VideoCallPanels';
 
+/**
+ * Economía de llamada: el frontend solo dispara sync/finalización.
+ * El backend calcula duración, tarifa, delta e idempotencia.
+ */
 export function PaidCallMeter() {
   const profile = useAuthStore((s) => s.profile);
   const setCoins = useAuthStore((s) => s.setCoins);
   const status = useCallStore((s) => s.status);
   const chatId = useCallStore((s) => s.chatId);
   const callId = useCallStore((s) => s.callId);
+  const peer = useCallStore((s) => s.peer);
   const hangup = useCallStore((s) => s.hangup);
   const setCallBilling = useCallStore((s) => s.setCallBilling);
   const video = useCallStore((s) => s.video);
   const startedAt = useCallStore((s) => s.activeStartedAt);
   const [spent, setSpent] = useState(0);
   const [rate, setRate] = useState(0);
-  const [giftId, setGiftId] = useState('');
-  const [giftName, setGiftName] = useState('');
   const [payer, setPayer] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
-  const [maxBlasts, setMaxBlasts] = useState<number | null>(null);
+  const [callType, setCallType] = useState(platformCallTypeForMedia(video));
   const [low, setLow] = useState(false);
   const [grace, setGrace] = useState(false);
   const [graceLeft, setGraceLeft] = useState(10);
-  const lastBlock = useRef(-1);
-  const charging = useRef(false);
-  const spentRef = useRef(0);
-  const maxRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    spentRef.current = spent;
-  }, [spent]);
-  useEffect(() => {
-    maxRef.current = maxBlasts;
-  }, [maxBlasts]);
+  const [creatorCop, setCreatorCop] = useState(0);
+  const syncing = useRef(false);
+  const started = useRef(false);
+  const exhausted = useRef(false);
 
   useEffect(() => {
     if (!profile?.firebaseUid || !chatId) return;
     return listenConversations(profile.firebaseUid, (list) => {
       const mine = list.find((item) => item.chatId === chatId);
       const snap = mine?.call?.rateSnapshot;
-      setRate(snap?.rateBlasts || 0);
-      setGiftId(snap?.giftId || '');
-      setGiftName(snap?.giftName || '');
-      setSpent(mine?.call?.spentBlasts || 0);
+      const type = normalizePlatformCallType(
+        snap?.callType || mine?.call?.billingCallType || (mine?.call?.video ? 'video_720' : 'voice'),
+      );
+      setCallType(type);
+      setRate(snap?.rateBlasts || blastPerMinute(type));
+      setSpent(mine?.call?.spentBlasts || mine?.call?.blastAlreadyCharged || 0);
       setPayer(mine?.call?.payerUid || mine?.call?.fromUid || null);
-      setCreatorId(mine?.call?.toUid || null);
-      setMaxBlasts(mine?.call?.maxBlasts ?? null);
-      const already = Math.max(0, mine?.call?.blocksCharged || 0);
-      if (already > 0) lastBlock.current = Math.max(lastBlock.current, already - 1);
+      setCreatorId(mine?.call?.toUid || mine?.call?.receiverId || null);
+      setCreatorCop(Math.max(0, Math.floor(Number(mine?.call?.creatorValueCop) || 0)));
       setCallBilling({
-        rateBlasts: mine?.call?.rateSnapshot?.rateBlasts || 0,
-        spentBlasts: mine?.call?.spentBlasts || 0,
-        blocksCharged: already,
-        giftName: mine?.call?.rateSnapshot?.giftName || '',
+        rateBlasts: snap?.rateBlasts || 0,
+        spentBlasts: mine?.call?.spentBlasts || mine?.call?.blastAlreadyCharged || 0,
+        blocksCharged: mine?.call?.blocksCharged || 0,
+        giftName: snap?.giftName || '',
         payerUid: mine?.call?.payerUid || mine?.call?.fromUid || null,
+        callType: type,
+        creatorValueCop: Math.max(0, Math.floor(Number(mine?.call?.creatorValueCop) || 0)),
+        connectedSeconds: Math.max(0, Math.floor(Number(mine?.call?.lastConnectedSeconds) || 0)),
       });
     });
   }, [profile?.firebaseUid, chatId, setCallBilling]);
 
   useEffect(() => {
     if (status !== 'active') {
-      lastBlock.current = -1;
+      started.current = false;
+      exhausted.current = false;
       setGrace(false);
       setLow(false);
     }
@@ -84,75 +93,127 @@ export function PaidCallMeter() {
 
   useEffect(() => {
     if (status !== 'active' || !profile || !chatId || !callId) return;
-    if (!rate || !giftId) return;
+    if (!rate) return;
     if (payer !== profile.firebaseUid || !creatorId) return;
 
     const payerId = profile.firebaseUid;
-    const payerName = profile.displayName || profile.handle;
     const activeChatId = String(chatId);
     const activeCallId = String(callId);
     const activeCreatorId = String(creatorId);
-    const activeGiftId = String(giftId);
+    const activeType = callType;
     const origin = startedAt || Date.now();
 
-    async function charge(block: number) {
-      if (charging.current || block < 0 || block <= lastBlock.current) return;
-      const cap = maxRef.current;
-      if (cap != null && spentRef.current + rate > cap) {
-        void hangup();
-        return;
-      }
-      const balance = useAuthStore.getState().profile?.coinsBalance ?? 0;
-      if (balance < rate * 2 && balance >= rate) setLow(true);
-      if (balance < rate) {
-        setGrace(true);
-        window.setTimeout(() => {
-          const nextBal = useAuthStore.getState().profile?.coinsBalance ?? 0;
-          if (nextBal < rate) void hangup();
-          else setGrace(false);
-        }, 10_000);
-        return;
-      }
-      charging.current = true;
+    function connectedSecondsNow() {
+      return Math.max(0, Math.floor((Date.now() - origin) / 1000));
+    }
+
+    async function ensureStarted() {
+      if (started.current) return;
+      const session = await startCallBilling({
+        callId: activeCallId,
+        chatId: activeChatId,
+        receiverId: activeCreatorId,
+        video: Boolean(video),
+        callType: activeType,
+      });
+      started.current = true;
+      if (session.callerBalance >= 0) setCoins(session.callerBalance);
+      setSpent(session.blastAlreadyCharged || 0);
+      setCallBilling({
+        rateBlasts: session.rateBlasts,
+        spentBlasts: session.blastAlreadyCharged,
+        blocksCharged: 0,
+        giftName: session.pricingLabel || '',
+        payerUid: payerId,
+        callType: normalizePlatformCallType(session.callType),
+        creatorValueCop: session.creatorValueCop || 0,
+        connectedSeconds: session.connectedSeconds || 0,
+      });
+    }
+
+    async function tick() {
+      if (syncing.current || exhausted.current) return;
+      syncing.current = true;
       try {
-        const result = await processCallGiftPayment({
+        await ensureStarted();
+        const seconds = connectedSecondsNow();
+        const result = await syncCallBilling({
           callId: activeCallId,
-          chatId: activeChatId,
-          payerId,
-          payerName,
-          creatorId: activeCreatorId,
-          giftId: activeGiftId,
-          rateBlasts: rate,
-          minuteBlock: block,
+          connectedSeconds: seconds,
         });
-        lastBlock.current = Math.max(lastBlock.current, block);
-        if (result.senderBalance >= 0) setCoins(result.senderBalance);
+        if (result.callerBalance >= 0) setCoins(result.callerBalance);
+        setSpent(result.blastAlreadyCharged || 0);
+        setCreatorCop(result.creatorValueCop || 0);
+        setCallBilling({
+          rateBlasts: result.rateBlasts,
+          spentBlasts: result.blastAlreadyCharged,
+          blocksCharged: 0,
+          giftName: result.pricingLabel || '',
+          payerUid: payerId,
+          callType: normalizePlatformCallType(result.callType),
+          creatorValueCop: result.creatorValueCop || 0,
+          connectedSeconds: result.connectedSeconds || seconds,
+        });
+        const rem =
+          result.estimatedRemainingSeconds ??
+          estimateRemainingSeconds(result.callerBalance, result.callType);
+        if (Number.isFinite(rem) && rem <= 120 && rem > 0) setLow(true);
+        else setLow(false);
+
+        if (result.shouldEnd || result.insufficient || result.exhausted) {
+          exhausted.current = true;
+          setGrace(true);
+          window.setTimeout(() => {
+            void hangup();
+          }, 1_200);
+        }
       } catch {
-        setGrace(true);
-        window.setTimeout(() => {
-          const nextBal = useAuthStore.getState().profile?.coinsBalance ?? 0;
-          if (nextBal < rate) void hangup();
-          else setGrace(false);
-        }, 10_000);
+        const bal = useAuthStore.getState().profile?.coinsBalance ?? 0;
+        if (bal < rate) {
+          setGrace(true);
+          window.setTimeout(() => {
+            const nextBal = useAuthStore.getState().profile?.coinsBalance ?? 0;
+            if (nextBal < rate) void hangup();
+            else setGrace(false);
+          }, 10_000);
+        }
       } finally {
-        charging.current = false;
+        syncing.current = false;
       }
     }
 
-    async function syncBlocks() {
-      const elapsed = Math.max(0, Date.now() - origin);
-      const current = Math.floor(elapsed / 60_000);
-      for (let block = 0; block <= current; block += 1) {
-        await charge(block);
-      }
-    }
-
-    void syncBlocks();
+    void tick();
     const id = window.setInterval(() => {
-      void syncBlocks();
-    }, 2_000);
-    return () => window.clearInterval(id);
-  }, [status, profile, chatId, callId, rate, giftId, payer, creatorId, hangup, setCoins, startedAt]);
+      void tick();
+    }, 5_000);
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      // No llamar stop aquí: un re-render no debe cerrar el ledger.
+      // hangup() finaliza el billing de forma explícita.
+    };
+  }, [
+    status,
+    profile,
+    chatId,
+    callId,
+    rate,
+    payer,
+    creatorId,
+    callType,
+    hangup,
+    setCoins,
+    startedAt,
+    video,
+    setCallBilling,
+    peer?.uid,
+  ]);
 
   if (status !== 'active' || rate <= 0) return null;
   const iAmPayer = profile?.firebaseUid === payer;
@@ -161,16 +222,19 @@ export function PaidCallMeter() {
     return (
       <>
         <div className="lb-video-bill">
-          <span>{rate} Blasts/min</span>
           <span>
-            {iAmPayer ? 'Gastado' : 'Recibido'}: {spent} Blasts
+            Saldo: 🔥 {balance.toLocaleString('es-CO')} Blast · {rate}/min
+          </span>
+          <span>
+            {iAmPayer ? 'Usados' : 'Generados'}: {spent} Blast
+            {!iAmPayer && creatorCop > 0 ? ` · $${creatorCop.toLocaleString('es-CO')} COP` : ''}
           </span>
         </div>
         {low && !grace && iAmPayer ? (
           <VideoCallLowBalance
             balance={balance}
             rate={rate}
-            minutes={1}
+            minutes={2}
             onContinue={() => setLow(false)}
           />
         ) : null}
@@ -180,14 +244,23 @@ export function PaidCallMeter() {
   }
   return (
     <p className="lb-call-bill">
-      {iAmPayer ? '' : 'Llamada paga · '}
-      {giftName} · {rate} Blasts/min · {iAmPayer ? 'Gastado' : 'Recibido'} {spent} Blasts
-      {low ? ' · Te queda aproximadamente 1 minuto disponible con tu saldo actual.' : ''}
-      {grace ? (
+      Saldo: 🔥 {balance.toLocaleString('es-CO')} Blast · {rate}/min
+      {iAmPayer ? ` · Usados ${spent}` : ` · Generados ${spent}`}
+      {low && iAmPayer ? ' · Te quedan aproximadamente 2 min.' : ''}
+      {low && iAmPayer ? (
         <>
           {' '}
           <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
-            Recargar Blasts
+            Recargar
+          </button>
+        </>
+      ) : null}
+      {grace && iAmPayer ? (
+        <>
+          {' '}
+          Tus Blast se agotaron.{' '}
+          <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
+            Recargar Blast
           </button>
         </>
       ) : null}

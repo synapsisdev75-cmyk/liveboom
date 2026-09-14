@@ -9,6 +9,9 @@ import { BATTLE_HP_MAX } from '../../../lib/battleHp';
 import { BATTLE_NEON_CROWN, BATTLE_NEON_FRAME, BATTLE_NEON_VS } from '../../../lib/battleNeonAssets';
 import { getUserLevelStyle } from '../../../lib/liveChatLevelStyle';
 import { fetchPublicUserByUsername } from '../../../lib/profileFirestore';
+import { levelFromXp } from '../../../lib/userLevels';
+import { LevelAvatarFrame } from '../../profile/LevelAvatarFrame';
+import { LevelInsignia } from '../../profile/LevelInsignia';
 import { BattleNeonHpBar } from './BattleNeonHpBar';
 
 type Props = {
@@ -81,6 +84,51 @@ function Tile({
   );
 }
 
+/** Perfil + marco + insignia en el HUD central (como la ref Batalla Boom). */
+function BattleHudFighter({
+  side,
+  username,
+  avatarUrl,
+  levelXp,
+}: {
+  side: 'a' | 'b';
+  username: string;
+  avatarUrl: string | null;
+  levelXp: number;
+}) {
+  const info = levelFromXp(levelXp);
+  const style = getUserLevelStyle(levelXp);
+  return (
+    <div
+      className={`lb-battle-neon-hud__fighter${side === 'b' ? ' is-b' : ' is-a'}`}
+      style={{ '--lb-fighter-glow': style.glow, '--lb-fighter-primary': style.primaryColor } as CSSProperties}
+    >
+      <span className="lb-battle-neon-hud__nivel">NIVEL {info.level}</span>
+      <LevelAvatarFrame
+        levelXp={levelXp}
+        avatarUrl={avatarUrl}
+        fallbackLetter={username}
+        size="sm"
+        className="lb-battle-neon-hud__avatar"
+      />
+      <div className="lb-battle-neon-hud__insignia">
+        <LevelInsignia
+          levelXp={levelXp}
+          className="!mx-auto"
+          previewSize={{
+            mobile: { width: 28, height: 28 },
+            desktop: { width: 34, height: 34 },
+          }}
+        />
+      </div>
+      <p className="lb-battle-neon-hud__title" style={{ color: style.primaryColor }}>
+        {style.title}
+      </p>
+      <p className="lb-battle-neon-hud__range">{info.rangeLabel}</p>
+    </div>
+  );
+}
+
 function formatRemain(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(total / 60);
@@ -124,7 +172,7 @@ function resultCopy(battle: LiveBattle, localUid: string) {
   };
 }
 
-/** Batalla Boom 50/50 — marco neón, corona, VS y barra LED por nivel/insignia. */
+/** Batalla Boom 50/50 — HUD central con VS, barras y marcos de perfil. */
 export function BattleStage({
   battle,
   remotes,
@@ -141,6 +189,8 @@ export function BattleStage({
   const [now, setNow] = useState(Date.now());
   const [xpA, setXpA] = useState(0);
   const [xpB, setXpB] = useState(0);
+  const [avatarA, setAvatarA] = useState<string | null>(null);
+  const [avatarB, setAvatarB] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 400);
@@ -156,6 +206,8 @@ export function BattleStage({
       if (cancelled) return;
       setXpA(Math.max(0, Number(a?.levelXp) || 0));
       setXpB(Math.max(0, Number(b?.levelXp) || 0));
+      setAvatarA(a?.avatarUrl || null);
+      setAvatarB(b?.avatarUrl || null);
     });
     return () => {
       cancelled = true;
@@ -200,6 +252,40 @@ export function BattleStage({
   const styleA = getUserLevelStyle(xpA);
   const styleB = getUserLevelStyle(xpB);
 
+  const centerHud = (
+    <div className="lb-battle-neon-hud pointer-events-none" aria-label="Marcador Batalla Boom">
+      <div className="lb-battle-neon-hud__bars">
+        <BattleHudFighter
+          side="a"
+          username={battle.hostAUsername}
+          avatarUrl={avatarA}
+          levelXp={xpA}
+        />
+        <BattleNeonHpBar
+          hp={hpA}
+          levelXp={xpA}
+          side="a"
+          showPct
+          className="lb-battle-neon-hud__bar"
+        />
+        <img src={BATTLE_NEON_VS} alt="VS" draggable={false} className="lb-battle-neon-hud__vs" />
+        <BattleNeonHpBar
+          hp={hpB}
+          levelXp={xpB}
+          side="b"
+          showPct
+          className="lb-battle-neon-hud__bar"
+        />
+        <BattleHudFighter
+          side="b"
+          username={battle.hostBUsername}
+          avatarUrl={avatarB}
+          levelXp={xpB}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className="lb-battle-neon-stage absolute inset-0 z-[6] flex min-h-0 flex-col bg-black">
       <div
@@ -215,6 +301,7 @@ export function BattleStage({
           levelXp={xpA}
           levelTitle={styleA.title}
         />
+        {portrait ? centerHud : null}
         <Tile
           track={trackFor(uidB)}
           name={battle.hostBUsername}
@@ -223,26 +310,7 @@ export function BattleStage({
           levelXp={xpB}
           levelTitle={styleB.title}
         />
-
-        <div className="lb-battle-neon-hud pointer-events-none">
-          <div className="lb-battle-neon-hud__bars">
-            <BattleNeonHpBar
-              hp={hpA}
-              levelXp={xpA}
-              side="a"
-              label={styleA.title}
-              className="lb-battle-neon-hud__bar"
-            />
-            <img src={BATTLE_NEON_VS} alt="VS" draggable={false} className="lb-battle-neon-hud__vs" />
-            <BattleNeonHpBar
-              hp={hpB}
-              levelXp={xpB}
-              side="b"
-              label={styleB.title}
-              className="lb-battle-neon-hud__bar"
-            />
-          </div>
-        </div>
+        {!portrait ? centerHud : null}
 
         {result ? (
           <div className="pointer-events-auto absolute inset-0 z-[40] grid place-items-center bg-black/60 p-4 backdrop-blur-[2px]">

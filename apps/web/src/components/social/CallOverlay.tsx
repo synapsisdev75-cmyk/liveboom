@@ -2970,8 +2970,8 @@ export function CallOverlay() {
           error={permError}
           paidLabel={
             incomingPanel?.rateBlasts
-              ? `${incomingPanel.giftEmoji || '🎁'} ${incomingPanel.giftName || 'Regalo'} · ${incomingPanel.rateBlasts} Blasts / minuto`
-              : null
+              ? `Videollamada privada · ${incomingPanel.rateBlasts} Blast/min · Ganas Blast durante esta llamada`
+              : 'Videollamada privada · Ganas Blast durante esta llamada'
           }
           onAccept={() => void accept()}
           onDecline={() => hangupWithCooldown('declined')}
@@ -2986,6 +2986,11 @@ export function CallOverlay() {
           accepting={accepting}
           connecting={incomingConnecting}
           error={permError}
+          paidLabel={
+            incomingPanel?.rateBlasts
+              ? `Voz privada · ${incomingPanel.rateBlasts} Blast/min · Ganas Blast durante esta llamada`
+              : 'Voz privada · Ganas Blast durante esta llamada'
+          }
           onAccept={() => void accept()}
           onDecline={() => hangupWithCooldown('declined')}
           onMinimize={minimizeCall}

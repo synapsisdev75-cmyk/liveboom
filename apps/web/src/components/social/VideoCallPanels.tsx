@@ -195,13 +195,13 @@ export function VideoCallLowBalance({
     <div className="lb-video-alert" role="status">
       <AlertTriangle size={18} className="text-amber-300" />
       <div>
-        <p>Te queda aproximadamente {minutes} minuto{minutes === 1 ? '' : 's'}.</p>
+        <p>Te quedan aproximadamente {minutes} min.</p>
         <p>
-          Saldo {balance.toLocaleString('es-CO')} · {rate} Blasts/min
+          Saldo {balance.toLocaleString('es-CO')} · {rate} Blast/min
         </p>
       </div>
       <button type="button" className="lb-video-alert__btn" onClick={() => openRechargeCoins()}>
-        Recargar Blasts
+        Recargar
       </button>
       <button type="button" className="lb-video-alert__ghost" onClick={onContinue}>
         Continuar llamada
@@ -215,11 +215,11 @@ export function VideoCallNoBalance({ seconds }: { seconds: number }) {
     <div className="lb-video-alert is-critical" role="alert">
       <AlertTriangle size={18} className="text-rose-300" />
       <div>
-        <p>Saldo insuficiente</p>
-        <p>La videollamada finalizará en {seconds}s si no recargas.</p>
+        <p>Tus Blast se agotaron.</p>
+        <p>Recarga para volver a conectar. ({seconds}s)</p>
       </div>
       <button type="button" className="lb-video-alert__btn" onClick={() => openRechargeCoins()}>
-        Recargar Blasts
+        Recargar Blast
       </button>
     </div>
   );
@@ -235,13 +235,14 @@ export function VideoCallEnded({
   onDetails?: () => void;
 }) {
   const paid = summary.rateBlasts > 0 && summary.totalBlasts > 0;
+  const title = summary.video === false ? 'Llamada finalizada' : 'Videollamada finalizada';
   return (
     <div className="lb-video-sheet-backdrop" role="dialog" aria-modal="true">
       <article className="lb-video-sheet">
         <div className="lb-video-ended-mark">
           <Heart size={22} />
         </div>
-        <p className="lb-video-sheet__title">Videollamada finalizada</p>
+        <p className="lb-video-sheet__title">{title}</p>
         <p className="lb-video-sheet__handle">@{handleOf(summary.handle) || 'usuario'}</p>
         <dl className="lb-video-ended-stats">
           <div>
@@ -252,20 +253,16 @@ export function VideoCallEnded({
             <>
               <div>
                 <dt>Tarifa</dt>
-                <dd>{summary.rateBlasts} Blasts/min</dd>
+                <dd>{summary.rateBlasts} Blast/min</dd>
               </div>
               <div>
-                <dt>Bloques cobrados</dt>
-                <dd>{summary.blocksCharged}</dd>
+                <dt>{summary.received ? 'Blast generados' : 'Blast utilizados'}</dt>
+                <dd>{summary.totalBlasts}</dd>
               </div>
-              <div>
-                <dt>{summary.received ? 'Recibido' : 'Gastado'}</dt>
-                <dd>{summary.totalBlasts} Blasts</dd>
-              </div>
-              {summary.giftName ? (
+              {summary.received && (summary.creatorValueCop || 0) > 0 ? (
                 <div>
-                  <dt>Regalo</dt>
-                  <dd>{summary.giftName}</dd>
+                  <dt>Valor estimado</dt>
+                  <dd>${(summary.creatorValueCop || 0).toLocaleString('es-CO')} COP</dd>
                 </div>
               ) : null}
             </>

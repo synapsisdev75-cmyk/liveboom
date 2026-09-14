@@ -140,6 +140,7 @@ export type PrivateCall = {
     giftName: string;
     giftEmoji?: string;
     rateBlasts: number;
+    callType?: string;
   } | null;
   payerUid?: string | null;
   maxBlasts?: number | null;
@@ -147,6 +148,11 @@ export type PrivateCall = {
   blocksCharged?: number;
   chargedBlocks?: Record<string, boolean>;
   authorizationId?: string | null;
+  blastAlreadyCharged?: number;
+  creatorValueCop?: number;
+  lastConnectedSeconds?: number;
+  billingCallType?: string;
+  receiverId?: string;
 };
 
 export type Conversation = FriendChip & {
@@ -278,6 +284,7 @@ function parseCall(value: unknown): PrivateCall | null {
             giftName: String((data.rateSnapshot as Record<string, unknown>).giftName || ''),
             giftEmoji: String((data.rateSnapshot as Record<string, unknown>).giftEmoji || ''),
             rateBlasts: Math.max(0, Math.floor(Number((data.rateSnapshot as Record<string, unknown>).rateBlasts) || 0)),
+            callType: String((data.rateSnapshot as Record<string, unknown>).callType || '') || undefined,
           }
         : null,
     payerUid: data.payerUid ? String(data.payerUid) : null,
@@ -291,6 +298,11 @@ function parseCall(value: unknown): PrivateCall | null {
           )
         : undefined,
     authorizationId: data.authorizationId ? String(data.authorizationId) : null,
+    blastAlreadyCharged: Math.max(0, Math.floor(Number(data.blastAlreadyCharged) || 0)),
+    creatorValueCop: Math.max(0, Math.floor(Number(data.creatorValueCop) || 0)),
+    lastConnectedSeconds: Math.max(0, Math.floor(Number(data.lastConnectedSeconds) || 0)),
+    billingCallType: data.billingCallType ? String(data.billingCallType) : undefined,
+    receiverId: data.receiverId ? String(data.receiverId) : toUid,
   };
 }
 
@@ -376,6 +388,10 @@ export async function startPrivateCall(
       spentBlasts: 0,
       blocksCharged: 0,
       chargedBlocks: {},
+      blastAlreadyCharged: 0,
+      creatorValueCop: 0,
+      lastConnectedSeconds: 0,
+      billingCallType: snapshot?.callType || (video ? 'video_720' : 'voice'),
       authorizationId: opts?.authorizationId || null,
     },
   });
@@ -886,6 +902,61 @@ export async function listFriends(uid: string): Promise<FriendChip[]> {
   return snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>));
 }
 
+/**
+ * Ordena amigos por cercanía real: likes/booms/comentarios que dieron
+ * en publicaciones recientes del viewer. Más interacción = más cerca.
+ */
+export async function rankFriendsByCloseness(
+  meUid: string,
+  friends: FriendChip[],
+  maxFriends = 6,
+): Promise<FriendChip[]> {
+  if (!meUid || friends.length === 0) return [];
+  const friendIds = new Set(friends.map((item) => item.uid));
+  const scores = new Map<string, number>();
+  for (const friend of friends) scores.set(friend.uid, 0);
+
+  try {
+    const postsSnap = await getDocs(
+      query(collection(db, 'posts'), where('authorUid', '==', meUid), orderBy('createdAt', 'desc'), limit(12)),
+    );
+    await Promise.all(
+      postsSnap.docs.map(async (postDoc) => {
+        const [reactionsSnap, commentsSnap] = await Promise.all([
+          getDocs(collection(db, 'posts', postDoc.id, 'reactions')),
+          getDocs(query(collection(db, 'posts', postDoc.id, 'comments'), limit(60))),
+        ]);
+        for (const reaction of reactionsSnap.docs) {
+          if (!friendIds.has(reaction.id)) continue;
+          const data = reaction.data() as Record<string, unknown>;
+          if (String(data.type || '') === 'like') {
+            scores.set(reaction.id, (scores.get(reaction.id) || 0) + 3);
+          }
+          if (data.boom) {
+            scores.set(reaction.id, (scores.get(reaction.id) || 0) + 2);
+          }
+        }
+        for (const comment of commentsSnap.docs) {
+          const data = comment.data() as Record<string, unknown>;
+          const from = String(data.authorUid || '');
+          if (!friendIds.has(from)) continue;
+          scores.set(from, (scores.get(from) || 0) + 4);
+        }
+      }),
+    );
+  } catch (error) {
+    console.warn('[rankFriendsByCloseness]', error);
+  }
+
+  return [...friends]
+    .sort((a, b) => {
+      const diff = (scores.get(b.uid) || 0) - (scores.get(a.uid) || 0);
+      if (diff !== 0) return diff;
+      return a.username.localeCompare(b.username, 'es');
+    })
+    .slice(0, Math.max(1, maxFriends));
+}
+
 export async function followUser(
   me: MeProfile,
   targetUsername: string,
@@ -1247,14 +1318,16 @@ export async function readCallBillingSnapshot(chatId: string) {
       blocksCharged: 0,
       totalBlasts: 0,
       payerUid: call?.payerUid || call?.fromUid || null,
+      creatorValueCop: 0,
     };
   }
   return {
     giftName: call.rateSnapshot.giftName || null,
     rateBlasts: call.rateSnapshot.rateBlasts,
     blocksCharged: call.blocksCharged || 0,
-    totalBlasts: call.spentBlasts || 0,
+    totalBlasts: call.spentBlasts || call.blastAlreadyCharged || 0,
     payerUid: call.payerUid || call.fromUid || null,
+    creatorValueCop: call.creatorValueCop || 0,
   };
 }
 
@@ -1270,6 +1343,10 @@ export async function postCallHistoryMessage(
     rateBlasts?: number;
     blocksCharged?: number;
     totalBlasts?: number;
+    blastSpent?: number;
+    blastEarned?: number;
+    creatorValueCop?: number;
+    callType?: string;
   },
 ) {
   const id = `call_${String(input.callId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`;
@@ -1280,7 +1357,7 @@ export async function postCallHistoryMessage(
     Number(input.totalBlasts) > 0 &&
     Number(input.rateBlasts) > 0;
   const billSuffix = billed
-    ? ` · ${input.giftName || 'Regalo'} · ${input.rateBlasts} Blasts/min · ${input.blocksCharged || 0} bloques · ${input.totalBlasts} Blasts`
+    ? ` · ${input.rateBlasts} Blast/min · ${input.totalBlasts} Blast`
     : '';
 
   let text: string;
@@ -1321,6 +1398,11 @@ export async function postCallHistoryMessage(
         rateBlasts: Math.max(0, Math.floor(Number(input.rateBlasts) || 0)),
         blocksCharged: Math.max(0, Math.floor(Number(input.blocksCharged) || 0)),
         totalBlasts: Math.max(0, Math.floor(Number(input.totalBlasts) || 0)),
+        call_type: input.callType || (input.video ? 'video_720' : 'voice'),
+        duration_seconds: Math.max(0, Math.floor(input.durationSec)),
+        blast_spent: Math.max(0, Math.floor(Number(input.blastSpent ?? (input.totalBlasts || 0)) || 0)),
+        blast_earned: Math.max(0, Math.floor(Number(input.blastEarned || 0) || 0)),
+        creator_value_cop: Math.max(0, Math.floor(Number(input.creatorValueCop || 0) || 0)),
       },
     },
     { merge: true },
@@ -1808,9 +1890,15 @@ function isHomeFeedPost(
   const isFollowing = followingUids.has(post.authorUid);
   const isOwn = post.authorUid === viewerUid;
 
-  if (post.visibility === 'private') return isOwn;
+  // Siguiendo: regla principal = solo autores que el viewer sigue (no propios ni solo-amigos).
+  if (tab === 'siguiendo') {
+    if (!isFollowing) return false;
+    if (post.visibility === 'private') return false;
+    if (post.visibility === 'friends') return isFriend;
+    return post.visibility === 'public' || post.visibility == null;
+  }
 
-  if (tab === 'siguiendo' && !isOwn && !isFriend && !isFollowing) return false;
+  if (post.visibility === 'private') return isOwn;
 
   if (post.visibility === 'friends') return isOwn || isFriend;
 
@@ -1919,6 +2007,28 @@ export function listenHomeFeed(
     for (const stop of networkUnsubs) stop();
     networkUnsubs.length = 0;
     networkBuckets.clear();
+
+    // Siguiendo: solo autores seguidos (regla principal).
+    if (tab === 'siguiendo') {
+      const followed = [...followingUids].filter((id) => id && id !== uid);
+      for (let offset = 0; offset < followed.length; offset += 30) {
+        const batch = followed.slice(offset, offset + 30);
+        attachNetworkQuery(
+          `following-${offset}`,
+          query(
+            collection(db, 'posts'),
+            where('authorUid', 'in', batch),
+            orderBy('createdAt', 'desc'),
+            limit(80),
+          ),
+        );
+      }
+      if (followed.length === 0) {
+        networkPosts = [];
+        emit();
+      }
+      return;
+    }
 
     attachNetworkQuery(
       '__own__',

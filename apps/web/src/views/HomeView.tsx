@@ -798,7 +798,9 @@ export function HomeView() {
           <div className="min-w-0">
             <h2 className="text-sm font-bold uppercase tracking-[0.12em] text-white">Publicaciones</h2>
             <p className="mt-0.5 text-[10px] text-zinc-500">
-              Fotos, texto y videos largos · feed social
+              {tab === 'siguiendo'
+                ? 'Solo publicaciones de cuentas que sigues'
+                : 'Fotos, texto y videos largos · feed social'}
             </p>
           </div>
           {profile ? (

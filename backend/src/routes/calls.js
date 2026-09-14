@@ -34,7 +34,9 @@ router.post('/start', requireAuth, async (req, res) => {
 
   if (giftId) {
     try {
-      validateCallGiftId(giftId);
+      if (!String(giftId).startsWith('platform_')) {
+        validateCallGiftId(giftId);
+      }
     } catch (error) {
       res.status(400).json({
         error: error.message || 'Tarifa de llamada inválida',
@@ -215,6 +217,118 @@ router.post('/release', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('[callBusy] release failed', error?.message || error);
     res.json({ ok: true });
+  }
+});
+
+const billing = () => require('../lib/callBillingService');
+
+router.get('/billing/quote', requireAuth, async (req, res) => {
+  try {
+    const callType = String(req.query?.callType || req.query?.type || 'voice');
+    const quality = req.query?.quality || null;
+    const normalized = billing().normalizeCallType(callType, quality);
+    const quote = await billing().checkBalance(req.user.uid, normalized);
+    res.json({
+      ...quote,
+      callType: normalized,
+      pricingLabel: billing().pricingLabel(normalized),
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error.message || 'No se pudo consultar la tarifa',
+      code: error.code || 'CALL_BILLING_QUOTE_FAILED',
+    });
+  }
+});
+
+router.post('/billing/start', requireAuth, async (req, res) => {
+  try {
+    const me = req.user.uid;
+    const callId = String(req.body?.callId || '').trim();
+    const chatId = String(req.body?.chatId || '').trim();
+    const receiverId = String(req.body?.receiverId || '').trim();
+    const callerId = String(req.body?.callerId || me).trim();
+    const video = Boolean(req.body?.video);
+    const callType = String(req.body?.callType || (video ? 'video_720' : 'voice'));
+    const quality = req.body?.quality || null;
+
+    if (callerId !== me) {
+      res.status(403).json({ error: 'Solo el caller puede iniciar el cobro', code: 'CALL_BILLING_FORBIDDEN' });
+      return;
+    }
+
+    const quote = await billing().checkBalance(me, billing().normalizeCallType(callType, quality));
+    if (!quote.enoughToStart) {
+      res.status(402).json({
+        error: 'Saldo insuficiente. Necesitas Blast para iniciar esta llamada.',
+        code: 'CALL_INSUFFICIENT_BLAST',
+        ...quote,
+      });
+      return;
+    }
+
+    const session = await billing().startBilling({
+      callId,
+      chatId,
+      callerId: me,
+      receiverId,
+      callType,
+      quality,
+      video,
+    });
+    res.json(session);
+  } catch (error) {
+    const status = error.code === 'CALL_BILLING_FORBIDDEN' ? 403 : 400;
+    res.status(status).json({
+      error: error.message || 'No se pudo iniciar el cobro',
+      code: error.code || 'CALL_BILLING_START_FAILED',
+    });
+  }
+});
+
+router.post('/billing/sync', requireAuth, async (req, res) => {
+  try {
+    const me = req.user.uid;
+    const callId = String(req.body?.callId || '').trim();
+    // connectedSeconds es pista; el backend recalcula con connectedAtMs.
+    const connectedSeconds = Math.max(0, Math.floor(Number(req.body?.connectedSeconds) || 0));
+    const result = await billing().updateBilling({
+      callId,
+      callerId: me,
+      connectedSeconds,
+    });
+    res.json(result);
+  } catch (error) {
+    const status =
+      error.code === 'CALL_BILLING_FORBIDDEN'
+        ? 403
+        : error.code === 'CALL_BILLING_NOT_STARTED'
+          ? 404
+          : 400;
+    res.status(status).json({
+      error: error.message || 'No se pudo sincronizar el cobro',
+      code: error.code || 'CALL_BILLING_SYNC_FAILED',
+    });
+  }
+});
+
+router.post('/billing/stop', requireAuth, async (req, res) => {
+  try {
+    const me = req.user.uid;
+    const callId = String(req.body?.callId || '').trim();
+    const connectedSeconds = Math.max(0, Math.floor(Number(req.body?.connectedSeconds) || 0));
+    const result = await billing().stopBilling({
+      callId,
+      callerId: me,
+      connectedSeconds,
+    });
+    res.json(result);
+  } catch (error) {
+    const status = error.code === 'CALL_BILLING_FORBIDDEN' ? 403 : 400;
+    res.status(status).json({
+      error: error.message || 'No se pudo finalizar el cobro',
+      code: error.code || 'CALL_BILLING_STOP_FAILED',
+    });
   }
 });
 

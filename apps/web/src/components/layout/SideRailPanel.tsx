@@ -1,6 +1,7 @@
 import {
   Calendar,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Eye,
   Gift,
@@ -27,6 +28,11 @@ import { MyPromotionsModal } from '../ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../ads/PublicidadSidebarCard';
 import { FollowButton } from '../social/SocialPostCard';
+import {
+  GmailBrandIcon,
+  InstagramBrandIcon,
+  WhatsAppBrandIcon,
+} from '../brand/SocialBrandIcons';
 import { bcp47For, useT } from '../../i18n';
 import {
   joinGroup,
@@ -274,6 +280,7 @@ function SearchFriendsRail() {
     [],
   );
   const [copied, setCopied] = useState(false);
+  const [inviteRulesOpen, setInviteRulesOpen] = useState(false);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -347,37 +354,72 @@ function SearchFriendsRail() {
 
   return (
     <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
-      <section className="overflow-hidden rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-700/40 via-[#1a1228] to-[#14151c] p-3.5">
+      <section className="overflow-hidden rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-700/40 via-[#1a1228] to-[#14151c] p-4 sm:p-4">
         <div className="flex items-start gap-3">
           <img
             src="/blast/pack-basico.png"
             alt=""
-            className="h-14 w-14 shrink-0 object-contain drop-shadow-[0_4px_12px_rgba(236,72,153,0.4)]"
+            className="h-16 w-16 shrink-0 object-contain drop-shadow-[0_4px_12px_rgba(236,72,153,0.4)] sm:h-[4.5rem] sm:w-[4.5rem]"
           />
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-white">Invita y gana Blast</p>
-            <p className="mt-1 text-[11px] leading-snug text-violet-100/80">
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-bold leading-tight text-white">Invita y gana Blast</p>
+            <p className="mt-1.5 text-xs leading-snug text-violet-100/85">
               Gana hasta{' '}
-              <span className="font-bold text-amber-300">100 blast</span> por cada amigo que se
+              <span className="font-bold text-amber-300">100 Blast</span> por cada amigo que se
               registre con tu enlace.
             </p>
           </div>
         </div>
+
         <button
           type="button"
           onClick={inviteFriends}
-          className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-[linear-gradient(90deg,#8B5CF6,#EC4899)] text-xs font-bold text-white"
+          className="mt-4 flex min-h-11 w-full items-center justify-center rounded-xl bg-[linear-gradient(90deg,#8B5CF6,#EC4899)] text-sm font-bold text-white"
         >
           Invitar amigos
         </button>
         <button
           type="button"
           onClick={copyInvite}
-          className="mt-2 inline-flex w-full items-center justify-center gap-1.5 text-[11px] font-semibold text-cyan-300 hover:underline"
+          className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-1.5 text-xs font-semibold text-cyan-300 hover:underline"
         >
-          <Link2 size={13} />
+          <Link2 size={14} />
           {copied ? '¡Enlace copiado!' : 'Copiar enlace'}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setInviteRulesOpen((v) => !v)}
+          className="mt-3 flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 text-left text-xs font-semibold text-violet-100"
+          aria-expanded={inviteRulesOpen}
+        >
+          <span>Ver reglas del programa</span>
+          <ChevronDown
+            size={16}
+            className={`shrink-0 transition-transform ${inviteRulesOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {inviteRulesOpen ? (
+          <div className="mt-2 space-y-2.5 rounded-xl border border-white/10 bg-black/25 p-3 text-[11px] leading-relaxed text-violet-100/90">
+            <p className="font-bold text-white">Cómo funciona</p>
+            <ol className="list-decimal space-y-1.5 pl-4">
+              <li>Comparte tu enlace único de invitación.</li>
+              <li>Tu amigo se registra en LiveBoom con ese enlace.</li>
+              <li>
+                Cuando complete el registro válido, ganas hasta{' '}
+                <span className="font-semibold text-amber-300">100 Blast</span>.
+              </li>
+            </ol>
+            <p className="font-bold text-white">Reglas</p>
+            <ul className="list-disc space-y-1.5 pl-4">
+              <li>Solo cuenta el primer registro real por persona (sin cuentas falsas).</li>
+              <li>El Blast se acredita tras validar la cuenta del invitado.</li>
+              <li>LiveBoom puede anular recompensas por abuso o fraude.</li>
+              <li>El enlace es personal: no lo publiques en sitios de spam.</li>
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
@@ -387,23 +429,38 @@ function SearchFriendsRail() {
         </div>
         <p className="text-[11px] text-zinc-500">Encuentra amigos que ya usan LiveBoom.</p>
         <div className="mt-3 flex gap-2">
-          {(
-            [
-              { label: 'WA', tone: 'bg-emerald-500/20 text-emerald-300' },
-              { label: 'IG', tone: 'bg-fuchsia-500/20 text-fuchsia-300' },
-              { label: 'GM', tone: 'bg-amber-500/20 text-amber-300' },
-              { label: '…', tone: 'bg-zinc-700/50 text-zinc-300' },
-            ] as const
-          ).map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className={`grid h-11 w-11 place-items-center rounded-xl text-[11px] font-black ${item.tone}`}
-              title="Próximamente"
-            >
-              {item.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-500/15"
+            title="WhatsApp · Próximamente"
+            aria-label="WhatsApp"
+          >
+            <WhatsAppBrandIcon size={22} />
+          </button>
+          <button
+            type="button"
+            className="grid h-11 w-11 place-items-center rounded-xl bg-fuchsia-500/15"
+            title="Instagram · Próximamente"
+            aria-label="Instagram"
+          >
+            <InstagramBrandIcon size={22} />
+          </button>
+          <button
+            type="button"
+            className="grid h-11 w-11 place-items-center rounded-xl bg-white/10"
+            title="Gmail · Próximamente"
+            aria-label="Gmail"
+          >
+            <GmailBrandIcon size={20} />
+          </button>
+          <button
+            type="button"
+            className="grid h-11 w-11 place-items-center rounded-xl bg-zinc-700/50 text-[11px] font-black text-zinc-300"
+            title="Más · Próximamente"
+            aria-label="Más opciones"
+          >
+            …
+          </button>
         </div>
       </section>
 

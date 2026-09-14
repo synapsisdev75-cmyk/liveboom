@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { CallBusySheet, type CallBusyKind } from './CallBusySheet';
 import { CallRateConfirmModal } from './CallRateConfirmModal';
 import { VideoCallRequestSheet, VideoCallWaitingSheet } from './VideoCallPanels';
-import type { CallRateSnapshot } from '../../lib/callPricing';
+import { platformRateSnapshot, type CallRateSnapshot } from '../../lib/callPricing';
 import {
   cancelCallRequest,
   createCallRequest,
@@ -98,16 +98,11 @@ export function CallChatActions({
       if (req.status === 'accepted' && req.authorizationId) {
         setAuthId(req.authorizationId);
         setPendingRequest(null);
-        const pricing =
-          req.rateBlasts > 0 && req.giftId
-            ? {
-                giftId: req.giftId,
-                giftName: req.giftName || '',
-                giftEmoji: req.giftEmoji || '',
-                rateBlasts: req.rateBlasts,
-              }
-            : null;
-        setConfirm({ video: req.callType === 'video', pricing });
+        // Economía de plataforma: tarifa fija (permisos/autorización siguen siendo los del creador).
+        setConfirm({
+          video: req.callType === 'video',
+          pricing: platformRateSnapshot(req.callType === 'video'),
+        });
       }
     }, chatId);
   }, [pendingRequest, peer.uid, profile, onError, chatId]);
@@ -130,7 +125,7 @@ export function CallChatActions({
       const mediaPromise = ensureCallMediaPermission(video);
       const session = await createCall(peer.uid, video ? 'video' : 'audio', {
         authorizationId: authId,
-        giftId: pricing?.giftId || null,
+        giftId: pricing?.giftId?.startsWith('platform_') ? null : pricing?.giftId || null,
         chatId,
       });
       const callId = session.callId;
@@ -231,11 +226,8 @@ export function CallChatActions({
       onError(video ? 'Las videollamadas están disponibles solo entre amigos.' : 'Las llamadas de voz solo están disponibles entre amigos.');
       return;
     }
-    if (access.pricing && access.pricing.rateBlasts > 0) {
-      setConfirm({ video, pricing: access.pricing });
-      return;
-    }
-    await actuallyStart(video, null, null);
+    // Confirmación económica con tarifa de plataforma (mensajes siguen gratis).
+    setConfirm({ video, pricing: platformRateSnapshot(video) });
   }
 
   if (inThisCall) {

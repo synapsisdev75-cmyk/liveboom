@@ -128,6 +128,7 @@ export function VoiceCallIncoming({
   accepting,
   connecting,
   error,
+  paidLabel,
   onAccept,
   onDecline,
   onMinimize,
@@ -139,6 +140,7 @@ export function VoiceCallIncoming({
   accepting?: boolean;
   connecting?: boolean;
   error?: string | null;
+  paidLabel?: string | null;
   onAccept: () => void;
   onDecline: () => void;
   onMinimize?: () => void;
@@ -152,6 +154,7 @@ export function VoiceCallIncoming({
       accepting={accepting}
       connecting={connecting}
       error={error}
+      paidLabel={paidLabel}
       onAccept={onAccept}
       onDecline={onDecline}
       onMinimize={onMinimize}

@@ -232,6 +232,23 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    match /admin/community/{theme}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn()
+        && (
+          request.auth.token.email == 'synapsisdev75@gmail.com'
+          || (
+            firestore.exists(/databases/(default)/documents/config/superAdmins)
+            && request.auth.token.email in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
+          )
+        )
+        && request.resource.size < 40 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
     // Pedidos UI — capturas. Solo el UID dueño de la carpeta puede subir.
     // Quién es super admin se valida en Firestore (adminChangeRequests) + UI.
     match /admin/change-requests/{userId}/{fileName} {

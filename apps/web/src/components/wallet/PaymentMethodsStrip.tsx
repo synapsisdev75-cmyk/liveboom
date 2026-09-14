@@ -6,7 +6,7 @@ type Props = {
   compact?: boolean;
 };
 
-/** Franja de logos de pago (Nequi, Visa, Daviplata, PayPal, Mastercard). */
+/** Franja de logos de pago (Nequi, Visa, Daviplata, Mastercard). */
 export function PaymentMethodsStrip({ className = '', compact = false }: Props) {
   return (
     <div

@@ -347,7 +347,7 @@ export function MainLayout() {
             ? `overflow-hidden p-0 lg:w-[56%] lg:pb-0 ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)]'}`
             : onMessages
               ? 'overflow-hidden p-0'
-              : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4'
+              : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
         }`}
       >
         <PullToRefreshIndicator

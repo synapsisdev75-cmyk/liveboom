@@ -905,16 +905,16 @@ export function ProfileView() {
               <p className="mb-2 text-xs font-semibold text-white">{t('settings.shareLink')}</p>
               <div className="flex flex-wrap gap-2">
                 <ShareCircle label="WhatsApp" onClick={() => shareReferral('wa')} tone="bg-emerald-500/20 text-emerald-300">
-                  WA
+                  <WhatsAppBrandIcon />
                 </ShareCircle>
                 <ShareCircle label="Instagram" onClick={() => shareReferral('more')} tone="bg-pink-500/20 text-pink-300">
-                  IG
+                  <InstagramBrandIcon />
                 </ShareCircle>
                 <ShareCircle label="Facebook" onClick={() => shareReferral('fb')} tone="bg-blue-500/20 text-blue-300">
-                  FB
+                  <FacebookBrandIcon />
                 </ShareCircle>
                 <ShareCircle label="X" onClick={() => shareReferral('x')} tone="bg-zinc-500/30 text-zinc-200">
-                  X
+                  <XBrandIcon />
                 </ShareCircle>
                 <ShareCircle label={t('settings.more')} onClick={() => shareReferral('more')} tone="bg-white/10 text-zinc-300">
                   <MoreHorizontal size={16} />
@@ -1233,6 +1233,38 @@ function ShareCircle({
     >
       {children}
     </button>
+  );
+}
+
+function WhatsAppBrandIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.55 2 2.08 6.45 2.08 11.94c0 1.78.46 3.45 1.28 4.9L2 22l5.31-1.39a10 10 0 0 0 4.73 1.2h.01c5.49 0 9.96-4.45 9.96-9.94 0-2.66-1.04-5.16-2.96-7.0zm-7.01 15.29h-.01a8.26 8.26 0 0 1-4.21-1.15l-.3-.18-3.15.82.84-3.07-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.23 8.26-8.23 2.2 0 4.28.86 5.84 2.42a8.18 8.18 0 0 1 2.42 5.83c0 4.54-3.7 8.26-8.23 8.26zm4.52-6.17c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.84-.2-.49-.41-.42-.56-.43h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74 1.76.76 2.18.83 2.96.7.45-.08 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.06-.10-.23-.17-.48-.29z" />
+    </svg>
+  );
+}
+
+function InstagramBrandIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M7.8 2h8.4C19.4 2 22 4.6 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8C4.6 22 2 19.4 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2zm-.2 2A3.6 3.6 0 0 0 4 7.6v8.8A3.6 3.6 0 0 0 7.6 20h8.8a3.6 3.6 0 0 0 3.6-3.6V7.6A3.6 3.6 0 0 0 16.4 4H7.6zm9.65 1.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5zM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+    </svg>
+  );
+}
+
+function FacebookBrandIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14C17.17 2.05 15.92 2 14.89 2 11.95 2 10 3.79 10 7.15V9.5H7.5v4H10V22h4z" />
+    </svg>
+  );
+}
+
+function XBrandIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M18.24 2H21l-6.51 7.44L22 22h-6.17l-4.83-6.31L5.7 22H3l6.97-7.96L2 2h6.32l4.36 5.77L18.24 2zm-1.08 18.1h1.7L6.93 3.81H5.1l12.06 16.29z" />
+    </svg>
   );
 }
 
