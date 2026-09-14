@@ -1971,11 +1971,12 @@ function VideoCallStage({
   }
 
   function onFlipCameraClick() {
-    if (!finePointer) {
-      void flipCamera();
+    // Touch / móvil: alterna frontal ↔ trasera. Escritorio con varias cámaras: panel de elección.
+    if (finePointer && videoInputs.length > 2) {
+      setPicker((current) => (current === 'camera' ? null : 'camera'));
       return;
     }
-    setPicker((current) => (current === 'camera' ? null : 'camera'));
+    void flipCamera();
   }
 
   async function applyCameraDevice(deviceId: string, nextFacing: 'user' | 'environment') {
@@ -2136,8 +2137,12 @@ function VideoCallStage({
         onClose={onClose}
         maximized={maximized}
         onFlipCamera={onFlipCameraClick}
-        flipCameraLabel={finePointer ? 'Elegir cámara' : 'Voltear cámara'}
-        flipPickerOpen={finePointer ? picker === 'camera' : undefined}
+        flipCameraLabel={
+          finePointer && videoInputs.length > 2
+            ? 'Elegir cámara'
+            : 'Alternar cámara frontal y trasera'
+        }
+        flipPickerOpen={finePointer && videoInputs.length > 2 ? picker === 'camera' : undefined}
         stageRef={stageRef}
         stage={
           <>
@@ -2311,7 +2316,15 @@ export function CallOverlay() {
     console.info('[VIDEO CALL]', next ? 'livekit ready' : 'livekit reset', reason);
   }
 
+  const hangupGuardUntilRef = useRef(0);
+
+  function armHangupGuard(ms = 650) {
+    hangupGuardUntilRef.current = Date.now() + ms;
+  }
+
   function minimizeCall() {
+    // Evita clic fantasma sobre "Finalizar" de la mini barra tras cambiar el layout.
+    armHangupGuard();
     setCallViewMode('minimized', 'user-minimize');
   }
 
@@ -2326,6 +2339,7 @@ export function CallOverlay() {
   }
 
   function hideCall() {
+    armHangupGuard();
     setCallViewMode('minimized', 'user-close');
   }
 
@@ -2460,6 +2474,10 @@ export function CallOverlay() {
   }, [chatSurface, chatId, incoming?.chatId, callViewMode, status]);
 
   function hangupWithCooldown(outcome?: 'completed' | 'missed' | 'cancelled' | 'declined') {
+    if (Date.now() < hangupGuardUntilRef.current) {
+      console.info('[CALL UI] hangup ignored (post-minimize guard)');
+      return;
+    }
     const store = useCallStore.getState();
     const id = store.chatId || store.incoming?.chatId;
     if (id) cooldownRef.current[id] = Date.now();
@@ -3213,52 +3231,48 @@ export function CallOverlay() {
           >
             <div className={expandedSlot ? 'lb-call-expanded-slot' : undefined}>
               {isVideo ? (
-                (showCall || videoConnectingUi) && !viewMinimized ? (
-                  <VideoCallSessionFrame
-                    connected={videoSessionActive}
-                    hold={false}
-                    chrome={ringingChrome}
-                    live={
-                      <div className="lb-video-live-stack">
-                        {videoLiveUi ? (
-                          <div className={keepConnectingShell ? 'lb-video-lk-layer is-behind' : 'lb-video-lk-layer'}>
-                            {videoLiveUi}
-                          </div>
-                        ) : null}
-                        {connectingLive}
-                      </div>
-                    }
-                  />
+                showCall || videoConnectingUi ? (
+                  <>
+                    {viewMinimized ? incomingMini : null}
+                    <VideoCallSessionFrame
+                      connected={videoSessionActive && !viewMinimized}
+                      hold={Boolean(viewMinimized && showHeaderDock)}
+                      chrome={viewMinimized ? null : ringingChrome}
+                      live={
+                        <div className="lb-video-live-stack">
+                          {videoLiveUi ? (
+                            <div className={keepConnectingShell ? 'lb-video-lk-layer is-behind' : 'lb-video-lk-layer'}>
+                              {videoLiveUi}
+                            </div>
+                          ) : null}
+                          {!viewMinimized ? connectingLive : null}
+                        </div>
+                      }
+                    />
+                  </>
                 ) : (
                   <>
                     {ringingChrome}
                     {incomingMini}
-                    {videoLiveUi ? (
-                      <div className={holdLiveKit ? 'lb-call-livekit-hold' : 'lb-video-live-slot'} aria-hidden={holdLiveKit || undefined}>
-                        {videoLiveUi}
-                      </div>
-                    ) : null}
                   </>
                 )
-              ) : showCall && !viewMinimized ? (
-                <VoiceCallSessionFrame
-                  connected={status === 'active'}
-                  hold={holdLiveKit}
-                  chrome={ringingChrome}
-                  live={voiceLiveUi}
-                />
+              ) : showCall ? (
+                <>
+                  {viewMinimized ? incomingMini : null}
+                  <VoiceCallSessionFrame
+                    connected={status === 'active' && !viewMinimized}
+                    hold={viewMinimized ? showHeaderDock : holdLiveKit}
+                    chrome={viewMinimized ? null : ringingChrome}
+                    live={voiceLiveUi}
+                  />
+                </>
               ) : (
                 <>
                   {ringingChrome}
                   {incomingMini}
-                  {voiceLiveUi ? (
-                    <div className={holdLiveKit ? 'lb-call-livekit-hold' : 'lb-voice-live-slot'} aria-hidden={holdLiveKit || undefined}>
-                      {voiceLiveUi}
-                    </div>
-                  ) : null}
                 </>
-          )}
-        </div>
+              )}
+            </div>
           </FloatingCallFrame>,
           document.body,
         )

@@ -1,4 +1,7 @@
-export const BATTLE_DURATION_MS = 3 * 60 * 1000;
+import { DEFAULT_BATTLE_DURATION_MS } from './battleHp';
+
+/** @deprecated Usar durationMs de la batalla / DEFAULT_BATTLE_DURATION_MS */
+export const BATTLE_DURATION_MS = DEFAULT_BATTLE_DURATION_MS;
 
 export const AGORA_APP_ID =
   String(import.meta.env.VITE_AGORA_APP_ID || 'b3d578c772e542ed8b63cb1782a0f262').trim();

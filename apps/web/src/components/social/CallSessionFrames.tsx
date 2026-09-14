@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 /** Contenedor exclusivo de videollamada. Chrome encima; LiveKit siempre con tamaño real. */
 export function VideoCallSessionFrame({
   connected,
-  hold: _hold,
+  hold,
   chrome,
   live,
 }: {
@@ -14,18 +14,30 @@ export function VideoCallSessionFrame({
 }) {
   return (
     <article
-      className={connected ? 'lb-video-call-session is-connected' : 'lb-video-call-session'}
+      className={[
+        'lb-video-call-session',
+        connected ? 'is-connected' : '',
+        hold ? 'is-held' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       data-call-kind="video"
     >
       {live ? (
         <div
-          className={connected || !chrome ? 'lb-video-live-slot' : 'lb-video-live-slot is-under-chrome'}
-          aria-hidden={!connected && chrome ? true : undefined}
+          className={
+            hold
+              ? 'lb-call-livekit-hold'
+              : connected || !chrome
+                ? 'lb-video-live-slot'
+                : 'lb-video-live-slot is-under-chrome'
+          }
+          aria-hidden={hold || (!connected && Boolean(chrome)) ? true : undefined}
         >
           {live}
         </div>
       ) : null}
-      {connected ? null : chrome}
+      {connected || hold ? null : chrome}
     </article>
   );
 }

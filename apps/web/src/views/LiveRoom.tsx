@@ -49,9 +49,7 @@ import { GiftBoxStrip } from '../components/live/GiftBoxStrip';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
 import { LiveFramedVideo } from '../components/live/LiveFramedVideo';
 import { LiveFrameEditor } from '../components/live/LiveFrameEditor';
-import { BoomCollectiveMeter } from '../components/live/studio/BoomCollectiveMeter';
 import { BoomReactionLayer } from '../components/live/studio/BoomReactionLayer';
-import { BoomRoundExplosionOverlay } from '../components/live/studio/BoomRoundExplosionOverlay';
 import { EndLiveModal } from '../components/live/studio/EndLiveModal';
 import { BatallaBoomModal, SalaBoomModal } from '../components/live/studio/LiveMultipartyModals';
 import type {
@@ -139,7 +137,6 @@ import {
   listenLiveSalaLayout,
 } from '../lib/liveGiftsFirestore';
 import { useLiveWishAchieved } from '../lib/liveWishAchieved';
-import { LIVE_BOOM_ROUND_GOAL, resolveBoomRoundCount } from '../lib/liveBoomRound';
 import { useLivePresence } from '../hooks/useLivePresence';
 import { useLiveCarouselPointer } from '../hooks/useLiveCarouselPointer';
 import { useLiveViewport } from '../hooks/useLiveViewport';
@@ -1193,33 +1190,8 @@ function CreatorStage({
   const liveBoomCountRef = useRef(0);
   const serverBoomCountRef = useRef(0);
   const [liveBoomCount, setLiveBoomCount] = useState(0);
-  const [boomRoundCount, setBoomRoundCount] = useState(0);
-  const [roundExplosionActive, setRoundExplosionActive] = useState(false);
-  const roundExplosionTimerRef = useRef<number | null>(null);
   const [viewerBoomCount, setViewerBoomCount] = useState(0);
   const { bursts: boomBursts, spawnBoom } = useLiveBoomBursts();
-
-  const triggerRoundExplosion = useCallback(() => {
-    setRoundExplosionActive(true);
-    if (roundExplosionTimerRef.current != null) {
-      window.clearTimeout(roundExplosionTimerRef.current);
-    }
-    roundExplosionTimerRef.current = window.setTimeout(() => {
-      setRoundExplosionActive(false);
-      roundExplosionTimerRef.current = null;
-    }, 2800);
-  }, []);
-
-  const bumpBoomRound = useCallback(() => {
-    setBoomRoundCount((prev) => {
-      const next = prev + 1;
-      if (next >= LIVE_BOOM_ROUND_GOAL) {
-        triggerRoundExplosion();
-        return 0;
-      }
-      return next;
-    });
-  }, [triggerRoundExplosion]);
 
   const registerBoom = useCallback(
     (eventKey: string) => {
@@ -1228,10 +1200,9 @@ function CreatorStage({
       spawnBoom(stageVideoRef.current);
       liveBoomCountRef.current += 1;
       setLiveBoomCount(liveBoomCountRef.current);
-      bumpBoomRound();
       return true;
     },
-    [spawnBoom, bumpBoomRound],
+    [spawnBoom],
   );
 
   const showBoomAt = useCallback(
@@ -1272,24 +1243,13 @@ function CreatorStage({
             if (result.liveBoomCount >= liveBoomCountRef.current) {
               liveBoomCountRef.current = result.liveBoomCount;
               setLiveBoomCount(result.liveBoomCount);
-              setBoomRoundCount(result.boomRoundCount);
             }
             setViewerBoomCount(result.viewerBoomCount);
-            if (result.roundExplosion) triggerRoundExplosion();
           })
           .catch(() => undefined);
       }
     },
-    [
-      canSendLiveBoom,
-      room,
-      firebaseUid,
-      username,
-      displayName,
-      handle,
-      registerBoom,
-      triggerRoundExplosion,
-    ],
+    [canSendLiveBoom, room, firebaseUid, username, displayName, handle, registerBoom],
   );
   const { boomGestureProps } = useBoomGesture({
     onBoom: fireBoomAt,
@@ -1380,13 +1340,6 @@ function CreatorStage({
       if (official > liveBoomCountRef.current) {
         liveBoomCountRef.current = official;
         setLiveBoomCount(official);
-        setBoomRoundCount(
-          resolveBoomRoundCount(official, stats.boomRoundCount, stats.hasRoundField),
-        );
-      } else if (official === liveBoomCountRef.current) {
-        setBoomRoundCount(
-          resolveBoomRoundCount(official, stats.boomRoundCount, stats.hasRoundField),
-        );
       }
       setViewerBoomCount(stats.viewerBoomCount);
     });
@@ -1397,9 +1350,8 @@ function CreatorStage({
       if (hostUid && event.uid && event.uid === hostUid) return;
       const eventKey = event.clientId || event.id;
       registerBoom(eventKey);
-      if (event.roundExplosion) triggerRoundExplosion();
     });
-  }, [username, hostUid, registerBoom, triggerRoundExplosion]);
+  }, [username, hostUid, registerBoom]);
 
   useEffect(() => {
     if (!canPublish) return;
@@ -3396,14 +3348,6 @@ function CreatorStage({
             onPointerCancel={handleStagePointerCancel}
           >
             <BoomReactionLayer bursts={boomBursts} />
-            {isHost ? (
-              <BoomCollectiveMeter
-                count={boomRoundCount}
-                full={boomRoundCount >= LIVE_BOOM_ROUND_GOAL - 1}
-                charging={roundExplosionActive}
-              />
-            ) : null}
-            <BoomRoundExplosionOverlay active={roundExplosionActive} />
             <CreatorVideo
               canPublish={canPublish}
               allowPublish={!liveEnded && !summaryOpen}
@@ -3496,16 +3440,23 @@ function CreatorStage({
                 </div>
               </div>
             ) : null}
-            {battle.liveBattle && firebaseUid ? (
+            {(battle.liveBattle || battle.resultBattle) && firebaseUid ? (
               <BattleStage
-                battle={battle.liveBattle}
+                battle={battle.liveBattle || battle.resultBattle!}
                 remotes={battle.remotes}
                 localVideo={battle.localVideo}
                 localUid={firebaseUid}
                 aspectRatio={aspectRatio}
                 isHost={isHost}
-                remainingMs={Math.max(0, battle.liveBattle.endsAtMs - Date.now())}
+                remainingMs={
+                  battle.liveBattle
+                    ? Math.max(0, battle.liveBattle.endsAtMs - Date.now())
+                    : 0
+                }
                 onEnd={() => void battle.stop()}
+                onRematch={() => void battle.rematch()}
+                onDismissResult={() => void battle.dismissResult()}
+                rematchBusy={battle.busy}
               />
             ) : null}
             {isHost && screenSharing ? (
@@ -3923,6 +3874,8 @@ function CreatorStage({
         onInviteHandleChange={setInviteHandle}
         onInvite={(handle) => void battle.invite(handle || inviteHandle)}
         liveHosts={liveHosts}
+        durationMs={battle.durationMs}
+        onDurationMsChange={battle.setDurationMs}
         incoming={battle.incoming}
         waitingName={
           battle.battle?.status === 'pending' && roomKey(battle.battle.hostAUsername) === roomKey(username)

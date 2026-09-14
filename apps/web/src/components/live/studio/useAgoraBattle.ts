@@ -6,9 +6,11 @@ import {
   createBattleInvite,
   creditBattleGift,
   declineBattle,
-  endBattle,
+  dismissBattleResult,
+  finishBattle,
   listenLiveBattle,
   listenRoomBattleState,
+  requestBattleRematch,
   type IncomingBattle,
   type LiveBattle,
 } from '../../../lib/battleFirestore';
@@ -22,6 +24,7 @@ import type { ILocalAudioTrack, ILocalVideoTrack } from 'agora-rtc-sdk-ng';
 import { fetchPublicUserByUsername } from '../../../lib/profileFirestore';
 import { roomKey } from '../../../lib/roomKey';
 import { preloadBattleSkinAssets } from '../../../lib/battleAnimatedSkin';
+import { DEFAULT_BATTLE_DURATION_MS, normalizeBattleDurationMs } from '../../../lib/battleHp';
 
 type Args = {
   roomName: string;
@@ -54,11 +57,12 @@ export function useAgoraBattle({
   const [localAudio, setLocalAudio] = useState<ILocalAudioTrack | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [durationMs, setDurationMs] = useState(DEFAULT_BATTLE_DURATION_MS);
 
   useEffect(() => listenRoomBattleState(roomName, setRoomState), [roomName]);
 
   useEffect(() => {
-    if (roomState.incoming || battle?.status === 'pending' || battle?.status === 'live') {
+    if (roomState.incoming || battle?.status === 'pending' || battle?.status === 'live' || battle?.status === 'ended') {
       preloadBattleSkinAssets();
     }
   }, [roomState.incoming, battle?.status]);
@@ -73,10 +77,11 @@ export function useAgoraBattle({
   }, [roomState.battleId, roomState.incoming?.battleId]);
 
   const liveBattle = battle?.status === 'live' ? battle : null;
+  const resultBattle = battle?.status === 'ended' && roomState.battleId ? battle : null;
 
   useEffect(() => {
-    onActiveChange?.(Boolean(liveBattle));
-  }, [liveBattle, onActiveChange]);
+    onActiveChange?.(Boolean(liveBattle || resultBattle));
+  }, [liveBattle, resultBattle, onActiveChange]);
 
   useEffect(() => {
     if (!liveBattle || !firebaseUid) {
@@ -91,7 +96,6 @@ export function useAgoraBattle({
     void (async () => {
       let cam: MediaStreamTrack | null = null;
       let mic: MediaStreamTrack | null = null;
-      // Ambos hosts de la batalla publican A/V; espectadores solo escuchan/ven.
       const asPublisher =
         isHost ||
         firebaseUid === liveBattle.hostAUid ||
@@ -186,20 +190,21 @@ export function useAgoraBattle({
     };
   }, []);
 
+  // Timer → finish por tiempo (gana quien tenga más HP).
   useEffect(() => {
     if (!isHost || !liveBattle?.endsAtMs) return;
     const ms = liveBattle.endsAtMs - Date.now();
     if (ms <= 0) {
-      void endBattle(liveBattle.id).catch(() => undefined);
+      void finishBattle(liveBattle.id, { reason: 'timer' }).catch(() => undefined);
       return;
     }
     const timer = window.setTimeout(() => {
-      void endBattle(liveBattle.id).catch(() => undefined);
+      void finishBattle(liveBattle.id, { reason: 'timer' }).catch(() => undefined);
     }, ms + 250);
     return () => window.clearTimeout(timer);
   }, [isHost, liveBattle?.id, liveBattle?.endsAtMs]);
 
-  async function invite(opponentHandle: string) {
+  async function invite(opponentHandle: string, nextDurationMs = durationMs) {
     const guestHandle = opponentHandle.trim().replace(/^@/, '');
     if (!guestHandle || !isHost) return;
     setBusy(true);
@@ -215,6 +220,7 @@ export function useAgoraBattle({
         hostBUid: guest.firebaseUid,
         hostBUsername: guestHandle,
         hostBName: guest.displayName || guestHandle,
+        durationMs: normalizeBattleDurationMs(nextDurationMs),
       });
       setNote(`Reto enviado a @${guestHandle}`);
     } catch (error) {
@@ -243,24 +249,50 @@ export function useAgoraBattle({
   }
 
   async function stop() {
-    const id = liveBattle?.id || roomState.battleId;
-    if (id) await endBattle(id).catch(() => undefined);
+    const id = liveBattle?.id || resultBattle?.id || roomState.battleId;
+    if (id) await finishBattle(id, { reason: 'forfeit', clearRooms: false }).catch(() => undefined);
     await disconnectBattle();
+  }
+
+  async function dismissResult() {
+    const id = resultBattle?.id || roomState.battleId;
+    if (id) await dismissBattleResult(id).catch(() => undefined);
+    await disconnectBattle();
+  }
+
+  async function rematch() {
+    const id = resultBattle?.id || roomState.battleId;
+    if (!id || !firebaseUid) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await requestBattleRematch({ previousBattleId: id, fromUid: firebaseUid });
+      setNote('Revancha enviada');
+    } catch (error) {
+      setNote(error instanceof Error ? error.message : 'No se pudo pedir revancha');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return {
     battle,
     liveBattle,
+    resultBattle,
     incoming: roomState.incoming,
     remotes,
     localVideo,
     localAudio,
     busy,
     note,
+    durationMs,
+    setDurationMs,
     invite,
     accept,
     decline,
     stop,
+    dismissResult,
+    rematch,
     creditGift: (coins: number) => void creditBattleGift(roomName, coins).catch(() => undefined),
   };
 }

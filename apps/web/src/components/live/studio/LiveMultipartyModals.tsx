@@ -5,6 +5,7 @@ import {
   SALA_BOOM_LAYOUT_META,
   type SalaBoomLayout,
 } from '../../../lib/salaBoomLayout';
+import { BATTLE_DURATION_OPTIONS, DEFAULT_BATTLE_DURATION_MS } from '../../../lib/battleHp';
 import { VsBattleIcon } from './VsBattleIcon';
 
 export type SalaInviteViewer = {
@@ -210,6 +211,8 @@ type BatallaBoomModalProps = {
   note?: string | null;
   onAccept?: () => void;
   onDecline?: () => void;
+  durationMs?: number;
+  onDurationMsChange?: (ms: number) => void;
 };
 
 /** Batalla Boom — invita a otro host en LIVE. El LIVE original no se corta. */
@@ -226,6 +229,8 @@ export function BatallaBoomModal({
   note,
   onAccept,
   onDecline,
+  durationMs = DEFAULT_BATTLE_DURATION_MS,
+  onDurationMsChange,
 }: BatallaBoomModalProps) {
   if (!open) return null;
   return (
@@ -240,7 +245,7 @@ export function BatallaBoomModal({
           </button>
         </div>
         <p className="mt-2 text-[11px] text-zinc-400">
-          1v1 en vivo, layout 50/50. Al terminar, cada quien sigue su LIVE.
+          1v1 · 100% vida. Los regalos que recibes bajan la vida del rival.
         </p>
 
         {incoming ? (
@@ -273,6 +278,28 @@ export function BatallaBoomModal({
           </p>
         ) : (
           <>
+            <div className="mt-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Duración</p>
+              <div className="mt-1.5 flex gap-1.5">
+                {BATTLE_DURATION_OPTIONS.map((opt) => {
+                  const active = durationMs === opt.ms;
+                  return (
+                    <button
+                      key={opt.minutes}
+                      type="button"
+                      onClick={() => onDurationMsChange?.(opt.ms)}
+                      className={`min-h-11 flex-1 rounded-lg px-2 py-2 text-[11px] font-bold ${
+                        active
+                          ? 'bg-fuchsia-500 text-zinc-950'
+                          : 'bg-white/10 text-zinc-200 hover:bg-white/15'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="mt-3 flex items-center gap-2">
               <input
                 value={inviteHandle}
@@ -293,7 +320,7 @@ export function BatallaBoomModal({
                 type="button"
                 disabled={busy}
                 onClick={() => onInvite()}
-                className="shrink-0 rounded-lg bg-fuchsia-500 px-3 py-2 text-[11px] font-bold text-zinc-950 disabled:opacity-50"
+                className="min-h-11 shrink-0 rounded-lg bg-fuchsia-500 px-3 py-2 text-[11px] font-bold text-zinc-950 disabled:opacity-50"
               >
                 Retar
               </button>

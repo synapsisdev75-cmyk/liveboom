@@ -77,6 +77,7 @@ export function ConnectedVideoCallHeader({
   flipPickerOpen?: boolean;
 }) {
   const handle = person.handle.replace(/^@/, '');
+  const flipLabel = flipCameraLabel || 'Alternar cámara frontal y trasera';
   return (
     <header className="lb-video-connected-head" data-call-drag>
       <div className="lb-video-connected-peer">
@@ -103,27 +104,28 @@ export function ConnectedVideoCallHeader({
           <p className="lb-video-connected-peer__clock">{elapsedLabel}</p>
         </div>
       </div>
-      <CallWinBar
-        showLogo={false}
-        onMinimize={onMinimize}
-        onMaximize={onMaximize}
-        maximized={maximized}
-        extraEnd={
-          onFlipCamera ? (
-            <button
-              type="button"
-              className="lb-call-winbtn"
-              data-no-drag
-              onClick={onFlipCamera}
-              aria-label={flipCameraLabel || 'Voltear cámara'}
-              aria-expanded={flipPickerOpen}
-              aria-haspopup={flipPickerOpen === undefined ? undefined : 'listbox'}
-            >
-              <SwitchCamera size={14} />
-            </button>
-          ) : null
-        }
-      />
+      <div className="lb-video-connected-head__tools">
+        {onFlipCamera ? (
+          <button
+            type="button"
+            className={`lb-video-connected-flip${flipPickerOpen ? ' is-open' : ''}`}
+            data-no-drag
+            onClick={onFlipCamera}
+            aria-label={flipLabel}
+            title={flipLabel}
+            aria-expanded={flipPickerOpen}
+            aria-haspopup={flipPickerOpen === undefined ? undefined : 'listbox'}
+          >
+            <SwitchCamera size={18} aria-hidden />
+          </button>
+        ) : null}
+        <CallWinBar
+          showLogo={false}
+          onMinimize={onMinimize}
+          onMaximize={onMaximize}
+          maximized={maximized}
+        />
+      </div>
     </header>
   );
 }

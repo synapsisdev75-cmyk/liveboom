@@ -1,5 +1,5 @@
 const { FieldValue } = require('firebase-admin/firestore');
-const { getAdminDb } = require('./firestoreAdmin');
+const { getAdminDb, hasAdminCredentials } = require('./firestoreAdmin');
 
 /** Alineado con apps/web/src/lib/callAvailability.ts */
 const STALE_MS = 8 * 60 * 1000;
@@ -29,11 +29,22 @@ function clearPayload(now) {
   };
 }
 
+function skipBusyWithoutAdmin(action) {
+  if (hasAdminCredentials()) return false;
+  console.warn(
+    `[callBusy] sin FIREBASE_SERVICE_ACCOUNT: se omite ${action} (solo desarrollo local).`,
+  );
+  return true;
+}
+
 /**
  * Reserva atómica de ocupación para caller y receiver.
  * Solo una llamada puede marcar a un usuario BUSY a la vez.
  */
 async function claimUsersBusy({ callerId, receiverId, callId, chatId }) {
+  if (skipBusyWithoutAdmin('claimUsersBusy')) {
+    return { ok: true, skipped: true };
+  }
   const db = getAdminDb();
   const a = String(callerId || '').trim();
   const b = String(receiverId || '').trim();
@@ -78,8 +89,13 @@ async function claimUsersBusy({ callerId, receiverId, callId, chatId }) {
 }
 
 async function refreshCallBusy(uid, callId) {
+  if (skipBusyWithoutAdmin('refreshCallBusy')) {
+    return { ok: true, skipped: true };
+  }
   const db = getAdminDb();
-  const ref = presenceRef(db, uid);
+  const id = String(uid || '').trim();
+  if (!id) return { ok: false };
+  const ref = presenceRef(db, id);
   const snap = await ref.get();
   const data = snap.data() || {};
   if (data.callStatus !== 'busy') return { ok: true };
@@ -89,29 +105,32 @@ async function refreshCallBusy(uid, callId) {
 }
 
 async function releaseCallById(uid, callId) {
+  if (skipBusyWithoutAdmin('releaseCallById')) {
+    return { ok: true, skipped: true };
+  }
   const db = getAdminDb();
-  const meRef = presenceRef(db, uid);
+  const id = String(uid || '').trim();
+  if (!id) return { ok: false };
+  const ref = presenceRef(db, id);
   return db.runTransaction(async (tx) => {
-    const meSnap = await tx.get(meRef);
-    const data = meSnap.data() || {};
+    const snap = await tx.get(ref);
+    const data = snap.data() || {};
     if (data.callStatus !== 'busy') return { ok: true };
     if (callId && data.callId && String(data.callId) !== String(callId)) {
       return { ok: true, skipped: true };
     }
     const peerUid = data.callPeerUid ? String(data.callPeerUid) : '';
-    let peerRef = null;
-    let peerSnap = null;
-    if (peerUid && peerUid !== uid) {
-      peerRef = presenceRef(db, peerUid);
-      peerSnap = await tx.get(peerRef);
-    }
     const now = Date.now();
-    const clear = clearPayload(now);
-    tx.set(meRef, clear, { merge: true });
-    if (peerRef && peerSnap) {
-      const pd = peerSnap.data() || {};
-      if (pd.callStatus === 'busy' && (!pd.callId || String(pd.callId) === String(callId))) {
-        tx.set(peerRef, clear, { merge: true });
+    tx.set(ref, clearPayload(now), { merge: true });
+    if (peerUid) {
+      const peerRef = presenceRef(db, peerUid);
+      const peerSnap = await tx.get(peerRef);
+      const peerData = peerSnap.data() || {};
+      if (
+        peerData.callStatus === 'busy' &&
+        (!callId || !peerData.callId || String(peerData.callId) === String(callId))
+      ) {
+        tx.set(peerRef, clearPayload(now), { merge: true });
       }
     }
     return { ok: true };
@@ -119,7 +138,6 @@ async function releaseCallById(uid, callId) {
 }
 
 module.exports = {
-  STALE_MS,
   claimUsersBusy,
   refreshCallBusy,
   releaseCallById,

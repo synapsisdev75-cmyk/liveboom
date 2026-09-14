@@ -15,6 +15,8 @@ type Props = {
   battleStatus: BattleSkinStatus;
   host1Score: number;
   host2Score: number;
+  /** Si true, host1/host2 son HP 0–100 (barras absolutas). */
+  hpMode?: boolean;
   portrait?: boolean;
   multiplierHost1?: number;
   multiplierHost2?: number;
@@ -32,6 +34,7 @@ export function BattleAnimatedSkin({
   battleStatus,
   host1Score,
   host2Score,
+  hpMode = false,
   portrait = false,
   multiplierHost1 = 1,
   multiplierHost2 = 1,
@@ -110,10 +113,19 @@ export function BattleAnimatedSkin({
 
   if (battleStatus === 'idle') return null;
 
-  const band = battleEnergyBand(host1Score, host2Score);
+  const band = battleEnergyBand(
+    hpMode ? Math.max(0, 100 - host1Score) : host1Score,
+    hpMode ? Math.max(0, 100 - host2Score) : host2Score,
+  );
   const total = Math.max(0, host1Score) + Math.max(0, host2Score);
-  const pctA = total <= 0 ? 50 : (Math.max(0, host1Score) / total) * 100;
-  const pctB = 100 - pctA;
+  const pctA = hpMode
+    ? Math.min(100, Math.max(0, host1Score))
+    : total <= 0
+      ? 50
+      : (Math.max(0, host1Score) / total) * 100;
+  const pctB = hpMode
+    ? Math.min(100, Math.max(0, host2Score))
+    : 100 - pctA;
   const showVideo = !lite && !reducedMotion && !failed && battleStatus !== 'countdown';
   const statusClass =
     battleStatus === 'countdown'
@@ -153,9 +165,22 @@ export function BattleAnimatedSkin({
       <div className="lb-battle-skin__frame lb-battle-skin__frame--a" />
       <div className="lb-battle-skin__frame lb-battle-skin__frame--b" />
       <div className="lb-battle-skin__vs" />
-      <div className="lb-battle-skin__meter">
-        <span className="lb-battle-skin__meter-a" style={{ width: `${pctA}%` }} />
-        <span className="lb-battle-skin__meter-b" style={{ width: `${pctB}%` }} />
+      <div className={`lb-battle-skin__meter${hpMode ? ' is-hp' : ''}`}>
+        {hpMode ? (
+          <>
+            <div className="lb-battle-skin__meter-half">
+              <span className="lb-battle-skin__meter-a" style={{ width: `${pctA}%` }} />
+            </div>
+            <div className="lb-battle-skin__meter-half is-b">
+              <span className="lb-battle-skin__meter-b" style={{ width: `${pctB}%` }} />
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="lb-battle-skin__meter-a" style={{ width: `${pctA}%` }} />
+            <span className="lb-battle-skin__meter-b" style={{ width: `${pctB}%` }} />
+          </>
+        )}
       </div>
     </div>
   );

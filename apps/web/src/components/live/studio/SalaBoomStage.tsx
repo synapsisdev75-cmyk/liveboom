@@ -232,8 +232,12 @@ function Tile({
           {index + 1}
         </span>
       )}
+      {/* Indicador de habla: oculto en UI (PC/móvil); lógica speaking se mantiene. */}
       {speaking && !(isSelf && !slot.isHost) ? (
-        <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded bg-cyan-500 text-zinc-950">
+        <span
+          className="pointer-events-none absolute right-1 top-1 hidden h-5 w-5 place-items-center rounded bg-cyan-500 text-zinc-950"
+          aria-hidden
+        >
           <AudioLines size={11} strokeWidth={2.5} />
         </span>
       ) : null}
