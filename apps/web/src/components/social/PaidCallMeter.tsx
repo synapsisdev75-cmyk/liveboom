@@ -11,7 +11,7 @@ import {
   normalizePlatformCallType,
   platformCallTypeForMedia,
 } from '../../lib/callPricing';
-import { listenConversations } from '../../lib/socialFirestore';
+import { listenChatCall, listenConversations } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
 import { VideoCallLowBalance, VideoCallNoBalance } from './VideoCallPanels';
@@ -86,6 +86,32 @@ export function PaidCallMeter() {
       });
     });
   }, [profile?.firebaseUid, chatId, setCallBilling]);
+
+  // Fuente directa del chat: el receptor ve spentBlasts sin depender solo del listado de conversaciones.
+  useEffect(() => {
+    if (!chatId) return;
+    return listenChatCall(chatId, (call) => {
+      if (!call) return;
+      const type = normalizePlatformCallType(
+        call.rateSnapshot?.callType || call.billingCallType || (call.video ? 'video_720' : 'voice'),
+      );
+      const rateBlasts = call.rateSnapshot?.rateBlasts || blastPerMinute(type);
+      setCallType(type);
+      setRate(rateBlasts);
+      setPayer(call.payerUid || call.fromUid || null);
+      setCreatorId(call.toUid || call.receiverId || null);
+      setCallBilling({
+        rateBlasts,
+        spentBlasts: call.spentBlasts || call.blastAlreadyCharged || 0,
+        blocksCharged: call.blocksCharged || 0,
+        giftName: call.rateSnapshot?.giftName || '',
+        payerUid: call.payerUid || call.fromUid || null,
+        callType: type,
+        creatorValueCop: Math.max(0, Math.floor(Number(call.creatorValueCop) || 0)),
+        connectedSeconds: Math.max(0, Math.floor(Number(call.lastConnectedSeconds) || 0)),
+      });
+    });
+  }, [chatId, setCallBilling]);
 
   useEffect(() => {
     if (status !== 'active') {

@@ -236,7 +236,6 @@ export function VideoCallEnded({
 }) {
   const paid = summary.rateBlasts > 0;
   const title = summary.video === false ? 'Llamada finalizada' : 'Videollamada finalizada';
-  const blastLabel = summary.received ? 'Blast ganados' : 'Blast utilizados';
   return (
     <div className="lb-video-sheet-backdrop" role="dialog" aria-modal="true">
       <article className="lb-video-sheet">
@@ -257,7 +256,7 @@ export function VideoCallEnded({
                 <dd>{summary.rateBlasts} Blast/min</dd>
               </div>
               <div>
-                <dt>{blastLabel}</dt>
+                <dt>{summary.received ? 'Blast ganados en esta llamada' : 'Blast utilizados'}</dt>
                 <dd>{Math.max(0, Math.floor(Number(summary.totalBlasts) || 0))}</dd>
               </div>
               {summary.received && (summary.creatorValueCop || 0) > 0 ? (

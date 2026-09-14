@@ -778,6 +778,26 @@ async function stopBilling(input) {
     endedAtMs: Date.now(),
   });
 
+  if (session.chatId) {
+    try {
+      const { getAdminDb: gdb } = require('./firestoreAdmin');
+      const { FieldValue: FV } = require('firebase-admin/firestore');
+      await gdb()
+        .collection('chats')
+        .doc(String(session.chatId))
+        .update({
+          'call.spentBlasts': Math.max(0, Math.floor(Number(session.blastAlreadyCharged) || 0)),
+          'call.blastAlreadyCharged': Math.max(0, Math.floor(Number(session.blastAlreadyCharged) || 0)),
+          'call.creatorValueCop': Math.max(0, Math.floor(Number(session.creatorValueCop) || 0)),
+          'call.lastConnectedSeconds': Math.max(0, Math.floor(Number(session.lastConnectedSeconds) || 0)),
+          'call.billingCallType': normalizeCallType(session.callType),
+          updatedAt: FV.serverTimestamp(),
+        });
+    } catch {
+      /* chat may not exist */
+    }
+  }
+
   const bal = await readCallerBalances(session.callerId);
   return {
     ...publicSession(session, bal),
