@@ -5,7 +5,6 @@ import {
   packageCopLabel,
   type CoinPackageId,
 } from '../../lib/coinPackages';
-import { setFirestoreCoins } from '../../lib/profileFirestore';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
 import { useAuthStore } from '../../store/authStore';
 import { PaymentMethodsStrip } from './PaymentMethodsStrip';
@@ -34,15 +33,29 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  function applyTopup(paid: { coinsBalance?: number; coins?: number }) {
+  function applyTopup(paid: {
+    coinsBalance?: number;
+    coins?: number;
+    purchasedBlastBalance?: number;
+    earnedBlastBalance?: number;
+  }) {
     const store = useAuthStore.getState();
+    if (paid.purchasedBlastBalance != null || paid.earnedBlastBalance != null) {
+      store.setBlastBalances({
+        purchasedBlastBalance: Number(paid.purchasedBlastBalance) || 0,
+        earnedBlastBalance: Number(paid.earnedBlastBalance) || 0,
+        coinsBalance: Number(paid.coinsBalance) || 0,
+      });
+      return store.profile?.coinsBalance ?? 0;
+    }
     const fromApi = Number(paid.coinsBalance);
     if (!Number.isFinite(fromApi)) return store.profile?.coinsBalance ?? 0;
-    store.setCoins(fromApi);
-    const uid = store.profile?.firebaseUid;
-    if (uid) {
-      void setFirestoreCoins(uid, fromApi).catch(() => undefined);
-    }
+    const earned = Math.max(0, Math.floor(Number(store.profile?.earnedBlastBalance) || 0));
+    store.setBlastBalances({
+      purchasedBlastBalance: Math.max(0, fromApi - earned),
+      earnedBlastBalance: earned,
+      coinsBalance: fromApi,
+    });
     return fromApi;
   }
 

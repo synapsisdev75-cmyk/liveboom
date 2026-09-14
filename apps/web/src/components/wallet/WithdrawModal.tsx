@@ -87,7 +87,14 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
         </div>
 
         <p className="mt-3 text-xs text-zinc-500">
-          Saldo disponible: {balance.toLocaleString('es-CO')} blast · Mínimo {MIN_WITHDRAW_COINS} blast
+          Saldo total para retirar: {balance.toLocaleString('es-CO')} blast · Mínimo{' '}
+          {MIN_WITHDRAW_COINS} blast
+          {(profile?.purchasedBlastBalance != null || profile?.earnedBlastBalance != null) && (
+            <span className="mt-1 block text-xs text-zinc-500">
+              Comprados {Math.max(0, Math.floor(Number(profile?.purchasedBlastBalance) || 0)).toLocaleString('es-CO')} ·
+              Ganados {Math.max(0, Math.floor(Number(profile?.earnedBlastBalance) || 0)).toLocaleString('es-CO')}
+            </span>
+          )}
           {initialCoins && initialCoins > 0
             ? ` · Generado en este live: ${initialCoins.toLocaleString('es-CO')}`
             : ''}

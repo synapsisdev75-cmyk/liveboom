@@ -19,6 +19,7 @@ import {
   type CoinPackageId,
 } from '../lib/coinPackages';
 import { api } from '../lib/api';
+import { normalizeBlastBalances } from '../lib/blastBalances';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
@@ -133,9 +134,16 @@ export function WalletView() {
     };
   }, [profile?.firebaseUid]);
 
-  const balance = profile?.coinsBalance ?? 0;
-  const purchased = profile?.purchasedBlastBalance ?? balance;
-  const earned = profile?.earnedBlastBalance ?? 0;
+  const bal = normalizeBlastBalances({
+    coinsBalance: profile?.coinsBalance,
+    purchasedBlastBalance: profile?.purchasedBlastBalance,
+    earnedBlastBalance: profile?.earnedBlastBalance,
+    earnedBlastSpent: profile?.earnedBlastSpent,
+    earnedBlastWithdrawn: profile?.earnedBlastWithdrawn,
+  });
+  const purchased = bal.purchasedBlastBalance;
+  const earned = bal.earnedBlastBalance;
+  const balance = bal.totalBlastBalance;
   const balanceCop = coinsToCop(balance);
 
   function openBuy(packageId?: CoinPackageId) {
@@ -199,9 +207,15 @@ export function WalletView() {
                   blast
                 </span>
               </p>
-              <p className="mt-1.5 text-xs text-zinc-300 sm:text-sm">
-                Comprados {purchased.toLocaleString('es-CO')} · Ganados{' '}
-                {earned.toLocaleString('es-CO')} · Total {balance.toLocaleString('es-CO')}
+              <p className="mt-1.5 text-xs leading-relaxed text-zinc-300 sm:text-sm">
+                <span className="text-zinc-200">Comprados</span> {purchased.toLocaleString('es-CO')}
+                <span className="text-zinc-500"> (recargas)</span>
+                {' · '}
+                <span className="text-zinc-200">Ganados</span> {earned.toLocaleString('es-CO')}
+                <span className="text-zinc-500"> (regalos y llamadas)</span>
+                {' · '}
+                <span className="text-zinc-200">Total</span> {balance.toLocaleString('es-CO')}
+                <span className="text-zinc-500"> (para retirar)</span>
               </p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-zinc-200">
                 ≈ {formatCop(balanceCop)}

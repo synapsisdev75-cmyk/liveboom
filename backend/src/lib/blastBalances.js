@@ -21,12 +21,17 @@ function normalizeBlastBalances(data) {
   const earnedWithdrawn = floorNonNeg(raw.earnedBlastWithdrawn);
 
   if (!hasPurchased && !hasEarned) {
+    // Legado: solo coinsBalance → se trata como comprados hasta que existan campos duales.
     purchased = coins;
     earned = 0;
   } else if (!hasPurchased && hasEarned) {
     purchased = Math.max(0, coins - earned);
   } else if (hasPurchased && !hasEarned) {
     earned = Math.max(0, coins - purchased);
+  } else if (purchased + earned === 0 && coins > 0) {
+    // Campos duales en 0 pero hay total: no borrar el saldo; asignar a comprados.
+    purchased = coins;
+    earned = 0;
   }
 
   const total = purchased + earned;
