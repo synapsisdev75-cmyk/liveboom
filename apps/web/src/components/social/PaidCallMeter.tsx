@@ -3,6 +3,7 @@ import { openRechargeCoins } from '../../lib/giftsFirestore';
 import {
   startCallBilling,
   syncCallBilling,
+  type CallBillingSession,
 } from '../../lib/callBillingApi';
 import {
   blastPerMinute,
@@ -18,10 +19,12 @@ import { VideoCallLowBalance, VideoCallNoBalance } from './VideoCallPanels';
 /**
  * Economía de llamada: el frontend solo dispara sync/finalización.
  * El backend calcula duración, tarifa, delta e idempotencia.
+ * Blast ganados no se gastan sin confirmación de sesión.
  */
 export function PaidCallMeter() {
   const profile = useAuthStore((s) => s.profile);
   const setCoins = useAuthStore((s) => s.setCoins);
+  const setBlastBalances = useAuthStore((s) => s.setBlastBalances);
   const status = useCallStore((s) => s.status);
   const chatId = useCallStore((s) => s.chatId);
   const callId = useCallStore((s) => s.callId);
@@ -39,9 +42,27 @@ export function PaidCallMeter() {
   const [grace, setGrace] = useState(false);
   const [graceLeft, setGraceLeft] = useState(10);
   const [creatorCop, setCreatorCop] = useState(0);
+  const [earnedPrompt, setEarnedPrompt] = useState(false);
   const syncing = useRef(false);
   const started = useRef(false);
   const exhausted = useRef(false);
+  const allowEarnedRef = useRef(false);
+  const pauseForEarnedRef = useRef(false);
+
+  function applyCallerBalances(session: CallBillingSession) {
+    if (
+      session.purchasedBlastBalance != null ||
+      session.earnedBlastBalance != null
+    ) {
+      setBlastBalances({
+        purchasedBlastBalance: session.purchasedBlastBalance ?? 0,
+        earnedBlastBalance: session.earnedBlastBalance ?? 0,
+        coinsBalance: session.callerBalance,
+      });
+      return;
+    }
+    if (session.callerBalance >= 0) setCoins(session.callerBalance);
+  }
 
   useEffect(() => {
     if (!profile?.firebaseUid || !chatId) return;
@@ -74,8 +95,11 @@ export function PaidCallMeter() {
     if (status !== 'active') {
       started.current = false;
       exhausted.current = false;
+      allowEarnedRef.current = false;
+      pauseForEarnedRef.current = false;
       setGrace(false);
       setLow(false);
+      setEarnedPrompt(false);
     }
   }, [status]);
 
@@ -115,9 +139,10 @@ export function PaidCallMeter() {
         receiverId: activeCreatorId,
         video: Boolean(video),
         callType: activeType,
+        allowEarnedBlastForCall: allowEarnedRef.current,
       });
       started.current = true;
-      if (session.callerBalance >= 0) setCoins(session.callerBalance);
+      applyCallerBalances(session);
       setSpent(session.blastAlreadyCharged || 0);
       setCallBilling({
         rateBlasts: session.rateBlasts,
@@ -129,19 +154,25 @@ export function PaidCallMeter() {
         creatorValueCop: session.creatorValueCop || 0,
         connectedSeconds: session.connectedSeconds || 0,
       });
+      if (session.needsEarnedAuth) {
+        pauseForEarnedRef.current = true;
+        setEarnedPrompt(true);
+      }
     }
 
     async function tick() {
-      if (syncing.current || exhausted.current) return;
+      if (syncing.current || exhausted.current || pauseForEarnedRef.current) return;
       syncing.current = true;
       try {
         await ensureStarted();
+        if (pauseForEarnedRef.current) return;
         const seconds = connectedSecondsNow();
         const result = await syncCallBilling({
           callId: activeCallId,
           connectedSeconds: seconds,
+          allowEarnedBlastForCall: allowEarnedRef.current,
         });
-        if (result.callerBalance >= 0) setCoins(result.callerBalance);
+        applyCallerBalances(result);
         setSpent(result.blastAlreadyCharged || 0);
         setCreatorCop(result.creatorValueCop || 0);
         setCallBilling({
@@ -159,6 +190,12 @@ export function PaidCallMeter() {
           estimateRemainingSeconds(result.callerBalance, result.callType);
         if (Number.isFinite(rem) && rem <= 120 && rem > 0) setLow(true);
         else setLow(false);
+
+        if (result.needsEarnedAuth) {
+          pauseForEarnedRef.current = true;
+          setEarnedPrompt(true);
+          return;
+        }
 
         if (result.shouldEnd || result.insufficient || result.exhausted) {
           exhausted.current = true;
@@ -209,15 +246,89 @@ export function PaidCallMeter() {
     callType,
     hangup,
     setCoins,
+    setBlastBalances,
     startedAt,
     video,
     setCallBilling,
     peer?.uid,
   ]);
 
+  async function confirmUseEarned() {
+    allowEarnedRef.current = true;
+    pauseForEarnedRef.current = false;
+    setEarnedPrompt(false);
+    if (!callId || !startedAt) return;
+    const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    try {
+      const result = await syncCallBilling({
+        callId: String(callId),
+        connectedSeconds: seconds,
+        allowEarnedBlastForCall: true,
+      });
+      applyCallerBalances(result);
+      setSpent(result.blastAlreadyCharged || 0);
+      setCreatorCop(result.creatorValueCop || 0);
+      if (result.shouldEnd || result.insufficient || result.exhausted) {
+        exhausted.current = true;
+        setGrace(true);
+        window.setTimeout(() => {
+          void hangup();
+        }, 1_200);
+      }
+    } catch {
+      /* el siguiente tick reintenta */
+    }
+  }
+
+  function declineUseEarned() {
+    pauseForEarnedRef.current = false;
+    setEarnedPrompt(false);
+    exhausted.current = true;
+    setGrace(true);
+    window.setTimeout(() => {
+      void hangup();
+    }, 1_200);
+  }
+
   if (status !== 'active' || rate <= 0) return null;
   const iAmPayer = profile?.firebaseUid === payer;
   const balance = profile?.coinsBalance ?? 0;
+  const purchased = profile?.purchasedBlastBalance ?? balance;
+  const earned = profile?.earnedBlastBalance ?? 0;
+
+  const earnedGate = earnedPrompt && iAmPayer ? (
+    <div className="lb-call-earned-auth fixed inset-x-3 bottom-[max(5.5rem,calc(var(--lb-safe-bottom)+4.5rem))] z-[80] mx-auto max-w-md rounded-2xl border border-amber-400/40 bg-black/90 p-4 text-sm text-white shadow-xl backdrop-blur-md sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2">
+      <p className="font-semibold text-amber-200">¿Usar Blast ganados?</p>
+      <p className="mt-1.5 text-zinc-300">
+        Se agotaron los comprados. Quedan {earned.toLocaleString('es-CO')} Blast ganados.
+        Confirma para seguir la llamada con ellos (solo esta sesión).
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-amber-400 px-4 text-sm font-bold text-black"
+          onClick={() => void confirmUseEarned()}
+        >
+          Usar ganados
+        </button>
+        <button
+          type="button"
+          className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full border border-white/20 px-4 text-sm font-semibold text-white"
+          onClick={declineUseEarned}
+        >
+          Colgar
+        </button>
+        <button
+          type="button"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-cyan-400/40 px-4 text-sm font-semibold text-cyan-300"
+          onClick={() => openRechargeCoins()}
+        >
+          Recargar Blast
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   if (video) {
     return (
       <>
@@ -225,12 +336,16 @@ export function PaidCallMeter() {
           <span>
             Saldo: 🔥 {balance.toLocaleString('es-CO')} Blast · {rate}/min
           </span>
+          <span className="opacity-90">
+            Comprados {purchased.toLocaleString('es-CO')} · Ganados {earned.toLocaleString('es-CO')}
+          </span>
           <span>
             {iAmPayer ? 'Usados' : 'Generados'}: {spent} Blast
             {!iAmPayer && creatorCop > 0 ? ` · $${creatorCop.toLocaleString('es-CO')} COP` : ''}
           </span>
         </div>
-        {low && !grace && iAmPayer ? (
+        {earnedGate}
+        {low && !grace && !earnedPrompt && iAmPayer ? (
           <VideoCallLowBalance
             balance={balance}
             rate={rate}
@@ -243,27 +358,31 @@ export function PaidCallMeter() {
     );
   }
   return (
-    <p className="lb-call-bill">
-      Saldo: 🔥 {balance.toLocaleString('es-CO')} Blast · {rate}/min
-      {iAmPayer ? ` · Usados ${spent}` : ` · Generados ${spent}`}
-      {low && iAmPayer ? ' · Te quedan aproximadamente 2 min.' : ''}
-      {low && iAmPayer ? (
-        <>
-          {' '}
-          <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
-            Recargar
-          </button>
-        </>
-      ) : null}
-      {grace && iAmPayer ? (
-        <>
-          {' '}
-          Tus Blast se agotaron.{' '}
-          <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
-            Recargar Blast
-          </button>
-        </>
-      ) : null}
-    </p>
+    <>
+      <p className="lb-call-bill">
+        Saldo: 🔥 {balance.toLocaleString('es-CO')} Blast · {rate}/min
+        {` · C ${purchased.toLocaleString('es-CO')} / G ${earned.toLocaleString('es-CO')}`}
+        {iAmPayer ? ` · Usados ${spent}` : ` · Generados ${spent}`}
+        {low && iAmPayer && !earnedPrompt ? ' · Te quedan aproximadamente 2 min.' : ''}
+        {low && iAmPayer && !earnedPrompt ? (
+          <>
+            {' '}
+            <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
+              Recargar
+            </button>
+          </>
+        ) : null}
+        {grace && iAmPayer ? (
+          <>
+            {' '}
+            Tus Blast se agotaron.{' '}
+            <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
+              Recargar Blast
+            </button>
+          </>
+        ) : null}
+      </p>
+      {earnedGate}
+    </>
   );
 }

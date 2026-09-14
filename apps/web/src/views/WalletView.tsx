@@ -19,7 +19,6 @@ import {
   type CoinPackageId,
 } from '../lib/coinPackages';
 import { api } from '../lib/api';
-import { setFirestoreCoins } from '../lib/profileFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
@@ -91,18 +90,30 @@ export function WalletView() {
     let cancelled = false;
     void (async () => {
       try {
-        const paid = await api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-redirect', {
+        const paid = await api<{
+          coinsBalance: number;
+          coins?: number;
+          purchasedBlastBalance?: number;
+          earnedBlastBalance?: number;
+        }>('/api/payments/complete-redirect', {
           method: 'POST',
           body: JSON.stringify({ transactionId }),
         });
         if (cancelled) return;
         const store = useAuthStore.getState();
-        const fromApi = Number(paid.coinsBalance);
-        if (Number.isFinite(fromApi)) {
-          store.setCoins(fromApi);
-          const uid = store.profile?.firebaseUid;
-          if (uid) {
-            void setFirestoreCoins(uid, fromApi).catch(() => undefined);
+        if (
+          paid.purchasedBlastBalance != null ||
+          paid.earnedBlastBalance != null
+        ) {
+          store.setBlastBalances({
+            purchasedBlastBalance: Number(paid.purchasedBlastBalance) || 0,
+            earnedBlastBalance: Number(paid.earnedBlastBalance) || 0,
+            coinsBalance: Number(paid.coinsBalance) || 0,
+          });
+        } else {
+          const fromApi = Number(paid.coinsBalance);
+          if (Number.isFinite(fromApi)) {
+            store.setCoins(fromApi);
           }
         }
         await store.syncProfile();
@@ -123,6 +134,8 @@ export function WalletView() {
   }, [profile?.firebaseUid]);
 
   const balance = profile?.coinsBalance ?? 0;
+  const purchased = profile?.purchasedBlastBalance ?? balance;
+  const earned = profile?.earnedBlastBalance ?? 0;
   const balanceCop = coinsToCop(balance);
 
   function openBuy(packageId?: CoinPackageId) {
@@ -185,6 +198,10 @@ export function WalletView() {
                 <span className="text-lg font-semibold text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)] sm:text-xl">
                   blast
                 </span>
+              </p>
+              <p className="mt-1.5 text-xs text-zinc-300 sm:text-sm">
+                Comprados {purchased.toLocaleString('es-CO')} · Ganados{' '}
+                {earned.toLocaleString('es-CO')} · Total {balance.toLocaleString('es-CO')}
               </p>
               <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-zinc-200">
                 ≈ {formatCop(balanceCop)}

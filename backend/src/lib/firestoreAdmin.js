@@ -130,13 +130,16 @@ async function completePaymentOrder(reference, uid, options = {}) {
     const userSnap = await tx.get(userRef);
 
     if (order.status === 'completed') {
-      const current = userSnap.exists ? Number(userSnap.data()?.coinsBalance ?? 0) : 0;
+      const { normalizeBlastBalances } = require('./blastBalances');
+      const bal = normalizeBlastBalances(userSnap.exists ? userSnap.data() : {});
       return {
         ok: true,
         duplicate: true,
         uid: orderUid,
         coins: Number(order.coins) || 0,
-        coinsBalance: current,
+        coinsBalance: bal.coinsBalance,
+        purchasedBlastBalance: bal.purchasedBlastBalance,
+        earnedBlastBalance: bal.earnedBlastBalance,
       };
     }
 
@@ -146,18 +149,19 @@ async function completePaymentOrder(reference, uid, options = {}) {
       return { ok: false, error: 'amount_mismatch' };
     }
 
-    const current = userSnap.exists ? Number(userSnap.data()?.coinsBalance ?? 0) : 0;
+    const { normalizeBlastBalances, applyCreditPurchased, firestoreBalancePatch } = require('./blastBalances');
+    const currentBal = normalizeBlastBalances(userSnap.exists ? userSnap.data() : {});
     const rawCoins = Math.max(0, Math.floor(Number(order.coins) || 0));
     const { blastForPackage } = require('./coinPackages');
     const coins = order.packageId ? blastForPackage(order.packageId, rawCoins) : rawCoins;
     if (!coins || coins > 25_000) {
       return { ok: false, error: 'coins_mismatch' };
     }
-    const next = current + coins;
+    const nextBal = applyCreditPurchased(currentBal, coins);
 
     if (userSnap.exists) {
       tx.update(userRef, {
-        coinsBalance: next,
+        ...firestoreBalancePatch(nextBal),
         updatedAt: FieldValue.serverTimestamp(),
       });
     } else {
@@ -165,7 +169,7 @@ async function completePaymentOrder(reference, uid, options = {}) {
         userRef,
         {
           firebaseUid: orderUid,
-          coinsBalance: next,
+          ...firestoreBalancePatch(nextBal),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true },
@@ -184,7 +188,9 @@ async function completePaymentOrder(reference, uid, options = {}) {
       duplicate: false,
       uid: orderUid,
       coins,
-      coinsBalance: next,
+      coinsBalance: nextBal.coinsBalance,
+      purchasedBlastBalance: nextBal.purchasedBlastBalance,
+      earnedBlastBalance: nextBal.earnedBlastBalance,
     };
   });
 }
@@ -195,6 +201,13 @@ async function readUserCoinsBalance(uid) {
   return snap.exists ? Number(snap.data()?.coinsBalance ?? 0) : 0;
 }
 
+async function readUserBlastBalances(uid) {
+  const { normalizeBlastBalances } = require('./blastBalances');
+  const db = getAdminDb();
+  const snap = await db.collection('users').doc(String(uid)).get();
+  return normalizeBlastBalances(snap.exists ? snap.data() : {});
+}
+
 module.exports = {
   firestoreConfigured,
   hasAdminCredentials,
@@ -202,6 +215,7 @@ module.exports = {
   readPaymentOrder,
   findPaymentOrderByLinkId,
   readUserCoinsBalance,
+  readUserBlastBalances,
   completePaymentOrder,
   completePaymentOrderByLinkId,
   getAdminDb,

@@ -18,20 +18,30 @@ export type CallBillingSession = {
   status: string;
   exhausted?: boolean;
   callerBalance: number;
+  purchasedBlastBalance?: number;
+  earnedBlastBalance?: number;
   estimatedRemainingSeconds?: number | null;
   isLowBalance?: boolean;
   chargedDelta?: number;
+  chargedPurchased?: number;
+  chargedEarned?: number;
   duplicate?: boolean;
   insufficient?: boolean;
+  needsEarnedAuth?: boolean;
   shouldEnd?: boolean;
   stopped?: boolean;
+  creatorEarnedBlast?: number;
+  allowEarnedBlastForCall?: boolean;
 };
 
 export async function quoteCallBilling(callType: PlatformCallType | string) {
   return api<{
     balance: number;
+    purchasedBlastBalance?: number;
+    earnedBlastBalance?: number;
     rateBlasts: number;
     enoughToStart: boolean;
+    enoughPurchasedToStart?: boolean;
     estimatedRemainingSeconds: number | null;
     estimatedMinutes: number | null;
     callType: string;
@@ -45,6 +55,7 @@ export async function startCallBilling(input: {
   receiverId: string;
   video: boolean;
   callType: PlatformCallType | string;
+  allowEarnedBlastForCall?: boolean;
 }) {
   return api<CallBillingSession>('/api/calls/billing/start', {
     method: 'POST',
@@ -52,7 +63,11 @@ export async function startCallBilling(input: {
   });
 }
 
-export async function syncCallBilling(input: { callId: string; connectedSeconds: number }) {
+export async function syncCallBilling(input: {
+  callId: string;
+  connectedSeconds: number;
+  allowEarnedBlastForCall?: boolean;
+}) {
   return api<CallBillingSession>('/api/calls/billing/sync', {
     method: 'POST',
     body: JSON.stringify(input),

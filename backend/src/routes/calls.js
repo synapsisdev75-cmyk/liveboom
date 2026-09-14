@@ -275,6 +275,7 @@ router.post('/billing/start', requireAuth, async (req, res) => {
       callType,
       quality,
       video,
+      allowEarnedBlastForCall: Boolean(req.body?.allowEarnedBlastForCall),
     });
     res.json(session);
   } catch (error) {
@@ -296,6 +297,7 @@ router.post('/billing/sync', requireAuth, async (req, res) => {
       callId,
       callerId: me,
       connectedSeconds,
+      allowEarnedBlastForCall: Boolean(req.body?.allowEarnedBlastForCall),
     });
     res.json(result);
   } catch (error) {

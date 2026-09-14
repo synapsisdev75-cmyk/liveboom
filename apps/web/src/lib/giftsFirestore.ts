@@ -9,6 +9,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { api, ApiError } from './api';
+import { normalizeBlastBalances } from './blastBalances';
 import { db } from './firebase';
 import { findLiveGift } from './liveboomGifts';
 import { publishLiveGift } from './liveGiftsFirestore';
@@ -47,30 +48,42 @@ async function resolveRecipientUid(
   return user.firebaseUid;
 }
 
-/** Debita coins del remitente (solo su propio doc). */
+/** Debita Blast del remitente: primero comprados, luego ganados. */
 async function debitSenderCoins(senderUid: string, amount: number): Promise<number> {
   const coins = Math.max(1, Math.floor(Number(amount) || 0));
   return runTransaction(db, async (tx) => {
     const ref = doc(db, 'users', senderUid);
     const snap = await tx.get(ref);
-    const current = snap.exists() ? Number(snap.data()?.coinsBalance ?? 0) : 0;
-    if (current < coins) {
+    const bal = normalizeBlastBalances(
+      snap.exists() ? (snap.data() as Record<string, unknown>) : {},
+    );
+    if (bal.coinsBalance < coins) {
       throw new Error('Saldo insuficiente');
     }
-    const next = current - coins;
+    const usePurchased = Math.min(bal.purchasedBlastBalance, coins);
+    const useEarned = coins - usePurchased;
+    const next = normalizeBlastBalances({
+      purchasedBlastBalance: bal.purchasedBlastBalance - usePurchased,
+      earnedBlastBalance: bal.earnedBlastBalance - useEarned,
+      earnedBlastSpent: bal.earnedBlastSpent + useEarned,
+      earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
+    });
     tx.set(
       ref,
       {
-        coinsBalance: next,
+        coinsBalance: next.coinsBalance,
+        purchasedBlastBalance: next.purchasedBlastBalance,
+        earnedBlastBalance: next.earnedBlastBalance,
+        earnedBlastSpent: next.earnedBlastSpent,
         updatedAt: serverTimestamp(),
       },
       { merge: true },
     );
-    return next;
+    return next.coinsBalance;
   });
 }
 
-/** Acredita coins pendientes en la bandeja del receptor. */
+/** Acredita Blast pendientes en la bandeja del receptor (como ganados). */
 export async function processGiftInbox(uid: string): Promise<number> {
   const id = String(uid || '').trim();
   if (!id) return 0;
@@ -84,22 +97,36 @@ export async function processGiftInbox(uid: string): Promise<number> {
   await runTransaction(db, async (tx) => {
     const userRef = doc(db, 'users', id);
     const userSnap = await tx.get(userRef);
-    let balance = userSnap.exists() ? Number(userSnap.data()?.coinsBalance ?? 0) : 0;
+    const bal = normalizeBlastBalances(
+      userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : {},
+    );
+    let purchased = bal.purchasedBlastBalance;
+    let earned = bal.earnedBlastBalance;
+    let earnedSpent = bal.earnedBlastSpent;
+    const earnedWithdrawn = bal.earnedBlastWithdrawn;
 
     for (const item of snap.docs) {
       const data = item.data();
       const coins = Math.floor(Number(data.coins || 0));
       if (coins > 0) {
-        balance += coins;
+        earned += coins;
         credited += coins;
       }
       tx.set(item.ref, { processed: true, processedAtMs: Date.now() }, { merge: true });
     }
 
+    const next = normalizeBlastBalances({
+      purchasedBlastBalance: purchased,
+      earnedBlastBalance: earned,
+      earnedBlastSpent: earnedSpent,
+      earnedBlastWithdrawn: earnedWithdrawn,
+    });
     tx.set(
       userRef,
       {
-        coinsBalance: balance,
+        coinsBalance: next.coinsBalance,
+        purchasedBlastBalance: next.purchasedBlastBalance,
+        earnedBlastBalance: next.earnedBlastBalance,
         updatedAt: serverTimestamp(),
       },
       { merge: true },
@@ -143,15 +170,27 @@ async function sendGiftViaFirestore(
   const senderBalance = await runTransaction(db, async (tx) => {
     const senderRef = doc(db, 'users', input.senderUid);
     const senderSnap = await tx.get(senderRef);
-    const current = senderSnap.exists() ? Number(senderSnap.data()?.coinsBalance ?? 0) : 0;
-    if (current < totalCoins) {
+    const bal = normalizeBlastBalances(
+      senderSnap.exists() ? (senderSnap.data() as Record<string, unknown>) : {},
+    );
+    if (bal.coinsBalance < totalCoins) {
       throw new Error('Saldo insuficiente');
     }
-    const next = current - totalCoins;
+    const usePurchased = Math.min(bal.purchasedBlastBalance, totalCoins);
+    const useEarned = totalCoins - usePurchased;
+    const next = normalizeBlastBalances({
+      purchasedBlastBalance: bal.purchasedBlastBalance - usePurchased,
+      earnedBlastBalance: bal.earnedBlastBalance - useEarned,
+      earnedBlastSpent: bal.earnedBlastSpent + useEarned,
+      earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
+    });
     tx.set(
       senderRef,
       {
-        coinsBalance: next,
+        coinsBalance: next.coinsBalance,
+        purchasedBlastBalance: next.purchasedBlastBalance,
+        earnedBlastBalance: next.earnedBlastBalance,
+        earnedBlastSpent: next.earnedBlastSpent,
         updatedAt: serverTimestamp(),
       },
       { merge: true },
@@ -174,7 +213,7 @@ async function sendGiftViaFirestore(
       createdAtMs: Date.now(),
     });
 
-    return next;
+    return next.coinsBalance;
   });
 
   return { senderBalance, usedFallback: true };

@@ -1,5 +1,12 @@
 const persist = require('./persist');
+const {
+  normalizeBlastBalances,
+  applySpend,
+  applyCreditPurchased,
+  applyCreditEarned,
+} = require('./blastBalances');
 
+/** @type {Map<string, object>} */
 const balances = new Map();
 const pendingOrders = new Map();
 /** @type {Map<string, object[]>} */
@@ -8,7 +15,11 @@ const withdrawalsByUid = new Map();
 function hydrate() {
   const data = persist.load('wallet', { balances: {}, pendingOrders: {}, withdrawals: {} });
   for (const [uid, coins] of Object.entries(data.balances || {})) {
-    balances.set(uid, Number(coins) || 0);
+    if (coins && typeof coins === 'object') {
+      balances.set(uid, normalizeBlastBalances(coins));
+    } else {
+      balances.set(uid, normalizeBlastBalances({ coinsBalance: coins }));
+    }
   }
   for (const [ref, order] of Object.entries(data.pendingOrders || {})) {
     pendingOrders.set(ref, order);
@@ -28,26 +39,77 @@ function flush() {
 
 hydrate();
 
+function getBalances(uid) {
+  const key = String(uid);
+  const cur = balances.get(key);
+  if (!cur) return normalizeBlastBalances({ coinsBalance: 0 });
+  return normalizeBlastBalances(cur);
+}
+
 function getBalance(uid) {
-  return Number(balances.get(String(uid)) || 0);
+  return getBalances(uid).coinsBalance;
+}
+
+function setBalances(uid, next) {
+  const normalized = normalizeBlastBalances(next);
+  balances.set(String(uid), normalized);
+  flush();
+  return normalized;
 }
 
 function setBalance(uid, coins) {
-  const next = Math.max(0, Number(coins) || 0);
-  balances.set(String(uid), next);
-  flush();
-  return next;
+  // Compat: writing a single total treats as purchased (legacy callers / topup floor).
+  const next = normalizeBlastBalances({
+    purchasedBlastBalance: Math.max(0, Number(coins) || 0),
+    earnedBlastBalance: 0,
+  });
+  return setBalances(uid, next).coinsBalance;
+}
+
+function setBalanceFromParts(uid, parts) {
+  return setBalances(uid, parts);
 }
 
 function credit(uid, coins) {
-  return setBalance(uid, getBalance(uid) + Math.max(0, Number(coins) || 0));
+  // Legacy credit → earned (creator gifts/calls). Prefer creditPurchased/creditEarned.
+  const cur = getBalances(uid);
+  return setBalances(uid, applyCreditEarned(cur, coins)).coinsBalance;
+}
+
+function creditPurchased(uid, coins) {
+  const cur = getBalances(uid);
+  return setBalances(uid, applyCreditPurchased(cur, coins));
+}
+
+function creditEarned(uid, coins) {
+  const cur = getBalances(uid);
+  return setBalances(uid, applyCreditEarned(cur, coins));
 }
 
 function debit(uid, coins) {
-  const amount = Math.max(0, Number(coins) || 0);
-  const current = getBalance(uid);
-  if (current < amount) return null;
-  return setBalance(uid, current - amount);
+  const cur = getBalances(uid);
+  const spent = applySpend(cur, coins, true);
+  if (!spent.ok) return null;
+  setBalances(uid, spent.balances);
+  return spent.balances.coinsBalance;
+}
+
+/**
+ * @returns {null | { balances, chargedPurchased, chargedEarned, code?: string }}
+ */
+function debitSplit(uid, coins, allowEarned) {
+  const cur = getBalances(uid);
+  const spent = applySpend(cur, coins, Boolean(allowEarned));
+  if (!spent.ok) {
+    return { ok: false, code: spent.code, balances: spent.balances, chargedPurchased: 0, chargedEarned: 0 };
+  }
+  setBalances(uid, spent.balances);
+  return {
+    ok: true,
+    balances: spent.balances,
+    chargedPurchased: spent.chargedPurchased,
+    chargedEarned: spent.chargedEarned,
+  };
 }
 
 function rememberOrder(order) {
@@ -92,9 +154,15 @@ function addWithdrawal(uid, record) {
 
 module.exports = {
   getBalance,
+  getBalances,
   setBalance,
+  setBalanceFromParts,
+  setBalances,
   credit,
+  creditPurchased,
+  creditEarned,
   debit,
+  debitSplit,
   rememberOrder,
   takeOrder,
   listWithdrawals,

@@ -110,6 +110,10 @@ export type SessionUser = {
   category?: string | null;
   coins: number;
   coinsBalance: number;
+  purchasedBlastBalance?: number;
+  earnedBlastBalance?: number;
+  earnedBlastSpent?: number;
+  earnedBlastWithdrawn?: number;
   levelXp?: number;
   /** Epoch ms del último `updatedAt` de Firestore (concurrencia). */
   profileUpdatedAtMs?: number;
@@ -126,11 +130,19 @@ type PostgresUser = {
   birthDate?: string | null;
   category?: string | null;
   coinsBalance: number;
+  purchasedBlastBalance?: number;
+  earnedBlastBalance?: number;
   createdAt: string;
   updatedAt: string;
 };
 
 export function mapPostgresUser(user: PostgresUser): SessionUser {
+  const purchased = Math.max(
+    0,
+    Math.floor(Number(user.purchasedBlastBalance ?? user.coinsBalance ?? 0)),
+  );
+  const earned = Math.max(0, Math.floor(Number(user.earnedBlastBalance ?? 0)));
+  const total = purchased + earned || Math.max(0, Math.floor(Number(user.coinsBalance ?? 0)));
   return {
     id: user.id,
     firebaseUid: user.firebaseUid,
@@ -141,8 +153,10 @@ export function mapPostgresUser(user: PostgresUser): SessionUser {
     bio: user.bio ?? null,
     birthDate: user.birthDate ?? null,
     category: user.category ?? null,
-    coins: user.coinsBalance,
-    coinsBalance: user.coinsBalance,
+    coins: total,
+    coinsBalance: total,
+    purchasedBlastBalance: purchased,
+    earnedBlastBalance: earned,
   };
 }
 

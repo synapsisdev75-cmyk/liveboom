@@ -19,6 +19,7 @@ import { getFirestore } from 'firebase/firestore';
 import type { SessionUser } from './api';
 import { firebaseApp } from './firebase';
 import { ensureUserStorageFolder } from './storage';
+import { normalizeBlastBalances } from './blastBalances';
 
 const db: Firestore = getFirestore(firebaseApp);
 
@@ -35,6 +36,10 @@ export type PublicFsUser = {
   birthDate: string | null;
   category: string | null;
   coinsBalance: number;
+  purchasedBlastBalance: number;
+  earnedBlastBalance: number;
+  earnedBlastSpent?: number;
+  earnedBlastWithdrawn?: number;
   /** XP efectivo (fijado por admin o orgánico). */
   levelXp: number;
   levelXpOrganic?: number;
@@ -167,6 +172,7 @@ function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
   const avatarUrl =
     typeof avatarRaw === 'string' && avatarRaw.trim() ? avatarRaw.trim() : null;
   const xp = readLevelXpFields(data);
+  const bal = normalizeBlastBalances(data);
   return {
     id,
     firebaseUid: String(data.firebaseUid || id),
@@ -179,7 +185,11 @@ function mapDoc(id: string, data: Record<string, unknown>): PublicFsUser {
     bio: (data.bio as string | null) ?? null,
     birthDate: asIsoDate(data.birthDate),
     category: (data.category as string | null) ?? null,
-    coinsBalance: Number(data.coinsBalance ?? 0),
+    coinsBalance: bal.coinsBalance,
+    purchasedBlastBalance: bal.purchasedBlastBalance,
+    earnedBlastBalance: bal.earnedBlastBalance,
+    earnedBlastSpent: bal.earnedBlastSpent,
+    earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
     levelXp: xp.effective,
     levelXpOrganic: xp.organic,
     levelXpPinned: xp.pinned,
@@ -200,6 +210,10 @@ export function mapFirestoreUser(user: PublicFsUser): SessionUser {
     category: user.category,
     coins: user.coinsBalance,
     coinsBalance: user.coinsBalance,
+    purchasedBlastBalance: user.purchasedBlastBalance,
+    earnedBlastBalance: user.earnedBlastBalance,
+    earnedBlastSpent: user.earnedBlastSpent,
+    earnedBlastWithdrawn: user.earnedBlastWithdrawn,
     levelXp: user.levelXp,
     profileUpdatedAtMs: user.updatedAtMs,
   };
@@ -240,6 +254,23 @@ export async function setFirestoreCoins(uid: string, coins: number) {
   const next = Math.max(0, Math.floor(Number(coins) || 0));
   await updateDoc(doc(db, 'users', id), {
     coinsBalance: next,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Actualiza saldos duales (comprados / ganados) y el total. */
+export async function setFirestoreBlastBalances(
+  uid: string,
+  balances: { purchasedBlastBalance: number; earnedBlastBalance: number },
+) {
+  const id = String(uid || '').trim();
+  if (!id) return;
+  const purchased = Math.max(0, Math.floor(Number(balances.purchasedBlastBalance) || 0));
+  const earned = Math.max(0, Math.floor(Number(balances.earnedBlastBalance) || 0));
+  await updateDoc(doc(db, 'users', id), {
+    purchasedBlastBalance: purchased,
+    earnedBlastBalance: earned,
+    coinsBalance: purchased + earned,
     updatedAt: serverTimestamp(),
   });
 }

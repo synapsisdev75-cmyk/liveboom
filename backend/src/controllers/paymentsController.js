@@ -15,6 +15,7 @@ const {
   takeOrder,
   getBalance,
   setBalance,
+  setBalances,
   listWithdrawals,
   addWithdrawal,
 } = require('../lib/walletMemory');
@@ -40,9 +41,15 @@ function userForOrder(req) {
   return req.dbUser || (req.user ? dbUserFromToken(req.user) : null);
 }
 
-/** Recarga = saldo Firestore (fuente real) + coins del paquete. */
+/** Recarga = saldo Firestore (fuente real) + coins del paquete → comprados. */
 async function creditTopup(uid, coins) {
   const amount = Math.max(0, Math.floor(Number(coins) || 0));
+  const { setBalances, getBalances } = require('../lib/walletMemory');
+  const {
+    normalizeBlastBalances,
+    applyCreditPurchased,
+    firestoreBalancePatch,
+  } = require('../lib/blastBalances');
 
   if (firestoreConfigured()) {
     try {
@@ -50,13 +57,13 @@ async function creditTopup(uid, coins) {
       const { FieldValue } = require('firebase-admin/firestore');
       const db = getAdminDb();
       const userRef = db.collection('users').doc(String(uid));
-      const coinsBalance = await db.runTransaction(async (tx) => {
+      const nextBal = await db.runTransaction(async (tx) => {
         const snap = await tx.get(userRef);
-        const fsCoins = snap.exists ? Number(snap.data()?.coinsBalance ?? 0) : 0;
-        const next = fsCoins + amount;
+        const current = normalizeBlastBalances(snap.exists ? snap.data() : {});
+        const next = applyCreditPurchased(current, amount);
         if (snap.exists) {
           tx.update(userRef, {
-            coinsBalance: next,
+            ...firestoreBalancePatch(next),
             updatedAt: FieldValue.serverTimestamp(),
           });
         } else {
@@ -64,7 +71,7 @@ async function creditTopup(uid, coins) {
             userRef,
             {
               firebaseUid: String(uid),
-              coinsBalance: next,
+              ...firestoreBalancePatch(next),
               updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true },
@@ -72,47 +79,52 @@ async function creditTopup(uid, coins) {
         }
         return next;
       });
-      setBalance(uid, coinsBalance);
+      setBalances(uid, nextBal);
       if (hasDatabase && prisma) {
         try {
           await prisma.user.update({
             where: { firebaseUid: uid },
-            data: { coinsBalance },
+            data: { coinsBalance: nextBal.coinsBalance },
           });
         } catch (error) {
           console.warn('[payments] no se persistió el saldo en Prisma:', error.message);
         }
       }
-      return coinsBalance;
+      return nextBal.coinsBalance;
     } catch (error) {
       console.warn('[payments] firestore creditTopup fallback:', error.message);
     }
   }
 
-  let dbCoins = 0;
-  if (hasDatabase && prisma) {
+  let seed = getBalances(uid);
+  if (seed.coinsBalance === 0 && hasDatabase && prisma) {
     try {
       const user = await prisma.user.findUnique({
         where: { firebaseUid: uid },
         select: { coinsBalance: true },
       });
-      dbCoins = Number(user?.coinsBalance ?? 0);
+      const dbCoins = Number(user?.coinsBalance ?? 0);
+      if (dbCoins > 0) {
+        seed = normalizeBlastBalances({ coinsBalance: dbCoins });
+        setBalances(uid, seed);
+      }
     } catch {
-      dbCoins = 0;
+      /* ignore */
     }
   }
-  const coinsBalance = setBalance(uid, dbCoins + amount);
+  const nextBal = applyCreditPurchased(getBalances(uid), amount);
+  setBalances(uid, nextBal);
   if (hasDatabase && prisma) {
     try {
       await prisma.user.update({
         where: { firebaseUid: uid },
-        data: { coinsBalance },
+        data: { coinsBalance: nextBal.coinsBalance },
       });
     } catch (error) {
       console.warn('[payments] no se persistió el saldo:', error.message);
     }
   }
-  return coinsBalance;
+  return nextBal.coinsBalance;
 }
 
 function buildOrderResponse({ pack, packageId, amountInCop, publicKey }) {
@@ -188,12 +200,25 @@ async function completeRedirect(req, res) {
       }
       if (result?.ok) {
         if (result.uid) {
-          setBalance(result.uid, result.coinsBalance);
+          if (
+            result.purchasedBlastBalance != null ||
+            result.earnedBlastBalance != null
+          ) {
+            setBalances(result.uid, {
+              purchasedBlastBalance: result.purchasedBlastBalance,
+              earnedBlastBalance: result.earnedBlastBalance,
+              coinsBalance: result.coinsBalance,
+            });
+          } else {
+            setBalance(result.uid, result.coinsBalance);
+          }
         }
         res.json({
           reference: reference || paymentLinkId,
           coins: result.coins,
           coinsBalance: result.coinsBalance,
+          purchasedBlastBalance: result.purchasedBlastBalance,
+          earnedBlastBalance: result.earnedBlastBalance,
           duplicate: Boolean(result.duplicate),
         });
         return;
@@ -267,11 +292,24 @@ async function completeWidget(req, res) {
       try {
         const result = await completePaymentOrder(reference, uid);
         if (result.ok) {
-          setBalance(uid, result.coinsBalance);
+          if (
+            result.purchasedBlastBalance != null ||
+            result.earnedBlastBalance != null
+          ) {
+            setBalances(uid, {
+              purchasedBlastBalance: result.purchasedBlastBalance,
+              earnedBlastBalance: result.earnedBlastBalance,
+              coinsBalance: result.coinsBalance,
+            });
+          } else {
+            setBalance(uid, result.coinsBalance);
+          }
           res.json({
             reference,
             coins: result.coins,
             coinsBalance: result.coinsBalance,
+            purchasedBlastBalance: result.purchasedBlastBalance,
+            earnedBlastBalance: result.earnedBlastBalance,
             duplicate: Boolean(result.duplicate),
           });
           return;

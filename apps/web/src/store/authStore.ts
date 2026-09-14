@@ -44,6 +44,11 @@ type AuthState = {
   hydrate: () => () => void;
   syncProfile: () => Promise<void>;
   setCoins: (coins: number) => void;
+  setBlastBalances: (balances: {
+    purchasedBlastBalance: number;
+    earnedBlastBalance: number;
+    coinsBalance?: number;
+  }) => void;
   setProfile: (profile: SessionUser) => void;
   signInEmail: (email: string, password: string) => Promise<void>;
   signUpEmail: (name: string, email: string, password: string, birthYear: number) => Promise<void>;
@@ -194,6 +199,8 @@ function applyRemoteProfile(
       ...prev,
       coins: incoming.coinsBalance,
       coinsBalance: incoming.coinsBalance,
+      purchasedBlastBalance: incoming.purchasedBlastBalance ?? prev.purchasedBlastBalance,
+      earnedBlastBalance: incoming.earnedBlastBalance ?? prev.earnedBlastBalance,
       levelXp: incoming.levelXp ?? prev.levelXp,
     };
   }
@@ -207,6 +214,10 @@ function applyRemoteProfile(
     category: incoming.category,
     coins: incoming.coinsBalance,
     coinsBalance: incoming.coinsBalance,
+    purchasedBlastBalance: incoming.purchasedBlastBalance ?? prev.purchasedBlastBalance,
+    earnedBlastBalance: incoming.earnedBlastBalance ?? prev.earnedBlastBalance,
+    earnedBlastSpent: incoming.earnedBlastSpent ?? prev.earnedBlastSpent,
+    earnedBlastWithdrawn: incoming.earnedBlastWithdrawn ?? prev.earnedBlastWithdrawn,
     levelXp: incoming.levelXp ?? prev.levelXp,
     profileUpdatedAtMs: incoming.profileUpdatedAtMs ?? prev.profileUpdatedAtMs,
   };
@@ -226,6 +237,8 @@ function profileFromFirebase(user: FirebaseUser, pendingBirth?: string | null): 
     category: null,
     coins: 0,
     coinsBalance: 0,
+    purchasedBlastBalance: 0,
+    earnedBlastBalance: 0,
   };
 }
 
@@ -287,7 +300,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setCoins: (coins) => {
     const profile = get().profile;
     if (!profile) return;
-    set({ profile: { ...profile, coins, coinsBalance: coins } });
+    const next = Math.max(0, Math.floor(Number(coins) || 0));
+    set({
+      profile: {
+        ...profile,
+        coins: next,
+        coinsBalance: next,
+      },
+    });
+  },
+
+  setBlastBalances: (balances) => {
+    const profile = get().profile;
+    if (!profile) return;
+    const purchased = Math.max(0, Math.floor(Number(balances.purchasedBlastBalance) || 0));
+    const earned = Math.max(0, Math.floor(Number(balances.earnedBlastBalance) || 0));
+    const total =
+      balances.coinsBalance != null
+        ? Math.max(0, Math.floor(Number(balances.coinsBalance) || 0))
+        : purchased + earned;
+    set({
+      profile: {
+        ...profile,
+        coins: total,
+        coinsBalance: total,
+        purchasedBlastBalance: purchased,
+        earnedBlastBalance: earned,
+      },
+    });
   },
 
   setProfile: (profile) =>

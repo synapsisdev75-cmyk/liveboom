@@ -274,6 +274,8 @@ export function UserProfileView() {
                 birthDate: null,
                 category: null,
                 coinsBalance: 0,
+                purchasedBlastBalance: 0,
+                earnedBlastBalance: 0,
                 levelXp: 0,
               } satisfies PublicFsUser;
           }
@@ -539,7 +541,7 @@ export function UserProfileView() {
   }
 
   return (
-    <div className="lb-page lb-profile-page mx-auto w-full max-w-3xl space-y-4 pb-2">
+    <div className="lb-profile-page w-full max-w-none space-y-3 pb-[max(0.5rem,var(--lb-safe-bottom))]">
       <section
         className="lb-panel lb-profile-hero relative overflow-hidden rounded-3xl p-0"
         data-lb-surface="dark"

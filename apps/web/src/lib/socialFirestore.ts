@@ -535,6 +535,8 @@ function userFromChip(uid: string, chip: Partial<FriendChip>, fallbackUsername: 
     birthDate: null,
     category: null,
     coinsBalance: 0,
+    purchasedBlastBalance: 0,
+    earnedBlastBalance: 0,
     levelXp: 0,
   };
 }

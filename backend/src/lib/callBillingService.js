@@ -1,6 +1,19 @@
 const { randomUUID } = require('crypto');
 const persist = require('./persist');
-const { setBalance, getBalance, debit, credit } = require('./walletMemory');
+const {
+  setBalance,
+  getBalance,
+  getBalances,
+  setBalances,
+  debitSplit,
+  creditEarned,
+} = require('./walletMemory');
+const {
+  normalizeBlastBalances,
+  applySpend,
+  applyCreditEarned,
+  firestoreBalancePatch,
+} = require('./blastBalances');
 const {
   CALL_PRICING,
   CREATOR_VALUE_PER_BLAST,
@@ -64,6 +77,7 @@ function buildSession(input) {
     blastAlreadyCharged: 0,
     lastConnectedSeconds: 0,
     creatorValueCop: 0,
+    allowEarnedBlastForCall: false,
     status: 'pending',
     exhausted: false,
     updatedAtMs: Date.now(),
@@ -105,16 +119,23 @@ async function writeSession(session) {
   return row;
 }
 
-async function readCallerBalance(uid) {
+async function readCallerBalances(uid) {
   if (adminReady()) {
-    const { readUserCoinsBalance } = require('./firestoreAdmin');
-    const fsBal = await readUserCoinsBalance(uid);
-    const mem = getBalance(uid);
-    const bal = Math.max(fsBal, mem);
-    if (bal !== mem) setBalance(uid, bal);
-    return bal;
+    const { readUserBlastBalances } = require('./firestoreAdmin');
+    const fsBal = await readUserBlastBalances(uid);
+    const mem = getBalances(uid);
+    // Prefer the higher total to avoid stale memory under-credit; keep split from Firestore when present.
+    if (fsBal.coinsBalance >= mem.coinsBalance) {
+      setBalances(uid, fsBal);
+      return fsBal;
+    }
+    return mem;
   }
-  return getBalance(uid);
+  return getBalances(uid);
+}
+
+async function readCallerBalance(uid) {
+  return (await readCallerBalances(uid)).coinsBalance;
 }
 
 /**
@@ -131,6 +152,7 @@ async function startBilling(input) {
     throw err;
   }
 
+  const allowEarned = Boolean(input.allowEarnedBlastForCall);
   const existing = await readSession(callId);
   if (existing) {
     if (String(existing.callerId) !== callerId) {
@@ -140,18 +162,17 @@ async function startBilling(input) {
     }
     const next = {
       ...existing,
-      // Reanudación / re-mount: no reinicia cobros ni connectedAt.
       status: existing.status === 'stopped' ? 'stopped' : 'active',
       connectedAtMs: existing.connectedAtMs || Date.now(),
       exhausted: existing.status === 'stopped' ? Boolean(existing.exhausted) : false,
+      allowEarnedBlastForCall: allowEarned || Boolean(existing.allowEarnedBlastForCall),
     };
-    // Si aún no estaba detenida, asegurar active.
     if (existing.status !== 'stopped') {
       next.status = 'active';
       next.exhausted = false;
     }
     await writeSession(next);
-    return publicSession(next, await readCallerBalance(callerId));
+    return publicSession(next, await readCallerBalances(callerId));
   }
 
   const session = buildSession({
@@ -162,8 +183,9 @@ async function startBilling(input) {
   });
   session.status = 'active';
   session.connectedAtMs = Date.now();
+  session.allowEarnedBlastForCall = allowEarned;
   await writeSession(session);
-  return publicSession(session, await readCallerBalance(callerId));
+  return publicSession(session, await readCallerBalances(callerId));
 }
 
 function resolvedConnectedSeconds(session, hintSeconds) {
@@ -178,13 +200,17 @@ function resolvedConnectedSeconds(session, hintSeconds) {
   return Math.max(fromClock, hint, prev);
 }
 
-function publicSession(session, balance) {
+function publicSession(session, balancesOrNumber) {
   const callType = normalizeCallType(session.callType);
   const connectedSeconds = Math.max(0, Math.floor(Number(session.lastConnectedSeconds) || 0));
   const rate = blastPerMinute(callType);
   const blastDue = calculateBlastDue(connectedSeconds, callType);
   const charged = Math.max(0, Math.floor(Number(session.blastAlreadyCharged) || 0));
-  const remainingSeconds = estimateRemainingSeconds(balance, callType);
+  const balances =
+    balancesOrNumber && typeof balancesOrNumber === 'object'
+      ? normalizeBlastBalances(balancesOrNumber)
+      : normalizeBlastBalances({ coinsBalance: balancesOrNumber });
+  const remainingSeconds = estimateRemainingSeconds(balances.coinsBalance, callType);
   return {
     callId: session.callId,
     chatId: session.chatId || '',
@@ -201,7 +227,11 @@ function publicSession(session, balance) {
     graceSeconds: BILLING_GRACE_SECONDS,
     status: session.status || 'pending',
     exhausted: Boolean(session.exhausted),
-    callerBalance: Math.max(0, Math.floor(Number(balance) || 0)),
+    allowEarnedBlastForCall: Boolean(session.allowEarnedBlastForCall),
+    callerBalance: balances.coinsBalance,
+    purchasedBlastBalance: balances.purchasedBlastBalance,
+    earnedBlastBalance: balances.earnedBlastBalance,
+    totalBlastBalance: balances.totalBlastBalance,
     estimatedRemainingSeconds: Number.isFinite(remainingSeconds) ? remainingSeconds : null,
     isLowBalance: Number.isFinite(remainingSeconds) && remainingSeconds > 0 && remainingSeconds <= 120,
     CALL_PRICING,
@@ -211,13 +241,18 @@ function publicSession(session, balance) {
 /**
  * Cobro atómico e idempotente por delta de Blast debidos.
  */
-async function chargeDeltaInternal(session, connectedSeconds) {
+async function chargeDeltaInternal(session, connectedSeconds, allowEarnedOverride) {
   const callType = normalizeCallType(session.callType);
   const due = calculateBlastDue(connectedSeconds, callType);
   const already = Math.max(0, Math.floor(Number(session.blastAlreadyCharged) || 0));
   const delta = Math.max(0, due - already);
+  const allowEarned =
+    allowEarnedOverride != null
+      ? Boolean(allowEarnedOverride)
+      : Boolean(session.allowEarnedBlastForCall);
   const nextSessionBase = {
     ...session,
+    allowEarnedBlastForCall: allowEarned || Boolean(session.allowEarnedBlastForCall),
     lastConnectedSeconds: Math.max(
       Math.max(0, Math.floor(Number(session.lastConnectedSeconds) || 0)),
       connectedSeconds,
@@ -230,7 +265,10 @@ async function chargeDeltaInternal(session, connectedSeconds) {
       chargedDelta: 0,
       duplicate: false,
       insufficient: false,
-      callerBalance: await readCallerBalance(session.callerId),
+      needsEarnedAuth: false,
+      callerBalances: await readCallerBalances(session.callerId),
+      chargedPurchased: 0,
+      chargedEarned: 0,
     };
   }
 
@@ -241,22 +279,41 @@ async function chargeDeltaInternal(session, connectedSeconds) {
       chargedDelta: 0,
       duplicate: false,
       insufficient: false,
-      callerBalance: await readCallerBalance(session.callerId),
+      needsEarnedAuth: false,
+      callerBalances: await readCallerBalances(session.callerId),
+      chargedPurchased: 0,
+      chargedEarned: 0,
     };
   }
 
   const chargeId = chargeDocId(session.callId, due);
 
   if (adminReady()) {
-    return chargeWithFirestore(nextSessionBase, due, already, delta, chargeId, connectedSeconds);
+    return chargeWithFirestore(
+      nextSessionBase,
+      due,
+      already,
+      delta,
+      chargeId,
+      connectedSeconds,
+      allowEarned,
+    );
   }
-  return chargeWithMemory(nextSessionBase, due, already, delta, chargeId, connectedSeconds);
+  return chargeWithMemory(
+    nextSessionBase,
+    due,
+    already,
+    delta,
+    chargeId,
+    connectedSeconds,
+    allowEarned,
+  );
 }
 
-async function chargeWithMemory(session, due, already, delta, chargeId, connectedSeconds) {
+async function chargeWithMemory(session, due, already, delta, chargeId, connectedSeconds, allowEarned) {
   if (memoryCharges.has(chargeId)) {
     const prev = memoryCharges.get(chargeId);
-    const bal = getBalance(session.callerId);
+    const bal = getBalances(session.callerId);
     return {
       session: {
         ...session,
@@ -266,39 +323,51 @@ async function chargeWithMemory(session, due, already, delta, chargeId, connecte
       chargedDelta: 0,
       duplicate: true,
       insufficient: false,
-      callerBalance: bal,
+      needsEarnedAuth: false,
+      callerBalances: bal,
+      chargedPurchased: 0,
+      chargedEarned: 0,
     };
   }
 
-  const bal = getBalance(session.callerId);
-  if (bal < delta) {
+  const spent = debitSplit(session.callerId, delta, allowEarned);
+  if (!spent.ok) {
+    if (spent.code === 'NEEDS_EARNED_AUTH') {
+      const saved = await writeSession({
+        ...session,
+        lastConnectedSeconds: connectedSeconds,
+        exhausted: false,
+      });
+      return {
+        session: saved,
+        chargedDelta: 0,
+        duplicate: false,
+        insufficient: false,
+        needsEarnedAuth: true,
+        callerBalances: spent.balances || getBalances(session.callerId),
+        chargedPurchased: 0,
+        chargedEarned: 0,
+      };
+    }
     const saved = await writeSession({ ...session, exhausted: true, lastConnectedSeconds: connectedSeconds });
     return {
       session: saved,
       chargedDelta: 0,
       duplicate: false,
       insufficient: true,
-      callerBalance: bal,
+      needsEarnedAuth: false,
+      callerBalances: spent.balances || getBalances(session.callerId),
+      chargedPurchased: 0,
+      chargedEarned: 0,
     };
   }
 
-  const nextBal = debit(session.callerId, delta);
-  if (nextBal == null) {
-    const saved = await writeSession({ ...session, exhausted: true, lastConnectedSeconds: connectedSeconds });
-    return {
-      session: saved,
-      chargedDelta: 0,
-      duplicate: false,
-      insufficient: true,
-      callerBalance: getBalance(session.callerId),
-    };
-  }
-
-  credit(session.receiverId, delta);
+  creditEarned(session.receiverId, delta);
   const creatorCop = creatorCopForBlast(delta);
   const charge = {
     id: chargeId,
     transactionId: chargeId,
+    chargeSequence: due,
     call_id: session.callId,
     caller_id: session.callerId,
     receiver_id: session.receiverId,
@@ -306,14 +375,18 @@ async function chargeWithMemory(session, due, already, delta, chargeId, connecte
     seconds_connected: connectedSeconds,
     blast_due: due,
     blast_charged: delta,
+    charged_purchased: spent.chargedPurchased,
+    charged_earned: spent.chargedEarned,
     creator_blast: delta,
     creator_cop: creatorCop,
+    balance_type: spent.chargedEarned > 0 ? 'mixed' : 'purchased',
     timestamp: new Date().toISOString(),
   };
   memoryCharges.set(chargeId, charge);
   const saved = await writeSession({
     ...session,
     blastAlreadyCharged: already + delta,
+    allowEarnedBlastForCall: allowEarned,
     creatorValueCop: Math.max(0, Math.floor(Number(session.creatorValueCop) || 0)) + creatorCop,
     lastConnectedSeconds: connectedSeconds,
     status: 'active',
@@ -324,12 +397,15 @@ async function chargeWithMemory(session, due, already, delta, chargeId, connecte
     chargedDelta: delta,
     duplicate: false,
     insufficient: false,
-    callerBalance: nextBal,
+    needsEarnedAuth: false,
+    callerBalances: spent.balances,
+    chargedPurchased: spent.chargedPurchased,
+    chargedEarned: spent.chargedEarned,
     charge,
   };
 }
 
-async function chargeWithFirestore(session, due, already, delta, chargeId, connectedSeconds) {
+async function chargeWithFirestore(session, due, already, delta, chargeId, connectedSeconds, allowEarned) {
   const { getAdminDb } = require('./firestoreAdmin');
   const { FieldValue } = require('firebase-admin/firestore');
   const db = getAdminDb();
@@ -339,12 +415,14 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
   const receiverRef = db.collection('users').doc(String(session.receiverId));
   const inboxRef = db.collection('users').doc(String(session.receiverId)).collection('giftInbox').doc(chargeId);
   const ledgerRef = db.collection('callLedger').doc(chargeId);
+  const walletTxRef = db.collection('wallet_transactions').doc(chargeId);
 
   const result = await db.runTransaction(async (tx) => {
-    const [billingSnap, chargeSnap, callerSnap] = await Promise.all([
+    const [billingSnap, chargeSnap, callerSnap, receiverSnap] = await Promise.all([
       tx.get(billingRef),
       tx.get(chargeRef),
       tx.get(callerRef),
+      tx.get(receiverRef),
     ]);
 
     const live = billingSnap.exists ? { ...session, ...billingSnap.data() } : session;
@@ -354,92 +432,121 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
       live.callType || session.callType,
     );
     const liveDelta = Math.max(0, liveDue - liveAlready);
+    const liveAllow = Boolean(allowEarned || live.allowEarnedBlastForCall);
+    const callerBalances = normalizeBlastBalances(callerSnap.exists ? callerSnap.data() : {});
 
     if (chargeSnap.exists) {
-      const bal = callerSnap.exists ? Number(callerSnap.data()?.coinsBalance ?? 0) : 0;
-      setBalance(session.callerId, bal);
+      setBalances(session.callerId, callerBalances);
       return {
         session: {
           ...live,
           blastAlreadyCharged: Math.max(liveAlready, Number(chargeSnap.data()?.blast_due) || liveAlready),
-          lastConnectedSeconds: Math.max(
-            connectedSeconds,
-            Math.floor(Number(live.lastConnectedSeconds) || 0),
-          ),
+          lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
         },
         chargedDelta: 0,
         duplicate: true,
         insufficient: false,
-        callerBalance: bal,
+        needsEarnedAuth: false,
+        callerBalances,
+        chargedPurchased: 0,
+        chargedEarned: 0,
       };
     }
 
     if (live.status === 'stopped' || live.exhausted || liveDelta <= 0) {
-      const bal = callerSnap.exists ? Number(callerSnap.data()?.coinsBalance ?? 0) : 0;
       const next = {
         ...live,
-        lastConnectedSeconds: Math.max(
-          connectedSeconds,
-          Math.floor(Number(live.lastConnectedSeconds) || 0),
-        ),
+        lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
       };
       tx.set(billingRef, { ...next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      setBalance(session.callerId, bal);
+      setBalances(session.callerId, callerBalances);
       return {
         session: next,
         chargedDelta: 0,
         duplicate: false,
         insufficient: false,
-        callerBalance: bal,
+        needsEarnedAuth: false,
+        callerBalances,
+        chargedPurchased: 0,
+        chargedEarned: 0,
       };
     }
 
-    const current = callerSnap.exists ? Number(callerSnap.data()?.coinsBalance ?? 0) : 0;
-    if (current < liveDelta) {
+    const spent = applySpend(callerBalances, liveDelta, liveAllow);
+    if (!spent.ok) {
+      if (spent.code === 'NEEDS_EARNED_AUTH') {
+        const next = {
+          ...live,
+          lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
+          exhausted: false,
+          updatedAtMs: Date.now(),
+        };
+        tx.set(billingRef, { ...next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        setBalances(session.callerId, callerBalances);
+        return {
+          session: next,
+          chargedDelta: 0,
+          duplicate: false,
+          insufficient: false,
+          needsEarnedAuth: true,
+          callerBalances,
+          chargedPurchased: 0,
+          chargedEarned: 0,
+        };
+      }
       const next = {
         ...live,
         exhausted: true,
-        lastConnectedSeconds: Math.max(
-          connectedSeconds,
-          Math.floor(Number(live.lastConnectedSeconds) || 0),
-        ),
+        lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
         updatedAtMs: Date.now(),
       };
       tx.set(billingRef, { ...next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      setBalance(session.callerId, current);
+      setBalances(session.callerId, callerBalances);
       return {
         session: next,
         chargedDelta: 0,
         duplicate: false,
         insufficient: true,
-        callerBalance: current,
+        needsEarnedAuth: false,
+        callerBalances,
+        chargedPurchased: 0,
+        chargedEarned: 0,
       };
     }
 
-    const nextBal = current - liveDelta;
+    const receiverBalances = applyCreditEarned(
+      normalizeBlastBalances(receiverSnap.exists ? receiverSnap.data() : {}),
+      liveDelta,
+    );
     const creatorCop = creatorCopForBlast(liveDelta);
     const charge = {
       id: chargeId,
       transaction_id: chargeId,
+      charge_sequence: liveDue,
+      billing_version: 1,
       call_id: session.callId,
       caller_id: session.callerId,
       receiver_id: session.receiverId,
       call_type: normalizeCallType(live.callType || session.callType),
-      seconds_connected: Math.max(
-        connectedSeconds,
-        Math.floor(Number(live.lastConnectedSeconds) || 0),
-      ),
+      seconds_connected: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
       blast_due: liveDue,
       blast_charged: liveDelta,
+      charged_purchased: spent.chargedPurchased,
+      charged_earned: spent.chargedEarned,
       creator_blast: liveDelta,
       creator_cop: creatorCop,
       timestamp: new Date().toISOString(),
       createdAt: FieldValue.serverTimestamp(),
     };
 
+    tx.set(callerRef, { ...firestoreBalancePatch(spent.balances), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(
-      callerRef,
-      { coinsBalance: nextBal, updatedAt: FieldValue.serverTimestamp() },
+      receiverRef,
+      {
+        ...firestoreBalancePatch(receiverBalances),
+        callEarningsCop: FieldValue.increment(creatorCop),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
       { merge: true },
     );
     tx.set(
@@ -458,50 +565,62 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
         callId: session.callId,
         callCharge: true,
         creatorValueCop: creatorCop,
-        processed: false,
+        balanceType: 'earned',
+        processed: true,
+        processedAtMs: Date.now(),
         createdAt: FieldValue.serverTimestamp(),
         createdAtMs: Date.now(),
       },
       { merge: true },
     );
+    tx.set(chargeRef, charge, { merge: true });
+    tx.set(ledgerRef, charge, { merge: true });
     tx.set(
-      receiverRef,
+      walletTxRef,
       {
-        callEarningsCop: FieldValue.increment(creatorCop),
-        updatedAt: FieldValue.serverTimestamp(),
+        transaction_id: chargeId,
+        user_id: session.callerId,
+        amount: liveDelta,
+        charged_purchased: spent.chargedPurchased,
+        charged_earned: spent.chargedEarned,
+        balance_type: spent.chargedEarned > 0 ? 'mixed' : 'purchased',
+        source: spent.chargedEarned > 0 ? 'call_spend_mixed' : 'call_spend_purchased',
+        call_id: session.callId,
+        status: 'completed',
+        timestamp: new Date().toISOString(),
+        createdAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
-    tx.set(chargeRef, charge, { merge: true });
-    tx.set(ledgerRef, charge, { merge: true });
 
     const nextSession = {
       ...live,
       blastAlreadyCharged: liveAlready + liveDelta,
+      allowEarnedBlastForCall: liveAllow,
       creatorValueCop: Math.max(0, Math.floor(Number(live.creatorValueCop) || 0)) + creatorCop,
-      lastConnectedSeconds: Math.max(
-        connectedSeconds,
-        Math.floor(Number(live.lastConnectedSeconds) || 0),
-      ),
+      lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
       status: 'active',
       exhausted: false,
       updatedAtMs: Date.now(),
     };
     tx.set(billingRef, { ...nextSession, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-    setBalance(session.callerId, nextBal);
+    setBalances(session.callerId, spent.balances);
+    setBalances(session.receiverId, receiverBalances);
     return {
       session: nextSession,
       chargedDelta: liveDelta,
       duplicate: false,
       insufficient: false,
-      callerBalance: nextBal,
+      needsEarnedAuth: false,
+      callerBalances: spent.balances,
+      chargedPurchased: spent.chargedPurchased,
+      chargedEarned: spent.chargedEarned,
+      creatorEarnedBlast: receiverBalances.earnedBlastBalance,
       charge,
     };
   });
 
-  // Chat merge above may overwrite nested call incorrectly with set merge on map —
-  // use Field path updates outside if needed. Safer follow-up patch:
   if (session.chatId && result.chargedDelta > 0) {
     try {
       const { getAdminDb: gdb } = require('./firestoreAdmin');
@@ -511,15 +630,9 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
         .doc(String(session.chatId))
         .update({
           'call.spentBlasts': Math.max(0, Math.floor(Number(result.session.blastAlreadyCharged) || 0)),
-          'call.blastAlreadyCharged': Math.max(
-            0,
-            Math.floor(Number(result.session.blastAlreadyCharged) || 0),
-          ),
+          'call.blastAlreadyCharged': Math.max(0, Math.floor(Number(result.session.blastAlreadyCharged) || 0)),
           'call.creatorValueCop': Math.max(0, Math.floor(Number(result.session.creatorValueCop) || 0)),
-          'call.lastConnectedSeconds': Math.max(
-            0,
-            Math.floor(Number(result.session.lastConnectedSeconds) || 0),
-          ),
+          'call.lastConnectedSeconds': Math.max(0, Math.floor(Number(result.session.lastConnectedSeconds) || 0)),
           'call.billingCallType': normalizeCallType(result.session.callType),
           updatedAt: FV.serverTimestamp(),
         });
@@ -550,14 +663,27 @@ async function updateBilling(input) {
     session.status = 'active';
     await writeSession(session);
   }
+  if (input.allowEarnedBlastForCall === true) {
+    session.allowEarnedBlastForCall = true;
+    await writeSession(session);
+  }
   const seconds = resolvedConnectedSeconds(session, input.connectedSeconds);
-  const charged = await chargeDeltaInternal(session, seconds);
+  const charged = await chargeDeltaInternal(
+    session,
+    seconds,
+    input.allowEarnedBlastForCall === true ? true : undefined,
+  );
+  const pub = publicSession(charged.session, charged.callerBalances);
   return {
-    ...publicSession(charged.session, charged.callerBalance),
+    ...pub,
     chargedDelta: charged.chargedDelta,
+    chargedPurchased: charged.chargedPurchased || 0,
+    chargedEarned: charged.chargedEarned || 0,
     duplicate: charged.duplicate,
     insufficient: charged.insufficient,
-    shouldEnd: Boolean(charged.insufficient || charged.session.exhausted),
+    needsEarnedAuth: Boolean(charged.needsEarnedAuth),
+    shouldEnd: Boolean(charged.insufficient || charged.session.exhausted) && !charged.needsEarnedAuth,
+    creatorEarnedBlast: charged.creatorEarnedBlast,
   };
 }
 
@@ -582,17 +708,18 @@ async function stopBilling(input) {
 
   if (String(session.callerId) === callerId || !callerId) {
     const seconds = resolvedConnectedSeconds(session, input.connectedSeconds);
-    const charged = await chargeDeltaInternal(session, seconds);
+    const charged = await chargeDeltaInternal(session, seconds, Boolean(session.allowEarnedBlastForCall));
     session = charged.session;
   }
 
   session = await writeSession({
     ...session,
     status: 'stopped',
+    allowEarnedBlastForCall: false,
     endedAtMs: Date.now(),
   });
 
-  const bal = await readCallerBalance(session.callerId);
+  const bal = await readCallerBalances(session.callerId);
   return {
     ...publicSession(session, bal),
     stopped: true,
@@ -600,17 +727,19 @@ async function stopBilling(input) {
 }
 
 async function checkBalance(uid, callType) {
-  const balance = await readCallerBalance(uid);
+  const balances = await readCallerBalances(uid);
   const rate = blastPerMinute(callType);
-  const remainingSeconds = estimateRemainingSeconds(balance, callType);
+  const remainingSeconds = estimateRemainingSeconds(balances.coinsBalance, callType);
   return {
-    balance,
+    balance: balances.coinsBalance,
+    purchasedBlastBalance: balances.purchasedBlastBalance,
+    earnedBlastBalance: balances.earnedBlastBalance,
+    totalBlastBalance: balances.totalBlastBalance,
     rateBlasts: rate,
-    enoughToStart: balance >= rate && rate > 0,
+    enoughToStart: balances.coinsBalance >= rate && rate > 0,
+    enoughPurchasedToStart: balances.purchasedBlastBalance >= rate && rate > 0,
     estimatedRemainingSeconds: Number.isFinite(remainingSeconds) ? remainingSeconds : null,
-    estimatedMinutes: rate > 0 ? Math.floor(balance / rate) : null,
-    CALL_PRICING,
-    creatorValuePerBlast: CREATOR_VALUE_PER_BLAST,
+    estimatedMinutes: Number.isFinite(remainingSeconds) ? Math.floor(remainingSeconds / 60) : null,
   };
 }
 

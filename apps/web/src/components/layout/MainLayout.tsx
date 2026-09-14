@@ -102,7 +102,7 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
   const sideNavItems = useSideNavItems();
   const numberLocale = bcp47For(locale);
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="lb-sidebar-body flex h-full min-h-0 flex-col overflow-x-clip overflow-y-visible">
       <div className="mb-2 flex shrink-0 items-center gap-1">
         <Link
           to="/"
@@ -114,7 +114,7 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
         <AppearanceControl />
       </div>
 
-      <nav className="lb-side-nav flex shrink-0 flex-col">
+      <nav className="lb-side-nav flex min-h-0 shrink flex-col overflow-y-auto overflow-x-clip">
         {sideNavItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -145,7 +145,7 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
       </nav>
 
       {/* Bloque inferior: Transmitir + Billetera + Perfil (mockup 2) */}
-      <div className="mt-auto flex shrink-0 flex-col gap-3 pt-2">
+      <div className="lb-sidebar-footer mt-auto flex shrink-0 flex-col gap-3 overflow-visible pt-2">
         <div className="lb-sidebar-dock">
         <NavLink
           to="/transmitir"
@@ -347,7 +347,7 @@ export function MainLayout() {
       </header>
       ) : null}
 
-      <aside className="lb-sidebar hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-hidden border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex">
+      <aside className="lb-sidebar hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex">
         <SidebarBody profile={profile} onRecharge={() => setRechargeOpen(true)} />
       </aside>
 
@@ -358,6 +358,8 @@ export function MainLayout() {
             ? `overflow-hidden p-0 lg:w-[56%] lg:pb-0 ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)]'}`
             : onMessages
               ? 'overflow-hidden p-0'
+              : onProfilePage
+                ? `overflow-y-auto overflow-x-hidden overscroll-y-contain p-0 lg:w-[56%] ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-main-pad-bottom)]'} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`
               : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
         }`}
       >
@@ -379,7 +381,13 @@ export function MainLayout() {
         ) : null}
         <div
           key={location.pathname}
-          className={immersiveMain ? 'flex h-full min-h-0 flex-col' : 'lb-page'}
+          className={
+            immersiveMain
+              ? 'flex h-full min-h-0 flex-col'
+              : onProfilePage
+                ? 'min-w-0 w-full max-w-none'
+                : 'lb-page'
+          }
         >
           <Outlet />
         </div>
