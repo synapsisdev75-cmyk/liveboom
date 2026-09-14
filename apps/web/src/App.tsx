@@ -1,32 +1,74 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { useAuthStore } from './store/authStore';
-import { HomeView } from './views/HomeView';
 import { LoginView } from './views/LoginView';
-import { ProfileView } from './views/ProfileView';
-import { ProfileRedirectView } from './views/ProfileRedirectView';
-import { LiveRoom } from './views/LiveRoom';
-import { TransmitView } from './views/TransmitView';
-import { UserProfileView } from './views/UserProfileView';
-import { SearchView } from './views/SearchView';
-import { LegalView } from './views/LegalView';
 import { CookieBanner } from './components/legal/CookieBanner';
 import { CallOverlay } from './components/social/CallOverlay';
-import { WalletView } from './views/WalletView';
-import { ExploreView } from './views/ExploreView';
-import { MessagesView } from './views/MessagesView';
-import { ActivityView } from './views/ActivityView';
-import { CreateView } from './views/CreateView';
-import { TrendsView } from './views/TrendsView';
-import { GroupsView } from './views/GroupsView';
-import { SuperAdminView } from './views/SuperAdminView';
 import { SuperAdminRoute } from './components/auth/SuperAdminRoute';
 import { useLevelsConfigStore } from './store/levelsConfigStore';
 import { useCommunityHeaderStore } from './store/communityHeaderStore';
 import { useAppearanceStore } from './store/appearanceStore';
 import { ThemeProvider } from './components/appearance/ThemeProvider';
 import { useLocaleStore } from './store/localeStore';
+import { idlePrefetchRoutes } from './lib/routePrefetch';
+
+const HomeView = lazy(() =>
+  import('./views/HomeView').then((m) => ({ default: m.HomeView })),
+);
+const ProfileView = lazy(() =>
+  import('./views/ProfileView').then((m) => ({ default: m.ProfileView })),
+);
+const ProfileRedirectView = lazy(() =>
+  import('./views/ProfileRedirectView').then((m) => ({ default: m.ProfileRedirectView })),
+);
+const LiveRoom = lazy(() =>
+  import('./views/LiveRoom').then((m) => ({ default: m.LiveRoom })),
+);
+const TransmitView = lazy(() =>
+  import('./views/TransmitView').then((m) => ({ default: m.TransmitView })),
+);
+const UserProfileView = lazy(() =>
+  import('./views/UserProfileView').then((m) => ({ default: m.UserProfileView })),
+);
+const SearchView = lazy(() =>
+  import('./views/SearchView').then((m) => ({ default: m.SearchView })),
+);
+const LegalView = lazy(() =>
+  import('./views/LegalView').then((m) => ({ default: m.LegalView })),
+);
+const WalletView = lazy(() =>
+  import('./views/WalletView').then((m) => ({ default: m.WalletView })),
+);
+const ExploreView = lazy(() =>
+  import('./views/ExploreView').then((m) => ({ default: m.ExploreView })),
+);
+const MessagesView = lazy(() =>
+  import('./views/MessagesView').then((m) => ({ default: m.MessagesView })),
+);
+const ActivityView = lazy(() =>
+  import('./views/ActivityView').then((m) => ({ default: m.ActivityView })),
+);
+const CreateView = lazy(() =>
+  import('./views/CreateView').then((m) => ({ default: m.CreateView })),
+);
+const TrendsView = lazy(() =>
+  import('./views/TrendsView').then((m) => ({ default: m.TrendsView })),
+);
+const GroupsView = lazy(() =>
+  import('./views/GroupsView').then((m) => ({ default: m.GroupsView })),
+);
+const SuperAdminView = lazy(() =>
+  import('./views/SuperAdminView').then((m) => ({ default: m.SuperAdminView })),
+);
+
+function RouteFallback() {
+  return (
+    <div className="grid min-h-[40dvh] w-full place-items-center text-sm text-zinc-500">
+      Cargando…
+    </div>
+  );
+}
 
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
@@ -54,6 +96,11 @@ function AuthHydrator() {
     void hydrateLocale(uid);
   }, [ready, uid, hydrateAppearance, hydrateLocale]);
 
+  useEffect(() => {
+    if (!ready) return;
+    idlePrefetchRoutes();
+  }, [ready]);
+
   return null;
 }
 
@@ -63,36 +110,38 @@ export default function App() {
     <ThemeProvider>
     <BrowserRouter>
       <AuthHydrator />
-      <Routes>
-        <Route path="/login" element={<LoginView />} />
-        <Route path="/registro" element={<LoginView />} />
-        <Route path="/legal/:slug" element={<LegalView />} />
-        <Route path="/stream/:username" element={<LiveRoom />} />
-        <Route element={<MainLayout />}>
-          <Route index element={<HomeView />} />
-          <Route path="explorar" element={<ExploreView />} />
-          <Route path="tendencias" element={<TrendsView />} />
-          <Route path="grupos" element={<GroupsView />} />
-          <Route path="crear" element={<CreateView />} />
-          <Route path="u/:username" element={<UserProfileView />} />
-          <Route path="billetera" element={<WalletView />} />
-          <Route path="perfil" element={<ProfileRedirectView />} />
-          <Route path="perfil/editar" element={<ProfileView />} />
-          <Route path="buscar" element={<SearchView />} />
-          <Route path="mensajes" element={<MessagesView />} />
-          <Route path="actividad" element={<ActivityView />} />
-          <Route path="transmitir" element={<TransmitView />} />
-          <Route
-            path="super-admin"
-            element={
-              <SuperAdminRoute>
-                <SuperAdminView />
-              </SuperAdminRoute>
-            }
-          />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/login" element={<LoginView />} />
+          <Route path="/registro" element={<LoginView />} />
+          <Route path="/legal/:slug" element={<LegalView />} />
+          <Route path="/stream/:username" element={<LiveRoom />} />
+          <Route element={<MainLayout />}>
+            <Route index element={<HomeView />} />
+            <Route path="explorar" element={<ExploreView />} />
+            <Route path="tendencias" element={<TrendsView />} />
+            <Route path="grupos" element={<GroupsView />} />
+            <Route path="crear" element={<CreateView />} />
+            <Route path="u/:username" element={<UserProfileView />} />
+            <Route path="billetera" element={<WalletView />} />
+            <Route path="perfil" element={<ProfileRedirectView />} />
+            <Route path="perfil/editar" element={<ProfileView />} />
+            <Route path="buscar" element={<SearchView />} />
+            <Route path="mensajes" element={<MessagesView />} />
+            <Route path="actividad" element={<ActivityView />} />
+            <Route path="transmitir" element={<TransmitView />} />
+            <Route
+              path="super-admin"
+              element={
+                <SuperAdminRoute>
+                  <SuperAdminView />
+                </SuperAdminRoute>
+              }
+            />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
       <CallOverlay />
       <CookieBanner />
     </BrowserRouter>

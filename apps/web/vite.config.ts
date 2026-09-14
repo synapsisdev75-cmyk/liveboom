@@ -21,6 +21,20 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_API_URL': JSON.stringify(apiOnline),
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('livekit') || id.includes('@livekit')) return 'livekit';
+              if (id.includes('agora-rtc-sdk-ng')) return 'agora';
+              if (id.includes('firebase')) return 'firebase';
+            }
+            return undefined;
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       strictPort: true,

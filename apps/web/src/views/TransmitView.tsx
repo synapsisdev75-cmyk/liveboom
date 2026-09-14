@@ -14,6 +14,8 @@ import {
   pickExistingId,
   saveLiveMediaPrefs,
 } from '../lib/liveMediaDevices';
+import { stashLiveCameraHandoff } from '../lib/liveCameraHandoff';
+import { warmLiveGoLiveChunks } from '../lib/routePrefetch';
 
 const CHECKLIST_KEY = 'liveboom.preLiveChecklist.v1';
 
@@ -79,12 +81,17 @@ export function TransmitView() {
   const fileRef = useRef<HTMLInputElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const handedOffRef = useRef(false);
   const cameraIdRef = useRef(selectedCameraId);
   const micIdRef = useRef(selectedMicrophoneId);
   cameraIdRef.current = selectedCameraId;
   micIdRef.current = selectedMicrophoneId;
 
   const aspectRatio: LiveAspectRatio = studioFormatToAspect(studioFormat);
+
+  useEffect(() => {
+    warmLiveGoLiveChunks();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(CHECKLIST_KEY, JSON.stringify(checks));
@@ -176,12 +183,15 @@ export function TransmitView() {
 
   useEffect(() => {
     if (!profile) {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (!handedOffRef.current) {
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+      }
       streamRef.current = null;
       setPreviewReady(false);
       return;
     }
     let cancelled = false;
+    handedOffRef.current = false;
     void (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -209,6 +219,11 @@ export function TransmitView() {
     })();
     return () => {
       cancelled = true;
+      if (handedOffRef.current) {
+        streamRef.current = null;
+        setPreviewReady(false);
+        return;
+      }
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       setPreviewReady(false);
@@ -304,8 +319,23 @@ export function TransmitView() {
   function goLive() {
     if (!profile || !canContinue) return;
     setStep(3);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+    const stream = streamRef.current;
+    const video = stream?.getVideoTracks()[0] ?? null;
+    const audio = stream?.getAudioTracks()[0] ?? null;
+    const stashed = stashLiveCameraHandoff({
+      video,
+      audio,
+      cameraId: selectedCameraId || null,
+      microphoneId: selectedMicrophoneId || null,
+    });
+    if (stashed) {
+      handedOffRef.current = true;
+      streamRef.current = null;
+      if (previewVideoRef.current) previewVideoRef.current.srcObject = null;
+    } else {
+      stream?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
     navigate(`/stream/${encodeURIComponent(profile.handle)}`, {
       replace: true,
       state: {

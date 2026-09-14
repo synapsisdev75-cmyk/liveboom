@@ -33,6 +33,7 @@ import { Logo } from '../brand/Logo';
 import { AppearanceControl } from '../appearance/AppearanceControl';
 import { bcp47For, useT } from '../../i18n';
 import { useLocaleStore } from '../../store/localeStore';
+import { prefetchRoute } from '../../lib/routePrefetch';
 
 function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
@@ -122,6 +123,8 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
               to={item.to}
               end={item.to === '/'}
               onClick={onNavigate}
+              onPointerEnter={() => prefetchRoute(item.to)}
+              onFocus={() => prefetchRoute(item.to)}
               className={({ isActive }) => (isActive ? activeClass : idleClass)}
             >
               {({ isActive }) => (
@@ -147,6 +150,14 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
         <NavLink
           to="/transmitir"
           onClick={onNavigate}
+          onPointerEnter={() => {
+            prefetchRoute('/transmitir');
+            prefetchRoute('/stream');
+          }}
+          onFocus={() => {
+            prefetchRoute('/transmitir');
+            prefetchRoute('/stream');
+          }}
           className={({ isActive }) =>
             `lb-sidebar-cta${isActive ? ' is-active' : ''}`
           }
@@ -388,6 +399,8 @@ export function MainLayout() {
                 <NavLink
                   to={item.to}
                   end={item.to === '/'}
+                  onPointerEnter={() => prefetchRoute(item.to)}
+                  onFocus={() => prefetchRoute(item.to)}
                   className={({ isActive }) =>
                     `flex flex-col items-center gap-0.5 px-0.5 py-1.5 text-[9px] font-semibold sm:gap-1 sm:py-2 sm:text-[10px] ${
                       isActive ? 'text-cyan-400' : 'text-zinc-500'

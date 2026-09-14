@@ -354,12 +354,12 @@ function SearchFriendsRail() {
 
   return (
     <aside className="chat-scroll hidden w-[min(24%,19rem)] min-w-[230px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/5 bg-zinc-950/70 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:p-4">
-      <section className="overflow-hidden rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-700/40 via-[#1a1228] to-[#14151c] p-4 sm:p-4">
+      <section className="shrink-0 rounded-2xl border border-violet-500/25 bg-gradient-to-br from-violet-700/40 via-[#1a1228] to-[#14151c] p-4">
         <div className="flex items-start gap-3">
           <img
             src="/blast/pack-basico.png"
             alt=""
-            className="h-16 w-16 shrink-0 object-contain drop-shadow-[0_4px_12px_rgba(236,72,153,0.4)] sm:h-[4.5rem] sm:w-[4.5rem]"
+            className="h-16 w-16 shrink-0 object-contain drop-shadow-[0_4px_12px_rgba(236,72,153,0.4)]"
           />
           <div className="min-w-0 flex-1">
             <p className="text-base font-bold leading-tight text-white">Invita y gana Blast</p>
@@ -422,7 +422,7 @@ function SearchFriendsRail() {
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
+      <section className="shrink-0 rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <div className="mb-2 flex items-center justify-between gap-2">
           <p className="text-sm font-bold text-white">Contactos sincronizados</p>
           <span className="text-[11px] font-semibold text-violet-400">Ver todos</span>
@@ -464,7 +464,7 @@ function SearchFriendsRail() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
+      <section className="shrink-0 rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-sm font-bold text-white">Creadores destacados</p>
           <Link to="/explorar" className="text-[11px] font-semibold text-violet-400 hover:underline">
@@ -517,7 +517,7 @@ function SearchFriendsRail() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
+      <section className="shrink-0 rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-sm font-bold text-white">Actividad reciente</p>
           <Link to="/actividad" className="text-[11px] font-semibold text-violet-400 hover:underline">

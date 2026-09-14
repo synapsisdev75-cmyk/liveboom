@@ -96,6 +96,7 @@ import {
   type LiveSwitchToken,
 } from '../lib/liveCarouselSwitch';
 import { roomKey } from '../lib/roomKey';
+import { takeLiveCameraHandoff, discardLiveCameraHandoff } from '../lib/liveCameraHandoff';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
 import {
   LIVE_VIEWER_HEARTBEAT_TTL_MS,
@@ -4448,6 +4449,7 @@ function CreatorVideo({
         if (room.localParticipant.permissions?.canPublish === false) return;
 
         if (localCamOff || preferredCamOnRef.current === false) {
+          discardLiveCameraHandoff();
           await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
           if (!room.localParticipant.isMicrophoneEnabled) {
             await room.localParticipant.setMicrophoneEnabled(true).catch(() => undefined);
@@ -4458,6 +4460,7 @@ function CreatorVideo({
 
         const alreadyOn = room.localParticipant.isCameraEnabled;
         if (alreadyOn && retry === 0) {
+          discardLiveCameraHandoff();
           if (preferredMicOnRef.current && !room.localParticipant.isMicrophoneEnabled) {
             await room.localParticipant.setMicrophoneEnabled(true, preferredMicrophoneIdRef.current
               ? { deviceId: preferredMicrophoneIdRef.current }
@@ -4472,6 +4475,76 @@ function CreatorVideo({
 
         setCamBusy(true);
         setCamError(null);
+
+        const handoff = takeLiveCameraHandoff();
+        if (handoff?.video) {
+          try {
+            const existingCam = Array.from(room.localParticipant.videoTrackPublications.values()).find(
+              (item) => item.source === Track.Source.Camera,
+            );
+            if (existingCam?.track) {
+              await room.localParticipant.unpublishTrack(existingCam.track, true).catch(() => undefined);
+            }
+            const localVideo = new LocalVideoTrack(handoff.video);
+            cameraTrackRef.current = localVideo;
+            await room.localParticipant.publishTrack(localVideo, {
+              source: Track.Source.Camera,
+              name: 'camera',
+            });
+
+            const micId = preferredMicrophoneIdRef.current || handoff.microphoneId;
+            if (preferredMicOnRef.current !== false) {
+              if (handoff.audio) {
+                const existingMic = Array.from(
+                  room.localParticipant.audioTrackPublications.values(),
+                ).find((item) => item.source === Track.Source.Microphone);
+                if (existingMic?.track) {
+                  await room.localParticipant
+                    .unpublishTrack(existingMic.track, true)
+                    .catch(() => undefined);
+                }
+                const localAudio = new LocalAudioTrack(handoff.audio);
+                await room.localParticipant.publishTrack(localAudio, {
+                  source: Track.Source.Microphone,
+                  name: 'microphone',
+                });
+              } else {
+                await room.localParticipant.setMicrophoneEnabled(
+                  true,
+                  micId ? { deviceId: micId } : undefined,
+                );
+              }
+            } else {
+              handoff.audio?.stop();
+              if (room.localParticipant.isMicrophoneEnabled) {
+                await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+              }
+            }
+
+            await attachCameraRef();
+            if (!cancelled) setCamError(null);
+            return;
+          } catch (handoffErr) {
+            console.warn('[live] camera handoff failed, falling back', handoffErr);
+            try {
+              handoff.video.stop();
+            } catch {
+              /* ignore */
+            }
+            try {
+              handoff.audio?.stop();
+            } catch {
+              /* ignore */
+            }
+          }
+        } else if (handoff?.audio) {
+          try {
+            handoff.audio.stop();
+          } catch {
+            /* ignore */
+          }
+        }
+
         const cameraId = preferredCameraIdRef.current;
         await room.localParticipant.setCameraEnabled(
           true,
