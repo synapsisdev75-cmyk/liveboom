@@ -33,7 +33,6 @@ export function PaidCallMeter() {
   const setCallBilling = useCallStore((s) => s.setCallBilling);
   const video = useCallStore((s) => s.video);
   const startedAt = useCallStore((s) => s.activeStartedAt);
-  const [spent, setSpent] = useState(0);
   const [rate, setRate] = useState(0);
   const [payer, setPayer] = useState<string | null>(null);
   const [creatorId, setCreatorId] = useState<string | null>(null);
@@ -41,7 +40,6 @@ export function PaidCallMeter() {
   const [low, setLow] = useState(false);
   const [grace, setGrace] = useState(false);
   const [graceLeft, setGraceLeft] = useState(10);
-  const [creatorCop, setCreatorCop] = useState(0);
   const [earnedPrompt, setEarnedPrompt] = useState(false);
   const syncing = useRef(false);
   const started = useRef(false);
@@ -74,10 +72,8 @@ export function PaidCallMeter() {
       );
       setCallType(type);
       setRate(snap?.rateBlasts || blastPerMinute(type));
-      setSpent(mine?.call?.spentBlasts || mine?.call?.blastAlreadyCharged || 0);
       setPayer(mine?.call?.payerUid || mine?.call?.fromUid || null);
       setCreatorId(mine?.call?.toUid || mine?.call?.receiverId || null);
-      setCreatorCop(Math.max(0, Math.floor(Number(mine?.call?.creatorValueCop) || 0)));
       setCallBilling({
         rateBlasts: snap?.rateBlasts || 0,
         spentBlasts: mine?.call?.spentBlasts || mine?.call?.blastAlreadyCharged || 0,
@@ -143,7 +139,6 @@ export function PaidCallMeter() {
       });
       started.current = true;
       applyCallerBalances(session);
-      setSpent(session.blastAlreadyCharged || 0);
       setCallBilling({
         rateBlasts: session.rateBlasts,
         spentBlasts: session.blastAlreadyCharged,
@@ -173,8 +168,6 @@ export function PaidCallMeter() {
           allowEarnedBlastForCall: allowEarnedRef.current,
         });
         applyCallerBalances(result);
-        setSpent(result.blastAlreadyCharged || 0);
-        setCreatorCop(result.creatorValueCop || 0);
         setCallBilling({
           rateBlasts: result.rateBlasts,
           spentBlasts: result.blastAlreadyCharged,
@@ -266,8 +259,6 @@ export function PaidCallMeter() {
         allowEarnedBlastForCall: true,
       });
       applyCallerBalances(result);
-      setSpent(result.blastAlreadyCharged || 0);
-      setCreatorCop(result.creatorValueCop || 0);
       if (result.shouldEnd || result.insufficient || result.exhausted) {
         exhausted.current = true;
         setGrace(true);
@@ -293,7 +284,6 @@ export function PaidCallMeter() {
   if (status !== 'active' || rate <= 0) return null;
   const iAmPayer = profile?.firebaseUid === payer;
   const balance = profile?.coinsBalance ?? 0;
-  const purchased = profile?.purchasedBlastBalance ?? balance;
   const earned = profile?.earnedBlastBalance ?? 0;
 
   const earnedGate = earnedPrompt && iAmPayer ? (
