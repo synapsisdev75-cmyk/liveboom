@@ -120,7 +120,7 @@ function resultCopy(battle: LiveBattle, localUid: string) {
   return {
     title: winner ? 'Ganador' : 'Fin',
     sub: winner ? `@${winner}` : 'Batalla finalizada',
-    showRematch: battle.winnerSide === 'draw',
+    showRematch: false,
   };
 }
 
