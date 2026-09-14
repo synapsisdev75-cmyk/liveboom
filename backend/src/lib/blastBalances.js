@@ -43,17 +43,49 @@ function normalizeBlastBalances(data) {
 
 /**
  * Prefer purchased; earned only if allowEarned.
+ * Supports partial spend when balance < amount (returns ok with smaller charge).
  */
 function applySpend(balances, amount, allowEarned) {
   const need = floorNonNeg(amount);
   const purchased = balances.purchasedBlastBalance;
   const earned = balances.earnedBlastBalance;
+  if (need <= 0) {
+    return {
+      ok: true,
+      balances,
+      chargedPurchased: 0,
+      chargedEarned: 0,
+      remainingCharge: 0,
+      partial: false,
+      needsEarnedAuth: false,
+    };
+  }
+
   const usePurchased = Math.min(purchased, need);
   let remaining = need - usePurchased;
   let useEarned = 0;
 
   if (remaining > 0) {
     if (!allowEarned) {
+      if (usePurchased > 0) {
+        // Cobro parcial con comprados; luego pedir ganados o cortar.
+        const next = normalizeBlastBalances({
+          purchasedBlastBalance: purchased - usePurchased,
+          earnedBlastBalance: earned,
+          earnedBlastSpent: balances.earnedBlastSpent,
+          earnedBlastWithdrawn: balances.earnedBlastWithdrawn,
+        });
+        return {
+          ok: true,
+          balances: next,
+          chargedPurchased: usePurchased,
+          chargedEarned: 0,
+          remainingCharge: remaining,
+          partial: true,
+          needsEarnedAuth: earned > 0,
+          exhausted: earned <= 0,
+        };
+      }
       if (earned > 0) {
         return {
           ok: false,
@@ -77,14 +109,14 @@ function applySpend(balances, amount, allowEarned) {
     remaining -= useEarned;
   }
 
-  if (remaining > 0) {
+  if (usePurchased + useEarned <= 0) {
     return {
       ok: false,
       code: 'INSUFFICIENT',
       balances,
       chargedPurchased: 0,
       chargedEarned: 0,
-      remainingCharge: remaining,
+      remainingCharge: need,
     };
   }
 
@@ -100,7 +132,10 @@ function applySpend(balances, amount, allowEarned) {
     balances: next,
     chargedPurchased: usePurchased,
     chargedEarned: useEarned,
-    remainingCharge: 0,
+    remainingCharge: remaining,
+    partial: remaining > 0,
+    needsEarnedAuth: false,
+    exhausted: remaining > 0,
   };
 }
 

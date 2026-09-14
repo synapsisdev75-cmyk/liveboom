@@ -332,18 +332,6 @@ export function PaidCallMeter() {
   if (video) {
     return (
       <>
-        <div className="lb-video-bill">
-          <span>
-            Saldo: 🔥 {balance.toLocaleString('es-CO')} Blast · {rate}/min
-          </span>
-          <span className="opacity-90">
-            Comprados {purchased.toLocaleString('es-CO')} · Ganados {earned.toLocaleString('es-CO')}
-          </span>
-          <span>
-            {iAmPayer ? 'Usados' : 'Generados'}: {spent} Blast
-            {!iAmPayer && creatorCop > 0 ? ` · $${creatorCop.toLocaleString('es-CO')} COP` : ''}
-          </span>
-        </div>
         {earnedGate}
         {low && !grace && !earnedPrompt && iAmPayer ? (
           <VideoCallLowBalance
@@ -359,30 +347,23 @@ export function PaidCallMeter() {
   }
   return (
     <>
-      <p className="lb-call-bill">
-        Saldo: 🔥 {balance.toLocaleString('es-CO')} Blast · {rate}/min
-        {` · C ${purchased.toLocaleString('es-CO')} / G ${earned.toLocaleString('es-CO')}`}
-        {iAmPayer ? ` · Usados ${spent}` : ` · Generados ${spent}`}
-        {low && iAmPayer && !earnedPrompt ? ' · Te quedan aproximadamente 2 min.' : ''}
-        {low && iAmPayer && !earnedPrompt ? (
-          <>
-            {' '}
-            <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
-              Recargar
-            </button>
-          </>
-        ) : null}
-        {grace && iAmPayer ? (
-          <>
-            {' '}
-            Tus Blast se agotaron.{' '}
-            <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
-              Recargar Blast
-            </button>
-          </>
-        ) : null}
-      </p>
       {earnedGate}
+      {low && iAmPayer && !earnedPrompt ? (
+        <p className="lb-call-bill">
+          Te quedan aproximadamente 2 min.{' '}
+          <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
+            Recargar
+          </button>
+        </p>
+      ) : null}
+      {grace && iAmPayer ? (
+        <p className="lb-call-bill">
+          Tus Blast se agotaron.{' '}
+          <button type="button" className="font-bold text-cyan-300" onClick={() => openRechargeCoins()}>
+            Recargar Blast
+          </button>
+        </p>
+      ) : null}
     </>
   );
 }

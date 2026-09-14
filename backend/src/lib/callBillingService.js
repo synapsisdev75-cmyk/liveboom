@@ -362,45 +362,68 @@ async function chargeWithMemory(session, due, already, delta, chargeId, connecte
     };
   }
 
-  creditEarned(session.receiverId, delta);
-  const creatorCop = creatorCopForBlast(delta);
+  const chargedDelta = Math.max(0, (spent.chargedPurchased || 0) + (spent.chargedEarned || 0));
+  if (chargedDelta <= 0) {
+    const saved = await writeSession({
+      ...session,
+      lastConnectedSeconds: connectedSeconds,
+      exhausted: Boolean(spent.exhausted),
+    });
+    return {
+      session: saved,
+      chargedDelta: 0,
+      duplicate: false,
+      insufficient: Boolean(spent.exhausted),
+      needsEarnedAuth: Boolean(spent.needsEarnedAuth),
+      callerBalances: spent.balances || getBalances(session.callerId),
+      chargedPurchased: 0,
+      chargedEarned: 0,
+    };
+  }
+
+  creditEarned(session.receiverId, chargedDelta);
+  const creatorCop = creatorCopForBlast(chargedDelta);
+  const upto = already + chargedDelta;
+  const partialChargeId = chargeDocId(session.callId, upto);
   const charge = {
-    id: chargeId,
-    transactionId: chargeId,
-    chargeSequence: due,
+    id: partialChargeId,
+    transactionId: partialChargeId,
+    chargeSequence: upto,
     call_id: session.callId,
     caller_id: session.callerId,
     receiver_id: session.receiverId,
     call_type: session.callType,
     seconds_connected: connectedSeconds,
     blast_due: due,
-    blast_charged: delta,
+    blast_charged: chargedDelta,
     charged_purchased: spent.chargedPurchased,
     charged_earned: spent.chargedEarned,
-    creator_blast: delta,
+    creator_blast: chargedDelta,
     creator_cop: creatorCop,
     balance_type: spent.chargedEarned > 0 ? 'mixed' : 'purchased',
     timestamp: new Date().toISOString(),
   };
-  memoryCharges.set(chargeId, charge);
+  memoryCharges.set(partialChargeId, charge);
   const saved = await writeSession({
     ...session,
-    blastAlreadyCharged: already + delta,
+    blastAlreadyCharged: already + chargedDelta,
     allowEarnedBlastForCall: allowEarned,
     creatorValueCop: Math.max(0, Math.floor(Number(session.creatorValueCop) || 0)) + creatorCop,
     lastConnectedSeconds: connectedSeconds,
     status: 'active',
+    exhausted: Boolean(spent.exhausted) && !spent.needsEarnedAuth,
   });
   flushMemory();
   return {
     session: saved,
-    chargedDelta: delta,
+    chargedDelta,
     duplicate: false,
-    insufficient: false,
-    needsEarnedAuth: false,
+    insufficient: Boolean(spent.exhausted) && !spent.needsEarnedAuth,
+    needsEarnedAuth: Boolean(spent.needsEarnedAuth),
     callerBalances: spent.balances,
     chargedPurchased: spent.chargedPurchased,
     chargedEarned: spent.chargedEarned,
+    creatorEarnedBlast: getBalances(session.receiverId).earnedBlastBalance,
     charge,
   };
 }
@@ -410,17 +433,12 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
   const { FieldValue } = require('firebase-admin/firestore');
   const db = getAdminDb();
   const billingRef = db.collection('callBilling').doc(String(session.callId));
-  const chargeRef = db.collection('callCharges').doc(chargeId);
   const callerRef = db.collection('users').doc(String(session.callerId));
   const receiverRef = db.collection('users').doc(String(session.receiverId));
-  const inboxRef = db.collection('users').doc(String(session.receiverId)).collection('giftInbox').doc(chargeId);
-  const ledgerRef = db.collection('callLedger').doc(chargeId);
-  const walletTxRef = db.collection('wallet_transactions').doc(chargeId);
 
   const result = await db.runTransaction(async (tx) => {
-    const [billingSnap, chargeSnap, callerSnap, receiverSnap] = await Promise.all([
+    const [billingSnap, callerSnap, receiverSnap] = await Promise.all([
       tx.get(billingRef),
-      tx.get(chargeRef),
       tx.get(callerRef),
       tx.get(receiverRef),
     ]);
@@ -434,24 +452,6 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
     const liveDelta = Math.max(0, liveDue - liveAlready);
     const liveAllow = Boolean(allowEarned || live.allowEarnedBlastForCall);
     const callerBalances = normalizeBlastBalances(callerSnap.exists ? callerSnap.data() : {});
-
-    if (chargeSnap.exists) {
-      setBalances(session.callerId, callerBalances);
-      return {
-        session: {
-          ...live,
-          blastAlreadyCharged: Math.max(liveAlready, Number(chargeSnap.data()?.blast_due) || liveAlready),
-          lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
-        },
-        chargedDelta: 0,
-        duplicate: true,
-        insufficient: false,
-        needsEarnedAuth: false,
-        callerBalances,
-        chargedPurchased: 0,
-        chargedEarned: 0,
-      };
-    }
 
     if (live.status === 'stopped' || live.exhausted || liveDelta <= 0) {
       const next = {
@@ -472,7 +472,39 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
       };
     }
 
-    const spent = applySpend(callerBalances, liveDelta, liveAllow);
+    const preview = applySpend(callerBalances, liveDelta, liveAllow);
+    const previewDelta = preview.ok
+      ? Math.max(0, (preview.chargedPurchased || 0) + (preview.chargedEarned || 0))
+      : 0;
+    const upto = liveAlready + Math.max(previewDelta, preview.ok ? 0 : 0);
+    const idempotentUpto = previewDelta > 0 ? upto : liveDue;
+    const partialChargeId = chargeDocId(session.callId, idempotentUpto || liveDue);
+    const partialChargeRef = db.collection('callCharges').doc(partialChargeId);
+    const chargeSnap = await tx.get(partialChargeRef);
+
+    if (chargeSnap.exists) {
+      const prevCharged = Math.max(
+        0,
+        Math.floor(Number(chargeSnap.data()?.blast_charged || chargeSnap.data()?.charge_sequence) || 0),
+      );
+      setBalances(session.callerId, callerBalances);
+      return {
+        session: {
+          ...live,
+          blastAlreadyCharged: Math.max(liveAlready, prevCharged, Number(chargeSnap.data()?.charge_sequence) || 0),
+          lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
+        },
+        chargedDelta: 0,
+        duplicate: true,
+        insufficient: false,
+        needsEarnedAuth: false,
+        callerBalances,
+        chargedPurchased: 0,
+        chargedEarned: 0,
+      };
+    }
+
+    const spent = preview;
     if (!spent.ok) {
       if (spent.code === 'NEEDS_EARNED_AUTH') {
         const next = {
@@ -514,58 +546,97 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
       };
     }
 
+    const chargedDelta = previewDelta;
+    if (chargedDelta <= 0) {
+      const next = {
+        ...live,
+        lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
+        exhausted: Boolean(spent.exhausted),
+        updatedAtMs: Date.now(),
+      };
+      tx.set(billingRef, { ...next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      setBalances(session.callerId, callerBalances);
+      return {
+        session: next,
+        chargedDelta: 0,
+        duplicate: false,
+        insufficient: Boolean(spent.exhausted),
+        needsEarnedAuth: Boolean(spent.needsEarnedAuth),
+        callerBalances,
+        chargedPurchased: 0,
+        chargedEarned: 0,
+      };
+    }
+
+    const partialInboxRef = db
+      .collection('users')
+      .doc(String(session.receiverId))
+      .collection('giftInbox')
+      .doc(partialChargeId);
+    const partialLedgerRef = db.collection('callLedger').doc(partialChargeId);
+    const partialWalletTxRef = db.collection('wallet_transactions').doc(partialChargeId);
+
     const receiverBalances = applyCreditEarned(
       normalizeBlastBalances(receiverSnap.exists ? receiverSnap.data() : {}),
-      liveDelta,
+      chargedDelta,
     );
-    const creatorCop = creatorCopForBlast(liveDelta);
+    const creatorCop = creatorCopForBlast(chargedDelta);
     const charge = {
-      id: chargeId,
-      transaction_id: chargeId,
-      charge_sequence: liveDue,
+      id: partialChargeId,
+      transaction_id: partialChargeId,
+      charge_sequence: upto,
       billing_version: 1,
       call_id: session.callId,
       caller_id: session.callerId,
       receiver_id: session.receiverId,
       call_type: normalizeCallType(live.callType || session.callType),
-      seconds_connected: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
+      seconds_connected: connectedSeconds,
       blast_due: liveDue,
-      blast_charged: liveDelta,
+      blast_charged: chargedDelta,
       charged_purchased: spent.chargedPurchased,
       charged_earned: spent.chargedEarned,
-      creator_blast: liveDelta,
+      creator_blast: chargedDelta,
       creator_cop: creatorCop,
-      timestamp: new Date().toISOString(),
-      createdAt: FieldValue.serverTimestamp(),
+      balance_type: spent.chargedEarned > 0 ? 'mixed' : 'purchased',
+      createdAtMs: Date.now(),
     };
 
-    tx.set(callerRef, { ...firestoreBalancePatch(spent.balances), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    const nextSession = {
+      ...live,
+      allowEarnedBlastForCall: liveAllow,
+      blastAlreadyCharged: liveAlready + chargedDelta,
+      creatorValueCop: Math.max(0, Math.floor(Number(live.creatorValueCop) || 0)) + creatorCop,
+      lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
+      status: 'active',
+      exhausted: Boolean(spent.exhausted) && !spent.needsEarnedAuth,
+      updatedAtMs: Date.now(),
+    };
+    tx.set(billingRef, { ...nextSession, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(partialChargeRef, { ...charge, createdAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(
-      receiverRef,
+      callerRef,
       {
-        ...firestoreBalancePatch(receiverBalances),
-        callEarningsCop: FieldValue.increment(creatorCop),
+        ...firestoreBalancePatch(spent.balances),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
     tx.set(
-      inboxRef,
+      receiverRef,
+      {
+        ...firestoreBalancePatch(receiverBalances),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    tx.set(
+      partialInboxRef,
       {
         senderUid: session.callerId,
-        senderName: 'Llamada',
         recipientUid: session.receiverId,
-        giftId: `call_${normalizeCallType(live.callType || session.callType)}`,
-        giftName: pricingLabel(live.callType || session.callType),
-        emoji: '🔥',
-        coins: liveDelta,
-        multiplier: 1,
-        postId: null,
-        clientId: chargeId,
+        coins: chargedDelta,
+        source: 'call_billing',
         callId: session.callId,
-        callCharge: true,
-        creatorValueCop: creatorCop,
-        balanceType: 'earned',
         processed: true,
         processedAtMs: Date.now(),
         createdAt: FieldValue.serverTimestamp(),
@@ -573,46 +644,34 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
       },
       { merge: true },
     );
-    tx.set(chargeRef, charge, { merge: true });
-    tx.set(ledgerRef, charge, { merge: true });
+    tx.set(partialLedgerRef, { ...charge, createdAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(
-      walletTxRef,
+      partialWalletTxRef,
       {
-        transaction_id: chargeId,
-        user_id: session.callerId,
-        amount: liveDelta,
-        charged_purchased: spent.chargedPurchased,
-        charged_earned: spent.chargedEarned,
-        balance_type: spent.chargedEarned > 0 ? 'mixed' : 'purchased',
-        source: spent.chargedEarned > 0 ? 'call_spend_mixed' : 'call_spend_purchased',
-        call_id: session.callId,
-        status: 'completed',
-        timestamp: new Date().toISOString(),
+        id: partialChargeId,
+        type: 'call_charge',
+        callId: session.callId,
+        callerId: session.callerId,
+        receiverId: session.receiverId,
+        blast: chargedDelta,
+        chargedPurchased: spent.chargedPurchased,
+        chargedEarned: spent.chargedEarned,
+        creatorBlast: chargedDelta,
+        creatorCop,
+        createdAtMs: Date.now(),
         createdAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
 
-    const nextSession = {
-      ...live,
-      blastAlreadyCharged: liveAlready + liveDelta,
-      allowEarnedBlastForCall: liveAllow,
-      creatorValueCop: Math.max(0, Math.floor(Number(live.creatorValueCop) || 0)) + creatorCop,
-      lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
-      status: 'active',
-      exhausted: false,
-      updatedAtMs: Date.now(),
-    };
-    tx.set(billingRef, { ...nextSession, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-
     setBalances(session.callerId, spent.balances);
     setBalances(session.receiverId, receiverBalances);
     return {
       session: nextSession,
-      chargedDelta: liveDelta,
+      chargedDelta,
       duplicate: false,
-      insufficient: false,
-      needsEarnedAuth: false,
+      insufficient: Boolean(spent.exhausted) && !spent.needsEarnedAuth,
+      needsEarnedAuth: Boolean(spent.needsEarnedAuth),
       callerBalances: spent.balances,
       chargedPurchased: spent.chargedPurchased,
       chargedEarned: spent.chargedEarned,
@@ -736,8 +795,8 @@ async function checkBalance(uid, callType) {
     earnedBlastBalance: balances.earnedBlastBalance,
     totalBlastBalance: balances.totalBlastBalance,
     rateBlasts: rate,
-    enoughToStart: balances.coinsBalance >= rate && rate > 0,
-    enoughPurchasedToStart: balances.purchasedBlastBalance >= rate && rate > 0,
+    enoughToStart: balances.coinsBalance >= 1 && rate > 0,
+    enoughPurchasedToStart: balances.purchasedBlastBalance >= 1 && rate > 0,
     estimatedRemainingSeconds: Number.isFinite(remainingSeconds) ? remainingSeconds : null,
     estimatedMinutes: Number.isFinite(remainingSeconds) ? Math.floor(remainingSeconds / 60) : null,
   };

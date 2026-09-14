@@ -384,6 +384,9 @@ export const useCallStore = create<CallState>((set, get) => ({
                 ),
               },
             });
+            if (billing.payerUid && me?.firebaseUid && billing.payerUid !== me.firebaseUid) {
+              void useAuthStore.getState().syncProfile().catch(() => undefined);
+            }
           })
           .catch(() => undefined);
       }

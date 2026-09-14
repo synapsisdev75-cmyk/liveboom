@@ -95,13 +95,20 @@ function debit(uid, coins) {
 }
 
 /**
- * @returns {null | { balances, chargedPurchased, chargedEarned, code?: string }}
+ * @returns {{ ok: boolean, code?: string, balances?, chargedPurchased: number, chargedEarned: number, partial?: boolean, needsEarnedAuth?: boolean, exhausted?: boolean }}
  */
 function debitSplit(uid, coins, allowEarned) {
   const cur = getBalances(uid);
   const spent = applySpend(cur, coins, Boolean(allowEarned));
   if (!spent.ok) {
-    return { ok: false, code: spent.code, balances: spent.balances, chargedPurchased: 0, chargedEarned: 0 };
+    return {
+      ok: false,
+      code: spent.code,
+      balances: spent.balances,
+      chargedPurchased: 0,
+      chargedEarned: 0,
+      needsEarnedAuth: spent.code === 'NEEDS_EARNED_AUTH',
+    };
   }
   setBalances(uid, spent.balances);
   return {
@@ -109,6 +116,9 @@ function debitSplit(uid, coins, allowEarned) {
     balances: spent.balances,
     chargedPurchased: spent.chargedPurchased,
     chargedEarned: spent.chargedEarned,
+    partial: Boolean(spent.partial),
+    needsEarnedAuth: Boolean(spent.needsEarnedAuth),
+    exhausted: Boolean(spent.exhausted || spent.remainingCharge > 0),
   };
 }
 
