@@ -22,6 +22,8 @@ type Props = {
   mediaHeight: number;
   mediaUrl: string;
   mediaKind: 'video' | 'image';
+  /** Poster/thumb para ambient blur (evita 2º <video> pausado = play nativo en APK). */
+  posterUrl?: string | null;
   insets?: Partial<ImmersiveLayoutInsets>;
   embedded?: boolean;
   /** Rail de acciones al lado del media en PC (Explorar, Publicaciones, Clips). */
@@ -67,6 +69,7 @@ export function ImmersiveMediaStage({
   mediaHeight,
   mediaUrl,
   mediaKind,
+  posterUrl = null,
   insets,
   embedded = false,
   landscapeRailAside = true,
@@ -222,17 +225,25 @@ export function ImmersiveMediaStage({
     >
       {mediaUrl && !fillCover ? (
         <div className="lb-immersive-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-          {mediaKind === 'video' ? (
+          {mediaKind === 'image' || posterUrl ? (
+            <img
+              src={posterUrl || mediaUrl}
+              alt=""
+              className="lb-immersive-backdrop__media"
+              draggable={false}
+            />
+          ) : (
             <video
               src={mediaUrl}
               className="lb-immersive-backdrop__media"
               muted
               playsInline
               preload="metadata"
+              controls={false}
+              controlsList="nodownload nofullscreen noremoteplayback"
+              disablePictureInPicture
               tabIndex={-1}
             />
-          ) : (
-            <img src={mediaUrl} alt="" className="lb-immersive-backdrop__media" draggable={false} />
           )}
         </div>
       ) : null}

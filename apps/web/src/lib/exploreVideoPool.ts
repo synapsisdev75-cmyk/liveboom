@@ -47,16 +47,28 @@ function connectionBudget(): NavBudget {
   return { plus2: true, preload: 'auto', warmPlay: true };
 }
 
+function hardenPoolVideo(el: HTMLVideoElement) {
+  el.controls = false;
+  el.removeAttribute('controls');
+  el.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
+  el.setAttribute('playsinline', '');
+  el.setAttribute('webkit-playsinline', '');
+  el.setAttribute('muted', '');
+  el.disablePictureInPicture = true;
+  try {
+    (el as HTMLVideoElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true;
+  } catch {
+    /* ignore */
+  }
+}
+
 function makeEl(preload: 'auto' | 'metadata') {
   const el = document.createElement('video');
   el.muted = true;
   el.defaultMuted = true;
   el.playsInline = true;
   el.preload = preload;
-  el.controls = false;
-  el.setAttribute('playsinline', '');
-  el.setAttribute('webkit-playsinline', '');
-  el.setAttribute('muted', '');
+  hardenPoolVideo(el);
   return el;
 }
 
@@ -178,6 +190,7 @@ export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: 
   visibleEl = video;
   visibleUrl = url;
   if (!url || gen !== navGen) return;
+  hardenPoolVideo(video);
 
   const warmed = slotFor(url);
   if (!sameSrc(video, url)) {

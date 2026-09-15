@@ -52,6 +52,9 @@ export function MediaStage({
               muted
               playsInline
               preload="metadata"
+              controls={false}
+              controlsList="nodownload nofullscreen noremoteplayback"
+              disablePictureInPicture
               tabIndex={-1}
             />
           )}

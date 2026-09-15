@@ -252,6 +252,8 @@ export function PostVideoPlayer({
   const [seekHint, setSeekHint] = useState<string | null>(null);
   const [playbackFlash, setPlaybackFlash] = useState<'play' | 'pause' | null>(null);
   const playbackFlashTimerRef = useRef<number | null>(null);
+  /** Cubre el video hasta el primer `playing` (APK/WebView: evita flash del play nativo pixelado). */
+  const [frameReadySrc, setFrameReadySrc] = useState<string | null>(null);
   const [mediaSize, setMediaSize] = useState({ width: 0, height: 0 });
   const shareUrl =
     authorUsername && postId
@@ -403,6 +405,22 @@ export function PostVideoPlayer({
   }, [src, overlayOnly]);
 
   useLayoutEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.controls = false;
+    video.removeAttribute('controls');
+    video.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.disablePictureInPicture = true;
+    try {
+      (video as HTMLVideoElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true;
+    } catch {
+      /* ignore */
+    }
+  }, [src, overlayOnly, expanded]);
+
+  useLayoutEffect(() => {
     if (!fastNav || !overlayOnly) return;
     const video = videoRef.current;
     if (!video) return;
@@ -424,11 +442,20 @@ export function PostVideoPlayer({
     if (!video) return;
     let cancelled = false;
     const bindGen = exploreNavCurrentGen();
+    const markReady = () => {
+      if (!cancelled) setFrameReadySrc(src);
+    };
     const start = () => {
       if (cancelled) return;
       if (fastNav && !exploreNavIsCurrent(bindGen)) return;
-      if (fastNav && !video.paused) return;
-      void video.play().catch(() => undefined);
+      if (fastNav && !video.paused) {
+        markReady();
+        return;
+      }
+      const playAttempt = video.play();
+      if (playAttempt) {
+        void playAttempt.then(markReady).catch(() => undefined);
+      }
     };
     if (video.readyState >= 2) start();
     else video.addEventListener('loadeddata', start);
@@ -650,6 +677,7 @@ export function PostVideoPlayer({
   }, []);
 
   const resolvedPoster = posterUrlProp || runtimePoster;
+  const showBootCover = Boolean(overlayOnly && frameReadySrc !== src);
   const pubW =
     mediaSize.width || mediaWidthProp || (videoAspect.isReady ? videoAspect.width : 0) || 0;
   const pubH =
@@ -667,59 +695,72 @@ export function PostVideoPlayer({
   }, [overlayOnly, posterUrlProp]);
 
   const videoNode = (
-    <video
-      ref={videoRef}
-      src={src}
-      poster={resolvedPoster || undefined}
-      className="lb-post-media__video h-full w-full object-contain"
-      muted={muted}
-      loop={!storyMode}
-      playsInline
-      preload={expanded || overlayOnly ? 'auto' : 'metadata'}
-      onClick={
-        !expanded && !overlayOnly
-          ? openExpand
-          : undefined
-      }
-      onLoadedMetadata={(event) => {
-        const video = event.currentTarget;
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-          setMediaSize({ width: video.videoWidth, height: video.videoHeight });
+    <div className="lb-post-media__video-host">
+      <video
+        ref={videoRef}
+        src={src}
+        poster={resolvedPoster || undefined}
+        className="lb-post-media__video h-full w-full object-contain"
+        muted={muted}
+        loop={!storyMode}
+        playsInline
+        controls={false}
+        controlsList="nodownload nofullscreen noremoteplayback"
+        disablePictureInPicture
+        preload={expanded || overlayOnly ? 'auto' : 'metadata'}
+        onClick={
+          !expanded && !overlayOnly
+            ? openExpand
+            : undefined
         }
-      }}
-      onLoadedData={() => {
-        tryCapturePoster();
-        if (firstFrameSrcRef.current !== src) {
-          firstFrameSrcRef.current = src;
-          onFirstFrameRef.current?.();
-        }
-      }}
-      onPlaying={() => {
-        if (firstFrameSrcRef.current !== src) {
-          firstFrameSrcRef.current = src;
-          onFirstFrameRef.current?.();
-        }
-      }}
-      onTimeUpdate={(event) => {
-        if (!storyMode || storyHeld) return;
-        const video = event.currentTarget;
-        const reported = video.duration;
-        const dur =
-          Number.isFinite(reported) && reported > 0
-            ? reported
-            : Number(durationSecProp) > 0
-              ? Number(durationSecProp)
-              : 0;
-        if (dur > 0) {
-          setStoryProgress(Math.min(1, video.currentTime / dur));
-        }
-      }}
-      onEnded={() => {
-        if (!storyMode || storyHeld || !reelNavigation) return;
-        setStoryProgress(1);
-        reelNavigation.onNext();
-      }}
-    />
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setMediaSize({ width: video.videoWidth, height: video.videoHeight });
+          }
+        }}
+        onLoadedData={() => {
+          tryCapturePoster();
+          if (firstFrameSrcRef.current !== src) {
+            firstFrameSrcRef.current = src;
+            onFirstFrameRef.current?.();
+          }
+        }}
+        onPlaying={() => {
+          setFrameReadySrc(src);
+          if (firstFrameSrcRef.current !== src) {
+            firstFrameSrcRef.current = src;
+            onFirstFrameRef.current?.();
+          }
+        }}
+        onTimeUpdate={(event) => {
+          if (!storyMode || storyHeld) return;
+          const video = event.currentTarget;
+          const reported = video.duration;
+          const dur =
+            Number.isFinite(reported) && reported > 0
+              ? reported
+              : Number(durationSecProp) > 0
+                ? Number(durationSecProp)
+                : 0;
+          if (dur > 0) {
+            setStoryProgress(Math.min(1, video.currentTime / dur));
+          }
+        }}
+        onEnded={() => {
+          if (!storyMode || storyHeld || !reelNavigation) return;
+          setStoryProgress(1);
+          reelNavigation.onNext();
+        }}
+      />
+      {showBootCover ? (
+        <div className="lb-post-media__boot-cover" aria-hidden>
+          {resolvedPoster ? (
+            <img src={resolvedPoster} alt="" draggable={false} />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 
   const immersiveW = pubW || videoAspect.width || 9;
@@ -744,6 +785,7 @@ export function PostVideoPlayer({
           mediaHeight={immersiveH}
           mediaUrl={src}
           mediaKind="video"
+          posterUrl={resolvedPoster}
           embedded={embedded}
           landscapeRailAside
           fillMode={publicationFillMode}
