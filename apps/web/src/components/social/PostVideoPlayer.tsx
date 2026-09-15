@@ -756,6 +756,7 @@ export function PostVideoPlayer({
           }}
           onPointerGesture={handlePointerGesture}
           onWheel={reelNavigation ? handleWheelNavigate : undefined}
+          backdropVideoPosterUrl={fastNav ? resolvedPoster || undefined : undefined}
           mediaOverlay={
             <>
               <MediaOverlayLayer overlays={overlays} />

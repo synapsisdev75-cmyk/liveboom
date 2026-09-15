@@ -34,6 +34,8 @@ type Props = {
   children: ReactNode;
   /** Controles superpuestos (seek zones, etc.) */
   mediaOverlay?: ReactNode;
+  /** Póster explícito para evitar el póster nativo de Android WebView en el fondo. */
+  backdropVideoPosterUrl?: string;
   topChrome?: ReactNode;
   bottomChrome?: ReactNode;
   sideChrome?: ReactNode;
@@ -76,6 +78,7 @@ export function ImmersiveMediaStage({
   onWheel,
   children,
   mediaOverlay,
+  backdropVideoPosterUrl,
   topChrome,
   bottomChrome,
   sideChrome,
@@ -225,6 +228,7 @@ export function ImmersiveMediaStage({
           {mediaKind === 'video' ? (
             <video
               src={mediaUrl}
+              poster={backdropVideoPosterUrl}
               className="lb-immersive-backdrop__media"
               muted
               playsInline

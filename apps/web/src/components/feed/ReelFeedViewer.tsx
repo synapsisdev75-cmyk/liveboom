@@ -24,6 +24,11 @@ import {
   exploreNavRelease,
 } from '../../lib/exploreVideoPool';
 
+// Android WebView injects a grey poster with an oversized play icon when the
+// attribute is absent. A data URL is available on the first paint, unlike a file URL.
+const EXPLORE_VIDEO_POSTER_FALLBACK =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3Cpath d='M0 0h1v1H0z'/%3E%3C/svg%3E";
+
 export type ReelFeedItem = {
   id: string;
   username: string;
@@ -372,7 +377,9 @@ export function ReelFeedViewer({
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
           overlays={reel.overlays}
-          posterUrl={exploreFastNav ? reel.thumbUrl : undefined}
+          posterUrl={
+            exploreFastNav ? reel.thumbUrl || EXPLORE_VIDEO_POSTER_FALLBACK : undefined
+          }
           mediaWidth={exploreFastNav ? reel.mediaWidth || undefined : undefined}
           mediaHeight={exploreFastNav ? reel.mediaHeight || undefined : undefined}
           skipRemoteAspectProbe={exploreFastNav}
