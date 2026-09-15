@@ -1,11 +1,30 @@
-/**
- * PNG transparente 1x1 para usar como `poster` cuando no hay miniatura real.
- * El WebView de Android (APK/AAB) inyecta su propio poster por defecto —un play
- * gris gigante— en cada <video> sin atributo `poster` mientras no hay primer
- * frame; con un poster propio ese default nunca se usa. En web no se nota.
- */
-export const BLANK_VIDEO_POSTER =
+import { Capacitor } from '@capacitor/core';
+
+/** PNG 1x1 totalmente transparente. */
+const TRANSPARENT_POSTER_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+
+function isAndroidWebView(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (!/Android/i.test(ua)) return false;
+  if (/\bwv\b/.test(ua)) return true;
+  return Capacitor.getPlatform() === 'android' && Capacitor.isNativePlatform();
+}
+
+/**
+ * Poster de respaldo para un <video> sin miniatura propia.
+ *
+ * El WebView de Android (APK/AAB) pinta su propio poster por defecto —un botón de
+ * play gris estirado al tamaño del elemento— en todo <video> sin atributo `poster`
+ * mientras no hay primer frame. Un poster transparente desactiva ese default.
+ *
+ * En navegador devuelve undefined a propósito: sin `poster`, Chrome/Safari pintan el
+ * primer frame como vista previa, y un poster transparente lo taparía.
+ */
+export const WEBVIEW_VIDEO_POSTER_FALLBACK: string | undefined = isAndroidWebView()
+  ? TRANSPARENT_POSTER_PNG
+  : undefined;
 
 /** Lee dimensiones intrínsecas de display del video (tras metadata del navegador). */
 export function readVideoIntrinsicSize(

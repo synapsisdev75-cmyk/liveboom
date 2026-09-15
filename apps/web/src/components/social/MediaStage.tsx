@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { mediaStageModeClass, type MediaStageMode } from '../../lib/mediaPresentation';
-import { BLANK_VIDEO_POSTER } from '../../lib/videoPoster';
+import { WEBVIEW_VIDEO_POSTER_FALLBACK } from '../../lib/videoPoster';
 
 type Props = {
   mode: MediaStageMode;
@@ -49,7 +49,7 @@ export function MediaStage({
           ) : (
             <video
               src={mediaUrl!}
-              poster={BLANK_VIDEO_POSTER}
+              poster={WEBVIEW_VIDEO_POSTER_FALLBACK}
               className="lb-media-stage__ambient-media"
               muted
               playsInline

@@ -53,10 +53,11 @@ En APK/AAB el WebView de Android pinta **su propio poster** (un botón de play g
 estirado) sobre cualquier `<video>` que no tenga atributo `poster`, mientras no hay
 primer frame. En el navegador no pasa, por eso solo se ve en la app compilada.
 
-La web ya envía un poster transparente en el reproductor de Publicaciones/Boom Clip/
-Flash Boom/Explorar y en las capas ambient (`BLANK_VIDEO_POSTER` en
-`apps/web/src/lib/videoPoster.ts`), así que basta con `npm run sync` para que
-desaparezca ahí.
+La web ya envía un poster transparente —solo dentro del WebView de Android— en el
+reproductor de Publicaciones/Boom Clip/Flash Boom/Explorar y en las capas ambient
+(`WEBVIEW_VIDEO_POSTER_FALLBACK` en `apps/web/src/lib/videoPoster.ts`), así que basta
+con `npm run sync` para que desaparezca ahí. En navegador no se manda poster, porque
+Chrome pinta el primer frame como vista previa y un poster transparente lo taparía.
 
 Si aparece en alguna pantalla nueva (LIVE, chat, anuncios…), se puede desactivar de
 raíz en el nativo, una sola vez, en `android/app/src/main/java/com/liveboom/app/MainActivity.java`:
