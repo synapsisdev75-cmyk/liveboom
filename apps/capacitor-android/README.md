@@ -46,3 +46,46 @@ npm run sync
 ```
 
 (Quitar `url` para volver al bundle embebido.)
+
+## Poster por defecto del WebView (play gris gigante)
+
+En APK/AAB el WebView de Android pinta **su propio poster** (un botón de play gris
+estirado) sobre cualquier `<video>` que no tenga atributo `poster`, mientras no hay
+primer frame. En el navegador no pasa, por eso solo se ve en la app compilada.
+
+La web ya envía un poster transparente en el reproductor de Publicaciones/Boom Clip/
+Flash Boom/Explorar y en las capas ambient (`BLANK_VIDEO_POSTER` en
+`apps/web/src/lib/videoPoster.ts`), así que basta con `npm run sync` para que
+desaparezca ahí.
+
+Si aparece en alguna pantalla nueva (LIVE, chat, anuncios…), se puede desactivar de
+raíz en el nativo, una sola vez, en `android/app/src/main/java/com/liveboom/app/MainActivity.java`:
+
+```java
+package com.liveboom.app;
+
+import android.graphics.Bitmap;
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
+
+public class MainActivity extends BridgeActivity {
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    // Sin esto, el WebView usa su poster gris con botón de play en cada <video>.
+    getBridge()
+        .getWebView()
+        .setWebChromeClient(
+            new BridgeWebChromeClient(getBridge()) {
+              @Override
+              public Bitmap getDefaultVideoPoster() {
+                return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+              }
+            });
+  }
+}
+```
+
+`android/` se genera con `npx cap add android`; si se regenera, hay que volver a
+aplicar este override.

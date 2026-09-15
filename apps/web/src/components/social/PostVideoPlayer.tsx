@@ -30,7 +30,7 @@ import {
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
-import { captureHtmlVideoPoster } from '../../lib/videoPoster';
+import { BLANK_VIDEO_POSTER, captureHtmlVideoPoster } from '../../lib/videoPoster';
 import {
   exploreNavBindPlayer,
   exploreNavCurrentGen,
@@ -670,7 +670,7 @@ export function PostVideoPlayer({
     <video
       ref={videoRef}
       src={src}
-      poster={resolvedPoster || undefined}
+      poster={resolvedPoster || BLANK_VIDEO_POSTER}
       className="lb-post-media__video h-full w-full object-contain"
       muted={muted}
       loop={!storyMode}

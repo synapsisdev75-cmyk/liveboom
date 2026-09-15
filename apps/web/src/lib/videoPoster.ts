@@ -1,3 +1,12 @@
+/**
+ * PNG transparente 1x1 para usar como `poster` cuando no hay miniatura real.
+ * El WebView de Android (APK/AAB) inyecta su propio poster por defecto —un play
+ * gris gigante— en cada <video> sin atributo `poster` mientras no hay primer
+ * frame; con un poster propio ese default nunca se usa. En web no se nota.
+ */
+export const BLANK_VIDEO_POSTER =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=';
+
 /** Lee dimensiones intrínsecas de display del video (tras metadata del navegador). */
 export function readVideoIntrinsicSize(
   file: File | Blob,
