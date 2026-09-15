@@ -1,0 +1,49 @@
+NOMBRE (máx. 30)
+Liveboom
+
+DESCRIPCIÓN BREVE (máx. 80)
+Lives, Boom Clips y comunidad. Transmite, regala y conecta en Liveboom.
+
+DESCRIPCIÓN COMPLETA (máx. 4000)
+Liveboom es la red social para transmitir en vivo, publicar videos cortos y construir comunidad.
+
+TRANSMITE
+Abre tu sala LIVE en formato vertical u horizontal, invita cohosts, comparte pantalla y recibe regalos en tiempo real. El chat y el contador de espectadores viven en la sala.
+
+BOOM CLIP Y FLASH BOOM
+Publica clips de hasta 90 segundos y Flash Boom de 24 horas. Explora un video a la vez, con la misma experiencia en teléfono, tablet y PC.
+
+PUBLICACIONES
+Comparte fotos, videos, carruseles y texto. Comenta, envía un Boom, regala y comparte.
+
+COMUNIDAD
+Sigue creadores, únete a grupos, envía mensajes y mira tu actividad en un solo lugar.
+
+BILLETERA
+Recarga coins (Blast), envía regalos y retira según las reglas de la plataforma. Las compras en la web las procesa Wompi. Liveboom no guarda el número completo de tu tarjeta.
+
+UNA SOLA APP
+La misma Liveboom en Android, iOS, tablet y PC: Inicio, Explorar, Grupos, Billetera, Mensajes, Actividad, Perfil y Transmitir.
+
+Liveboom es solo para mayores de 18 años.
+
+Sitio: https://liveboomapp.com
+Privacidad: https://liveboomapp.com/legal/privacidad
+Términos: https://liveboomapp.com/legal/terminos
+Soporte: legal@liveboom.app
+
+CATEGORÍA
+Social
+
+ETIQUETAS
+Transmisión en vivo
+Video
+Redes sociales
+
+CONTACTO
+Sitio web: https://liveboomapp.com
+Correo: legal@liveboom.app
+Privacidad: https://liveboomapp.com/legal/privacidad
+
+PAQUETE ANDROID (no cambiar)
+com.liveboom.app

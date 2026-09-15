@@ -1,6 +1,6 @@
 {
   "appId": "com.liveboom.app",
-  "appName": "LiveBoom",
+  "appName": "Liveboom",
   "webDir": "../web/dist",
   "server": {
     "androidScheme": "https"
