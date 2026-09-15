@@ -46,3 +46,6 @@ npm run sync
 ```
 
 (Quitar `url` para volver al bundle embebido.)
+
+- **Poster de video en Android (eliminación de flash de play nativo):**
+  `MainActivity.java` sobrescribe `WebChromeClient.getDefaultVideoPoster()` devolviendo un `Bitmap` transparente 1×1. Esto evita que el WebView de Android dibuje el icono de reproducción por defecto (óvalo negro gigante) durante un microsegundo antes de reproducir videos en APK o AAB.

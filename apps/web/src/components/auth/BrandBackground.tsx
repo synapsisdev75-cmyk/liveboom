@@ -1,3 +1,5 @@
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
+
 type BrandBackgroundProps = {
   className?: string;
 };
@@ -7,6 +9,7 @@ export function BrandBackground({ className = '' }: BrandBackgroundProps) {
   return (
     <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
       <video
+        poster={TRANSPARENT_VIDEO_POSTER}
         className="absolute inset-0 h-full w-full scale-110 object-cover opacity-[0.28] brightness-[0.45] contrast-125 saturate-[1.35] blur-[1.5px]"
         autoPlay
         loop

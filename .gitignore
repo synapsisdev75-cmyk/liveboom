@@ -26,8 +26,11 @@ Thumbs.db
 # Expo / React Native
 .expo/
 .expo-shared/
-android/
-ios/
+# Expo / React Native generated natives (not the Capacitor Play project)
+/android/
+/ios/
+apps/mobile/android/
+apps/mobile/ios/
 *.jks
 *.p8
 *.p12

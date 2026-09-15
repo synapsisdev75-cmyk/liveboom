@@ -1,5 +1,6 @@
 import { Camera, Pause, Play, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 function formatClock(sec: number) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
@@ -65,7 +66,7 @@ export function VideoNoteBubble({ src, mine }: { src: string; mine?: boolean }) 
           mine ? 'ring-violet-300/40' : 'ring-white/15'
         }`}
       >
-        <video ref={videoRef} src={src} playsInline preload="metadata" className="h-full w-full object-cover" />
+        <video ref={videoRef} src={src} poster={TRANSPARENT_VIDEO_POSTER} playsInline preload="metadata" className="h-full w-full object-cover" />
       </div>
       {!playing ? (
         <span className="pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-black/30">
@@ -254,9 +255,9 @@ export function VideoNoteCapture({ open, onClose, onCapture }: CaptureProps) {
 
         <div className="relative h-[min(72vw,18rem)] w-[min(72vw,18rem)] overflow-hidden rounded-full ring-4 ring-violet-500/35">
           {previewUrl ? (
-            <video src={previewUrl} playsInline className="h-full w-full object-cover" controls />
+            <video src={previewUrl} poster={TRANSPARENT_VIDEO_POSTER} playsInline className="h-full w-full object-cover" controls />
           ) : (
-            <video ref={videoRef} playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
+            <video ref={videoRef} poster={TRANSPARENT_VIDEO_POSTER} playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
           )}
           {recording ? (
             <span className="absolute left-3 top-3 rounded-full bg-red-500/90 px-2 py-0.5 text-[10px] font-bold text-white">

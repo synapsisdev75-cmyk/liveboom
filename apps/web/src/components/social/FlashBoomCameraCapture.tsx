@@ -2,6 +2,7 @@ import { Camera, RefreshCcw, SwitchCamera, Video, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 const PERMISSION_ERROR = 'No se pudo acceder a la cámara. Activa el permiso de cámara para LiveBoom.';
 
@@ -436,6 +437,7 @@ export function FlashBoomCameraCapture({
         <div className="relative min-h-0 w-full max-w-[min(100%,36rem)] flex-1 overflow-hidden rounded-3xl bg-zinc-950 ring-2 ring-white/10">
           <video
             ref={videoRef}
+            poster={TRANSPARENT_VIDEO_POSTER}
             autoPlay
             playsInline
             muted
@@ -445,7 +447,7 @@ export function FlashBoomCameraCapture({
             <img src={previewUrl} alt="" className="absolute inset-0 h-full w-full object-contain" />
           ) : null}
           {reviewing && previewKind === 'video' && previewUrl ? (
-            <video src={previewUrl} playsInline controls className="absolute inset-0 h-full w-full object-contain" />
+            <video src={previewUrl} poster={TRANSPARENT_VIDEO_POSTER} playsInline controls className="absolute inset-0 h-full w-full object-contain" />
           ) : null}
           {recording ? (
             <span className="absolute left-3 top-3 rounded-full bg-red-500/90 px-2 py-0.5 text-[10px] font-bold text-white">

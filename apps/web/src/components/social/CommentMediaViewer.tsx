@@ -2,6 +2,7 @@ import { Maximize2, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import type { PostCommentMediaType } from '../../lib/socialFirestore';
 
 export type CommentMediaViewerItem = {
@@ -82,7 +83,7 @@ export function CommentMediaViewer({ item, onClose }: Props) {
             <video
               ref={videoRef}
               src={item.url}
-              poster={item.previewUrl || undefined}
+              poster={item.previewUrl || TRANSPARENT_VIDEO_POSTER}
               className="lb-comment-media-viewer__media"
               controls
               playsInline

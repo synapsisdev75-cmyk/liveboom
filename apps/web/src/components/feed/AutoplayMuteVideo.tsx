@@ -5,6 +5,7 @@ import {
   registerFeedVideo,
   releaseExclusivePlayback,
 } from '../../lib/videoPlayback';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 /** Video que se reproduce solo (muted) al entrar en pantalla. */
 export function AutoplayMuteVideo({
@@ -65,6 +66,7 @@ export function AutoplayMuteVideo({
       <video
         ref={ref}
         src={src}
+        poster={TRANSPARENT_VIDEO_POSTER}
         className={className}
         muted
         loop

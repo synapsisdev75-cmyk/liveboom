@@ -540,6 +540,17 @@
   object-position: center;
 }
 
+/* Oculta el icono/overlay de play nativo de WebKit / Chromium (Android WebView e iOS) */
+video::-webkit-media-controls-overlay-play-button,
+video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 @media (min-width: 1024px) {
   .lb-post-media {
     padding-left: 2rem;

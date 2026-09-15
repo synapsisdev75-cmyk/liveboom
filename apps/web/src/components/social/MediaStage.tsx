@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { mediaStageModeClass, type MediaStageMode } from '../../lib/mediaPresentation';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 type Props = {
   mode: MediaStageMode;
@@ -52,6 +53,7 @@ export function MediaStage({
               muted
               playsInline
               preload="metadata"
+              poster={posterUrl || TRANSPARENT_VIDEO_POSTER}
               tabIndex={-1}
             />
           )}

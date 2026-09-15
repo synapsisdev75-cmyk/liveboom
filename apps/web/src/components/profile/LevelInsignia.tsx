@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { levelFromXp, levelGlowRgb } from '../../lib/userLevels';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 type Props = {
   levelXp: number;
@@ -117,6 +118,7 @@ export function LevelInsignia({
       {hasVideo ? (
         <video
           ref={videoRef}
+          poster={TRANSPARENT_VIDEO_POSTER}
           className={`pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain object-bottom transition-opacity duration-200 [mix-blend-mode:screen] ${
             active ? 'opacity-100' : 'opacity-0'
           }`}

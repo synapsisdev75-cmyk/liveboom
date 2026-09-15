@@ -8,6 +8,7 @@ import {
 import { exploreLandscape } from '../../responsive/mobile-tablet';
 import { classifyVideoOrientation } from '../../lib/videoAspect';
 import { GESTURE_AXIS_LOCK_PX, HORIZONTAL_SEEK_THRESHOLD_PX } from '../../lib/storyAuthorNav';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 export type ImmersivePointerGesture = {
   dx: number;
@@ -229,6 +230,7 @@ export function ImmersiveMediaStage({
               muted
               playsInline
               preload="metadata"
+              poster={TRANSPARENT_VIDEO_POSTER}
               tabIndex={-1}
             />
           ) : (

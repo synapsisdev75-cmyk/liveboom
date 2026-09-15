@@ -1,3 +1,11 @@
+/**
+ * Pixel transparente 1x1 en base64 para poster por defecto en elementos <video>.
+ * Evita que el WebView de Android muestre el icono de play nativo por defecto
+ * (que se deforma como un óvalo gigante) antes de que empiece la reproducción.
+ */
+export const TRANSPARENT_VIDEO_POSTER =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 /** Lee dimensiones intrínsecas de display del video (tras metadata del navegador). */
 export function readVideoIntrinsicSize(
   file: File | Blob,

@@ -2,6 +2,7 @@ import { Room, RoomEvent, Track } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 type Props = {
   username: string;
@@ -116,6 +117,7 @@ export function LivePreviewVideo({ username, avatarUrl, displayName, className =
       ) : null}
       <video
         ref={videoRef}
+        poster={avatarUrl || TRANSPARENT_VIDEO_POSTER}
         className={`absolute inset-0 h-full w-full object-cover ${hasVideo ? 'opacity-100' : 'opacity-0'}`}
         muted
         autoPlay

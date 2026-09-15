@@ -18,6 +18,7 @@ import {
 } from '../../lib/profileCover';
 import { saveFirestoreCover } from '../../lib/profileFirestore';
 import { uploadUserCover } from '../../lib/storage';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 
 type Props = {
@@ -178,6 +179,7 @@ export function ProfileCoverEditor({ uid, file, onClose, onSaved }: Props) {
             probe.kind === 'video' ? (
               <video
                 src={previewUrl}
+                poster={TRANSPARENT_VIDEO_POSTER}
                 className="lb-profile-cover-editor__media"
                 style={mediaStyle}
                 autoPlay

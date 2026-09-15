@@ -30,7 +30,7 @@ import {
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
-import { captureHtmlVideoPoster } from '../../lib/videoPoster';
+import { captureHtmlVideoPoster, TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import {
   exploreNavBindPlayer,
   exploreNavCurrentGen,
@@ -650,6 +650,7 @@ export function PostVideoPlayer({
   }, []);
 
   const resolvedPoster = posterUrlProp || runtimePoster;
+  const effectivePoster = resolvedPoster || TRANSPARENT_VIDEO_POSTER;
   const pubW =
     mediaSize.width || mediaWidthProp || (videoAspect.isReady ? videoAspect.width : 0) || 0;
   const pubH =
@@ -670,7 +671,7 @@ export function PostVideoPlayer({
     <video
       ref={videoRef}
       src={src}
-      poster={resolvedPoster || undefined}
+      poster={effectivePoster}
       className="lb-post-media__video h-full w-full object-contain"
       muted={muted}
       loop={!storyMode}

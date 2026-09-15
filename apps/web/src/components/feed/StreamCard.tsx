@@ -1,6 +1,7 @@
 import { Lock } from 'lucide-react';
 import { useRef } from 'react';
 import type { StreamDto } from '../../lib/api';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 type Props = {
   stream: StreamDto;
@@ -35,6 +36,7 @@ export function StreamCard({ stream, onOpen }: Props) {
         loop
         playsInline
         preload="metadata"
+        poster={stream.coverUrl || TRANSPARENT_VIDEO_POSTER}
         src={stream.previewUrl}
         className="absolute inset-0 h-full w-full object-cover opacity-0 transition group-hover:opacity-100"
       />

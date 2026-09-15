@@ -3,6 +3,8 @@
  * No se usa en Boom Clip, Flash Boom ni Publicaciones.
  */
 
+import { TRANSPARENT_VIDEO_POSTER } from './videoPoster';
+
 type NavBudget = {
   plus2: boolean;
   preload: 'auto' | 'metadata';
@@ -57,6 +59,7 @@ function makeEl(preload: 'auto' | 'metadata') {
   el.setAttribute('playsinline', '');
   el.setAttribute('webkit-playsinline', '');
   el.setAttribute('muted', '');
+  el.setAttribute('poster', TRANSPARENT_VIDEO_POSTER);
   return el;
 }
 
@@ -177,6 +180,9 @@ export function exploreNavSync(input: {
 export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: number) {
   visibleEl = video;
   visibleUrl = url;
+  if (!video.getAttribute('poster')) {
+    video.setAttribute('poster', TRANSPARENT_VIDEO_POSTER);
+  }
   if (!url || gen !== navGen) return;
 
   const warmed = slotFor(url);

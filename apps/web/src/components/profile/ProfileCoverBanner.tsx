@@ -7,6 +7,7 @@ import {
   COVER_WIDTH,
   type CoverMediaKind,
 } from '../../lib/profileCover';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 type Props = {
   url?: string | null;
@@ -26,6 +27,7 @@ export function ProfileCoverBanner({ url, type, isOwner, onEdit }: Props) {
           <video
             className="lb-profile-cover__media"
             src={src}
+            poster={TRANSPARENT_VIDEO_POSTER}
             autoPlay
             muted
             loop
