@@ -751,6 +751,7 @@ export function PostVideoPlayer({
           mediaHeight={immersiveH}
           mediaUrl={src}
           mediaKind="video"
+          posterUrl={resolvedPoster}
           embedded={embedded}
           landscapeRailAside
           fillMode={publicationFillMode}

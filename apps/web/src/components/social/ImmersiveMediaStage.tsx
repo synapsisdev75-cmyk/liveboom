@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import {
   computeImmersiveMediaBox,
   immersiveMediaBoxStyle,
@@ -22,6 +24,12 @@ type Props = {
   mediaHeight: number;
   mediaUrl: string;
   mediaKind: 'video' | 'image';
+  /**
+   * APK/AAB (Android WebView): el backdrop <video> nunca se reproduce y sin
+   * atributo poster el WebView pinta su "default video poster" (play gigante).
+   * Solo se aplica en plataforma nativa; en web el backdrop queda igual.
+   */
+  posterUrl?: string | null;
   insets?: Partial<ImmersiveLayoutInsets>;
   embedded?: boolean;
   /** Rail de acciones al lado del media en PC (Explorar, Publicaciones, Clips). */
@@ -67,6 +75,7 @@ export function ImmersiveMediaStage({
   mediaHeight,
   mediaUrl,
   mediaKind,
+  posterUrl = null,
   insets,
   embedded = false,
   landscapeRailAside = true,
@@ -225,6 +234,11 @@ export function ImmersiveMediaStage({
           {mediaKind === 'video' ? (
             <video
               src={mediaUrl}
+              poster={
+                Capacitor.isNativePlatform()
+                  ? posterUrl || TRANSPARENT_VIDEO_POSTER
+                  : undefined
+              }
               className="lb-immersive-backdrop__media"
               muted
               playsInline
