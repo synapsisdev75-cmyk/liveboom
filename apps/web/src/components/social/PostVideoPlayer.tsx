@@ -30,7 +30,7 @@ import {
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
-import { captureHtmlVideoPoster } from '../../lib/videoPoster';
+import { captureHtmlVideoPoster, TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import {
   exploreNavBindPlayer,
   exploreNavCurrentGen,
@@ -670,7 +670,14 @@ export function PostVideoPlayer({
     <video
       ref={videoRef}
       src={src}
-      poster={resolvedPoster || undefined}
+      /*
+       * APK/AAB (Android WebView): sin atributo poster, el WebView pinta su
+       * "default video poster" (play negro gigante) mientras no hay frame.
+       * En viewers con autoplay (Explorar / Boom Clip / Flash Boom / expandido)
+       * usamos un poster transparente de respaldo; el poster desaparece al
+       * iniciar la reproducción. Tarjetas colapsadas del feed quedan igual.
+       */
+      poster={resolvedPoster || (expanded || overlayOnly ? TRANSPARENT_VIDEO_POSTER : undefined)}
       className="lb-post-media__video h-full w-full object-contain"
       muted={muted}
       loop={!storyMode}

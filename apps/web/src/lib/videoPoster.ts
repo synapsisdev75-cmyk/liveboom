@@ -1,3 +1,14 @@
+/**
+ * Poster transparente 1×1 (GIF válido, verificado).
+ * Android WebView (APK/AAB) dibuja su "default video poster" —un play negro
+ * gigante escalado al tamaño del elemento— en todo <video> SIN atributo poster
+ * hasta que llega el primer frame. Con cualquier poster presente (aunque sea
+ * transparente) ese artefacto no se dibuja. En navegadores normales un poster
+ * transparente se ve igual que la ausencia de frame (fondo del contenedor).
+ */
+export const TRANSPARENT_VIDEO_POSTER =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 /** Lee dimensiones intrínsecas de display del video (tras metadata del navegador). */
 export function readVideoIntrinsicSize(
   file: File | Blob,
