@@ -29,6 +29,7 @@ import {
 } from '../../lib/videoPlayback';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
+import { useWebViewBlankPoster } from '../../hooks/useWebViewBlankPoster';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster } from '../../lib/videoPoster';
 import {
@@ -650,6 +651,8 @@ export function PostVideoPlayer({
   }, []);
 
   const resolvedPoster = posterUrlProp || runtimePoster;
+  const { blankPoster: webViewBlankPoster, markFirstFrame: markWebViewFirstFrame } =
+    useWebViewBlankPoster(src);
   const pubW =
     mediaSize.width || mediaWidthProp || (videoAspect.isReady ? videoAspect.width : 0) || 0;
   const pubH =
@@ -670,7 +673,7 @@ export function PostVideoPlayer({
     <video
       ref={videoRef}
       src={src}
-      poster={resolvedPoster || undefined}
+      poster={resolvedPoster || webViewBlankPoster}
       className="lb-post-media__video h-full w-full object-contain"
       muted={muted}
       loop={!storyMode}
@@ -689,12 +692,14 @@ export function PostVideoPlayer({
       }}
       onLoadedData={() => {
         tryCapturePoster();
+        markWebViewFirstFrame();
         if (firstFrameSrcRef.current !== src) {
           firstFrameSrcRef.current = src;
           onFirstFrameRef.current?.();
         }
       }}
       onPlaying={() => {
+        markWebViewFirstFrame();
         if (firstFrameSrcRef.current !== src) {
           firstFrameSrcRef.current = src;
           onFirstFrameRef.current?.();

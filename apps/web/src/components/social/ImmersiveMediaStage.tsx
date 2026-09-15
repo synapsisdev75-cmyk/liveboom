@@ -8,6 +8,7 @@ import {
 import { exploreLandscape } from '../../responsive/mobile-tablet';
 import { classifyVideoOrientation } from '../../lib/videoAspect';
 import { GESTURE_AXIS_LOCK_PX, HORIZONTAL_SEEK_THRESHOLD_PX } from '../../lib/storyAuthorNav';
+import { useWebViewBlankPoster } from '../../hooks/useWebViewBlankPoster';
 
 export type ImmersivePointerGesture = {
   dx: number;
@@ -84,6 +85,8 @@ export function ImmersiveMediaStage({
   const stageRef = useRef<HTMLDivElement>(null);
   const [fillCover, setFillCover] = useState(false);
   const [deviceLandscape, setDeviceLandscape] = useState(false);
+  const { blankPoster: backdropBlankPoster, markFirstFrame: markBackdropFirstFrame } =
+    useWebViewBlankPoster(mediaKind === 'video' ? mediaUrl : null);
   const [isDesktopStage, setIsDesktopStage] = useState(
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : false,
   );
@@ -225,6 +228,8 @@ export function ImmersiveMediaStage({
           {mediaKind === 'video' ? (
             <video
               src={mediaUrl}
+              poster={backdropBlankPoster}
+              onLoadedData={markBackdropFirstFrame}
               className="lb-immersive-backdrop__media"
               muted
               playsInline
