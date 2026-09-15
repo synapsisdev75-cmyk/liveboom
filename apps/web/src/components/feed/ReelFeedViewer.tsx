@@ -372,7 +372,7 @@ export function ReelFeedViewer({
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
           overlays={reel.overlays}
-          posterUrl={exploreFastNav ? reel.thumbUrl : undefined}
+          posterUrl={reel.thumbUrl || undefined}
           mediaWidth={exploreFastNav ? reel.mediaWidth || undefined : undefined}
           mediaHeight={exploreFastNav ? reel.mediaHeight || undefined : undefined}
           skipRemoteAspectProbe={exploreFastNav}

@@ -8,6 +8,7 @@ import {
 import { exploreLandscape } from '../../responsive/mobile-tablet';
 import { classifyVideoOrientation } from '../../lib/videoAspect';
 import { GESTURE_AXIS_LOCK_PX, HORIZONTAL_SEEK_THRESHOLD_PX } from '../../lib/storyAuthorNav';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/transparentVideoPoster';
 
 export type ImmersivePointerGesture = {
   dx: number;
@@ -22,6 +23,8 @@ type Props = {
   mediaHeight: number;
   mediaUrl: string;
   mediaKind: 'video' | 'image';
+  /** Miniatura: fondo ambient usa <img> y evita el play nativo de Android WebView. */
+  posterUrl?: string | null;
   insets?: Partial<ImmersiveLayoutInsets>;
   embedded?: boolean;
   /** Rail de acciones al lado del media en PC (Explorar, Publicaciones, Clips). */
@@ -67,6 +70,7 @@ export function ImmersiveMediaStage({
   mediaHeight,
   mediaUrl,
   mediaKind,
+  posterUrl = null,
   insets,
   embedded = false,
   landscapeRailAside = true,
@@ -222,13 +226,17 @@ export function ImmersiveMediaStage({
     >
       {mediaUrl && !fillCover ? (
         <div className="lb-immersive-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-          {mediaKind === 'video' ? (
+          {mediaKind === 'video' && posterUrl ? (
+            <img src={posterUrl} alt="" className="lb-immersive-backdrop__media" draggable={false} />
+          ) : mediaKind === 'video' ? (
             <video
               src={mediaUrl}
-              className="lb-immersive-backdrop__media"
+              poster={TRANSPARENT_VIDEO_POSTER}
+              className="lb-immersive-backdrop__media lb-html-video"
               muted
               playsInline
               preload="metadata"
+              controls={false}
               tabIndex={-1}
             />
           ) : (

@@ -540,6 +540,22 @@
   object-position: center;
 }
 
+/* APK/AAB WebView: ocultar controles HTML5. El play nativo gigante se quita en MainActivity. */
+html[data-lb-native='android'] video::-webkit-media-controls,
+html[data-lb-native='android'] video::-webkit-media-controls-enclosure,
+html[data-lb-native='android'] video::-webkit-media-controls-panel,
+html[data-lb-native='android'] video::-webkit-media-controls-overlay-play-button,
+html[data-lb-native='android'] video::-webkit-media-controls-start-playback-button,
+html[data-lb-native='android'] .lb-html-video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  appearance: none;
+  -webkit-appearance: none;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none;
+}
+
 @media (min-width: 1024px) {
   .lb-post-media {
     padding-left: 2rem;

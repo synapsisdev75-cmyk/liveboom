@@ -6,6 +6,7 @@ import './appearance.css';
 import './responsive/universal.css';
 import './responsive/mobile-tablet/landscape-explore.css';
 import { installViewportSync } from './responsive/syncViewport';
+import { installAndroidWebViewVideoPosterFix } from './lib/androidWebViewVideo';
 
 // Fuerza HTTPS en producción (evita “No es seguro” y Failed to fetch por mixed content).
 if (
@@ -26,6 +27,7 @@ if (!root) {
 }
 
 installViewportSync();
+installAndroidWebViewVideoPosterFix();
 
 createRoot(root).render(
   <StrictMode>

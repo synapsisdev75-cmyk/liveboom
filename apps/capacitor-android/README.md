@@ -32,7 +32,16 @@ npm run sync
 # o: npm run open
 ```
 
-`sync` hace build de `apps/web` y copia `dist` al proyecto Android.
+`sync` hace build de `apps/web`, copia `dist` al proyecto Android y aplica el override nativo del play gigante de WebView (`getDefaultVideoPoster`).
+
+## Play nativo gigante (solo APK/AAB)
+
+Android WebView dibuja un triángulo de play enorme en `<video>` mientras carga. **No se quita con CSS ni con un deploy de hosting.** Hay que regenerar el APK/AAB:
+
+1. `cd apps/capacitor-android && npm run sync`
+2. En Android Studio: Generate Signed Bundle / APK
+
+`sync` parchea `MainActivity` para devolver un bitmap transparente en `getDefaultVideoPoster`. El bundle web también pone un `poster` 1×1 y oculta controles HTML5.
 
 ## Notas
 

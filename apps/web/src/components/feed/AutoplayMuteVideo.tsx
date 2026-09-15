@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/transparentVideoPoster';
 import {
   claimExclusivePlayback,
   isExclusiveHeldByOther,
@@ -65,10 +66,12 @@ export function AutoplayMuteVideo({
       <video
         ref={ref}
         src={src}
-        className={className}
+        poster={TRANSPARENT_VIDEO_POSTER}
+        className={`lb-html-video ${className || ''}`}
         muted
         loop
         playsInline
+        controls={false}
         preload="metadata"
         onClick={() => {
           claimExclusivePlayback(id);

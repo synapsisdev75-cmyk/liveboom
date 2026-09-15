@@ -3,6 +3,8 @@
  * No se usa en Boom Clip, Flash Boom ni Publicaciones.
  */
 
+import { TRANSPARENT_VIDEO_POSTER } from './transparentVideoPoster';
+
 type NavBudget = {
   plus2: boolean;
   preload: 'auto' | 'metadata';
@@ -57,6 +59,8 @@ function makeEl(preload: 'auto' | 'metadata') {
   el.setAttribute('playsinline', '');
   el.setAttribute('webkit-playsinline', '');
   el.setAttribute('muted', '');
+  el.setAttribute('poster', TRANSPARENT_VIDEO_POSTER);
+  el.classList.add('lb-html-video');
   return el;
 }
 

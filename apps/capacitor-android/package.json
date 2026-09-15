@@ -6,10 +6,11 @@
   "type": "module",
   "scripts": {
     "build:web": "npm run build -w @liveboom/web",
-    "sync": "npm run build:web && npx cap sync android",
+    "sync": "npm run build:web && npx cap sync android && node scripts/apply-android-overrides.mjs",
     "open": "npx cap open android",
     "run:android": "npm run sync && npx cap run android",
-    "add:android": "npx cap add android",
+    "add:android": "npx cap add android && node scripts/apply-android-overrides.mjs",
+    "apply:native": "node scripts/apply-android-overrides.mjs",
     "lint": "node -e \"process.exit(0)\""
   },
   "dependencies": {

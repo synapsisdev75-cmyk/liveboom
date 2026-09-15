@@ -31,6 +31,7 @@ import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster } from '../../lib/videoPoster';
+import { resolveVideoPoster } from '../../lib/transparentVideoPoster';
 import {
   exploreNavBindPlayer,
   exploreNavCurrentGen,
@@ -670,11 +671,13 @@ export function PostVideoPlayer({
     <video
       ref={videoRef}
       src={src}
-      poster={resolvedPoster || undefined}
-      className="lb-post-media__video h-full w-full object-contain"
+      poster={resolveVideoPoster(resolvedPoster)}
+      className="lb-post-media__video lb-html-video h-full w-full object-contain"
       muted={muted}
       loop={!storyMode}
       playsInline
+      controls={false}
+      disablePictureInPicture
       preload={expanded || overlayOnly ? 'auto' : 'metadata'}
       onClick={
         !expanded && !overlayOnly
@@ -744,6 +747,7 @@ export function PostVideoPlayer({
           mediaHeight={immersiveH}
           mediaUrl={src}
           mediaKind="video"
+          posterUrl={resolvedPoster}
           embedded={embedded}
           landscapeRailAside
           fillMode={publicationFillMode}
