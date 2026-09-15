@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { mediaStageModeClass, type MediaStageMode } from '../../lib/mediaPresentation';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 type Props = {
   mode: MediaStageMode;
@@ -48,6 +50,12 @@ export function MediaStage({
           ) : (
             <video
               src={mediaUrl!}
+              /*
+               * APK/AAB: sin atributo poster, el WebView de Android pinta su
+               * "default video poster" (play gigante) sobre este ambient hasta
+               * el primer frame. Solo en nativo; en web queda igual.
+               */
+              poster={Capacitor.isNativePlatform() ? TRANSPARENT_VIDEO_POSTER : undefined}
               className="lb-media-stage__ambient-media"
               muted
               playsInline

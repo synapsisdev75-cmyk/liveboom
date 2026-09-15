@@ -34,6 +34,51 @@ npm run sync
 
 `sync` hace build de `apps/web` y copia `dist` al proyecto Android.
 
+## Ícono de play gigante al cargar videos (solo APK/AAB)
+
+El WebView de Android dibuja un **ícono de play gigante** como poster por defecto sobre
+cualquier `<video>` que aún no renderizó su primer frame (en Explorar se ve un instante
+al cambiar de video). En navegador no pasa; es comportamiento nativo del WebView
+(`WebChromeClient.getDefaultVideoPoster()`), y Capacitor no lo sobreescribe.
+
+La app web ya mitiga esto poniendo siempre un `poster` en sus videos, pero para
+eliminarlo de raíz en **todos** los videos de la app, tras `npx cap add android`
+reemplaza `android/app/src/main/java/com/liveboom/app/MainActivity.java` por:
+
+```java
+package com.liveboom.app;
+
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
+
+public class MainActivity extends BridgeActivity {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // El WebView usa un ícono de play gigante como poster por defecto de <video>.
+        // Devolver un bitmap transparente evita ese flash en APK/AAB.
+        this.getBridge()
+            .getWebView()
+            .setWebChromeClient(
+                new BridgeWebChromeClient(this.getBridge()) {
+                    @Override
+                    public Bitmap getDefaultVideoPoster() {
+                        Bitmap pixel = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+                        pixel.eraseColor(Color.TRANSPARENT);
+                        return pixel;
+                    }
+                }
+            );
+    }
+}
+```
+
+Luego recompila el APK/AAB normalmente (`npm run sync` + Android Studio).
+
 ## Notas
 
 - `webDir` apunta a `../web/dist` (ver `capacitor.config.json`).
