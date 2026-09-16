@@ -75,17 +75,28 @@ async function ensureCallRoom(roomName) {
   }
 }
 
-async function createLivekitToken({ identity, name, room, canPublish, ensureRoom = false }) {
+async function createLivekitToken({
+  identity,
+  name,
+  room,
+  canPublish,
+  ensureRoom = false,
+  metadata,
+}) {
   const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
   const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
   if (ensureRoom) {
     await ensureCallRoom(room);
   }
-  const token = new AccessToken(apiKey, apiSecret, {
+  const tokenOpts = {
     identity: String(identity),
     name: String(name || identity),
     ttl: '6h',
-  });
+  };
+  if (metadata != null && String(metadata).trim()) {
+    tokenOpts.metadata = String(metadata);
+  }
+  const token = new AccessToken(apiKey, apiSecret, tokenOpts);
   token.addGrant({
     roomJoin: true,
     roomCreate: true,
@@ -106,6 +117,26 @@ async function createLivekitToken({ identity, name, room, canPublish, ensureRoom
     liveKitUrlPresent: Boolean(publicLiveKitUrl()),
   });
   return jwt;
+}
+
+/** Identity técnica de Screen Share nativo (mismo LIVE, no otro usuario). */
+function screenShareIdentityFor(ownerUid, sessionId) {
+  const uid = String(ownerUid || '').trim();
+  const sid = String(sessionId || '').trim();
+  if (!uid) return 'screen:unknown';
+  return sid ? `screen:${uid}:${sid}` : `screen:${uid}`;
+}
+
+function isScreenShareIdentity(identity) {
+  return /^screen:/i.test(String(identity || ''));
+}
+
+function ownerUidFromScreenIdentity(identity) {
+  const raw = String(identity || '');
+  if (!/^screen:/i.test(raw)) return null;
+  const rest = raw.slice(raw.indexOf(':') + 1);
+  const owner = rest.split(':')[0]?.trim() || '';
+  return owner || null;
 }
 
 async function listActiveLiveRooms() {
@@ -140,6 +171,9 @@ module.exports = {
   livekitMissing,
   livekitConfigError,
   createLivekitToken,
+  screenShareIdentityFor,
+  isScreenShareIdentity,
+  ownerUidFromScreenIdentity,
   ensureCallRoom,
   listActiveLiveRooms,
   livekitHttpHost,

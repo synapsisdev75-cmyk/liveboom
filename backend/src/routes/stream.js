@@ -626,6 +626,83 @@ router.patch('/reels/:reelId/share', requireAuth, (req, res) => {
   res.json({ reel });
 });
 
+/**
+ * Token exclusivo para participante técnico de Screen Share nativo Android.
+ * Misma sala LiveKit; identity distinta (screen:<uid>) para no desconectar al host.
+ */
+router.post('/screen-token/:roomName', requireAuth, async (req, res) => {
+  const lk = livekit();
+  const livekitEnabled = lk.livekitEnabled || lk.default?.livekitEnabled;
+  const createLivekitToken = lk.createLivekitToken || lk.default?.createLivekitToken;
+  const screenShareIdentityFor =
+    lk.screenShareIdentityFor || lk.default?.screenShareIdentityFor;
+
+  if (typeof livekitEnabled !== 'function' || !livekitEnabled()) {
+    const payload =
+      typeof lk.livekitConfigError === 'function'
+        ? lk.livekitConfigError()
+        : { error: 'LiveKit no está configurado en el API' };
+    res.status(503).json(payload);
+    return;
+  }
+
+  const roomName = normalize(req.params.roomName).slice(0, 64);
+  if (!roomName) {
+    res.status(400).json({ error: 'roomName es obligatorio' });
+    return;
+  }
+
+  try {
+    const claimedHandle =
+      typeof req.body?.handle === 'string' ? req.body.handle : req.query.handle;
+    const host = isRoomHost(req.user, roomName, claimedHandle);
+    if (!host) {
+      res.status(403).json({ error: 'Solo el host puede publicar Screen Share' });
+      return;
+    }
+
+    const ownerUid = String(req.user.uid);
+    const sessionId =
+      typeof req.body?.sessionId === 'string'
+        ? String(req.body.sessionId).trim().slice(0, 96)
+        : '';
+    const identity =
+      typeof screenShareIdentityFor === 'function'
+        ? screenShareIdentityFor(ownerUid, sessionId || undefined)
+        : sessionId
+          ? `screen:${ownerUid}:${sessionId}`
+          : `screen:${ownerUid}`;
+    const metadata = JSON.stringify({
+      role: 'screen_share',
+      ownerUid,
+      roomName,
+      sessionId: sessionId || null,
+    });
+    const token = await createLivekitToken({
+      identity,
+      name: 'Screen Share',
+      room: roomName,
+      canPublish: true,
+      metadata,
+    });
+
+    res.json({
+      token,
+      serverUrl: process.env.LIVEKIT_URL,
+      roomName,
+      identity,
+      ownerUid,
+      sessionId: sessionId || null,
+      role: 'screen_share',
+    });
+  } catch (error) {
+    console.error('[stream/screen-token]', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo generar token de Screen Share',
+    });
+  }
+});
+
 router.get('/token/:roomName', requireAuth, async (req, res) => {
   const lk = livekit();
   const livekitEnabled = lk.livekitEnabled || lk.default?.livekitEnabled;

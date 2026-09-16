@@ -18,6 +18,7 @@ type ScreenCaptureResult = {
   sessionId?: number;
   foregroundReady?: boolean;
   audioCapturing?: boolean;
+  transport?: 'native' | 'legacy';
 };
 
 type ScreenFrameEvent = {
@@ -47,7 +48,16 @@ type LiveMediaPluginApi = {
     maxFps?: number;
     quality?: number;
     allowOverlayCamera?: boolean;
+    preferSingleApp?: boolean;
   }) => Promise<ScreenCaptureResult>;
+  startNativeLiveKitScreenShare: (opts: {
+    serverUrl: string;
+    token: string;
+    deviceAudioEnabled?: boolean;
+  }) => Promise<ScreenCaptureResult>;
+  stopNativeLiveKitScreenShare: () => Promise<ScreenCaptureResult>;
+  setNativeLiveKitDeviceAudioEnabled: (opts: { enabled: boolean }) => Promise<void>;
+  setNativeLiveKitGameAudioGain: (opts: { gain: number }) => Promise<void>;
   stopNativeScreenCapture: () => Promise<ScreenCaptureResult>;
   checkOverlayPermission: () => Promise<{ granted: boolean }>;
   requestOverlayPermission: () => Promise<{ granted: boolean; openedSettings?: boolean }>;
@@ -79,14 +89,16 @@ type LiveMediaPluginApi = {
       | 'screenCaptureStopped'
       | 'stopScreenShareRequested'
       | 'screenShareChatSend'
-      | 'presentationHudAction',
+      | 'presentationHudAction'
+      | 'screenShareAudioLimited',
     cb: (
       data:
         | ScreenFrameEvent
         | ScreenAudioPcmEvent
         | { reason?: string }
         | { text?: string }
-        | { action?: string },
+        | { action?: string }
+        | { message?: string },
     ) => void,
   ) => Promise<PluginListenerHandle>;
 };
@@ -112,6 +124,8 @@ let nativeMicProcessor: ScriptProcessorNode | null = null;
 let stopShareExternalHandler: (() => void) | null = null;
 let lastNativeAudioCapturing = false;
 let keepLiveTracksHooked = false;
+/** Ruta activa de Screen Share: native (LiveKit Android) | legacy (JPEG/canvas). */
+let activeScreenShareTransport: 'native' | 'legacy' | null = null;
 /** Preferencia usuario: ganancia juego (0–1). El ducking no la pisa. */
 let userGameAudioGain = 0.42;
 /** Preferencia usuario: ganancia mic (0–1). */
@@ -129,7 +143,15 @@ function clamp01(n: number): number {
 
 function effectiveGameAudioGain(): number {
   if (gameAudioMuted) return 0;
-  if (performance.now() < voiceOpenUntil) return Math.min(userGameAudioGain, 0.08);
+  const now = performance.now();
+  const ducked = userGameAudioGain * 0.3; // ~30% mientras habla (prioridad de voz)
+  if (now < voiceOpenUntil) return ducked;
+  // Recuperación progresiva (~280 ms) sin corte brusco.
+  const releaseMs = 280;
+  if (voiceOpenUntil > 0 && now - voiceOpenUntil < releaseMs) {
+    const t = (now - voiceOpenUntil) / releaseMs;
+    return ducked + (userGameAudioGain - ducked) * t;
+  }
   return userGameAudioGain;
 }
 
@@ -362,10 +384,14 @@ export async function showScreenShareOverlayIfAllowed(opts?: {
 }): Promise<boolean> {
   if (!isNativeAndroidApp()) return false;
   const ok = await hasOverlayPermission();
-  if (!ok) return false;
+  if (!ok) {
+    console.warn('[SCREEN SHARE] sin permiso SYSTEM_ALERT_WINDOW → chat flotante no puede mostrarse');
+    return false;
+  }
   try {
+    // Por defecto sin cámara PiP durante presentación de juego.
     const res = await LiveMedia.showScreenShareOverlay({
-      allowOverlayCamera: opts?.allowOverlayCamera !== false,
+      allowOverlayCamera: opts?.allowOverlayCamera === true,
     });
     if (res && typeof res === 'object' && 'shown' in res) {
       return Boolean(res.shown);
@@ -479,8 +505,84 @@ function attachLocalPreview(stream: MediaStream) {
   nativeScreenPreviewEl = video;
 }
 
+export function getActiveScreenShareTransport(): 'native' | 'legacy' | null {
+  return activeScreenShareTransport;
+}
+
+/**
+ * Ruta preferente: MediaProjection → LiveKit Android (sin JPEG/canvas).
+ * El participante técnico publica screen en la misma sala.
+ */
+export async function startNativeLiveKitScreenShare(opts: {
+  serverUrl: string;
+  token: string;
+  deviceAudioEnabled?: boolean;
+}): Promise<{ transport: 'native'; sessionId?: number }> {
+  if (!isNativeAndroidApp()) {
+    throw new Error('Screen Share nativo solo en Android');
+  }
+  ensureKeepLiveTracksHook();
+  await prepareNativeLiveWebView();
+  await prepareNativeScreenShareService();
+  // No arrancar JPEG legacy en paralelo.
+  if (activeScreenShareTransport === 'legacy') {
+    await stopNativeScreenShareStream();
+  }
+  const started = await LiveMedia.startNativeLiveKitScreenShare({
+    serverUrl: opts.serverUrl,
+    token: opts.token,
+    deviceAudioEnabled: opts.deviceAudioEnabled !== false,
+  });
+  activeScreenShareTransport = 'native';
+  void showScreenShareOverlayIfAllowed({ allowOverlayCamera: false });
+  return {
+    transport: 'native',
+    sessionId: Number(started?.sessionId || 0) || undefined,
+  };
+}
+
+export async function stopNativeLiveKitScreenShare(): Promise<void> {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await LiveMedia.stopNativeLiveKitScreenShare();
+  } catch {
+    /* ignore */
+  }
+  if (activeScreenShareTransport === 'native') {
+    activeScreenShareTransport = null;
+  }
+  try {
+    await LiveMedia.hideScreenShareOverlay();
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function setNativeLiveKitDeviceAudioEnabled(enabled: boolean): Promise<void> {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await LiveMedia.setNativeLiveKitDeviceAudioEnabled({ enabled: Boolean(enabled) });
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function bindScreenShareAudioLimited(
+  handler: (message: string) => void,
+): Promise<() => void> {
+  if (!isNativeAndroidApp()) return () => undefined;
+  const handle = await LiveMedia.addListener('screenShareAudioLimited', (raw) => {
+    const msg = String((raw as { message?: string })?.message || '').trim();
+    if (msg) handler(msg);
+  });
+  return () => {
+    void handle.remove();
+  };
+}
+
 export async function startNativeScreenShareStream(opts?: {
   allowOverlayCamera?: boolean;
+  preferSingleApp?: boolean;
 }): Promise<MediaStream> {
   if (!isNativeAndroidApp()) {
     throw new Error('Captura nativa solo en Android');
@@ -628,18 +730,20 @@ export async function startNativeScreenShareStream(opts?: {
 
   try {
     const started = await LiveMedia.startNativeScreenCapture({
-      maxFps: 24,
-      quality: 68,
-      allowOverlayCamera: opts?.allowOverlayCamera !== false,
+      maxFps: 30,
+      quality: 72,
+      allowOverlayCamera: false,
+      preferSingleApp: Boolean(opts?.preferSingleApp),
     });
     boundSessionId = Number(started?.sessionId || 0);
-    console.log('[SCREEN SHARE] native capture started', {
+    console.log('[SCREEN SHARE] legacy capture started', {
       sessionId: boundSessionId,
       active: started?.active,
       foregroundReady: started?.foregroundReady,
       audioCapturing: started?.audioCapturing,
     });
     lastNativeAudioCapturing = Boolean(started?.audioCapturing);
+    activeScreenShareTransport = 'legacy';
     // Al elegir una app (juego), los frames llegan cuando esa app está al frente.
     // No tumbar la captura por timeout: publicar ya y seguir recibiendo frames.
     await Promise.race([
@@ -654,12 +758,11 @@ export async function startNativeScreenShareStream(opts?: {
       }),
     ]);
     // En Android no adjuntar preview DOM (ensucia el LIVE al volver a la app).
-    // Fuera de LiveBoom el globo nativo hace de PiP; dentro, el stage LiveKit.
     if (!isNativeAndroidApp()) {
       attachLocalPreview(stream);
     }
     void showScreenShareOverlayIfAllowed({
-      allowOverlayCamera: opts?.allowOverlayCamera !== false,
+      allowOverlayCamera: false,
     });
   } catch (err) {
     await stopNativeScreenShareStream();
@@ -1063,17 +1166,28 @@ export async function stopNativeScreenShareStream(): Promise<void> {
   }
   nativeScreenStream = null;
   detachNativeScreenCanvas();
-  if (!isNativeAndroidApp()) return;
+  if (!isNativeAndroidApp()) {
+    activeScreenShareTransport = null;
+    return;
+  }
   try {
     await LiveMedia.hideScreenShareOverlay();
   } catch {
     /* ignore */
+  }
+  if (activeScreenShareTransport === 'native') {
+    try {
+      await LiveMedia.stopNativeLiveKitScreenShare();
+    } catch {
+      /* ignore */
+    }
   }
   try {
     await LiveMedia.stopNativeScreenCapture();
   } catch {
     /* ignore */
   }
+  activeScreenShareTransport = null;
 }
 
 export async function updateScreenShareChatHud(lines: string[]): Promise<void> {

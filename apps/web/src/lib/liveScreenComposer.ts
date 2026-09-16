@@ -41,8 +41,10 @@ export function canUseDisplayMedia(): boolean {
   return canShareScreenWeb();
 }
 
-export async function requestScreenCaptureStream(): Promise<MediaStream> {
-  const { stream } = await startScreenShare();
+export async function requestScreenCaptureStream(opts?: {
+  preferSingleApp?: boolean;
+}): Promise<MediaStream> {
+  const { stream } = await startScreenShare(opts);
   return stream;
 }
 

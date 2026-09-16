@@ -139,14 +139,18 @@ async function tryWebDisplayMedia(getDisplay: DisplayCaptureFn): Promise<MediaSt
  * Inicia captura de pantalla.
  * Android app: siempre MediaProjection nativo (getDisplayMedia del WebView falla / no envía imagen).
  */
-export async function startScreenShare(): Promise<ScreenShareStartResult> {
+export async function startScreenShare(opts?: {
+  preferSingleApp?: boolean;
+}): Promise<ScreenShareStartResult> {
   logSupport();
 
   if (isNativeAndroidApp()) {
     await ensureNativeScreenCapturePermission();
     try {
       console.log('[SCREEN SHARE] request native MediaProjection');
-      const stream = await startNativeScreenShareStream();
+      const stream = await startNativeScreenShareStream({
+        preferSingleApp: Boolean(opts?.preferSingleApp),
+      });
       logStream(stream, true);
       return { stream, nativeCanvas: true };
     } catch (error) {

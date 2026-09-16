@@ -3,16 +3,14 @@ import { isNativeAndroidApp } from './nativeLiveMedia';
 import { classifyLayoutSurface } from '../responsive/viewport';
 
 /**
- * Teléfono o tablet: en LiveBoom ambos son “móvil” para LIVE / Espacio Gaming.
- * No usar solo `phone` — las tablets Android (≥768px, a menudo ≥1024 en landscape)
- * deben recibir la misma política que el móvil.
+ * Teléfono o tablet: en LiveBoom ambos son “móvil” para LIVE.
  */
 export function isPhoneOrTabletLayout(): boolean {
   if (typeof window === 'undefined') return true;
   return classifyLayoutSurface(window.innerWidth) !== 'desktop';
 }
 
-/** Android nativo Capacitor (teléfono y tablet: misma app). */
+/** Android nativo Capacitor (teléfono y tablet). */
 export function isAndroidMobileApp(): boolean {
   return isNativeAndroidApp();
 }
@@ -23,27 +21,7 @@ function isAndroidUserAgent(): boolean {
 }
 
 /**
- * Compartir pantalla clásico (botón Pantalla en el LIVE):
- * solo PC / web de escritorio.
- * En Android (app o WebView, móvil y tablet) se usa Espacio Gaming.
- */
-export function canUseClassicScreenShare(): boolean {
-  if (isNativeAndroidApp()) return false;
-  if (isAndroidUserAgent() && Capacitor.getPlatform() !== 'ios') return false;
-  return true;
-}
-
-/**
- * Entrada Espacio Gaming (Crear + wizard).
- * App Android nativa / WebView APK: teléfono y tablet por igual.
- */
-export function canUseGamingSpace(): boolean {
-  return isNativeAndroidApp() || isAndroidAppShell();
-}
-
-/**
- * Heurística extra para tablets: a veces Capacitor tarda en reportar native
- * pero el shell ya es el WebView del APK.
+ * Heurística extra para tablets: Capacitor a veces tarda en reportar native.
  */
 export function isAndroidAppShell(): boolean {
   if (typeof window === 'undefined') return false;
@@ -60,7 +38,28 @@ export function isAndroidAppShell(): boolean {
   return false;
 }
 
-/** Presentar juego dentro del LIVE iniciado vía Espacio Gaming. */
+/**
+ * Compartir pantalla **dentro del LIVE** (botón Compartir / Pantalla).
+ * - PC/web: getDisplayMedia
+ * - Android APK: MediaProjection (misma Room LiveKit)
+ * - iOS: no soportado
+ */
+export function canUseClassicScreenShare(): boolean {
+  if (Capacitor.getPlatform() === 'ios') return false;
+  if (isNativeAndroidApp() || isAndroidAppShell()) return true;
+  if (isAndroidUserAgent()) return false;
+  return true;
+}
+
+/**
+ * Entrada Espacio Gaming (Crear). Independiente del botón Compartir in-LIVE.
+ * No modificar Crear en esta tarea; se mantiene por compatibilidad.
+ */
+export function canUseGamingSpace(): boolean {
+  return isNativeAndroidApp() || isAndroidAppShell();
+}
+
+/** Presentar vía sesión gamingSpace (legacy). In-LIVE Compartir ya no lo exige. */
 export function canPresentGamingInLive(gamingSpace: boolean | undefined): boolean {
   return Boolean(gamingSpace) && (isNativeAndroidApp() || isAndroidAppShell());
 }

@@ -3,7 +3,6 @@ import {
   LiveKitRoom,
   RoomAudioRenderer,
   StartAudio,
-  VideoTrack,
   useLocalParticipant,
   useRoomContext,
   useTracks,
@@ -155,15 +154,11 @@ import { shareContent } from '../lib/shareContent';
 import { listFollowers, listFriends } from '../lib/socialFirestore';
 import { sendLiveboomGift } from '../lib/giftsFirestore';
 import {
-  defaultPipPosition,
   frameAspectRatio,
   LiveScreenComposer,
   readCameraTrackAspect,
-  readScreenTrackDimensions,
   requestScreenCaptureStream,
   SCREEN_SHARE_PIP_OPTS,
-  screenShareAudioStatusMessage,
-  screenShareStatusMessage,
   defaultCameraFrameLayout,
   normalizeFrameLayout,
   type LiveFrameLayout,
@@ -176,7 +171,6 @@ import {
   rememberGamingSpaceSession,
 } from '../lib/liveScreenSharePolicy';
 import {
-  overlayFailureWarning,
   participantHasHostMedia,
   releaseMediaStream,
   ScreenShareOperationGate,
@@ -185,29 +179,67 @@ import {
 import {
   bindNativeStopScreenShare,
   bindPresentationHudAction,
+  bindScreenShareAudioLimited,
   bindScreenShareChatSend,
+  getActiveScreenShareTransport,
   getNativeAudioMixerState,
-  hasOverlayPermission,
   isNativeAndroidApp,
   setNativeGameVolume,
   setNativeMicVolume,
+  setNativeGameAudioMuted,
+  setNativeMicMuted,
   setNativePresentationOverlaysVisible,
   showScreenShareOverlayIfAllowed,
+  startNativeLiveKitScreenShare,
   startNativeMicStream,
-  startNativeOverlayCameraStream,
   startNativeScreenAudioStream,
+  stopNativeLiveKitScreenShare,
   stopNativeMicStream,
   stopNativeOverlayCameraStream,
   stopNativeScreenAudioStream,
   toggleNativeGameAudioMuted,
   toggleNativeMicMuted,
   updateScreenShareChatHud,
-  wasNativeScreenAudioCapturing,
 } from '../lib/nativeLiveMedia';
+import {
+  isHostOrScreenParticipant,
+  isScreenShareIdentity,
+  isScreenShareForOwner,
+  screenShareIdentityFor,
+  type ScreenShareTransport,
+} from '../lib/screenShareIdentity';
+import {
+  beginScreenShareSession,
+  endScreenShareSession,
+  screenShareSessionIdFor,
+} from '../lib/screenShareSessionCoordinator';
+import {
+  pushScreenShareDiag,
+  readHostPublisherStats,
+  ssLog,
+} from '../lib/screenShareDiagnostics';
+import { getScreenShareQuality } from '../lib/screenShareQuality';
+import { resolveScreenShareTransport } from '../lib/screenShareTransport';
+import {
+  guardEnterSalaOrBattle,
+  guardEnterScreenShare,
+  logBattleStart,
+  logModeNormal,
+  logSalaStart,
+  logScreenStart,
+  logScreenStop,
+  pushScreenShareChatLinesIfChanged,
+  resetScreenShareChatHudCache,
+  ScreenShareVideo,
+} from '../live/screen-share';
 import { GamingPresentPanel } from '../components/live/studio/GamingPresentPanel';
 import {
+  LiveScreenShareWizard,
+  type ScreenShareWizardResult,
+} from '../components/live/studio/LiveScreenShareWizard';
+import { LiveScreenShareControlsSheet } from '../components/live/studio/LiveScreenShareControlsSheet';
+import {
   DEFAULT_LIVE_ASPECT_RATIO,
-  liveCanvasDimensions,
   liveStageInnerClass,
   liveStageOuterClass,
   liveStageSectionClass,
@@ -1592,12 +1624,21 @@ function CreatorStage({
   const [recording, setRecording] = useState(false);
   const [reelNote, setReelNote] = useState<string | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
-  const [screenAudioPrompt, setScreenAudioPrompt] = useState(false);
-  const [shareDeviceAudioChecked, setShareDeviceAudioChecked] = useState(true);
+  const [screenShareWizardOpen, setScreenShareWizardOpen] = useState(false);
+  const [shareStopConfirmOpen, setShareStopConfirmOpen] = useState(false);
+  const [shareStoppedAckOpen, setShareStoppedAckOpen] = useState(false);
+  const [shareControlsOpen, setShareControlsOpen] = useState(false);
+  const [shareMicrophoneEnabled, setShareMicrophoneEnabled] = useState(true);
+  const [shareDeviceAudioEnabled, setShareDeviceAudioEnabled] = useState(true);
+  const [floatingChatEnabled, setFloatingChatEnabled] = useState(true);
+  const shareMicrophoneEnabledRef = useRef(true);
+  const screenShareTransportRef = useRef<ScreenShareTransport>(null);
+  const screenShareWizardResolverRef = useRef<((result: ScreenShareWizardResult | null) => void) | null>(
+    null,
+  );
   const [gamingMixer, setGamingMixer] = useState(() => getNativeAudioMixerState());
   const [gamingBitrateKbps, setGamingBitrateKbps] = useState<number | null>(null);
   const [gamingRttMs, setGamingRttMs] = useState<number | null>(null);
-  const screenAudioPromptResolverRef = useRef<((ok: boolean) => void) | null>(null);
   const screenShareGateRef = useRef(new ScreenShareOperationGate());
   const restoreCamTimerRef = useRef(0);
   const [pipVisible, setPipVisible] = useState(true);
@@ -1667,26 +1708,44 @@ function CreatorStage({
   const [batallaOpen, setBatallaOpen] = useState(false);
 
   useEffect(() => {
+    // Effect A — Solo Sala Boom (nunca Screen Share / PiP).
     if (!isHost) return;
-    const syncLayout = () => {
-      void publishFrameSync(room, frameLayout, screenSharing ? pipVisible : true).catch(
-        () => undefined,
-      );
+    const syncSalaLayout = () => {
       void publishRoomData(room, {
         type: 'sala_layout',
         layout: salaLayout,
         pin: salaPinnedId,
       }).catch(() => undefined);
     };
-    const onParticipantConnected = () => syncLayout();
-    room.on(RoomEvent.Connected, syncLayout);
+    const onParticipantConnected = () => syncSalaLayout();
+    room.on(RoomEvent.Connected, syncSalaLayout);
     room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-    if (room.state === ConnectionState.Connected) syncLayout();
+    if (room.state === ConnectionState.Connected) syncSalaLayout();
     return () => {
-      room.off(RoomEvent.Connected, syncLayout);
+      room.off(RoomEvent.Connected, syncSalaLayout);
       room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
     };
-  }, [isHost, room, frameLayout, pipVisible, screenSharing, salaLayout, salaPinnedId]);
+  }, [isHost, room, salaLayout, salaPinnedId]);
+
+  useEffect(() => {
+    // Effect B — Solo frame / PiP web (NO publica sala_layout).
+    if (!isHost) return;
+    // Android Screen Share: sin sync de PiP cámara.
+    if (screenSharing && isNativeAndroidApp()) return;
+    const syncScreenPresentation = () => {
+      void publishFrameSync(room, frameLayout, screenSharing ? pipVisible : true).catch(
+        () => undefined,
+      );
+    };
+    const onParticipantConnected = () => syncScreenPresentation();
+    room.on(RoomEvent.Connected, syncScreenPresentation);
+    room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
+    if (room.state === ConnectionState.Connected) syncScreenPresentation();
+    return () => {
+      room.off(RoomEvent.Connected, syncScreenPresentation);
+      room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
+    };
+  }, [isHost, room, frameLayout, pipVisible, screenSharing]);
 
   useEffect(() => {
     const onBoomButton = () => {
@@ -1787,7 +1846,7 @@ function CreatorStage({
     onActiveChange: onBattleActive,
   });
   const hostDeepAr = useHostLiveDeepAr({
-    enabled: isHost && canPublish && !battle.liveBattle,
+    enabled: isHost && canPublish && !battle.liveBattle && !screenSharing,
     room,
     cameraTrackRef,
     facing,
@@ -1867,7 +1926,9 @@ function CreatorStage({
   }, [location.search, isHost, firebaseUid]);
 
   useEffect(() => {
+    // WEB clásico: PiP aspect. Android Screen Share: NO (sin cámara / sin PiP).
     if (!screenSharing) return;
+    if (isNativeAndroidApp()) return;
     const syncAspect = () => {
       setPipCameraAspect(
         readCameraTrackAspect(
@@ -2330,7 +2391,7 @@ function CreatorStage({
       if (status !== 'ended') return;
       // Host presente si hay cámara O pantalla compartida (no solo Camera).
       const hostMedia = Array.from(room.remoteParticipants.values()).some((participant) => {
-        if (hostUid && participant.identity !== hostUid) return false;
+        if (hostUid && !isHostOrScreenParticipant(participant.identity, hostUid)) return false;
         return participantHasHostMedia(participant.videoTrackPublications.values());
       });
       if (!hostMedia) {
@@ -2366,7 +2427,7 @@ function CreatorStage({
           (stream) => stream.username.toLowerCase() === username.toLowerCase(),
         );
         const hostMedia = Array.from(room.remoteParticipants.values()).some((participant) => {
-          if (hostUid && participant.identity !== hostUid) return false;
+          if (hostUid && !isHostOrScreenParticipant(participant.identity, hostUid)) return false;
           return participantHasHostMedia(participant.videoTrackPublications.values(), {
             requireLiveMedia: true,
           });
@@ -2387,7 +2448,7 @@ function CreatorStage({
             stillActive = active;
           }
           const stillHostMedia = Array.from(room.remoteParticipants.values()).some((participant) => {
-            if (hostUid && participant.identity !== hostUid) return false;
+            if (hostUid && !isHostOrScreenParticipant(participant.identity, hostUid)) return false;
             return participantHasHostMedia(participant.videoTrackPublications.values(), {
               requireLiveMedia: true,
             });
@@ -3118,20 +3179,34 @@ function CreatorStage({
 
       screenMedia?.stop();
       screenAudio?.stop();
+      const androidShare = isNativeAndroidApp();
       await Promise.all([
-        stopNativeOverlayCameraStream().catch(() => undefined),
+        // Android Screen Share nunca inicia overlay camera → no stopearla aquí.
+        androidShare
+          ? Promise.resolve()
+          : stopNativeOverlayCameraStream().catch(() => undefined),
         stopNativeScreenAudioStream().catch(() => undefined),
         stopNativeMicStream().catch(() => undefined),
+        stopNativeLiveKitScreenShare().catch(() => undefined),
         stopNativeScreenShareIfAny().catch(() => undefined),
         setNativePresentationOverlaysVisible(false).catch(() => undefined),
       ]);
 
-      // Volver al LIVE limpio: solo cámara (sin banner / preview / HUD nativo).
+      screenShareTransportRef.current = null;
+      endScreenShareSession('stop');
+      logScreenStop({ reason: 'user_or_system' });
+      ssLog('SS-STOP', { reason: 'user_or_system' });
+      resetScreenShareChatHudCache();
+
+      // Volver al LIVE limpio. No tocar Sala/Battle.
       setScreenSharing(false);
       setScreenShareLiveGuard(false);
-      setFrameLayout(defaultCameraFrameLayout(aspectRatio));
+      if (!androidShare) {
+        setFrameLayout(defaultCameraFrameLayout(aspectRatio));
+      }
       setPipVisible(true);
-      setReelNote(null);
+      setReelNote('Dejaste de compartir la pantalla. Tu transmisión continúa normalmente.');
+      logModeNormal('after_screen_stop');
 
       if (isNativeAndroidApp()) {
         await new Promise<void>((r) => window.setTimeout(r, 40));
@@ -3153,15 +3228,15 @@ function CreatorStage({
             if (media && media.readyState === 'live') break;
           }
         }
-        if (launch.micOn !== false) {
-          try {
-            await room.localParticipant.setMicrophoneEnabled(
-              true,
-              micDeviceId ? { deviceId: micDeviceId } : undefined,
-            );
-          } catch {
-            /* ignore */
-          }
+        // Restaurar mic según estado independiente del share (no forzar ON).
+        const wantMic = shareMicrophoneEnabledRef.current;
+        try {
+          await room.localParticipant.setMicrophoneEnabled(
+            wantMic,
+            wantMic && micDeviceId ? { deviceId: micDeviceId } : undefined,
+          );
+        } catch {
+          /* ignore */
         }
       }
     });
@@ -3169,7 +3244,6 @@ function CreatorStage({
     room,
     aspectRatio,
     hostCamOn,
-    launch.micOn,
     launch.cameraId,
     micDeviceId,
     cameraDeviceId,
@@ -3191,6 +3265,31 @@ function CreatorStage({
         return;
       }
       void stopScreenCaptureRef.current();
+    };
+  }, [isHost]);
+
+  useEffect(() => {
+    if (!isHost || !isNativeAndroidApp()) return;
+    let cancelled = false;
+    let unbind: (() => void) | undefined;
+    void bindScreenShareAudioLimited((message) => {
+      if (!cancelled) {
+        if (message === 'AUDIO_HOST_BRANCH') {
+          ssLog('SS-AUDIO', { signal: 'AUDIO_HOST_BRANCH' });
+          return;
+        }
+        setReelNote(message);
+      }
+    }).then((fn) => {
+      if (cancelled) {
+        void fn();
+        return;
+      }
+      unbind = fn;
+    });
+    return () => {
+      cancelled = true;
+      unbind?.();
     };
   }, [isHost]);
 
@@ -3227,18 +3326,39 @@ function CreatorStage({
       if (action === 'mic') {
         void (async () => {
           const muted = toggleNativeMicMuted();
+          const nextEnabled = !muted;
+          setShareMicrophoneEnabled(nextEnabled);
+          shareMicrophoneEnabledRef.current = nextEnabled;
           const track = nativeMicLiveTrackRef.current;
           if (track) {
             if (muted) await track.mute().catch(() => undefined);
             else await track.unmute().catch(() => undefined);
+          } else {
+            try {
+              await room.localParticipant.setMicrophoneEnabled(
+                nextEnabled,
+                nextEnabled && micDeviceId ? { deviceId: micDeviceId } : undefined,
+              );
+            } catch {
+              /* ignore */
+            }
           }
           setGamingMixer(getNativeAudioMixerState());
         })();
         return;
       }
       if (action === 'gameAudio') {
-        toggleNativeGameAudioMuted();
-        setGamingMixer(getNativeAudioMixerState());
+        void (async () => {
+          const muted = toggleNativeGameAudioMuted();
+          const nextEnabled = !muted;
+          setShareDeviceAudioEnabled(nextEnabled);
+          const track = screenAudioLiveTrackRef.current;
+          if (track) {
+            if (muted) await track.mute().catch(() => undefined);
+            else await track.unmute().catch(() => undefined);
+          }
+          setGamingMixer(getNativeAudioMixerState());
+        })();
       }
     }).then((fn) => {
       if (cancelled) {
@@ -3251,7 +3371,7 @@ function CreatorStage({
       cancelled = true;
       unbind?.();
     };
-  }, [isHost, screenSharing]);
+  }, [isHost, screenSharing, room, micDeviceId]);
 
   useEffect(() => {
     if (!isHost || !screenSharing || !gamingSpaceActive) return;
@@ -3262,7 +3382,7 @@ function CreatorStage({
   }, [isHost, screenSharing, gamingSpaceActive]);
 
   useEffect(() => {
-    if (!isHost || !screenSharing || !gamingSpaceActive) {
+    if (!isHost || !screenSharing) {
       setGamingBitrateKbps(null);
       setGamingRttMs(null);
       gamingStatsPrevRef.current = null;
@@ -3271,32 +3391,36 @@ function CreatorStage({
     let cancelled = false;
     const probe = async () => {
       try {
-        const engine = (room as unknown as {
-          engine?: { pcManager?: { publisher?: { getStats?: () => Promise<RTCStatsReport> } } };
-        }).engine;
-        const report = await engine?.pcManager?.publisher?.getStats?.();
-        if (!report || cancelled) return;
-        let bitrate = 0;
-        let rtt = 0;
-        report.forEach((entry) => {
-          const row = entry as Record<string, unknown>;
-          if (row.type === 'outbound-rtp' && row.kind === 'video') {
-            const bytes = Number(row.bytesSent || 0);
-            const ts = Number(row.timestamp || 0);
-            const prev = gamingStatsPrevRef.current;
-            if (prev && ts > prev.ts && bytes >= prev.bytes) {
-              bitrate = Math.round(((bytes - prev.bytes) * 8) / (ts - prev.ts));
-            }
-            gamingStatsPrevRef.current = { bytes, ts };
-          }
-          if (row.type === 'candidate-pair' && row.state === 'succeeded') {
-            const cur = Number(row.currentRoundTripTime || 0);
-            if (cur > 0) rtt = Math.round(cur * 1000);
-          }
-        });
-        if (!cancelled) {
-          if (bitrate > 0) setGamingBitrateKbps(bitrate);
-          if (rtt > 0) setGamingRttMs(rtt);
+        const snap = await readHostPublisherStats(
+          room as unknown as {
+            engine?: { pcManager?: { publisher?: { getStats?: () => Promise<RTCStatsReport> } } };
+          },
+        );
+        if (cancelled) return;
+        if (snap) {
+          if (snap.bitrateKbps > 0) setGamingBitrateKbps(snap.bitrateKbps);
+          if (snap.rttMs > 0) setGamingRttMs(snap.rttMs);
+          pushScreenShareDiag({
+            transport: screenShareTransportRef.current,
+            bitrateKbps: snap.bitrateKbps,
+            rttMs: snap.rttMs,
+            width: snap.width,
+            height: snap.height,
+            framesEncoded: snap.framesEncoded,
+            framesDropped: snap.framesDropped,
+            packetLoss: snap.packetLoss,
+            gameAudioActive: Boolean(screenAudioLiveTrackRef.current && !screenAudioLiveTrackRef.current.isMuted),
+            micActive: Boolean(
+              nativeMicLiveTrackRef.current
+                ? !nativeMicLiveTrackRef.current.isMuted
+                : shareMicrophoneEnabledRef.current,
+            ),
+            orientation:
+              typeof window !== 'undefined' && window.innerWidth > window.innerHeight
+                ? 'landscape'
+                : 'portrait',
+            note: 'host-publisher-stats-2s',
+          });
         }
       } catch {
         /* ignore */
@@ -3308,48 +3432,45 @@ function CreatorStage({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isHost, screenSharing, gamingSpaceActive, room]);
+  }, [isHost, screenSharing, room]);
 
-  async function restoreCameraIfKilled() {
-    if (!isHost || !hostCamOn) return;
-    const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
-    const media =
-      pub?.track && 'mediaStreamTrack' in pub.track ? pub.track.mediaStreamTrack : undefined;
-    if (media && media.readyState === 'live') return;
-    const cameraId = cameraDeviceId || String(launch.cameraId || '');
-    await room.localParticipant.setCameraEnabled(
-      true,
-      cameraId ? { deviceId: cameraId } : { facingMode: facing },
-    );
-  }
-
-  async function askShareScreenWithAudio(): Promise<boolean> {
-    if (!isNativeAndroidApp()) return true;
-    setShareDeviceAudioChecked(true);
-    setScreenAudioPrompt(true);
-    return await new Promise<boolean>((resolve) => {
-      screenAudioPromptResolverRef.current = resolve;
+  async function askScreenShareWizard(): Promise<ScreenShareWizardResult | null> {
+    if (!isNativeAndroidApp()) {
+      return {
+        target: 'full_display',
+        microphoneEnabled: true,
+        deviceAudioEnabled: true,
+      };
+    }
+    setScreenShareWizardOpen(true);
+    return await new Promise<ScreenShareWizardResult | null>((resolve) => {
+      screenShareWizardResolverRef.current = resolve;
     });
   }
 
-  function finishScreenAudioPrompt(ok: boolean) {
-    const resolve = screenAudioPromptResolverRef.current;
-    screenAudioPromptResolverRef.current = null;
-    setScreenAudioPrompt(false);
-    resolve?.(ok);
+  function finishScreenShareWizard(result: ScreenShareWizardResult | null) {
+    const resolve = screenShareWizardResolverRef.current;
+    screenShareWizardResolverRef.current = null;
+    setScreenShareWizardOpen(false);
+    resolve?.(result);
   }
 
   async function toggleScreenCapture() {
     if (!isHost) return;
     const gamingPresent = canPresentGamingInLive(gamingSpaceActive);
     if (!canUseClassicScreenShare() && !gamingPresent) {
-      setReelNote('En móvil y tablet usa Espacio Gaming desde Crear');
+      setReelNote('Compartir pantalla no disponible en este dispositivo');
       return;
     }
     const gate = screenShareGateRef.current;
     if (screenSharing || gate.phase === 'active') {
+      if (isNativeAndroidApp()) {
+        setShareStopConfirmOpen(true);
+        return;
+      }
       await stopScreenCapture();
       setReelNote(null);
+      setShareStoppedAckOpen(true);
       return;
     }
     if (gate.phase === 'stopping') {
@@ -3358,12 +3479,41 @@ function CreatorStage({
       return;
     }
 
+    const salaActive =
+      salaBoomOpen ||
+      Boolean(salaPinnedId) ||
+      salaCamOffIds.length > 0 ||
+      Array.from(room.remoteParticipants.values()).some((p) => {
+        if (p.identity === firebaseUid) return false;
+        return Array.from(p.videoTrackPublications.values()).some(
+          (pub) => pub.source === Track.Source.Camera && !pub.isMuted,
+        );
+      });
+    const battleActive = Boolean(battle.liveBattle || battle.battle || batallaOpen);
+    const mutex = guardEnterScreenShare(salaActive, battleActive);
+    if (!mutex.ok) {
+      setReelNote(mutex.message);
+      return;
+    }
+
+    let wizard: ScreenShareWizardResult | null = null;
     if (isNativeAndroidApp()) {
-      const accepted = await askShareScreenWithAudio();
-      if (!accepted) {
-        setReelNote('Debes compartir el audio del dispositivo para presentar');
+      wizard = await askScreenShareWizard();
+      if (!wizard) {
+        setReelNote(null);
         return;
       }
+      setShareMicrophoneEnabled(wizard.microphoneEnabled);
+      setShareDeviceAudioEnabled(wizard.deviceAudioEnabled);
+      shareMicrophoneEnabledRef.current = wizard.microphoneEnabled;
+      setNativeMicMuted(!wizard.microphoneEnabled);
+      setNativeGameAudioMuted(!wizard.deviceAudioEnabled);
+    } else {
+      wizard = {
+        target: 'full_display',
+        microphoneEnabled: true,
+        deviceAudioEnabled: true,
+      };
     }
 
     const opId = gate.beginStart();
@@ -3376,6 +3526,7 @@ function CreatorStage({
       getDisplayMedia: typeof navigator.mediaDevices?.getDisplayMedia === 'function',
       nativeAndroid: isNativeAndroidApp(),
       gamingSpace: gamingPresent,
+      target: wizard.target,
       opId,
     });
 
@@ -3383,25 +3534,167 @@ function CreatorStage({
     let display: MediaStream | null = null;
     try {
       if (isNativeAndroidApp()) {
-        setReelNote(
-          gamingPresent
-            ? 'Espacio Gaming · elige pantalla/app y toca Permitir…'
-            : 'Elige app o pantalla completa y toca Permitir…',
-        );
-        // Liberar getUserMedia antes del globo nativo (una sola cámara física).
-        if (hostCamOn) {
-          try {
-            await room.localParticipant.setCameraEnabled(false);
-          } catch {
-            /* ignore */
-          }
-        }
+        setReelNote('Autoriza la captura en Android…');
       }
       if (!gate.advance(opId, 'starting')) {
         throw new Error('Operación de pantalla cancelada');
       }
 
-      display = await requestScreenCaptureStream();
+      // —— Ruta preferente: LiveKit Android nativo (sin JPEG/canvas) ——
+      const transportPref = resolveScreenShareTransport();
+      if (isNativeAndroidApp() && firebaseUid && username && transportPref.kind === 'native') {
+        try {
+          const ssId = screenShareSessionIdFor(firebaseUid, opId);
+          const screenTok = await api<{
+            token: string;
+            serverUrl: string;
+            identity?: string;
+          }>(`/api/stream/screen-token/${encodeURIComponent(username)}`, {
+            method: 'POST',
+            body: JSON.stringify({ handle: handle || username, sessionId: ssId }),
+          });
+          if (!gate.isCurrent(opId)) return;
+          if (!screenTok?.token || !screenTok?.serverUrl) {
+            throw new Error('Token de Screen Share incompleto');
+          }
+          if (!gate.advance(opId, 'publishing')) {
+            throw new Error('Operación de pantalla cancelada');
+          }
+          const quality = getScreenShareQuality();
+          ssLog('SS-SESSION', {
+            transport: 'native',
+            quality: quality.id,
+            sessionId: ssId,
+            identity: screenTok.identity,
+          });
+          await startNativeLiveKitScreenShare({
+            serverUrl: screenTok.serverUrl,
+            token: screenTok.token,
+            // Solo indica si FGS debe capturar audio de juego (NO ScreenAudioCapturer nativo).
+            deviceAudioEnabled: wizard.deviceAudioEnabled,
+          });
+          if (!gate.isCurrent(opId)) {
+            await stopNativeLiveKitScreenShare().catch(() => undefined);
+            return;
+          }
+          screenShareTransportRef.current = 'native';
+          beginScreenShareSession({
+            opId,
+            sessionId: ssId,
+            transport: 'native',
+            branch: {
+              video: 'native_participant',
+              microphone: wizard.microphoneEnabled ? 'host_fgs' : 'host_webrtc',
+              gameAudio: wizard.deviceAudioEnabled ? 'host_playback_capture' : 'none',
+            },
+          });
+          pushScreenShareDiag({
+            transport: 'native',
+            opId,
+            sessionId: ssId,
+            identity: screenTok.identity,
+            note: `video-only native; quality=${quality.label}`,
+            targetFps: quality.maxFps,
+          });
+          ssLog('SS-VIDEO', { transport: 'native', identity: screenTok.identity, quality: quality.id });
+
+          // —— Rama MIC (host): FGS para background, sin segundo ADM nativo ——
+          if (wizard.microphoneEnabled) {
+            try {
+              await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+              const micStream = await startNativeMicStream();
+              const mt = micStream?.getAudioTracks()[0];
+              if (mt && gate.isCurrent(opId)) {
+                const existingMic =
+                  room.localParticipant.getTrackPublication(Track.Source.Microphone);
+                if (existingMic?.track) {
+                  await room.localParticipant
+                    .unpublishTrack(existingMic.track, true)
+                    .catch(() => undefined);
+                }
+                const micLive = new LocalAudioTrack(mt);
+                nativeMicLiveTrackRef.current = micLive;
+                await room.localParticipant.publishTrack(micLive, {
+                  source: Track.Source.Microphone,
+                  name: 'microphone',
+                });
+                ssLog('SS-MIC', { branch: 'host_fgs' });
+              }
+            } catch (micErr) {
+              console.warn('[SS-MIC] FGS fallback → webrtc', micErr);
+              try {
+                await room.localParticipant.setMicrophoneEnabled(
+                  true,
+                  micDeviceId ? { deviceId: micDeviceId } : undefined,
+                );
+              } catch {
+                /* ignore */
+              }
+            }
+          } else {
+            try {
+              await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+            } catch {
+              /* ignore */
+            }
+            ssLog('SS-MIC', { branch: 'off' });
+          }
+
+          // —— Rama AUDIO JUEGO (host): ScreenShareAudio, contenedor distinto al mic ——
+          if (wizard.deviceAudioEnabled) {
+            try {
+              const nativeAudio = await startNativeScreenAudioStream();
+              const at = nativeAudio?.getAudioTracks()[0];
+              if (at && gate.isCurrent(opId)) {
+                screenAudioTrackRef.current = at;
+                const audioLive = new LocalAudioTrack(at);
+                screenAudioLiveTrackRef.current = audioLive;
+                await room.localParticipant.publishTrack(audioLive, {
+                  source: Track.Source.ScreenShareAudio,
+                  name: 'screen_audio',
+                });
+                ssLog('SS-AUDIO', { branch: 'host_playback_capture' });
+              } else {
+                setReelNote('Este juego no permite compartir su audio interno.');
+                ssLog('SS-AUDIO', { branch: 'unavailable' });
+              }
+            } catch (audioErr) {
+              console.warn('[SS-AUDIO] host branch failed', audioErr);
+              setReelNote('Este juego no permite compartir su audio interno.');
+            }
+          }
+
+          setPipVisible(false);
+          if (!gate.markActive(opId)) {
+            await stopScreenCapture();
+            return;
+          }
+          setScreenSharing(true);
+          logScreenStart({ transport: 'native', opId, ssId });
+          setReelNote(null);
+          const overlayOk = await showScreenShareOverlayIfAllowed({ allowOverlayCamera: false });
+          if (!overlayOk) {
+            setReelNote(
+              'Activa “Mostrar sobre otras apps” para Live Boom si quieres el chat flotante en el juego.',
+            );
+          }
+          console.log('[SS-SESSION] native ready', {
+            identity: screenTok.identity || screenShareIdentityFor(firebaseUid),
+            overlayOk,
+            ssId,
+          });
+          return;
+        } catch (nativeErr) {
+          console.warn('[SCREEN SHARE] native path failed → legacy fallback', nativeErr);
+          await stopNativeLiveKitScreenShare().catch(() => undefined);
+          setReelNote('Usando modo compatibilidad…');
+        }
+      }
+
+      // —— Fallback legacy: JPEG → canvas → LiveKit WebView ——
+      display = await requestScreenCaptureStream({
+        preferSingleApp: true,
+      });
       if (!gate.isCurrent(opId)) {
         releaseMediaStream(display);
         display = null;
@@ -3417,10 +3710,14 @@ function CreatorStage({
       }
       screenMediaTrackRef.current = screenMedia;
       if (screenAudio) screenAudioTrackRef.current = screenAudio;
+      screenShareTransportRef.current = getActiveScreenShareTransport() || 'legacy';
 
       screenMedia.onended = () => {
         if (!gate.isCurrent(opId)) return;
-        void stopScreenCapture().then(() => setReelNote(null));
+        void stopScreenCapture().then(() => {
+          setReelNote(null);
+          setShareStoppedAckOpen(true);
+        });
       };
 
       if (room.state !== ConnectionState.Connected) {
@@ -3434,12 +3731,6 @@ function CreatorStage({
         screenMediaTrackRef.current = null;
         screenAudioTrackRef.current = null;
         return;
-      }
-
-      const dims = liveCanvasDimensions(aspectRatio);
-      const initialPip = defaultPipPosition(dims.width, dims.height, undefined, aspectRatio);
-      if (hostCamOn) {
-        setFrameLayout(initialPip);
       }
 
       if (!gate.advance(opId, 'publishing')) {
@@ -3464,15 +3755,15 @@ function CreatorStage({
           ? {
               videoCodec: 'vp8' as const,
               videoEncoding: {
-                maxBitrate: 2_400_000,
-                maxFramerate: 24,
+                maxBitrate: 2_800_000,
+                maxFramerate: 30,
               },
-              degradationPreference: 'maintain-framerate' as const,
+              degradationPreference: 'balanced' as const,
             }
           : {
               videoEncoding: {
                 maxBitrate: 3_500_000,
-                maxFramerate: 24,
+                maxFramerate: 30,
               },
             }),
       });
@@ -3481,9 +3772,9 @@ function CreatorStage({
         releaseMediaStream(display);
         return;
       }
-      console.log('[SCREEN SHARE] published');
+      console.log('[SCREEN SHARE] legacy published');
 
-      if (screenAudio) {
+      if (screenAudio && wizard.deviceAudioEnabled) {
         try {
           const audioLive = new LocalAudioTrack(screenAudio);
           screenAudioLiveTrackRef.current = audioLive;
@@ -3497,8 +3788,11 @@ function CreatorStage({
         }
       }
 
-      // Audio del juego/presentación (AudioPlaybackCapture) cuando Android lo permite.
-      if (isNativeAndroidApp() && !screenAudioLiveTrackRef.current) {
+      if (
+        isNativeAndroidApp() &&
+        wizard.deviceAudioEnabled &&
+        !screenAudioLiveTrackRef.current
+      ) {
         try {
           const nativeAudio = await startNativeScreenAudioStream();
           const at = nativeAudio?.getAudioTracks()[0];
@@ -3510,15 +3804,16 @@ function CreatorStage({
               source: Track.Source.ScreenShareAudio,
               name: 'screen_audio',
             });
-            console.log('[SCREEN SHARE] native game audio published');
+          } else {
+            setReelNote('Esta aplicación no permite compartir su audio.');
           }
         } catch (audioErr) {
           console.warn('[SCREEN SHARE] native game audio', audioErr);
+          setReelNote('Esta aplicación no permite compartir su audio.');
         }
       }
 
-      // Mic del presentador vía FGS nativo (getUserMedia se pausa al abrir el juego).
-      if (isNativeAndroidApp() && launch.micOn !== false) {
+      if (isNativeAndroidApp() && wizard.microphoneEnabled) {
         try {
           await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
           const micStream = await startNativeMicStream();
@@ -3536,7 +3831,6 @@ function CreatorStage({
               source: Track.Source.Microphone,
               name: 'microphone',
             });
-            console.log('[SCREEN SHARE] native mic published');
           }
         } catch (micErr) {
           console.warn('[SCREEN SHARE] native mic', micErr);
@@ -3549,164 +3843,47 @@ function CreatorStage({
             /* ignore */
           }
         }
-      }
-
-      // Cámara flotante nativa → mismo feed al espectador (no reabrir getUserMedia).
-      if (isNativeAndroidApp() && hostCamOn) {
+      } else if (isNativeAndroidApp() && !wizard.microphoneEnabled) {
         try {
-          const camStream = await startNativeOverlayCameraStream();
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 350);
-          });
-          const camMedia = camStream.getVideoTracks()[0];
-          if (camMedia && gate.isCurrent(opId)) {
-            const existingCam = room.localParticipant.getTrackPublication(Track.Source.Camera);
-            if (existingCam?.track) {
-              await room.localParticipant
-                .unpublishTrack(existingCam.track, true)
-                .catch(() => undefined);
-            }
-            const camLive = new LocalVideoTrack(camMedia);
-            nativeCameraLiveTrackRef.current = camLive;
-            cameraTrackRef.current = camLive;
-            await room.localParticipant.publishTrack(camLive, {
-              source: Track.Source.Camera,
-              name: 'camera',
-              videoEncoding: {
-                maxBitrate: 900_000,
-                maxFramerate: 15,
-              },
-            });
-            console.log('[SCREEN SHARE] native overlay camera published');
-          }
-        } catch (camErr) {
-          console.warn('[SCREEN SHARE] native overlay camera', camErr);
-        }
-      }
-
-      if (!gate.markActive(opId)) {
-        // Op antigua: liberar solo lo publicado en ESTA operación.
-        try {
-          await room.localParticipant.unpublishTrack(screenLive, true);
+          await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
         } catch {
           /* ignore */
         }
-        if (nativeCameraLiveTrackRef.current) {
-          try {
-            await room.localParticipant.unpublishTrack(nativeCameraLiveTrackRef.current, true);
-          } catch {
-            /* ignore */
-          }
-          nativeCameraLiveTrackRef.current = null;
-        }
-        if (nativeMicLiveTrackRef.current) {
-          try {
-            await room.localParticipant.unpublishTrack(nativeMicLiveTrackRef.current, true);
-          } catch {
-            /* ignore */
-          }
-          nativeMicLiveTrackRef.current = null;
-        }
-        if (screenAudioLiveTrackRef.current) {
-          try {
-            await room.localParticipant.unpublishTrack(screenAudioLiveTrackRef.current, true);
-          } catch {
-            /* ignore */
-          }
-          screenAudioLiveTrackRef.current = null;
-        }
-        screenVideoLiveTrackRef.current = null;
-        screenMedia?.stop();
-        screenAudio?.stop();
-        screenMediaTrackRef.current = null;
-        screenAudioTrackRef.current = null;
-        display = null;
-        if (isNativeAndroidApp() && gate.canStart()) {
-          await stopNativeScreenShareIfAny().catch(() => undefined);
-        }
+      }
+
+      // Sin cámara PiP / overlay camera durante presentación.
+      setPipVisible(false);
+
+      if (!gate.markActive(opId)) {
+        await stopScreenCapture();
         return;
       }
       setScreenSharing(true);
-      display = null;
-
-      if (!isNativeAndroidApp() && hostCamOn) {
-        await restoreCameraIfKilled().catch(() => undefined);
-        if (restoreCamTimerRef.current) window.clearTimeout(restoreCamTimerRef.current);
-        restoreCamTimerRef.current = window.setTimeout(() => {
-          restoreCamTimerRef.current = 0;
-          if (!gate.isCurrent(opId)) return;
-          void restoreCameraIfKilled().catch(() => undefined);
-        }, 450);
-      }
-
-      const baseMsg = screenShareStatusMessage(screenMedia, readScreenTrackDimensions(screenMedia));
-      const audioNote = isNativeAndroidApp()
-        ? wasNativeScreenAudioCapturing() || screenAudioLiveTrackRef.current
-          ? 'audio de juego/pantalla activo'
-          : 'sin audio de juego (la app puede bloquearlo) · micrófono sí'
-        : screenAudio
-          ? screenShareAudioStatusMessage(true)
-          : screenShareAudioStatusMessage(false);
-      setReelNote(
-        isNativeAndroidApp()
-          ? null
-          : `${baseMsg} · ${audioNote}`,
-      );
-
-      void publishFrameSync(room, hostCamOn ? initialPip : frameLayout, hostCamOn && pipVisible).catch(
-        () => undefined,
-      );
-
+      logScreenStart({
+        transport: screenShareTransportRef.current || 'legacy',
+        opId,
+      });
+      setReelNote(null);
       if (isNativeAndroidApp()) {
-        try {
-          const shown = await showScreenShareOverlayIfAllowed({
-            allowOverlayCamera: gamingSpaceActive || hostCamOn,
-          });
-          await setNativePresentationOverlaysVisible(false);
-          const has = shown || (await hasOverlayPermission());
-          const warn = overlayFailureWarning(shown, has, baseMsg);
-          // Banner verde basta; no saturar con reelNote + chat flotante duplicado.
-          setReelNote(warn || null);
-        } catch (overlayErr) {
-          console.warn('[SCREEN SHARE] overlay opcional', overlayErr);
-          setReelNote(`${baseMsg} · compartiendo (sin ventana flotante)`);
-        }
+        void showScreenShareOverlayIfAllowed({ allowOverlayCamera: false });
       }
     } catch (err) {
-      // Solo el op vigente limpia estado global.
-      if (!gate.isCurrent(opId)) {
-        releaseMediaStream(display);
-        display = null;
-        return;
-      }
+      console.error('[SCREEN SHARE]', err);
       gate.failStart(opId);
       releaseMediaStream(display);
       display = null;
-      if (screenMediaTrackRef.current && !screenVideoLiveTrackRef.current) {
+      screenShareTransportRef.current = null;
+      setScreenShareLiveGuard(false);
+      setScreenSharing(false);
+      setReelNote(screenShareUserMessage(err) || 'No se pudo compartir la pantalla');
+      if (isNativeAndroidApp()) {
         try {
-          screenMediaTrackRef.current.stop();
+          await stopNativeLiveKitScreenShare();
+          await stopNativeScreenShareIfAny();
         } catch {
           /* ignore */
         }
-        screenMediaTrackRef.current = null;
-        screenAudioTrackRef.current = null;
-        if (isNativeAndroidApp()) {
-          await stopNativeScreenShareIfAny().catch(() => undefined);
-        }
       }
-      setScreenSharing(false);
-      setScreenShareLiveGuard(false);
-
-      const e = err as Error & { name?: string };
-      if (e?.name === 'AbortError') {
-        setReelNote('Compartir pantalla cancelado');
-        return;
-      }
-      console.error('[SCREEN SHARE]', {
-        name: e?.name,
-        message: e?.message,
-      });
-      setReelNote(screenShareUserMessage(err));
     }
   }
 
@@ -3950,15 +4127,27 @@ function CreatorStage({
                 notifyBusy={notifyBusy}
                 wishlistCount={wishlist.length}
                 lockActive={Boolean(lock)}
-                hideScreenShare={!canUseClassicScreenShare() && !gamingSpaceActive}
-                screenToolLabel={gamingSpaceActive ? 'Presentar' : undefined}
+                hideScreenShare={!canUseClassicScreenShare()}
+                screenToolLabel={isNativeAndroidApp() ? 'Compartir' : undefined}
                 onInvite={() => {
+                  const gate = guardEnterSalaOrBattle(screenSharing);
+                  if (!gate.ok) {
+                    setReelNote(gate.message);
+                    return;
+                  }
                   setBatallaOpen(false);
                   setSalaBoomOpen(true);
+                  logSalaStart();
                 }}
                 onVs={() => {
+                  const gate = guardEnterSalaOrBattle(screenSharing);
+                  if (!gate.ok) {
+                    setReelNote(gate.message);
+                    return;
+                  }
                   setSalaBoomOpen(false);
                   setBatallaOpen(true);
+                  logBattleStart();
                 }}
                 onScreen={() => void toggleScreenCapture()}
                 onMic={() => void toggleMic()}
@@ -3996,9 +4185,11 @@ function CreatorStage({
               preferredCameraId={cameraDeviceId || String(launch.cameraId || '')}
               preferredMicrophoneId={micDeviceId || String(launch.microphoneId || '')}
               preferredMicOn={
-                launch.micOn !== false && !(screenSharing && isNativeAndroidApp())
+                screenSharing && isNativeAndroidApp()
+                  ? shareMicrophoneEnabled
+                  : launch.micOn !== false
               }
-              preferredCamOn={hostCamOn && !(screenSharing && isNativeAndroidApp())}
+              preferredCamOn={hostCamOn}
               externalAvManaged={Boolean(screenSharing && isNativeAndroidApp())}
               cameraTrackRef={cameraTrackRef}
               frameLayout={effectiveFrameLayout}
@@ -4154,13 +4345,27 @@ function CreatorStage({
                       : 'Los espectadores ven tu pantalla · cámara en PiP'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void toggleScreenCapture()}
-                  className="shrink-0 rounded-full bg-red-500 px-3 py-2 text-[11px] font-bold text-white"
-                >
-                  Dejar de presentar
-                </button>
+                <div className="flex shrink-0 gap-1.5">
+                  {isNativeAndroidApp() ? (
+                    <button
+                      type="button"
+                      onClick={() => setShareControlsOpen(true)}
+                      className="rounded-full bg-violet-500 px-3 py-2 text-[11px] font-bold text-white"
+                    >
+                      Controles
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isNativeAndroidApp()) setShareStopConfirmOpen(true);
+                      else void toggleScreenCapture();
+                    }}
+                    className="rounded-full bg-red-500 px-3 py-2 text-[11px] font-bold text-white"
+                  >
+                    Dejar de compartir
+                  </button>
+                </div>
               </div>
             ) : null}
             {isHost && screenSharing && !isNativeAndroidApp() ? (
@@ -4571,54 +4776,129 @@ function CreatorStage({
         inviteStatus={salaInviteStatus}
         inviteBusy={salaInviteBusy}
       />
-      {screenAudioPrompt ? (
-        <div className="pointer-events-auto absolute inset-0 z-[80] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+      {screenShareWizardOpen ? (
+        <LiveScreenShareWizard
+          open={screenShareWizardOpen}
+          onCancel={() => finishScreenShareWizard(null)}
+          onConfirm={(result) => finishScreenShareWizard(result)}
+        />
+      ) : null}
+      {shareStopConfirmOpen ? (
+        <div className="pointer-events-auto absolute inset-0 z-[80] flex items-center justify-center bg-black/60 px-4">
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="lb-share-audio-title"
-            className="w-full max-w-sm rounded-2xl border border-white/15 bg-zinc-950 p-4 text-left shadow-2xl"
+            className="w-full max-w-sm rounded-2xl border border-white/15 bg-zinc-950 p-4 shadow-2xl"
           >
-            <h2 id="lb-share-audio-title" className="text-base font-bold text-white">
-              ¿Quieres compartir la pantalla?
-            </h2>
-            <label className="mt-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3">
-              <input
-                type="checkbox"
-                className="mt-1 h-5 w-5 accent-cyan-400"
-                checked={shareDeviceAudioChecked}
-                onChange={(e) => setShareDeviceAudioChecked(e.target.checked)}
-              />
-              <span className="text-sm text-zinc-100">
-                Compartir el audio de tu dispositivo
-                <span className="mt-1 block text-[11px] text-zinc-400">
-                  Obligatorio para presentar. Sin audio no se puede compartir.
-                </span>
-              </span>
-            </label>
-            <p className="mt-3 text-[11px] leading-snug text-zinc-400">
-              Se comparte toda la pantalla (estilo Kick): juego, audio del dispositivo y tu
-              micrófono. El chat flotante te permite leer mensajes sin salir del juego.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
+            <h2 className="text-base font-bold text-white">Presentación en vivo</h2>
+            <p className="mt-2 text-sm text-zinc-400">¿Qué deseas hacer?</p>
+            <div className="mt-4 flex flex-col gap-2">
               <button
                 type="button"
-                className="min-h-11 rounded-xl px-4 text-sm font-semibold text-zinc-300"
-                onClick={() => finishScreenAudioPrompt(false)}
+                className="min-h-11 rounded-xl bg-white/10 px-4 text-sm font-semibold text-white"
+                onClick={() => setShareStopConfirmOpen(false)}
               >
-                Cancelar
+                Seguir compartiendo
               </button>
               <button
                 type="button"
-                disabled={!shareDeviceAudioChecked}
-                className="min-h-11 rounded-xl bg-cyan-400 px-4 text-sm font-bold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={() => finishScreenAudioPrompt(shareDeviceAudioChecked)}
+                className="min-h-11 rounded-xl bg-rose-500 px-4 text-sm font-bold text-white"
+                onClick={() => {
+                  setShareStopConfirmOpen(false);
+                  void stopScreenCapture().then(() => {
+                    setReelNote(null);
+                    setShareControlsOpen(false);
+                    setShareStoppedAckOpen(true);
+                  });
+                }}
               >
-                Continuar
+                Dejar de compartir pantalla
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-xl px-4 text-sm font-semibold text-zinc-400"
+                onClick={() => setShareStopConfirmOpen(false)}
+              >
+                Cancelar
               </button>
             </div>
           </div>
         </div>
+      ) : null}
+      {shareStoppedAckOpen ? (
+        <div className="pointer-events-auto absolute inset-0 z-[80] flex items-center justify-center bg-black/60 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-sm rounded-2xl border border-emerald-400/30 bg-zinc-950 p-4 text-center shadow-2xl"
+          >
+            <p className="text-lg font-bold text-white">Dejaste de compartir la pantalla</p>
+            <p className="mt-2 text-sm text-zinc-400">
+              Tu transmisión en vivo continúa normalmente.
+            </p>
+            <button
+              type="button"
+              className="mt-4 min-h-11 w-full rounded-xl bg-violet-500 px-4 text-sm font-bold text-white"
+              onClick={() => setShareStoppedAckOpen(false)}
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {shareControlsOpen && screenSharing && isNativeAndroidApp() ? (
+        <LiveScreenShareControlsSheet
+          open={shareControlsOpen}
+          microphoneEnabled={shareMicrophoneEnabled}
+          deviceAudioEnabled={shareDeviceAudioEnabled}
+          floatingChatEnabled={floatingChatEnabled}
+          qualityLabel="720p"
+          onClose={() => setShareControlsOpen(false)}
+          onToggleMic={() => {
+            const next = !shareMicrophoneEnabled;
+            setShareMicrophoneEnabled(next);
+            shareMicrophoneEnabledRef.current = next;
+            setNativeMicMuted(!next);
+            void (async () => {
+              const track = nativeMicLiveTrackRef.current;
+              if (track) {
+                if (next) await track.unmute().catch(() => undefined);
+                else await track.mute().catch(() => undefined);
+                return;
+              }
+              void toggleMic();
+            })();
+          }}
+          onToggleDeviceAudio={() => {
+            const next = !shareDeviceAudioEnabled;
+            setShareDeviceAudioEnabled(next);
+            setNativeGameAudioMuted(!next);
+            void (async () => {
+              const track = screenAudioLiveTrackRef.current;
+              if (track) {
+                if (next) await track.unmute().catch(() => undefined);
+                else await track.mute().catch(() => undefined);
+              }
+              setGamingMixer(getNativeAudioMixerState());
+            })();
+          }}
+          onToggleChat={() => {
+            setFloatingChatEnabled((v) => {
+              const next = !v;
+              try {
+                sessionStorage.setItem('liveboom.ss.floatingChat', next ? '1' : '0');
+              } catch {
+                /* ignore */
+              }
+              void setNativePresentationOverlaysVisible(next);
+              return next;
+            });
+          }}
+          onStopShare={() => {
+            setShareControlsOpen(false);
+            setShareStopConfirmOpen(true);
+          }}
+        />
       ) : null}
       <BatallaBoomModal
         open={isHost && batallaOpen}
@@ -5090,13 +5370,27 @@ function CreatorVideo({
     (!canPublish ? targetIdentity : undefined);
 
   const hostTracks = pickParticipantTracks(roomHostIdentity || targetIdentity);
+  const screenOwnerUid = roomHostIdentity || hostUid || undefined;
+  // Participante técnico screen:<ownerUid>[:session] — no matching exacto de identity.
+  const techScreenRef = (() => {
+    if (!screenOwnerUid) return null;
+    const hit = tracks.find((track): track is TrackReference => {
+      if (!track.publication || track.publication.source !== Track.Source.ScreenShare) return false;
+      return isScreenShareForOwner(track.participant.identity, screenOwnerUid);
+    });
+    return hit && trackIsRenderable(hit) ? hit : null;
+  })();
   const localTracksPick = pickParticipantTracks(room.localParticipant.identity);
   // Host Android en app durante share: solo su cámara (espectadores siguen viendo pantalla).
   const hostSelfCameraOnly = Boolean(canPublish && externalAvManaged);
-  const mainIsScreen = Boolean(hostTracks.screen) && !hostSelfCameraOnly;
-  const main = hostSelfCameraOnly ? null : hostTracks.screen;
+  const resolvedScreen =
+    techScreenRef ||
+    (hostTracks.screen && trackIsRenderable(hostTracks.screen) ? hostTracks.screen : null);
+  const mainIsScreen = Boolean(resolvedScreen) && !hostSelfCameraOnly;
+  const main = hostSelfCameraOnly ? null : resolvedScreen;
   const framedCamera = hostTracks.camera || (salaIsHost ? localTracksPick.camera : null);
-  const showFramedCamera = framedCamera && (mainIsScreen ? pipVisible : true);
+  // Spec: NUNCA cámara PiP sobre el juego / pantalla compartida.
+  const showFramedCamera = Boolean(framedCamera && !mainIsScreen);
   const framedPipAspect =
     mainIsScreen && framedCamera
       ? readCameraTrackAspect(
@@ -5118,6 +5412,7 @@ function CreatorVideo({
     .filter((track): track is TrackReference => Boolean(track.publication))
     .filter((track) => track.publication?.source === Track.Source.Camera)
     .filter((track) => track.participant.identity !== hostIdentityKey)
+    .filter((track) => !isScreenShareIdentity(track.participant.identity))
     .filter((track) => {
       if (trackIsRenderable(track)) return true;
       return salaCamOffIdentities.includes(track.participant.identity);
@@ -5198,6 +5493,11 @@ function CreatorVideo({
         if (!canPublish || !allowPublish) return;
         if (room.localParticipant.permissions?.canPublish === false) return;
 
+    // Screen Share Android: NO pedir CAMERA/mic general; AV lo gestiona el módulo Screen Share.
+        if (externalAvManagedRef.current) {
+          return;
+        }
+
         try {
           await ensureNativeLiveAvPermissions();
         } catch (permErr) {
@@ -5211,12 +5511,6 @@ function CreatorVideo({
           return;
         }
         if (cancelled) return;
-
-        // Share Android: cámara/mic nativos ya publicados; no llamar setCameraEnabled(false).
-        if (externalAvManagedRef.current) {
-          await attachCameraRef();
-          return;
-        }
 
         if (localCamOff || preferredCamOnRef.current === false) {
           discardLiveCameraHandoff();
@@ -5399,12 +5693,12 @@ function CreatorVideo({
   return (
     <>
       {shownScreen ? (
-        <VideoTrack
+        <ScreenShareVideo
           key={`${trackRenderKey(shownScreen)}-${trackEpoch}`}
-          trackRef={shownScreen}
-          className="absolute inset-0 h-full w-full bg-black [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
+          screenTrack={shownScreen}
         />
       ) : null}
+      {/* WEB PiP cámara sobre pantalla — nunca en Android Screen Share (showFramedCamera=false). */}
       {showFramedCamera && shownCamera && shownScreen ? (
         <LiveFramedVideo
           trackRef={shownCamera}
@@ -5416,7 +5710,7 @@ function CreatorVideo({
           rectOptions={framedRectOptions}
         />
       ) : null}
-      {/* Sala Boom: aplicar diseño ya con 1 panel; invitados se suman sin huecos. */}
+      {/* Sala Boom: solo cuando NO hay Screen Share. */}
       {shownCamera && !shownScreen ? (
         <SalaBoomStage
           hostRef={shownCamera}
@@ -5433,19 +5727,8 @@ function CreatorVideo({
           onLayoutChange={onSalaLayoutChange}
         />
       ) : null}
-      {shownScreen
-        ? guestCameras.map((guest) => (
-            <div
-              key={guest.participant.identity}
-              className="absolute right-2 top-24 z-10 h-36 w-24 overflow-hidden rounded-xl border border-cyan-400/50 shadow-lg sm:h-44 sm:w-28"
-            >
-              <VideoTrack trackRef={guest} className="h-full w-full object-cover [&_video]:!transform-none" />
-              <p className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-center text-[9px] font-semibold text-cyan-100">
-                {guest.participant.name || 'Invitado'}
-              </p>
-            </div>
-          ))
-        : null}
+      {/* Invitados flotantes sobre Screen Share: desactivado (modo exclusivo). */}
+      {null}
       {canPublish && camError ? (
         <div className="absolute inset-x-0 bottom-24 z-20 flex justify-center px-3">
           <button
@@ -5648,16 +5931,23 @@ function ChatPanel({
     if (!isHostRoom || !isNativeAndroidApp()) return;
     const pushHud = () => {
       if (!isScreenShareLiveGuardActive()) return;
+      try {
+        if (sessionStorage.getItem('liveboom.ss.floatingChat') === '0') {
+          void updateScreenShareChatHud([]);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
       const lines = messages.slice(-5).map((m) => {
         const who = String(m.author || '').slice(0, 14);
         const body = String(m.text || '').slice(0, 80);
-        return `${who}: ${body}`;
+        return `@${who}: ${body}`;
       });
-      void updateScreenShareChatHud(lines.length ? lines : ['Chat del LIVE']);
+      pushScreenShareChatLinesIfChanged(lines);
     };
     pushHud();
-    // Reintento periódico: el WebView puede ir lento al estar en el juego.
-    const timer = window.setInterval(pushHud, 1200);
+    const timer = window.setInterval(pushHud, 900);
     return () => window.clearInterval(timer);
   }, [messages, isHostRoom]);
 
