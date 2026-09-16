@@ -53,7 +53,9 @@ hydrateMemory();
 function adminReady() {
   try {
     const { hasAdminCredentials, firestoreConfigured } = require('./firestoreAdmin');
-    return Boolean(hasAdminCredentials() && firestoreConfigured());
+    // Cloud Functions: ADC vía GCLOUD_PROJECT/FIREBASE_CONFIG basta.
+    // FIREBASE_SERVICE_ACCOUNT es opcional; sin esto el cobro iba solo a memoria y Ganados nunca llegaba a Firestore.
+    return Boolean(firestoreConfigured() || hasAdminCredentials());
   } catch {
     return false;
   }
@@ -124,12 +126,15 @@ async function readCallerBalances(uid) {
     const { readUserBlastBalances } = require('./firestoreAdmin');
     const fsBal = await readUserBlastBalances(uid);
     const mem = getBalances(uid);
-    // Prefer the higher total to avoid stale memory under-credit; keep split from Firestore when present.
-    if (fsBal.coinsBalance >= mem.coinsBalance) {
-      setBalances(uid, fsBal);
-      return fsBal;
-    }
-    return mem;
+    // Conservar el máximo por bolsillo (evita que memoria stale ponga Ganados en 0).
+    const merged = normalizeBlastBalances({
+      purchasedBlastBalance: Math.max(fsBal.purchasedBlastBalance, mem.purchasedBlastBalance),
+      earnedBlastBalance: Math.max(fsBal.earnedBlastBalance, mem.earnedBlastBalance),
+      earnedBlastSpent: Math.max(fsBal.earnedBlastSpent, mem.earnedBlastSpent),
+      earnedBlastWithdrawn: Math.max(fsBal.earnedBlastWithdrawn, mem.earnedBlastWithdrawn),
+    });
+    setBalances(uid, merged);
+    return merged;
   }
   return getBalances(uid);
 }
@@ -240,8 +245,9 @@ function publicSession(session, balancesOrNumber) {
 
 /**
  * Cobro atómico e idempotente por delta de Blast debidos.
+ * @param {{ finalize?: boolean }} [opts] finalize=true liquida aunque status ya sea stopped.
  */
-async function chargeDeltaInternal(session, connectedSeconds, allowEarnedOverride) {
+async function chargeDeltaInternal(session, connectedSeconds, allowEarnedOverride, opts = {}) {
   const callType = normalizeCallType(session.callType);
   const due = calculateBlastDue(connectedSeconds, callType);
   const already = Math.max(0, Math.floor(Number(session.blastAlreadyCharged) || 0));
@@ -250,8 +256,11 @@ async function chargeDeltaInternal(session, connectedSeconds, allowEarnedOverrid
     allowEarnedOverride != null
       ? Boolean(allowEarnedOverride)
       : Boolean(session.allowEarnedBlastForCall);
+  const forceFinalize = Boolean(opts && opts.finalize);
   const nextSessionBase = {
     ...session,
+    // Al finalizar, reabrir session en memoria solo para poder cobrar el delta residual.
+    status: forceFinalize && session.status === 'stopped' ? 'active' : session.status,
     allowEarnedBlastForCall: allowEarned || Boolean(session.allowEarnedBlastForCall),
     lastConnectedSeconds: Math.max(
       Math.max(0, Math.floor(Number(session.lastConnectedSeconds) || 0)),
@@ -259,7 +268,20 @@ async function chargeDeltaInternal(session, connectedSeconds, allowEarnedOverrid
     ),
   };
 
-  if (session.status === 'stopped' || session.exhausted) {
+  if (session.exhausted && !forceFinalize) {
+    return {
+      session: { ...nextSessionBase, status: session.status },
+      chargedDelta: 0,
+      duplicate: false,
+      insufficient: true,
+      needsEarnedAuth: false,
+      callerBalances: await readCallerBalances(session.callerId),
+      chargedPurchased: 0,
+      chargedEarned: 0,
+    };
+  }
+
+  if (session.status === 'stopped' && !forceFinalize) {
     return {
       session: nextSessionBase,
       chargedDelta: 0,
@@ -273,7 +295,10 @@ async function chargeDeltaInternal(session, connectedSeconds, allowEarnedOverrid
   }
 
   if (delta <= 0) {
-    const saved = await writeSession(nextSessionBase);
+    const saved = await writeSession({
+      ...nextSessionBase,
+      status: forceFinalize ? 'stopped' : nextSessionBase.status,
+    });
     return {
       session: saved,
       chargedDelta: 0,
@@ -297,6 +322,7 @@ async function chargeDeltaInternal(session, connectedSeconds, allowEarnedOverrid
       chargeId,
       connectedSeconds,
       allowEarned,
+      { finalize: forceFinalize },
     );
   }
   return chargeWithMemory(
@@ -428,13 +454,14 @@ async function chargeWithMemory(session, due, already, delta, chargeId, connecte
   };
 }
 
-async function chargeWithFirestore(session, due, already, delta, chargeId, connectedSeconds, allowEarned) {
+async function chargeWithFirestore(session, due, already, delta, chargeId, connectedSeconds, allowEarned, opts = {}) {
   const { getAdminDb } = require('./firestoreAdmin');
   const { FieldValue } = require('firebase-admin/firestore');
   const db = getAdminDb();
   const billingRef = db.collection('callBilling').doc(String(session.callId));
   const callerRef = db.collection('users').doc(String(session.callerId));
   const receiverRef = db.collection('users').doc(String(session.receiverId));
+  const forceFinalize = Boolean(opts && opts.finalize);
 
   const result = await db.runTransaction(async (tx) => {
     const [billingSnap, callerSnap, receiverSnap] = await Promise.all([
@@ -453,7 +480,26 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
     const liveAllow = Boolean(allowEarned || live.allowEarnedBlastForCall);
     const callerBalances = normalizeBlastBalances(callerSnap.exists ? callerSnap.data() : {});
 
-    if (live.status === 'stopped' || live.exhausted || liveDelta <= 0) {
+    // Finalizar: cobrar residual aunque el peer ya haya marcado stopped.
+    if (live.exhausted || liveDelta <= 0) {
+      const next = {
+        ...live,
+        lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
+      };
+      tx.set(billingRef, { ...next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      setBalances(session.callerId, callerBalances);
+      return {
+        session: next,
+        chargedDelta: 0,
+        duplicate: false,
+        insufficient: Boolean(live.exhausted),
+        needsEarnedAuth: false,
+        callerBalances,
+        chargedPurchased: 0,
+        chargedEarned: 0,
+      };
+    }
+    if (live.status === 'stopped' && !forceFinalize) {
       const next = {
         ...live,
         lastConnectedSeconds: Math.max(connectedSeconds, Math.floor(Number(live.lastConnectedSeconds) || 0)),
@@ -765,11 +811,15 @@ async function stopBilling(input) {
     throw err;
   }
 
-  if (String(session.callerId) === callerId || !callerId) {
-    const seconds = resolvedConnectedSeconds(session, input.connectedSeconds);
-    const charged = await chargeDeltaInternal(session, seconds, Boolean(session.allowEarnedBlastForCall));
-    session = charged.session;
-  }
+  // Caller o receptor: siempre liquidar el delta pendiente al colgar (idempotente).
+  const seconds = resolvedConnectedSeconds(session, input.connectedSeconds);
+  const charged = await chargeDeltaInternal(
+    session,
+    seconds,
+    Boolean(session.allowEarnedBlastForCall),
+    { finalize: true },
+  );
+  session = charged.session;
 
   session = await writeSession({
     ...session,
@@ -799,9 +849,15 @@ async function stopBilling(input) {
   }
 
   const bal = await readCallerBalances(session.callerId);
+  const receiverBal = await readCallerBalances(session.receiverId);
   return {
     ...publicSession(session, bal),
     stopped: true,
+    chargedDelta: charged.chargedDelta || 0,
+    creatorEarnedBlast: receiverBal.earnedBlastBalance,
+    receiverPurchasedBlastBalance: receiverBal.purchasedBlastBalance,
+    receiverEarnedBlastBalance: receiverBal.earnedBlastBalance,
+    receiverCoinsBalance: receiverBal.coinsBalance,
   };
 }
 

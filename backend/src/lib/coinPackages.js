@@ -28,7 +28,7 @@ function packAmountInCop(blast) {
   return Math.round(blast * rate * 100);
 }
 
-const COIN_PACKAGES = {
+const DEFAULT_COIN_PACKAGES = {
   impulso_125: { coins: 125, amountInCop: packAmountInCop(125) },
   plus_150: { coins: 150, amountInCop: packAmountInCop(150) },
   popular_200: { coins: 200, amountInCop: packAmountInCop(200) },
@@ -44,8 +44,49 @@ const COIN_PACKAGES = {
   titan_25000: { coins: 25000, amountInCop: packAmountInCop(25000) },
 };
 
+/** @type {Record<string, { coins: number, amountInCop: number }> | null} */
+let remotePackages = null;
+let remoteLoadedAt = 0;
+
+async function refreshRemotePackages() {
+  try {
+    const { hasAdminCredentials, firestoreConfigured, getAdminDb } = require('./firestoreAdmin');
+    if (!firestoreConfigured() && !hasAdminCredentials()) return;
+    const snap = await getAdminDb().collection('config').doc('coinPackages').get();
+    if (!snap.exists) return;
+    const packages = Array.isArray(snap.data()?.packages) ? snap.data().packages : [];
+    const next = {};
+    for (const row of packages) {
+      const id = String(row?.id || '').trim();
+      if (!id || row?.enabled === false) continue;
+      const coins = Math.max(1, Math.floor(Number(row.coins) || 0));
+      const amountInCop = Math.max(100, Math.floor(Number(row.amountInCop) || 0));
+      if (!coins || !amountInCop) continue;
+      next[id] = { coins, amountInCop };
+    }
+    if (Object.keys(next).length) {
+      remotePackages = next;
+      remoteLoadedAt = Date.now();
+    }
+  } catch {
+    /* keep defaults */
+  }
+}
+
+function activePackages() {
+  if (!remotePackages || Date.now() - remoteLoadedAt > 60_000) {
+    void refreshRemotePackages();
+  }
+  return remotePackages && Object.keys(remotePackages).length
+    ? { ...DEFAULT_COIN_PACKAGES, ...remotePackages }
+    : DEFAULT_COIN_PACKAGES;
+}
+
+// Warm cache on boot when possible.
+void refreshRemotePackages();
+
 function resolveCoinPackage(packageId, amountInCop) {
-  const pack = COIN_PACKAGES[packageId];
+  const pack = activePackages()[packageId];
   if (!pack) {
     return { error: `Paquete inválido: ${packageId}` };
   }
@@ -66,7 +107,7 @@ function coinsToCop(coins) {
 
 /** Blast del paquete — rechaza montos inflados o centavos Wompi por error. */
 function blastForPackage(packageId, coins) {
-  const pack = COIN_PACKAGES[packageId];
+  const pack = activePackages()[packageId];
   if (!pack) return null;
   const blast = Math.max(0, Math.floor(Number(coins) || 0));
   if (blast !== pack.coins) return null;
@@ -74,11 +115,12 @@ function blastForPackage(packageId, coins) {
 }
 
 module.exports = {
-  COIN_PACKAGES,
+  COIN_PACKAGES: DEFAULT_COIN_PACKAGES,
   COIN_TO_COP,
   MIN_WITHDRAW_COINS,
   MAX_PACK_COINS,
   resolveCoinPackage,
   coinsToCop,
   blastForPackage,
+  refreshRemotePackages,
 };

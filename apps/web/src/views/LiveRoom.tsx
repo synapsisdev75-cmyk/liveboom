@@ -77,6 +77,7 @@ import {
   listLiveMediaDevices,
   liveCameraFacing,
 } from '../lib/liveMediaDevices';
+import { ensureNativeLiveAvPermissions } from '../lib/nativeLiveMedia';
 import { followUser, isFollowing, unfollowUser } from '../lib/socialFirestore';
 import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
@@ -166,7 +167,22 @@ import {
   normalizeFrameLayout,
   type LiveFrameLayout,
 } from '../lib/liveScreenComposer';
-import { screenShareUserMessage, ScreenShareUnsupportedError } from '../lib/screenShareService';
+import { screenShareUserMessage, stopNativeScreenShareIfAny, setScreenShareLiveGuard, isScreenShareLiveGuardActive } from '../lib/screenShareService';
+import {
+  overlayFailureWarning,
+  participantHasHostMedia,
+  releaseMediaStream,
+  ScreenShareOperationGate,
+  waitRoomConnected,
+} from '../lib/screenShareSession';
+import {
+  bindNativeStopScreenShare,
+  bindScreenShareChatSend,
+  hasOverlayPermission,
+  isNativeAndroidApp,
+  showScreenShareOverlayIfAllowed,
+  updateScreenShareChatHud,
+} from '../lib/nativeLiveMedia';
 import {
   DEFAULT_LIVE_ASPECT_RATIO,
   liveCanvasDimensions,
@@ -217,8 +233,16 @@ function loadLiveMirrorPref(): boolean | null {
 const LIVEKIT_ROOM_OPTIONS: RoomOptions = {
   adaptiveStream: true,
   dynacast: true,
+  // En Android el diálogo de captura dispara page-leave y mataba el LIVE.
   disconnectOnPageLeave: true,
 };
+
+function buildLiveKitRoomOptions(): RoomOptions {
+  return {
+    ...LIVEKIT_ROOM_OPTIONS,
+    disconnectOnPageLeave: !isNativeAndroidApp(),
+  };
+}
 
 const LIVEKIT_CONNECT_OPTIONS: RoomConnectOptions = {
   autoSubscribe: true,
@@ -379,7 +403,7 @@ export function LiveRoom() {
   const setCoins = useAuthStore((state) => state.setCoins);
   const canonicalRoom = username ? roomKey(username) : '';
   const activeRoomRef = useRef(canonicalRoom);
-  const livekitRoom = useMemo(() => new Room(LIVEKIT_ROOM_OPTIONS), []);
+  const livekitRoom = useMemo(() => new Room(buildLiveKitRoomOptions()), []);
   const [session, setSession] = useState<{
     token: string;
     serverUrl: string;
@@ -393,6 +417,11 @@ export function LiveRoom() {
   const [battleActive, setBattleActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveStarted, setLiveStarted] = useState(false);
+  /** Solo true tras “Finalizar live” explícito (no desmontajes temporales). */
+  const intentionalLiveEndRef = useRef(false);
+  const liveStartedRef = useRef(liveStarted);
+  liveStartedRef.current = liveStarted;
+  const isOwnRoomRef = useRef(false);
   const [liveKitConnect, setLiveKitConnect] = useState(true);
   const [isPrivate, setIsPrivate] = useState(Boolean(launch.isPrivate));
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
@@ -411,6 +440,7 @@ export function LiveRoom() {
 
   const isOwnRoom =
     Boolean(handle && username) && roomKey(handle!) === canonicalRoom;
+  isOwnRoomRef.current = isOwnRoom;
   const needsLaunchConfirm = isOwnRoom && !launch.goLive && !liveStarted;
 
   useEffect(() => {
@@ -422,7 +452,10 @@ export function LiveRoom() {
       setSession(null);
       setLiveStarted(false);
     }
-    disconnectLiveRoomQuiet(livekitRoom);
+    // No cortar LiveKit al rotar sala si hay pantalla compartida activa.
+    if (!isScreenShareLiveGuardActive()) {
+      disconnectLiveRoomQuiet(livekitRoom);
+    }
     setError(null);
     setGateLock(null);
     setViewerPaused(false);
@@ -431,6 +464,20 @@ export function LiveRoom() {
 
   useEffect(() => {
     return () => {
+      // Vista desmontada ≠ Finalizar live / dejar de compartir.
+      if (isScreenShareLiveGuardActive()) {
+        console.log('[LIVE] unmount skipped disconnect (screen-share guard)');
+        return;
+      }
+      if (
+        isNativeAndroidApp() &&
+        isOwnRoomRef.current &&
+        liveStartedRef.current &&
+        !intentionalLiveEndRef.current
+      ) {
+        console.log('[LIVE] unmount skipped disconnect (Android host continuity)');
+        return;
+      }
       disconnectLiveRoomQuiet(livekitRoom);
     };
   }, [livekitRoom]);
@@ -446,11 +493,12 @@ export function LiveRoom() {
     });
   }, [canonicalRoom, launch.aspectRatio]);
 
-  async function fetchToken() {
+  async function fetchToken(options?: { resume?: boolean }) {
     const profile = useAuthStore.getState().profile;
     if (!username || !profile) return;
-    // Marca el live antes del token para que el host se reconozca por uid/username.
-    if (isOwnRoom) {
+    const resume = Boolean(options?.resume);
+    // Inicio nuevo vs recuperar sesión (volver de otra app / rejoin).
+    if (isOwnRoom && !resume) {
       // Cada transmisión nueva empieza con chat vacío.
       clearLiveChatCache(username);
       await resetLiveRoomChat(username).catch((error) =>
@@ -482,6 +530,10 @@ export function LiveRoom() {
       }).catch(() => undefined);
       setLiveStarted(true);
       if (typeof launch.isPrivate === 'boolean') setIsPrivate(launch.isPrivate);
+    } else if (isOwnRoom && resume) {
+      // Solo reafirma presencia; no limpia chat ni reinicia metas/stats.
+      void touchLiveRoomHeartbeat(username).catch(() => undefined);
+      if (!liveStarted) setLiveStarted(true);
     }
     const targetRoom = canonicalRoom;
     if (!targetRoom) return;
@@ -702,6 +754,10 @@ export function LiveRoom() {
   }
   useEffect(() => {
     return () => {
+      // No interpretar desmontaje temporal / cambio de actividad como Finalizar.
+      if (isScreenShareLiveGuardActive()) return;
+      if (isNativeAndroidApp() && !intentionalLiveEndRef.current) return;
+      if (!intentionalLiveEndRef.current) return;
       if (liveStarted && username && isOwnRoom) {
         void markLiveRoomEnded(username).catch(() => undefined);
         void api('/api/stream/live/stop', {
@@ -713,9 +769,18 @@ export function LiveRoom() {
   }, [liveStarted, username, isOwnRoom]);
 
   // Cierre al cerrar pestaña / refrescar (más fiable que solo unmount).
+  // Android: pagehide también ocurre al abrir selector / cambiar de app → no finalizar.
   useEffect(() => {
     if (!liveStarted || !username || !isOwnRoom) return;
     const endLive = () => {
+      if (isScreenShareLiveGuardActive()) {
+        console.log('[LIVE] pagehide ignored (screen-share guard)');
+        return;
+      }
+      if (isNativeAndroidApp()) {
+        console.log('[LIVE] pagehide ignored on Android (Finalizar explícito / heartbeat)');
+        return;
+      }
       void markLiveRoomEnded(username).catch(() => undefined);
       void api('/api/stream/live/stop', {
         method: 'POST',
@@ -729,6 +794,35 @@ export function LiveRoom() {
       window.removeEventListener('beforeunload', endLive);
     };
   }, [liveStarted, username, isOwnRoom]);
+
+  // Host Android: al volver a la app, reanudar token/ruta sin live/start ni reset de chat.
+  useEffect(() => {
+    if (!isNativeAndroidApp() || !isOwnRoom || !liveStarted) return;
+    let busy = false;
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (intentionalLiveEndRef.current) return;
+      const state = livekitRoom.state;
+      console.log('[LIVE] host visibility resume check', { state, room: canonicalRoom });
+      if (state === ConnectionState.Connected || state === ConnectionState.Reconnecting) {
+        return;
+      }
+      if (busy) return;
+      busy = true;
+      void (async () => {
+        try {
+          setLiveKitConnect(true);
+          await fetchToken({ resume: true });
+        } catch (err) {
+          console.warn('[LIVE] host resume failed', err);
+        } finally {
+          busy = false;
+        }
+      })();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [isOwnRoom, liveStarted, livekitRoom, canonicalRoom]);
 
   // live/start ya se hace en fetchToken para el anfitrión
   useEffect(() => {
@@ -883,12 +977,12 @@ export function LiveRoom() {
           onJoinSala1={async () => {
             await livekitRoom.disconnect().catch(() => undefined);
             setSession(null);
-            await fetchToken();
+            await fetchToken({ resume: true });
           }}
           onRejoinAsViewer={async () => {
             await livekitRoom.disconnect().catch(() => undefined);
             setSession(null);
-            await fetchToken();
+            await fetchToken({ resume: true });
           }}
           onDeclineSalaInvite={(invite) => {
             void api('/api/stream/invite/decline', {
@@ -907,6 +1001,8 @@ export function LiveRoom() {
           onHangupLiveKit={() => setLiveKitConnect(false)}
           onLeaveLive={async (stats?: LiveEndStats) => {
             if (!isOwnRoom) return;
+            intentionalLiveEndRef.current = true;
+            setScreenShareLiveGuard(false);
             clearLiveChatCache(username);
             const marked = await markLiveRoomEnded(username, stats).then(() => true).catch(() => false);
             let stopped = false;
@@ -1173,12 +1269,20 @@ function CreatorStage({
     };
   }, [room, canPublish]);
 
-  // Invitados con canPublish: mic siempre arriba para que el host los oiga.
+  // Invitados con canPublish: mic arriba para que el host los oiga.
+  // Host: respetar launch.micOn; no reactivar contra su elección.
   useEffect(() => {
     if (!canPublish) return;
+    const preferMic = launch.micOn !== false;
+    if (isHost && !preferMic) {
+      if (room.localParticipant.isMicrophoneEnabled) {
+        void room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+      }
+      return;
+    }
     if (room.localParticipant.isMicrophoneEnabled) return;
     void room.localParticipant.setMicrophoneEnabled(true).catch(() => undefined);
-  }, [canPublish, room]);
+  }, [canPublish, room, isHost, launch.micOn]);
 
   const [liveEnded, setLiveEnded] = useState(false);
   const hostSessionEndedRef = useRef(false);
@@ -1457,6 +1561,8 @@ function CreatorStage({
   const [recording, setRecording] = useState(false);
   const [reelNote, setReelNote] = useState<string | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
+  const screenShareGateRef = useRef(new ScreenShareOperationGate());
+  const restoreCamTimerRef = useRef(0);
   const [pipVisible, setPipVisible] = useState(true);
   const [pipCameraAspect, setPipCameraAspect] = useState(() => frameAspectRatio(aspectRatio));
   const [frameLayout, setFrameLayout] = useState<LiveFrameLayout>(() =>
@@ -1470,7 +1576,6 @@ function CreatorStage({
   const screenAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenAudioLiveTrackRef = useRef<LocalAudioTrack | null>(null);
   const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
-  const stoppingScreenRef = useRef(false);
   const [lock, setLock] = useState<LockInfo | null>(null);
   const [remoteFrameLayout, setRemoteFrameLayout] = useState<LiveFrameLayout>(() =>
     defaultCameraFrameLayout(aspectRatio),
@@ -1557,14 +1662,22 @@ function CreatorStage({
   useEffect(() => {
     const mapState = () => {
       if (room.state === ConnectionState.Reconnecting) setConnectionQuality('reconnecting');
-      else if (room.state === ConnectionState.Disconnected) setConnectionQuality('disconnected');
-      else if (room.state === ConnectionState.Connected) setConnectionQuality('excellent');
+      else if (room.state === ConnectionState.Disconnected) {
+        setConnectionQuality('disconnected');
+        console.log('[LIVE] RoomEvent disconnected', {
+          room: room.name,
+          mono: Math.round(performance.now()),
+          screenGuard: isScreenShareLiveGuardActive(),
+        });
+      } else if (room.state === ConnectionState.Connected) setConnectionQuality('excellent');
       else setConnectionQuality('stable');
     };
     mapState();
     room.on(RoomEvent.ConnectionStateChanged, mapState);
+    room.on(RoomEvent.Disconnected, mapState);
     return () => {
       room.off(RoomEvent.ConnectionStateChanged, mapState);
+      room.off(RoomEvent.Disconnected, mapState);
     };
   }, [room]);
 
@@ -2175,22 +2288,18 @@ function CreatorStage({
     if (isHost || canPublish) return;
     return listenLiveRoomStatus(username, (status) => {
       if (status !== 'ended') return;
-      // No echar al espectador si aún ve la cámara del host (falsos "ended" del feed).
-      const remoteCams = Array.from(room.remoteParticipants.values()).some((participant) =>
-        Array.from(participant.videoTrackPublications.values()).some(
-          (pub) =>
-            pub.source === Track.Source.Camera &&
-            !pub.isMuted &&
-            Boolean(pub.track),
-        ),
-      );
-      if (!remoteCams) {
+      // Host presente si hay cámara O pantalla compartida (no solo Camera).
+      const hostMedia = Array.from(room.remoteParticipants.values()).some((participant) => {
+        if (hostUid && participant.identity !== hostUid) return false;
+        return participantHasHostMedia(participant.videoTrackPublications.values());
+      });
+      if (!hostMedia) {
         setLiveEnded(true);
         onHangupLiveKitRef.current?.();
         void room.disconnect().catch(() => undefined);
       }
     });
-  }, [username, isHost, canPublish, room]);
+  }, [username, isHost, canPublish, room, hostUid]);
 
   // Host: pulso también desde la sala (por si el stage se remonta).
   useEffect(() => {
@@ -2216,30 +2325,34 @@ function CreatorStage({
         const active = (data.streams || []).some(
           (stream) => stream.username.toLowerCase() === username.toLowerCase(),
         );
-        const remoteCams = Array.from(room.remoteParticipants.values()).some((participant) =>
-          Array.from(participant.videoTrackPublications.values()).some(
-            (pub) =>
-              pub.source === Track.Source.Camera &&
-              !pub.isMuted &&
-              Boolean(pub.track) &&
-              pub.track?.mediaStreamTrack?.readyState === 'live',
-          ),
-        );
-        if (remoteCams) hadHostCamera.current = true;
-        // Durante un flip la cámara puede faltar un instante; no marcar live terminado.
-        if (hadHostCamera.current && !active && !remoteCams) {
+        const hostMedia = Array.from(room.remoteParticipants.values()).some((participant) => {
+          if (hostUid && participant.identity !== hostUid) return false;
+          return participantHasHostMedia(participant.videoTrackPublications.values(), {
+            requireLiveMedia: true,
+          });
+        });
+        if (hostMedia) hadHostCamera.current = true;
+        // Ausencia provisional ≠ finalización confirmada.
+        if (hadHostCamera.current && !active && !hostMedia) {
           await new Promise((resolve) => window.setTimeout(resolve, 2500));
           if (cancelled) return;
-          const stillRemote = Array.from(room.remoteParticipants.values()).some((participant) =>
-            Array.from(participant.videoTrackPublications.values()).some(
-              (pub) =>
-                pub.source === Track.Source.Camera &&
-                !pub.isMuted &&
-                Boolean(pub.track) &&
-                pub.track?.mediaStreamTrack?.readyState === 'live',
-            ),
-          );
-          if (!stillRemote && !active) setLiveEnded(true);
+          // Segunda comprobación fresca del feed + tracks (no reutilizar `active`).
+          let stillActive = false;
+          try {
+            const again = await apiPublic<{ streams?: SuggestedLive[] }>('/api/stream/live');
+            stillActive = (again.streams || []).some(
+              (stream) => stream.username.toLowerCase() === username.toLowerCase(),
+            );
+          } catch {
+            stillActive = active;
+          }
+          const stillHostMedia = Array.from(room.remoteParticipants.values()).some((participant) => {
+            if (hostUid && participant.identity !== hostUid) return false;
+            return participantHasHostMedia(participant.videoTrackPublications.values(), {
+              requireLiveMedia: true,
+            });
+          });
+          if (!stillHostMedia && !stillActive) setLiveEnded(true);
         }
       } catch {
         // ignore
@@ -2251,7 +2364,7 @@ function CreatorStage({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [username, isHost, canPublish, liveEnded, room]);
+  }, [username, isHost, canPublish, liveEnded, room, hostUid]);
 
   useEffect(() => {
     if (!liveEnded && !summaryOpen) return;
@@ -2894,9 +3007,12 @@ function CreatorStage({
   }
 
   const stopScreenCapture = useCallback(async () => {
-    if (stoppingScreenRef.current) return;
-    stoppingScreenRef.current = true;
-    try {
+    const gate = screenShareGateRef.current;
+    await gate.runStop(async () => {
+      if (restoreCamTimerRef.current) {
+        window.clearTimeout(restoreCamTimerRef.current);
+        restoreCamTimerRef.current = 0;
+      }
       const composer = screenComposerRef.current;
       const composite = compositeTrackRef.current;
       const screenLive = screenVideoLiveTrackRef.current;
@@ -2942,23 +3058,59 @@ function CreatorStage({
 
       screenMedia?.stop();
       screenAudio?.stop();
+      try {
+        await stopNativeScreenShareIfAny();
+      } catch {
+        /* ignore */
+      }
 
       setScreenSharing(false);
-      setPipVisible(true);
+      setScreenShareLiveGuard(false);
       setFrameLayout(defaultCameraFrameLayout(aspectRatio));
-    } finally {
-      stoppingScreenRef.current = false;
-    }
-  }, [room, aspectRatio]);
+      if (isNativeAndroidApp() && hostCamOn) {
+        void restoreCameraIfKilled().catch(() => undefined);
+      }
+    });
+  }, [room, aspectRatio, hostCamOn]);
 
   const stopScreenCaptureRef = useRef(stopScreenCapture);
   stopScreenCaptureRef.current = stopScreenCapture;
 
   useEffect(() => {
     return () => {
+      // No detener captura nativa al desmontar React: el FGS es el propietario.
+      if (isScreenShareLiveGuardActive()) {
+        console.log('[SCREEN SHARE] unmount skipped stopCapture (guard)');
+        return;
+      }
+      if (isNativeAndroidApp() && isHost) {
+        console.log('[SCREEN SHARE] unmount skipped stopCapture (host continuity)');
+        return;
+      }
       void stopScreenCaptureRef.current();
     };
-  }, []);
+  }, [isHost]);
+
+  useEffect(() => {
+    if (!isHost || !isNativeAndroidApp()) return;
+    let cancelled = false;
+    let unbind: (() => void) | undefined;
+    void bindNativeStopScreenShare(() => {
+      void stopScreenCaptureRef.current().then(() => {
+        setReelNote('Captura de pantalla detenida');
+      });
+    }).then((fn) => {
+      if (cancelled) {
+        void fn();
+        return;
+      }
+      unbind = fn;
+    });
+    return () => {
+      cancelled = true;
+      unbind?.();
+    };
+  }, [isHost]);
 
   async function restoreCameraIfKilled() {
     if (!isHost || !hostCamOn) return;
@@ -2975,83 +3127,160 @@ function CreatorStage({
 
   async function toggleScreenCapture() {
     if (!isHost) return;
-    if (screenSharing) {
+    const gate = screenShareGateRef.current;
+    if (screenSharing || gate.phase === 'active') {
       await stopScreenCapture();
       setReelNote('Captura de pantalla detenida');
       return;
     }
+    if (gate.phase === 'stopping') {
+      setReelNote('Espera a que termine de detener la captura…');
+      await gate.runStop(async () => undefined);
+      return;
+    }
+    const opId = gate.beginStart();
+    if (opId == null) {
+      setReelNote('Ya hay una solicitud de pantalla en curso…');
+      return;
+    }
+
     console.log('[SCREEN SHARE SUPPORT]', {
       getDisplayMedia: typeof navigator.mediaDevices?.getDisplayMedia === 'function',
+      nativeAndroid: isNativeAndroidApp(),
+      opId,
     });
+
+    setScreenShareLiveGuard(true);
+    let display: MediaStream | null = null;
     try {
-      // getDisplayMedia en el mismo toque; no hay modal ni await previo.
-      const display = await requestScreenCaptureStream();
-      if (room.state !== 'connected') {
-        await waitConnected(room);
+      if (isNativeAndroidApp()) {
+        setReelNote('Elige app o pantalla completa y toca Permitir…');
       }
+      if (!gate.advance(opId, 'starting')) {
+        throw new Error('Operación de pantalla cancelada');
+      }
+
+      display = await requestScreenCaptureStream();
+      if (!gate.isCurrent(opId)) {
+        releaseMediaStream(display);
+        display = null;
+        return;
+      }
+
       const screenMedia = display.getVideoTracks()[0];
       const screenAudio = display.getAudioTracks()[0];
       if (!screenMedia) {
-        display.getTracks().forEach((track) => track.stop());
+        releaseMediaStream(display);
+        display = null;
         throw new Error('Sin pista de pantalla');
       }
-
       screenMediaTrackRef.current = screenMedia;
-      if (screenAudio) {
-        screenAudioTrackRef.current = screenAudio;
+      if (screenAudio) screenAudioTrackRef.current = screenAudio;
+
+      screenMedia.onended = () => {
+        if (!gate.isCurrent(opId)) return;
+        void stopScreenCapture().then(() => setReelNote(null));
+      };
+
+      if (room.state !== ConnectionState.Connected) {
+        await waitRoomConnected(room, {
+          isCancelled: () => !gate.isCurrent(opId),
+        });
+      }
+      if (!gate.isCurrent(opId)) {
+        releaseMediaStream(display);
+        display = null;
+        screenMediaTrackRef.current = null;
+        screenAudioTrackRef.current = null;
+        return;
       }
 
       const dims = liveCanvasDimensions(aspectRatio);
       const initialPip = defaultPipPosition(dims.width, dims.height, undefined, aspectRatio);
-      setFrameLayout(initialPip);
-      setPipVisible(true);
+      if (hostCamOn) {
+        setFrameLayout(initialPip);
+      }
 
+      if (!gate.advance(opId, 'publishing')) {
+        releaseMediaStream(display);
+        display = null;
+        throw new Error('Operación de pantalla cancelada');
+      }
+
+      const screenLive = new LocalVideoTrack(screenMedia);
+      screenVideoLiveTrackRef.current = screenLive;
       try {
-        const screenLive = new LocalVideoTrack(screenMedia);
-        screenVideoLiveTrackRef.current = screenLive;
+        screenMedia.contentHint = isNativeAndroidApp() ? 'motion' : 'detail';
+      } catch {
+        /* ignore */
+      }
 
-        await room.localParticipant.publishTrack(screenLive, {
-          source: Track.Source.ScreenShare,
-          name: 'screen',
-          simulcast: true,
-        });
-        console.log('[SCREEN SHARE] published');
+      await room.localParticipant.publishTrack(screenLive, {
+        source: Track.Source.ScreenShare,
+        name: 'screen',
+        simulcast: !isNativeAndroidApp(),
+        ...(isNativeAndroidApp()
+          ? {
+              videoCodec: 'vp8' as const,
+              videoEncoding: {
+                maxBitrate: 1_100_000,
+                maxFramerate: 15,
+              },
+              degradationPreference: 'maintain-framerate' as const,
+            }
+          : {
+              videoEncoding: {
+                maxBitrate: 2_500_000,
+                maxFramerate: 24,
+              },
+            }),
+      });
+      if (!gate.isCurrent(opId)) {
+        await room.localParticipant.unpublishTrack(screenLive, true).catch(() => undefined);
+        releaseMediaStream(display);
+        return;
+      }
+      console.log('[SCREEN SHARE] published');
 
-        if (screenAudio) {
+      if (screenAudio) {
+        try {
           const audioLive = new LocalAudioTrack(screenAudio);
           screenAudioLiveTrackRef.current = audioLive;
           await room.localParticipant.publishTrack(audioLive, {
             source: Track.Source.ScreenShareAudio,
             name: 'screen_audio',
           });
+        } catch (audioErr) {
+          console.warn('[SCREEN SHARE] audio opcional falló', audioErr);
+          screenAudioLiveTrackRef.current = null;
         }
+      }
 
-        setScreenSharing(true);
-        const baseMsg = screenShareStatusMessage(screenMedia, readScreenTrackDimensions(screenMedia));
-        setReelNote(
-          screenAudio
-            ? `${baseMsg} · ${screenShareAudioStatusMessage(true)}`
-            : `${baseMsg} · ${screenShareAudioStatusMessage(false)}`,
-        );
-
-        void publishFrameSync(room, initialPip, true).catch(() => undefined);
-        void restoreCameraIfKilled().catch(() => undefined);
-
-        screenMedia.onended = () => {
-          void stopScreenCapture().then(() => setReelNote(null));
-        };
-      } catch (inner) {
-        screenMedia.stop();
-        screenAudio?.stop();
-        screenMediaTrackRef.current = null;
-        screenAudioTrackRef.current = null;
-        if (screenVideoLiveTrackRef.current) {
-          try {
-            await room.localParticipant.unpublishTrack(screenVideoLiveTrackRef.current, true);
-          } catch {
-            /* ignore */
+      // Mic del host: la captura nativa no trae audio de sistema; mantener mic en LIVE.
+      if (isNativeAndroidApp() && launch.micOn !== false) {
+        try {
+          if (!room.localParticipant.isMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(
+              true,
+              micDeviceId ? { deviceId: micDeviceId } : undefined,
+            );
           }
-          screenVideoLiveTrackRef.current = null;
+        } catch (micErr) {
+          console.warn('[SCREEN SHARE] mic restore', micErr);
+        }
+      }
+
+      // No apagar la cámara LiveKit: el espectador debe ver la misma cara (PiP) que el host.
+      if (hostCamOn) {
+        await restoreCameraIfKilled().catch(() => undefined);
+      }
+
+      if (!gate.markActive(opId)) {
+        // Op antigua: liberar solo lo publicado en ESTA operación.
+        try {
+          await room.localParticipant.unpublishTrack(screenLive, true);
+        } catch {
+          /* ignore */
         }
         if (screenAudioLiveTrackRef.current) {
           try {
@@ -3061,13 +3290,94 @@ function CreatorStage({
           }
           screenAudioLiveTrackRef.current = null;
         }
-        throw inner;
+        screenVideoLiveTrackRef.current = null;
+        screenMedia?.stop();
+        screenAudio?.stop();
+        screenMediaTrackRef.current = null;
+        screenAudioTrackRef.current = null;
+        display = null;
+        // Otra operación puede estar activa: no usar stop global.
+        // Solo detener nativo si nadie tomó el gate.
+        if (isNativeAndroidApp() && gate.canStart()) {
+          await stopNativeScreenShareIfAny().catch(() => undefined);
+        }
+        return;
+      }
+      setScreenSharing(true);
+      display = null;
+
+      const baseMsg = screenShareStatusMessage(screenMedia, readScreenTrackDimensions(screenMedia));
+      setReelNote(
+        isNativeAndroidApp()
+          ? `${baseMsg} · sigue en vivo al cambiar de app`
+          : screenAudio
+            ? `${baseMsg} · ${screenShareAudioStatusMessage(true)}`
+            : `${baseMsg} · ${screenShareAudioStatusMessage(false)}`,
+      );
+
+      void publishFrameSync(room, hostCamOn ? initialPip : frameLayout, hostCamOn && pipVisible).catch(
+        () => undefined,
+      );
+
+      if (hostCamOn) {
+        await restoreCameraIfKilled().catch(() => undefined);
+        if (restoreCamTimerRef.current) window.clearTimeout(restoreCamTimerRef.current);
+        restoreCamTimerRef.current = window.setTimeout(() => {
+          restoreCamTimerRef.current = 0;
+          if (!gate.isCurrent(opId)) return;
+          void restoreCameraIfKilled().catch(() => undefined);
+        }, 450);
+      }
+
+      if (isNativeAndroidApp()) {
+        try {
+          // Si la cámara LiveKit está ON, no abrir otra cámara en el globo (evita pelea).
+          const shown = await showScreenShareOverlayIfAllowed({
+            allowOverlayCamera: !hostCamOn,
+          });
+          const has = shown || (await hasOverlayPermission());
+          const warn = overlayFailureWarning(shown, has, baseMsg);
+          if (warn) setReelNote(warn);
+          else {
+            setReelNote(
+              hostCamOn
+                ? `${baseMsg} · cámara al espectador · chat flotante`
+                : `${baseMsg} · micrófono activo · globo en vivo`,
+            );
+          }
+        } catch (overlayErr) {
+          console.warn('[SCREEN SHARE] overlay opcional', overlayErr);
+          setReelNote(`${baseMsg} · compartiendo (sin ventana flotante)`);
+        }
       }
     } catch (err) {
+      // Solo el op vigente limpia estado global.
+      if (!gate.isCurrent(opId)) {
+        releaseMediaStream(display);
+        display = null;
+        return;
+      }
+      gate.failStart(opId);
+      releaseMediaStream(display);
+      display = null;
+      if (screenMediaTrackRef.current && !screenVideoLiveTrackRef.current) {
+        try {
+          screenMediaTrackRef.current.stop();
+        } catch {
+          /* ignore */
+        }
+        screenMediaTrackRef.current = null;
+        screenAudioTrackRef.current = null;
+        if (isNativeAndroidApp()) {
+          await stopNativeScreenShareIfAny().catch(() => undefined);
+        }
+      }
+      setScreenSharing(false);
+      setScreenShareLiveGuard(false);
+
       const e = err as Error & { name?: string };
       if (e?.name === 'AbortError') {
         setReelNote('Compartir pantalla cancelado');
-        void restoreCameraIfKilled().catch(() => undefined);
         return;
       }
       console.error('[SCREEN SHARE]', {
@@ -3075,9 +3385,6 @@ function CreatorStage({
         message: e?.message,
       });
       setReelNote(screenShareUserMessage(err));
-      if (!(err instanceof ScreenShareUnsupportedError) && e?.name !== 'ScreenShareUnsupportedError') {
-        void restoreCameraIfKilled().catch(() => undefined);
-      }
     }
   }
 
@@ -3321,6 +3628,10 @@ function CreatorStage({
                   setBatallaOpen(false);
                   setSalaBoomOpen(true);
                 }}
+                onVs={() => {
+                  setSalaBoomOpen(false);
+                  setBatallaOpen(true);
+                }}
                 onScreen={() => void toggleScreenCapture()}
                 onMic={() => void toggleMic()}
                 onCamera={() => void toggleCamera()}
@@ -3357,6 +3668,7 @@ function CreatorStage({
               preferredCameraId={cameraDeviceId || String(launch.cameraId || '')}
               preferredMicrophoneId={micDeviceId || String(launch.microphoneId || '')}
               preferredMicOn={launch.micOn !== false}
+              preferredCamOn={hostCamOn}
               cameraTrackRef={cameraTrackRef}
               frameLayout={effectiveFrameLayout}
               frameAspect={aspectRatio}
@@ -3459,6 +3771,25 @@ function CreatorStage({
                 onDismissResult={() => void battle.dismissResult()}
                 rematchBusy={battle.busy}
               />
+            ) : null}
+            {isHost && screenSharing ? (
+              <div className="pointer-events-auto absolute inset-x-2 top-[max(3.75rem,calc(var(--lb-safe-top)+3.1rem))] z-[45] flex items-center justify-between gap-2 rounded-2xl border border-emerald-400/40 bg-emerald-950/90 px-3 py-2 text-white shadow-lg backdrop-blur-md sm:inset-x-auto sm:left-3 sm:right-auto sm:min-w-[16rem]">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-emerald-200">
+                    Transmitiendo pantalla
+                  </p>
+                  <p className="truncate text-[10px] text-emerald-100/80">
+                    Los espectadores ven tu pantalla · cámara en PiP
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void toggleScreenCapture()}
+                  className="shrink-0 rounded-full bg-red-500 px-3 py-2 text-[11px] font-bold text-white"
+                >
+                  Dejar de compartir
+                </button>
+              </div>
             ) : null}
             {isHost && screenSharing ? (
               <LiveFrameEditor
@@ -4220,18 +4551,7 @@ function CreatorStage({
 }
 
 function waitConnected(room: ReturnType<typeof useRoomContext>, ms = 20000) {
-  if (room.state === 'connected') return Promise.resolve();
-  return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      room.off(RoomEvent.Connected, onOk);
-      reject(new Error('Tiempo de espera agotado al conectar LiveKit'));
-    }, ms);
-    const onOk = () => {
-      window.clearTimeout(timer);
-      resolve();
-    };
-    room.once(RoomEvent.Connected, onOk);
-  });
+  return waitRoomConnected(room, { timeoutMs: ms });
 }
 
 function trackIsRenderable(ref: TrackReference | null): boolean {
@@ -4448,11 +4768,35 @@ function CreatorVideo({
         if (!canPublish || !allowPublish) return;
         if (room.localParticipant.permissions?.canPublish === false) return;
 
+        try {
+          await ensureNativeLiveAvPermissions();
+        } catch (permErr) {
+          if (!cancelled) {
+            setCamError(
+              permErr instanceof Error
+                ? permErr.message
+                : 'Activa cámara y micrófono en los permisos de LiveBoom.',
+            );
+          }
+          return;
+        }
+        if (cancelled) return;
+
         if (localCamOff || preferredCamOnRef.current === false) {
           discardLiveCameraHandoff();
           await room.localParticipant.setCameraEnabled(false).catch(() => undefined);
-          if (!room.localParticipant.isMicrophoneEnabled) {
-            await room.localParticipant.setMicrophoneEnabled(true).catch(() => undefined);
+          // Respetar mic del host/invitado: no forzar ON solo porque la cámara esté apagada.
+          if (preferredMicOnRef.current !== false) {
+            if (!room.localParticipant.isMicrophoneEnabled) {
+              await room.localParticipant.setMicrophoneEnabled(
+                true,
+                preferredMicrophoneIdRef.current
+                  ? { deviceId: preferredMicrophoneIdRef.current }
+                  : undefined,
+              ).catch(() => undefined);
+            }
+          } else if (room.localParticipant.isMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
           }
           await attachCameraRef();
           return;
@@ -4546,18 +4890,28 @@ function CreatorVideo({
         }
 
         const cameraId = preferredCameraIdRef.current;
-        await room.localParticipant.setCameraEnabled(
-          true,
-          cameraId ? { deviceId: cameraId } : { facingMode: facing },
-        );
+        try {
+          await room.localParticipant.setCameraEnabled(
+            true,
+            cameraId ? { deviceId: cameraId } : { facingMode: facing },
+          );
+        } catch (camErr) {
+          console.warn('[live] camera with preferred device failed, retry default', camErr);
+          await room.localParticipant.setCameraEnabled(true, { facingMode: facing });
+        }
         const micId = preferredMicrophoneIdRef.current;
-        await room.localParticipant.setMicrophoneEnabled(
-          preferredMicOnRef.current !== false,
-          micId ? { deviceId: micId } : undefined,
-        );
+        try {
+          await room.localParticipant.setMicrophoneEnabled(
+            preferredMicOnRef.current !== false,
+            micId ? { deviceId: micId } : undefined,
+          );
+        } catch (micErr) {
+          console.warn('[live] mic with preferred device failed, retry default', micErr);
+          await room.localParticipant.setMicrophoneEnabled(preferredMicOnRef.current !== false);
+        }
         await attachCameraRef();
         if (preferredMicOnRef.current !== false && !room.localParticipant.isMicrophoneEnabled) {
-          await room.localParticipant.setMicrophoneEnabled(true, micId ? { deviceId: micId } : undefined);
+          await room.localParticipant.setMicrophoneEnabled(true);
         }
         if (!cancelled) setCamError(null);
       } catch (err) {
@@ -4852,6 +5206,56 @@ function ChatPanel({
       room.off(RoomEvent.DataReceived, onData);
     };
   }, [room, profile?.handle]);
+
+  // Mientras se comparte pantalla: chat semitransparente nativo + respuesta sin volver al LIVE.
+  useEffect(() => {
+    if (!isHostRoom || !isNativeAndroidApp()) return;
+    if (!isScreenShareLiveGuardActive()) return;
+    const lines = messages.slice(-5).map((m) => {
+      const who = String(m.author || '').slice(0, 14);
+      const body = String(m.text || '').slice(0, 80);
+      return `${who}: ${body}`;
+    });
+    void updateScreenShareChatHud(lines);
+  }, [messages, isHostRoom]);
+
+  useEffect(() => {
+    if (!isHostRoom || !isNativeAndroidApp()) return;
+    let unbind: (() => void) | undefined;
+    let cancelled = false;
+    void bindScreenShareChatSend((incoming) => {
+      const value = incoming.trim();
+      if (!value || !profile) return;
+      const author = profile.displayName || profile.handle || 'Liveboomer';
+      const message: ChatMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        author,
+        authorUid: profile.firebaseUid,
+        text: value,
+        sourceLang: getLocale(),
+      };
+      pushMessage(message);
+      persistChatCopy(message);
+      void publishLiveChatMessage(roomName, {
+        clientId: message.id,
+        authorUid: profile.firebaseUid,
+        author,
+        text: value,
+        sourceLang: message.sourceLang,
+      }).catch(() => undefined);
+      void publishRoomData(room, { type: 'chat', ...message }).catch(() => undefined);
+    }).then((fn) => {
+      if (cancelled) {
+        void fn();
+        return;
+      }
+      unbind = fn;
+    });
+    return () => {
+      cancelled = true;
+      unbind?.();
+    };
+  }, [isHostRoom, room, roomName, profile]);
 
   useEffect(() => {
     if (!pinnedBottom) return;

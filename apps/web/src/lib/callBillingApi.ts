@@ -32,6 +32,9 @@ export type CallBillingSession = {
   stopped?: boolean;
   creatorEarnedBlast?: number;
   allowEarnedBlastForCall?: boolean;
+  receiverPurchasedBlastBalance?: number;
+  receiverEarnedBlastBalance?: number;
+  receiverCoinsBalance?: number;
 };
 
 export async function quoteCallBilling(callType: PlatformCallType | string) {

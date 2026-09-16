@@ -9,6 +9,7 @@ import {
   peekPrivateCallStatus,
   postCallHistoryMessage,
   readCallBillingSnapshot,
+  readCallTimingSnapshot,
   type FriendChip,
 } from '../lib/socialFirestore';
 import { stopCallBilling } from '../lib/callBillingApi';
@@ -91,7 +92,10 @@ type CallState = {
     video: boolean;
     token: string;
     serverUrl: string;
+    connectedAtMs?: number;
   }) => void;
+  /** Pasa a active sin inventar reloj (el reloj viene de connectedAtMs en Firestore). */
+  promoteActive: () => void;
   markActive: (connectedAtMs?: number) => void;
   setCallCredentials: (payload: { token: string; serverUrl: string; callId?: string }) => void;
   hangup: (outcome?: 'completed' | 'missed' | 'cancelled' | 'declined', opts?: { skipHistory?: boolean; error?: string | null }) => Promise<void>;
@@ -175,7 +179,7 @@ export const useCallStore = create<CallState>((set, get) => ({
     });
   },
 
-  beginIncomingAccepted: ({ chatId, callId, peer, video, token, serverUrl }) => {
+  beginIncomingAccepted: ({ chatId, callId, peer, video, token, serverUrl, connectedAtMs }) => {
     logCallConnect('callStatus', {
       callId,
       callerId: peer.uid,
@@ -185,12 +189,14 @@ export const useCallStore = create<CallState>((set, get) => ({
       liveKitUrlPresent: Boolean(serverUrl),
       callStatus: 'active',
     });
+    const started =
+      Number(connectedAtMs) > 0 ? Math.floor(Number(connectedAtMs)) : Date.now();
     saveCallSession({
       chatId,
       callId,
       video,
       role: 'callee',
-      connectedAt: Date.now(),
+      connectedAt: started,
       peer,
     });
     set({
@@ -202,16 +208,32 @@ export const useCallStore = create<CallState>((set, get) => ({
       token,
       serverUrl,
       incoming: null,
-      activeStartedAt: Date.now(),
+      activeStartedAt: started,
       lastError: null,
+    });
+  },
+
+  promoteActive: () => {
+    const prev = get();
+    if (prev.status === 'idle' || prev.status === 'active') return;
+    set({ status: 'active' });
+    logCallConnect('callStatus', {
+      callId: prev.callId,
+      identity: useAuthStore.getState().profile?.firebaseUid || null,
+      callStatus: 'active',
+      tokenGenerated: Boolean(prev.token),
+      liveKitUrlPresent: Boolean(prev.serverUrl),
     });
   },
 
   markActive: (connectedAtMs) => {
     if (get().status === 'idle') return;
     const parsed = Number(connectedAtMs);
-    const fromServer = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    const started = fromServer || get().activeStartedAt || Date.now();
+    const fromServer = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+    const prevStarted = get().activeStartedAt;
+    // Reloj canónico: siempre preferir connectedAt del servidor/chat.
+    // Sin servidor, conservar el inicio ya fijado (no adelantar ni retrasar).
+    const started = fromServer > 0 ? fromServer : prevStarted || Date.now();
     const existing = readCallSession();
     const prev = get();
     if (prev.chatId && prev.callId && prev.peer) {
@@ -259,12 +281,10 @@ export const useCallStore = create<CallState>((set, get) => ({
     const wasRingingOut = prev.status === 'ringing-out';
     const wasRingingIn = prev.status === 'ringing-in';
     const video = prev.video || Boolean(prev.incoming?.video);
-    const durationSec =
-      wasActive && prev.activeStartedAt
-        ? Math.max(1, Math.round((Date.now() - prev.activeStartedAt) / 1000))
-        : 0;
+    const endedAtMs = Date.now();
     const live = prev.callBilling;
     const me = useAuthStore.getState().profile;
+
     let outcome = forcedOutcome;
     if (!outcome) {
       if (wasActive) outcome = 'completed';
@@ -273,6 +293,13 @@ export const useCallStore = create<CallState>((set, get) => ({
       else outcome = 'cancelled';
     }
 
+    // Regla simple: quien inicia paga; quien recibe gana.
+    let connectedAtMs = prev.activeStartedAt || 0;
+    let durationSec =
+      wasActive && connectedAtMs > 0
+        ? Math.max(0, Math.floor((endedAtMs - connectedAtMs) / 1000))
+        : 0;
+
     const callType = normalizePlatformCallType(
       live?.callType || (video ? 'video_720' : 'voice'),
     );
@@ -280,100 +307,50 @@ export const useCallStore = create<CallState>((set, get) => ({
     let totalBlasts = Math.max(0, live?.spentBlasts || 0);
     let creatorValueCop = Math.max(0, live?.creatorValueCop || 0);
     let payerUid = live?.payerUid || null;
-
-    // Resolver total cobrado/ganado ANTES de limpiar UI (caller y receptor).
-    if (wasActive && (rateBlasts > 0 || Boolean(callId))) {
-      if (chatId) {
-        try {
-          const snap = await readCallBillingSnapshot(chatId);
-          rateBlasts = Math.max(rateBlasts, snap.rateBlasts || 0);
-          totalBlasts = Math.max(totalBlasts, snap.totalBlasts || 0);
-          creatorValueCop = Math.max(creatorValueCop, snap.creatorValueCop || 0);
-          if (snap.payerUid) payerUid = snap.payerUid;
-        } catch {
-          /* ignore */
-        }
-      }
-      if (callId) {
-        try {
-          const final = await stopCallBilling({
-            callId,
-            connectedSeconds: durationSec,
-          });
-          rateBlasts = Math.max(rateBlasts, final.rateBlasts || 0);
-          totalBlasts = Math.max(totalBlasts, final.blastAlreadyCharged || 0);
-          creatorValueCop = Math.max(creatorValueCop, final.creatorValueCop || 0);
-          if (
-            payerUid &&
-            me?.firebaseUid &&
-            payerUid === me.firebaseUid &&
-            (final.purchasedBlastBalance != null || final.earnedBlastBalance != null)
-          ) {
-            useAuthStore.getState().setBlastBalances({
-              purchasedBlastBalance: final.purchasedBlastBalance ?? 0,
-              earnedBlastBalance: final.earnedBlastBalance ?? 0,
-              coinsBalance: final.callerBalance,
-            });
-          } else if (
-            payerUid &&
-            me?.firebaseUid &&
-            payerUid === me.firebaseUid &&
-            final.callerBalance != null &&
-            final.callerBalance >= 0
-          ) {
-            useAuthStore.getState().setCoins(final.callerBalance);
-          }
-        } catch {
-          /* billing puede no haberse iniciado */
-        }
-      }
-      // Si aún no hay cobro registrado pero la llamada pasó la gracia, estimar lo debido.
-      if (totalBlasts <= 0 && rateBlasts > 0) {
-        const due = calculateBlastDue(durationSec, callType);
-        if (due > 0) {
-          totalBlasts = due;
-          if (creatorValueCop <= 0) creatorValueCop = creatorCopForBlast(due);
-        }
-      } else if (creatorValueCop <= 0 && totalBlasts > 0) {
-        creatorValueCop = creatorCopForBlast(totalBlasts);
-      }
-    }
-
     const iAmReceiver = Boolean(payerUid && me?.firebaseUid && payerUid !== me.firebaseUid);
-    const summary: VideoCallEndedSummary | null =
-      wasActive && rateBlasts > 0
+
+    const buildSummary = (
+      dur: number,
+      blasts: number,
+      rate: number,
+      cop: number,
+      received: boolean,
+    ): VideoCallEndedSummary | null =>
+      wasActive && rate > 0
         ? {
             handle: prev.peer?.username || prev.incoming?.peer.username || '',
-            durationSec,
-            rateBlasts,
+            durationSec: dur,
+            rateBlasts: rate,
             blocksCharged: live?.blocksCharged || 0,
-            totalBlasts,
+            totalBlasts: blasts,
             giftName: live?.giftName || null,
-            received: iAmReceiver,
+            received,
             video,
-            creatorValueCop,
+            creatorValueCop: cop,
           }
         : video && wasActive
           ? {
               handle: prev.peer?.username || prev.incoming?.peer.username || '',
-              durationSec,
-              rateBlasts,
+              durationSec: dur,
+              rateBlasts: rate,
               blocksCharged: live?.blocksCharged || 0,
-              totalBlasts,
+              totalBlasts: blasts,
               giftName: live?.giftName || null,
-              received: iAmReceiver,
+              received,
               video: true,
-              creatorValueCop,
+              creatorValueCop: cop,
             }
           : null;
 
+    let summary = buildSummary(durationSec, totalBlasts, rateBlasts, creatorValueCop, iAmReceiver);
+
+    // 1) Señal al peer YA (no bloquear el corte de LiveKit).
+    if (chatId && !opts?.skipHistory) {
+      void endPrivateCall(chatId, { callId, outcome, durationSec, endedAtMs }).catch(() => undefined);
+    }
+
+    // 2) Cortar UI + LiveKit de inmediato (el peer recibe ParticipantDisconnected en tiempo real).
     releasePendingCallMicrophone();
-    console.info('[CALL] cleanup', {
-      callId,
-      reason: outcome || opts?.error || 'hangup',
-      status: prev.status,
-      totalBlasts,
-    });
     clearCallSession();
     set({
       status: 'idle',
@@ -390,64 +367,179 @@ export const useCallStore = create<CallState>((set, get) => ({
       endedSummary: summary,
       lastError: opts?.error || null,
     });
-
-    try {
-      if (wasRingingIn && !wasActive && chatId) {
-        const remote = await peekPrivateCallStatus(chatId).catch(() => null);
-        if (remote === 'active') return;
-      }
-      if (chatId) {
-        void endPrivateCall(chatId, { callId, outcome }).catch(() => undefined);
-      }
-      void releaseCallSession(callId);
-      if (me?.firebaseUid) {
-        void releaseOwnCallPresence(me.firebaseUid, callId).catch(() => undefined);
-      }
-      if (!opts?.skipHistory && me?.firebaseUid && callId && chatId) {
-        void postCallHistoryMessage(chatId, me.firebaseUid, {
-          callId,
-          video,
-          outcome,
-          durationSec,
-          giftName: summary?.giftName,
-          rateBlasts: summary?.rateBlasts,
-          blocksCharged: summary?.blocksCharged,
-          totalBlasts: summary?.totalBlasts,
-          blastSpent: summary && !summary.received ? summary.totalBlasts : undefined,
-          blastEarned: summary?.received ? summary.totalBlasts : undefined,
-          creatorValueCop: summary?.creatorValueCop,
-          callType,
-        }).catch(() => undefined);
-      }
-      if (wasActive && iAmReceiver) {
-        void useAuthStore.getState().syncProfile().catch(() => undefined);
-      }
-      if (wasActive && chatId && rateBlasts > 0) {
-        void readCallBillingSnapshot(chatId)
-          .then((billing) => {
-            if (!billing || !summary) return;
-            const nextTotal = Math.max(summary.totalBlasts, billing.totalBlasts || 0);
-            const nextCop = Math.max(summary.creatorValueCop || 0, billing.creatorValueCop || 0);
-            if (nextTotal === summary.totalBlasts && nextCop === (summary.creatorValueCop || 0)) return;
-            set({
-              endedSummary: {
-                ...summary,
-                rateBlasts: billing.rateBlasts || summary.rateBlasts,
-                blocksCharged: billing.blocksCharged || summary.blocksCharged,
-                totalBlasts: nextTotal,
-                giftName: billing.giftName || summary.giftName,
-                creatorValueCop: nextCop,
-                received: Boolean(
-                  billing.payerUid && me?.firebaseUid && billing.payerUid !== me.firebaseUid,
-                ),
-              },
-            });
-          })
-          .catch(() => undefined);
-      }
-    } finally {
-      hangupBusy = false;
+    void releaseCallSession(callId);
+    if (me?.firebaseUid) {
+      void releaseOwnCallPresence(me.firebaseUid, callId).catch(() => undefined);
     }
+
+    console.info('[CALL] cleanup', {
+      callId,
+      reason: outcome || opts?.error || 'hangup',
+      status: prev.status,
+      totalBlasts,
+      durationSec,
+      connectedAtMs,
+      iAmReceiver,
+    });
+
+    hangupBusy = false;
+
+    // 3) Billing + sumar Ganados a billetera (segundo plano).
+    void (async () => {
+      try {
+        if (wasRingingIn && !wasActive && chatId) {
+          const remote = await peekPrivateCallStatus(chatId).catch(() => null);
+          if (remote === 'active') return;
+        }
+
+        if (wasActive && chatId) {
+          try {
+            const timing = await readCallTimingSnapshot(chatId);
+            if (timing.connectedAtMs > 0) connectedAtMs = timing.connectedAtMs;
+            if (opts?.skipHistory && timing.durationSec > 0) {
+              durationSec = timing.durationSec;
+            } else if (opts?.skipHistory && timing.endedAtMs > 0 && timing.connectedAtMs > 0) {
+              durationSec = Math.max(0, Math.floor((timing.endedAtMs - timing.connectedAtMs) / 1000));
+            } else if (connectedAtMs > 0) {
+              durationSec = Math.max(0, Math.floor((endedAtMs - connectedAtMs) / 1000));
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        if (wasActive && (rateBlasts > 0 || Boolean(callId))) {
+          if (chatId) {
+            try {
+              const snap = await readCallBillingSnapshot(chatId);
+              rateBlasts = Math.max(rateBlasts, snap.rateBlasts || 0);
+              totalBlasts = Math.max(totalBlasts, snap.totalBlasts || 0);
+              creatorValueCop = Math.max(creatorValueCop, snap.creatorValueCop || 0);
+              if (snap.payerUid) payerUid = snap.payerUid;
+            } catch {
+              /* ignore */
+            }
+          }
+          if (callId) {
+            try {
+              const final = await stopCallBilling({
+                callId,
+                connectedSeconds: durationSec,
+              });
+              rateBlasts = Math.max(rateBlasts, final.rateBlasts || 0);
+              totalBlasts = Math.max(totalBlasts, final.blastAlreadyCharged || 0);
+              creatorValueCop = Math.max(creatorValueCop, final.creatorValueCop || 0);
+              const uid = me?.firebaseUid;
+              const iAmPayer = Boolean(uid && payerUid && payerUid === uid);
+              const iAmEarner = Boolean(uid && payerUid && payerUid !== uid);
+              if (iAmPayer) {
+                if (final.purchasedBlastBalance != null || final.earnedBlastBalance != null) {
+                  useAuthStore.getState().setBlastBalances({
+                    purchasedBlastBalance: final.purchasedBlastBalance ?? 0,
+                    earnedBlastBalance: final.earnedBlastBalance ?? 0,
+                    coinsBalance: final.callerBalance,
+                  });
+                } else if (final.callerBalance != null && final.callerBalance >= 0) {
+                  useAuthStore.getState().setCoins(final.callerBalance);
+                }
+              }
+              if (iAmEarner) {
+                const earned =
+                  final.receiverEarnedBlastBalance ?? final.creatorEarnedBlast ?? null;
+                if (earned != null) {
+                  useAuthStore.getState().setBlastBalances({
+                    purchasedBlastBalance:
+                      final.receiverPurchasedBlastBalance ??
+                      useAuthStore.getState().profile?.purchasedBlastBalance ??
+                      0,
+                    earnedBlastBalance: earned,
+                    coinsBalance: final.receiverCoinsBalance,
+                  });
+                }
+              }
+              // Ambos: refrescar perfil desde Firestore al instante.
+              await useAuthStore.getState().syncProfile().catch(() => undefined);
+            } catch {
+              /* billing puede no haberse iniciado */
+            }
+          }
+          if (totalBlasts <= 0 && rateBlasts > 0) {
+            const due = calculateBlastDue(durationSec, callType);
+            if (due > 0) {
+              totalBlasts = due;
+              if (creatorValueCop <= 0) creatorValueCop = creatorCopForBlast(due);
+            }
+          } else if (creatorValueCop <= 0 && totalBlasts > 0) {
+            creatorValueCop = creatorCopForBlast(totalBlasts);
+          }
+        }
+
+        const received = Boolean(payerUid && me?.firebaseUid && payerUid !== me.firebaseUid);
+        summary = buildSummary(durationSec, totalBlasts, rateBlasts, creatorValueCop, received);
+        if (summary) set({ endedSummary: summary });
+
+        if (!opts?.skipHistory && me?.firebaseUid && callId && chatId) {
+          void postCallHistoryMessage(chatId, me.firebaseUid, {
+            callId,
+            video,
+            outcome,
+            durationSec,
+            giftName: summary?.giftName,
+            rateBlasts: summary?.rateBlasts,
+            blocksCharged: summary?.blocksCharged,
+            totalBlasts: summary?.totalBlasts,
+            blastSpent: summary && !summary.received ? summary.totalBlasts : undefined,
+            blastEarned: summary?.received ? summary.totalBlasts : undefined,
+            creatorValueCop: summary?.creatorValueCop,
+            callType,
+          }).catch(() => undefined);
+        }
+
+        // Receptor: reforzar crédito en billetera (inbox + sync con reintentos cortos).
+        if (wasActive && me?.firebaseUid && received) {
+          try {
+            const { processGiftInbox } = await import('../lib/giftsFirestore');
+            await processGiftInbox(me.firebaseUid);
+          } catch {
+            /* ignore */
+          }
+          for (const wait of [0, 400, 1200]) {
+            if (wait) await new Promise((r) => window.setTimeout(r, wait));
+            await useAuthStore.getState().syncProfile().catch(() => undefined);
+            const earned = useAuthStore.getState().profile?.earnedBlastBalance ?? 0;
+            if (earned > 0 || totalBlasts <= 0) break;
+          }
+        } else if (wasActive && me?.firebaseUid && Boolean(opts?.skipHistory)) {
+          await useAuthStore.getState().syncProfile().catch(() => undefined);
+        }
+
+        if (wasActive && chatId && rateBlasts > 0) {
+          void readCallBillingSnapshot(chatId)
+            .then((billing) => {
+              if (!billing || !summary) return;
+              const nextTotal = Math.max(summary.totalBlasts, billing.totalBlasts || 0);
+              const nextCop = Math.max(summary.creatorValueCop || 0, billing.creatorValueCop || 0);
+              if (nextTotal === summary.totalBlasts && nextCop === (summary.creatorValueCop || 0)) return;
+              set({
+                endedSummary: {
+                  ...summary,
+                  rateBlasts: billing.rateBlasts || summary.rateBlasts,
+                  blocksCharged: billing.blocksCharged || summary.blocksCharged,
+                  totalBlasts: nextTotal,
+                  giftName: billing.giftName || summary.giftName,
+                  creatorValueCop: nextCop,
+                  received: Boolean(
+                    billing.payerUid && me?.firebaseUid && billing.payerUid !== me.firebaseUid,
+                  ),
+                },
+              });
+            })
+            .catch(() => undefined);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
   },
 }));
 
@@ -463,7 +555,17 @@ export function formatCallClock(sec: number) {
 export function connectedAtToMs(value: string | null | undefined): number {
   if (!value) return 0;
   const t = Date.parse(value);
-  return Number.isFinite(t) ? t : 0;
+  return Number.isFinite(t) && t > 0 ? t : 0;
+}
+
+/** Preferir connectedAtMs numérico del chat; fallback ISO. */
+export function callConnectedAtMs(call: {
+  connectedAtMs?: number | null;
+  connectedAt?: string | null;
+} | null | undefined): number {
+  const fromNum = Math.max(0, Math.floor(Number(call?.connectedAtMs) || 0));
+  if (fromNum > 0) return fromNum;
+  return connectedAtToMs(call?.connectedAt);
 }
 
 export function useCallElapsed() {

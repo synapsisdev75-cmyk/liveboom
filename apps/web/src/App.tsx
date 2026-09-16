@@ -7,11 +7,14 @@ import { CookieBanner } from './components/legal/CookieBanner';
 import { CallOverlay } from './components/social/CallOverlay';
 import { SuperAdminRoute } from './components/auth/SuperAdminRoute';
 import { useLevelsConfigStore } from './store/levelsConfigStore';
+import { useCatalogConfigStore } from './store/catalogConfigStore';
 import { useCommunityHeaderStore } from './store/communityHeaderStore';
 import { useAppearanceStore } from './store/appearanceStore';
 import { ThemeProvider } from './components/appearance/ThemeProvider';
 import { useLocaleStore } from './store/localeStore';
 import { idlePrefetchRoutes } from './lib/routePrefetch';
+import { prepareNativeLiveWebView, ensureNativeEssentialPermissions } from './lib/nativeLiveMedia';
+import { registerPushNotifications } from './lib/pushNotifications';
 
 const HomeView = lazy(() =>
   import('./views/HomeView').then((m) => ({ default: m.HomeView })),
@@ -73,6 +76,7 @@ function RouteFallback() {
 function AuthHydrator() {
   const hydrate = useAuthStore((state) => state.hydrate);
   const hydrateLevels = useLevelsConfigStore((state) => state.hydrate);
+  const hydrateCatalog = useCatalogConfigStore((state) => state.hydrate);
   const hydrateCommunityHeader = useCommunityHeaderStore((state) => state.hydrate);
   const hydrateAppearance = useAppearanceStore((state) => state.hydrateFromCloud);
   const hydrateLocale = useLocaleStore((state) => state.hydrateFromCloud);
@@ -81,19 +85,31 @@ function AuthHydrator() {
 
   useEffect(() => {
     const unsubLevels = hydrateLevels();
+    const unsubCatalog = hydrateCatalog();
     const unsubCommunity = hydrateCommunityHeader();
     const unsubAuth = hydrate();
+    void prepareNativeLiveWebView();
+    // Android: pide cámara, mic, notificaciones, galería y Bluetooth al abrir.
+    // El push FCM se registra después (necesita POST_NOTIFICATIONS concedido).
+    void ensureNativeEssentialPermissions();
     return () => {
       unsubLevels();
+      unsubCatalog();
       unsubCommunity();
       unsubAuth();
     };
-  }, [hydrate, hydrateLevels, hydrateCommunityHeader]);
+  }, [hydrate, hydrateLevels, hydrateCatalog, hydrateCommunityHeader]);
 
   useEffect(() => {
     if (!ready) return;
     void hydrateAppearance(uid);
     void hydrateLocale(uid);
+    // Primero permisos nativos, luego token FCM (avisos tipo Facebook en barra).
+    void ensureNativeEssentialPermissions()
+      .then(() => registerPushNotifications(uid))
+      .catch(() => {
+        void registerPushNotifications(uid);
+      });
   }, [ready, uid, hydrateAppearance, hydrateLocale]);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { BOOM_CLIP_LABEL } from '../lib/brand';
 import {
@@ -261,6 +262,35 @@ export function ExploreView() {
     return items;
   }, [queues, tab, postsById]);
 
+  // Precarga HTTP del video activo + siguientes (acelera WebView Android).
+  useEffect(() => {
+    if (typeof document === 'undefined' || reels.length === 0) return;
+    const idx = Math.min(indices[tab], Math.max(reels.length - 1, 0));
+    const targets = [reels[idx], reels[idx + 1], reels[idx + 2]].filter(Boolean);
+    const links: HTMLLinkElement[] = [];
+    for (const item of targets) {
+      if (!item?.mediaUrl) continue;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'video';
+      link.href = item.mediaUrl;
+      link.crossOrigin = 'anonymous';
+      document.head.appendChild(link);
+      links.push(link);
+      if (item.thumbUrl) {
+        const thumb = document.createElement('link');
+        thumb.rel = 'preload';
+        thumb.as = 'image';
+        thumb.href = item.thumbUrl;
+        document.head.appendChild(thumb);
+        links.push(thumb);
+      }
+    }
+    return () => {
+      for (const link of links) link.remove();
+    };
+  }, [reels, indices, tab]);
+
   const flushDwell = useCallback(
     (postId: string | null, at = Date.now()) => {
       if (!uid || !postId || !dwellRef.current || dwellRef.current.id !== postId) return;
@@ -376,6 +406,15 @@ export function ExploreView() {
         draggable={false}
         aria-hidden
       />
+      {/* Solo PC/desktop: cerrar Explorar y volver a Inicio. */}
+      <Link
+        to="/"
+        className="lb-explore-pc-back pointer-events-auto absolute left-[max(0.5rem,var(--lb-safe-left))] top-[max(0.5rem,var(--lb-safe-top))] z-[35] hidden h-11 w-11 min-h-11 min-w-11 items-center justify-center rounded-full border border-white/25 bg-black/70 text-white shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/85 hover:border-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/80 lg:inline-flex"
+        aria-label={t('nav.home')}
+        title={t('nav.home')}
+      >
+        <X size={18} strokeWidth={2.4} aria-hidden />
+      </Link>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[max(0.5rem,var(--lb-safe-top))] lg:pt-3">
         <div className="lb-explore-chrome pointer-events-auto flex max-w-full items-center justify-center overflow-x-auto px-[clamp(2.6rem,12vw,4.25rem)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {!deviceLandscape ? (

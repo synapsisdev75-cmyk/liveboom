@@ -1,14 +1,37 @@
 import { Capacitor } from '@capacitor/core';
+import {
+  ensureNativeScreenCapturePermission,
+  isNativeAndroidApp,
+  startNativeScreenShareStream,
+  stopNativeScreenShareStream,
+} from './nativeLiveMedia';
 
-/** Bridge web / nativo para compartir pantalla en LIVE. No implementa MediaProjection ni ReplayKit en el navegador. */
+/** Evita que pagehide/beforeunload cierren el LIVE mientras el diálogo de MediaProjection está abierto. */
+let screenShareLiveGuard = false;
+
+export function setScreenShareLiveGuard(active: boolean) {
+  screenShareLiveGuard = active;
+}
+
+export function isScreenShareLiveGuardActive() {
+  return screenShareLiveGuard;
+}
+
+/** Bridge web / nativo para compartir pantalla en LIVE (+ PiP cámara en LiveRoom). */
 export type ScreenShareStartResult = {
   stream: MediaStream;
+  nativeCanvas?: boolean;
 };
 
 export class ScreenShareUnsupportedError extends Error {
   override name = 'ScreenShareUnsupportedError';
-  constructor() {
-    super('Tu navegador no permite compartir pantalla desde la web.');
+  constructor(message?: string) {
+    super(
+      message ||
+        (isNativeAndroidApp()
+          ? 'No se pudo capturar la pantalla. Acepta el permiso de Android e inténtalo de nuevo.'
+          : 'Tu navegador no permite compartir pantalla desde la web.'),
+    );
   }
 }
 
@@ -30,7 +53,7 @@ export function resolveGetDisplayMedia(): DisplayCaptureFn | null {
 }
 
 export function canShareScreenWeb(): boolean {
-  return resolveGetDisplayMedia() != null;
+  return resolveGetDisplayMedia() != null || isNativeAndroidApp();
 }
 
 function logSupport() {
@@ -39,6 +62,7 @@ function logSupport() {
     typeof navigator !== 'undefined' ? typeof navigator.mediaDevices?.getDisplayMedia : 'undefined';
   console.log('[SCREEN SHARE SUPPORT]', {
     getDisplayMedia: getDisplayType === 'function',
+    nativeAndroid: isNativeAndroidApp(),
   });
   console.log('[SCREEN SHARE]', {
     hasMediaDevices,
@@ -49,10 +73,11 @@ function logSupport() {
   });
 }
 
-function logStream(stream: MediaStream) {
+function logStream(stream: MediaStream, nativeCanvas = false) {
   console.log('[SCREEN SHARE] stream received', {
     videoTracks: stream.getVideoTracks().length,
     audioTracks: stream.getAudioTracks().length,
+    nativeCanvas,
   });
 }
 
@@ -61,13 +86,15 @@ export function screenShareUserMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || '');
   if (name === 'AbortError') return 'Compartir pantalla cancelado';
   if (name === 'ScreenShareUnsupportedError' || error instanceof ScreenShareUnsupportedError) {
-    return 'Tu navegador no permite compartir pantalla desde la web.';
+    return error instanceof Error ? error.message : 'No se puede compartir pantalla aquí.';
   }
-  if (!resolveGetDisplayMedia()) {
+  if (!resolveGetDisplayMedia() && !isNativeAndroidApp()) {
     return 'Tu navegador no permite compartir pantalla desde la web.';
   }
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-    return 'Permiso denegado. Autoriza capturar pantalla en el navegador.';
+    return isNativeAndroidApp()
+      ? 'Permiso denegado. Acepta “Capturar pantalla” en el diálogo de Android.'
+      : 'Permiso denegado. Autoriza capturar pantalla en el navegador.';
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return 'No hay una fuente de pantalla disponible.';
@@ -75,33 +102,26 @@ export function screenShareUserMessage(error: unknown): string {
   if (name === 'NotReadableError' || name === 'TrackStartError') {
     return 'El sistema no pudo leer la pantalla. Cierra otras apps que la estén usando e inténtalo de nuevo.';
   }
+  if (/FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION|Media projections require/i.test(message)) {
+    return 'No se pudo activar la captura. Cierra el live, abre LiveBoom de nuevo e intenta compartir pantalla.';
+  }
   if (name === 'InvalidStateError') {
-    return 'Toca Pantalla otra vez para compartir. El navegador necesita el toque directo.';
+    return 'Toca Pantalla otra vez para compartir. Se necesita el toque directo.';
   }
   if (name === 'TypeError' || name === 'NotSupportedError' || name === 'OverconstrainedError') {
-    return 'Este navegador no pudo iniciar la captura de pantalla.';
+    return 'No se pudo iniciar la captura de pantalla en este dispositivo.';
+  }
+  if (/denegad|cancel/i.test(message)) {
+    return 'Captura de pantalla denegada o cancelada';
   }
   return message || 'No se pudo capturar la pantalla';
 }
 
-/**
- * Inicia captura de pantalla.
- * Web: getDisplayMedia en el mismo gesto del usuario.
- * Nativo: reservado para MediaProjection (Android) / ReplayKit (iOS) vía plugin Capacitor.
- */
-export async function startScreenShare(): Promise<ScreenShareStartResult> {
-  logSupport();
-  const getDisplay = resolveGetDisplayMedia();
-  if (!getDisplay) {
-    throw new ScreenShareUnsupportedError();
-  }
-
-  console.log('[SCREEN SHARE] request');
-
+async function tryWebDisplayMedia(getDisplay: DisplayCaptureFn): Promise<MediaStream> {
   try {
     const stream = await getDisplay({ video: true, audio: true });
     logStream(stream);
-    return { stream };
+    return stream;
   } catch (error) {
     const name = error instanceof DOMException || error instanceof Error ? error.name : '';
     if (name === 'AbortError') throw error;
@@ -109,16 +129,62 @@ export async function startScreenShare(): Promise<ScreenShareStartResult> {
       name,
       message: error instanceof Error ? error.message : String(error),
     });
+    const stream = await getDisplay({ video: true });
+    logStream(stream);
+    return stream;
+  }
+}
+
+/**
+ * Inicia captura de pantalla.
+ * Android app: siempre MediaProjection nativo (getDisplayMedia del WebView falla / no envía imagen).
+ */
+export async function startScreenShare(): Promise<ScreenShareStartResult> {
+  logSupport();
+
+  if (isNativeAndroidApp()) {
+    await ensureNativeScreenCapturePermission();
     try {
-      const stream = await getDisplay({ video: true });
-      logStream(stream);
-      return { stream };
-    } catch (retryError) {
-      console.error('[SCREEN SHARE]', {
-        name: retryError instanceof Error ? retryError.name : 'Error',
-        message: retryError instanceof Error ? retryError.message : String(retryError),
-      });
-      throw retryError;
+      console.log('[SCREEN SHARE] request native MediaProjection');
+      const stream = await startNativeScreenShareStream();
+      logStream(stream, true);
+      return { stream, nativeCanvas: true };
+    } catch (error) {
+      console.error('[SCREEN SHARE] native failed', error);
+      // Último recurso: intentar getDisplayMedia si existe.
+      const getDisplay = resolveGetDisplayMedia();
+      if (getDisplay) {
+        try {
+          const stream = await tryWebDisplayMedia(getDisplay);
+          return { stream, nativeCanvas: false };
+        } catch (webErr) {
+          const name = webErr instanceof DOMException || webErr instanceof Error ? webErr.name : '';
+          if (name === 'AbortError') throw webErr;
+        }
+      }
+      throw error instanceof Error ? error : new ScreenShareUnsupportedError();
     }
   }
+
+  const getDisplay = resolveGetDisplayMedia();
+  if (!getDisplay) {
+    throw new ScreenShareUnsupportedError();
+  }
+  console.log('[SCREEN SHARE] request');
+  try {
+    const stream = await tryWebDisplayMedia(getDisplay);
+    return { stream };
+  } catch (retryError) {
+    console.error('[SCREEN SHARE]', {
+      name: retryError instanceof Error ? retryError.name : 'Error',
+      message: retryError instanceof Error ? retryError.message : String(retryError),
+    });
+    throw retryError;
+  }
+}
+
+/** Detiene captura nativa si estaba activa (no afecta tracks web del navegador). */
+export async function stopNativeScreenShareIfAny(): Promise<void> {
+  if (!isNativeAndroidApp()) return;
+  await stopNativeScreenShareStream();
 }

@@ -3,8 +3,9 @@ import { Navigate } from 'react-router-dom';
 import { isOwnerEmail, isSuperAdminEmail } from '../../lib/superAdmin';
 import { listenSuperAdmins } from '../../lib/superAdminsFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { SuperAdminVaultGate } from './SuperAdminVaultGate';
 
-/** Owner o emails en config/superAdmins. */
+/** Owner o emails en config/superAdmins + bóveda multi-factor. */
 export function SuperAdminRoute({ children }: { children: ReactNode }) {
   const ready = useAuthStore((s) => s.ready);
   const profile = useAuthStore((s) => s.profile);
@@ -49,5 +50,5 @@ export function SuperAdminRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return <SuperAdminVaultGate>{children}</SuperAdminVaultGate>;
 }

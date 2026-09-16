@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@capacitor/core": "^7.6.9",
+    "@capacitor/push-notifications": "^7.0.7",
     "@liveboom/dataconnect": "file:src/lib/dataconnect",
     "@livekit/components-react": "^2.9.24",
     "@livekit/components-styles": "^1.2.0",

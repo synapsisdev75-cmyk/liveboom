@@ -10,8 +10,8 @@ export const CALL_PRICING = {
 /** Valor estimado COP por Blast ganado por el receptor/creador. */
 export const CREATOR_VALUE_PER_BLAST = 15;
 
-/** Segundos conectados por debajo de este umbral ⇒ cobro 0. */
-export const BILLING_GRACE_SECONDS = 10;
+/** Segundos conectados por debajo de este umbral ⇒ cobro 0. Empieza al contestar. */
+export const BILLING_GRACE_SECONDS = 5;
 
 export type PlatformCallType = keyof typeof CALL_PRICING;
 

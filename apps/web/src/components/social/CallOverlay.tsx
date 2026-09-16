@@ -65,7 +65,7 @@ import {
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import {
-  connectedAtToMs,
+  callConnectedAtMs,
   formatCallClock,
   useCallElapsed,
   useCallStore,
@@ -387,6 +387,15 @@ function PrivateCallLiveKitRoom({
     };
   }, [room]);
 
+  // Si el store pasa a idle (colgaron), desconectar LiveKit al instante (no esperar unmount).
+  useEffect(() => {
+    return useCallStore.subscribe((state, prev) => {
+      if (prev.status !== 'idle' && state.status === 'idle') {
+        void room.disconnect();
+      }
+    });
+  }, [room]);
+
   useEffect(() => {
     if (!token || !serverUrl) return;
     let cancelled = false;
@@ -411,6 +420,7 @@ function PrivateCallLiveKitRoom({
     const onDisconnected = () => {
       if (cancelled) return;
       logCallTransition({ overlayMounted: true, roomState: 'disconnected', stage: 'livekit-disconnected' });
+      // CallAutoReconnect decide: peer colgó → fin; blip de red → reintento corto.
     };
     const onMediaFail = (error: Error) => {
       console.warn('[ERROR]', {
@@ -451,14 +461,27 @@ function PrivateCallLiveKitRoom({
       const live = useCallStore.getState();
       if (live.callId !== callIdRef.current) return;
       if (live.status !== 'active' && live.status !== 'ringing-out') return;
-      window.setTimeout(() => {
-        if (cancelled) return;
-        if (room.remoteParticipants.size > 0) return;
-        const latest = useCallStore.getState();
-        if (latest.callId !== callIdRef.current) return;
-        if (latest.status !== 'active' && latest.status !== 'ringing-out') return;
-        void latest.hangup(undefined, { skipHistory: true });
-      }, 280);
+      // El otro colgó → cortar YA (Firestore + UI).
+      void (async () => {
+        const openId = live.chatId;
+        if (openId) {
+          try {
+            const { peekPrivateCallStatus, isEndedPrivateCallStatus, endPrivateCall } = await import(
+              '../../lib/socialFirestore'
+            );
+            const remote = await peekPrivateCallStatus(openId);
+            if (!remote || !isEndedPrivateCallStatus(remote)) {
+              await endPrivateCall(openId, {
+                callId: live.callId,
+                outcome: 'completed',
+              }).catch(() => undefined);
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        void useCallStore.getState().hangup(undefined, { skipHistory: true });
+      })();
     };
     room.on(RoomEvent.ParticipantDisconnected, onRemoteLeft);
 
@@ -562,7 +585,7 @@ function CallReconnectBanner() {
   return <p className="lb-call-banner">{label}</p>;
 }
 
-/** Reconecta si LiveKit cae pero la llamada sigue activa en el store. */
+/** Reconecta solo caídas de red; si el peer colgó, cierra la llamada al instante. */
 function CallAutoReconnect({ serverUrl, token }: { serverUrl: string; token: string }) {
   const room = useMaybeRoomContext();
 
@@ -572,22 +595,58 @@ function CallAutoReconnect({ serverUrl, token }: { serverUrl: string; token: str
     let attempts = 0;
 
     const onLost = (reason?: DisconnectReason) => {
-      const status = useCallStore.getState().status;
-      if (status !== 'active' && status !== 'ringing-out') return;
+      const live = useCallStore.getState();
+      if (live.status !== 'active' && live.status !== 'ringing-out') return;
       if (reason === DisconnectReason.CLIENT_INITIATED) return;
-      if (attempts >= 5) return;
-      attempts += 1;
-      console.warn('[LiveKit] disconnected — retry', { reason, attempts });
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        if (room.state === 'disconnected') {
-          void room.connect(serverUrl, token).catch((error) => {
-            const info = describeLiveKitError(error);
-            console.error('[ERROR]', { ...info, stage: 'reconnect' });
-            console.error('LiveKit connection failed:', info.name, info.message);
-          });
+
+      const finishIfPeerEnded = async () => {
+        const chatId = useCallStore.getState().chatId;
+        if (!chatId) return false;
+        try {
+          const { peekPrivateCallStatus, isEndedPrivateCallStatus } = await import(
+            '../../lib/socialFirestore'
+          );
+          const remote = await peekPrivateCallStatus(chatId);
+          if (!remote || isEndedPrivateCallStatus(remote)) {
+            void useCallStore.getState().hangup(undefined, { skipHistory: true });
+            return true;
+          }
+        } catch {
+          /* ignore */
         }
-      }, 700 * attempts);
+        return false;
+      };
+
+      void (async () => {
+        if (await finishIfPeerEnded()) return;
+        // Sin participantes remotos = el otro ya salió.
+        if (room.remoteParticipants.size === 0 && useCallStore.getState().status === 'active') {
+          void useCallStore.getState().hangup(undefined, { skipHistory: true });
+          return;
+        }
+        if (attempts >= 3) {
+          void useCallStore.getState().hangup(undefined, { skipHistory: true });
+          return;
+        }
+        attempts += 1;
+        console.warn('[LiveKit] disconnected — retry', { reason, attempts });
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          void (async () => {
+            if (await finishIfPeerEnded()) return;
+            if (useCallStore.getState().status !== 'active' && useCallStore.getState().status !== 'ringing-out') {
+              return;
+            }
+            if (room.state === 'disconnected') {
+              void room.connect(serverUrl, token).catch((error) => {
+                const info = describeLiveKitError(error);
+                console.error('[ERROR]', { ...info, stage: 'reconnect' });
+                void useCallStore.getState().hangup(undefined, { skipHistory: true });
+              });
+            }
+          })();
+        }, 500 * attempts);
+      })();
     };
 
     const onOk = () => {
@@ -662,7 +721,7 @@ function CallAudioUnlock() {
 
 function CallConnectionSync({ onReady }: { onReady?: () => void }) {
   const room = useMaybeRoomContext();
-  const markActive = useCallStore((state) => state.markActive);
+  const promoteActive = useCallStore((state) => state.promoteActive);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
@@ -707,7 +766,8 @@ function CallConnectionSync({ onReady }: { onReady?: () => void }) {
       if (room.remoteParticipants.size > 0) promote();
     };
     const promote = () => {
-      if (useCallStore.getState().status === 'ringing-out') markActive();
+      // No inventar reloj local aquí: la duración sale de call.connectedAtMs en Firestore.
+      if (useCallStore.getState().status === 'ringing-out') promoteActive();
     };
     const maybePromote = () => {
       if (room.remoteParticipants.size > 0) promote();
@@ -741,7 +801,7 @@ function CallConnectionSync({ onReady }: { onReady?: () => void }) {
       room.off(RoomEvent.TrackSubscribed, onSub);
       room.off(RoomEvent.LocalTrackPublished, onLocalPub);
     };
-  }, [room, markActive]);
+  }, [room, promoteActive]);
 
   return null;
 }
@@ -2390,7 +2450,7 @@ export function CallOverlay() {
         if (remote.status === 'active') {
           if (saved.role === 'callee') beginIncomingAccepted(payload);
           else beginOutgoing(payload);
-          const started = saved.connectedAt || connectedAtToMs(remote.connectedAt);
+          const started = saved.connectedAt || callConnectedAtMs(remote);
           if (started) markActive(started);
           else markActive();
         } else {
@@ -2422,16 +2482,28 @@ export function CallOverlay() {
       setCallViewMode('expanded', 'status-idle');
       setUiPhase('ringing', 'status-idle');
       setLivekitReady(false, 'status-idle');
+      void import('../../lib/systemNotifications').then((m) => m.clearIncomingCallSystem());
       return;
     }
     if (status === 'ringing-in' && uiPhaseRef.current !== 'connecting' && uiPhaseRef.current !== 'connected') {
       console.info('[VIDEO CALL] incoming ringing');
       setUiPhase('ringing', 'status-ringing-in');
+      const peer = incoming || heldIncoming;
+      if (peer) {
+        void import('../../lib/systemNotifications').then((m) =>
+          m.notifyIncomingCallSystem({
+            name: peer.peer.displayName || peer.peer.username || 'Alguien',
+            username: peer.peer.username,
+            video: Boolean(peer.video),
+          }),
+        );
+      }
     } else if (status === 'ringing-out' && uiPhaseRef.current !== 'connected') {
       console.info('[VIDEO CALL] outgoing ringing');
       setUiPhase('ringing', 'status-ringing-out');
     }
     if (prev !== 'active' && status === 'active') {
+      void import('../../lib/systemNotifications').then((m) => m.clearIncomingCallSystem());
       console.info('[CALL UI] store -> active (view unchanged)', callViewModeRef.current);
       if (useCallStore.getState().video && !livekitReadyRef.current) {
         console.info('[VIDEO CALL] connecting');
@@ -2630,11 +2702,10 @@ export function CallOverlay() {
       if (store.status !== 'ringing-out' && store.status !== 'active') return;
       const mine = list.find((item) => item.chatId === store.chatId);
       if (mine?.call?.status === 'active' && (store.status === 'ringing-out' || store.status === 'active')) {
-        markActive(connectedAtToMs(mine.call.connectedAt));
+        markActive(callConnectedAtMs(mine.call));
       }
       const remoteEnded = !mine?.call || isEndedPrivateCallStatus(mine.call.status);
       if (remoteEnded && (store.status === 'ringing-out' || store.status === 'active')) {
-        if (store.recovering) return;
         void hangup(undefined, { skipHistory: true });
       }
     });
@@ -2654,11 +2725,10 @@ export function CallOverlay() {
       if (store.chatId !== openId && store.incoming?.chatId !== openId) return;
       if (watchedCallId && call?.id && call.id !== watchedCallId) return;
       if (call?.status === 'active' && store.status === 'ringing-out') {
-        markActive(connectedAtToMs(call.connectedAt));
+        markActive(callConnectedAtMs(call));
         return;
       }
       if (!call || isEndedPrivateCallStatus(call.status)) {
-        if (store.recovering) return;
         if (store.status === 'idle') return;
         void hangup(undefined, { skipHistory: true });
       }
@@ -2740,7 +2810,7 @@ export function CallOverlay() {
       setUiPhase('connecting', 'accept');
       setFillHost(false);
       const session = await requestCallToken(incoming.callId, incoming.chatId);
-      await answerPrivateCall(incoming.chatId);
+      const connectedAtMs = await answerPrivateCall(incoming.chatId);
       setHeldIncoming(incoming);
       setOverlayReady(false);
       beginIncomingAccepted({
@@ -2750,6 +2820,7 @@ export function CallOverlay() {
         video: incoming.video,
         token: session.token,
         serverUrl: session.serverUrl,
+        connectedAtMs,
       });
       logCallTransition({ overlayMounted: true, stage: 'accept-token-ready', roomState: 'connecting' });
     } catch (error) {

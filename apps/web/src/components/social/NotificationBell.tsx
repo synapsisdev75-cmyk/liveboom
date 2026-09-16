@@ -10,6 +10,11 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { playFriendRequestAlert, playIncomingMessageSound, playLiveAlert, playPostAlert } from '../../lib/alertSound';
 import { decideChatMessageNotify, isMessagesPath, patchChatNotifyContext } from '../../lib/chatNotifyContext';
+import {
+  notifyFriendRequestSystem,
+  notifyPrivateMessageSystem,
+  notifyFriendLiveSystem,
+} from '../../lib/systemNotifications';
 import { api } from '../../lib/api';
 import {
   acceptFriendRequest,
@@ -94,7 +99,13 @@ export function NotificationBell() {
         knownRequestIds.current = new Set(list.map((item) => item.id));
       } else {
         const fresh = list.filter((item) => !knownRequestIds.current!.has(item.id));
-        if (fresh.length > 0) playFriendRequestAlert();
+        if (fresh.length > 0) {
+          playFriendRequestAlert();
+          const first = fresh[0];
+          if (first?.username) {
+            void notifyFriendRequestSystem({ username: first.username });
+          }
+        }
         knownRequestIds.current = new Set(list.map((item) => item.id));
       }
       setRequests(list);
@@ -172,6 +183,10 @@ export function NotificationBell() {
         knownMsgAt.current.set(chat.chatId, chat.lastAt);
         if (decision !== 'bell') continue;
         playIncomingMessageSound(false);
+        void notifyPrivateMessageSystem({
+          name: `@${chat.username}`,
+          preview: chat.lastMessage || 'Te envió un mensaje',
+        });
         const msgId = `msg-${chat.chatId}-${chat.lastAt}`;
         if (dismissedMsgIds.current.has(msgId)) continue;
         setItems((current) =>
@@ -239,7 +254,16 @@ export function NotificationBell() {
           hostUsername: alert.hostUsername,
           battleId: alert.battleId,
         }));
-        if (notes[0] && Date.now() - notes[0].at < 90_000) playLiveAlert();
+        const fresh = notes[0];
+        if (fresh && Date.now() - fresh.at < 90_000) {
+          playLiveAlert();
+          if (fresh.kind === 'live') {
+            void notifyFriendLiveSystem({
+              name: fresh.text.replace(/\s+está en LIVE$/i, '') || 'Amigo',
+              username: fresh.hostUsername,
+            });
+          }
+        }
         return [...notes, ...without].slice(0, 40);
       });
     });

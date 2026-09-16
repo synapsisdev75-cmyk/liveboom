@@ -88,6 +88,15 @@ export type FriendRequest = FriendChip & {
   createdAt: string;
 };
 
+export type ChatReplyTo = {
+  messageId: string;
+  fromUid: string;
+  authorLabel: string;
+  text: string;
+  mediaType?: 'image' | 'audio' | 'video' | 'file' | 'call' | 'gif' | null;
+  fileName?: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   text: string;
@@ -101,6 +110,10 @@ export type ChatMessage = {
   fileName?: string | null;
   fileSize?: number | null;
   giftId?: string | null;
+  /** Referencia al mensaje respondido (estilo WhatsApp). */
+  replyTo?: ChatReplyTo | null;
+  /** Reacciones emoji: emoji → uids. */
+  emojiReactions?: Record<string, string[]>;
   /** sent = enviado, delivered = entregado, read = leído */
   status?: 'sent' | 'delivered' | 'read';
   editedAt?: string | null;
@@ -134,7 +147,12 @@ export type PrivateCall = {
   createdAt: string;
   createdAtMs?: number;
   connectedAt?: string | null;
+  connectedAtMs?: number;
   answeredAt?: string | null;
+  endedAt?: string | null;
+  endedAtMs?: number;
+  /** Duración canónica en segundos (misma para caller y receptor). */
+  durationSec?: number;
   rateSnapshot?: {
     giftId: string;
     giftName: string;
@@ -160,6 +178,8 @@ export type Conversation = FriendChip & {
   lastMessage: string | null;
   lastAt: string | null;
   lastFromUid?: string | null;
+  /** Timestamp ms del otro participante escribiendo (0 = no). */
+  peerTypingAt?: number;
   call: PrivateCall | null;
   /** Mensajes no leídos para el viewer actual. */
   unread: number;
@@ -276,7 +296,14 @@ function parseCall(value: unknown): PrivateCall | null {
       : new Date().toISOString(),
     createdAtMs: createdAtMs || Date.now(),
     connectedAt: data.connectedAt ? asIso(data.connectedAt) : null,
+    connectedAtMs:
+      Math.max(0, Number(data.connectedAtMs) || 0) ||
+      (data.connectedAt ? asEpochMs(data.connectedAt) : 0) ||
+      0,
     answeredAt: data.answeredAt ? asIso(data.answeredAt) : null,
+    endedAt: data.endedAt ? asIso(data.endedAt) : null,
+    endedAtMs: Math.max(0, Number(data.endedAtMs) || asEpochMs(data.endedAt) || 0),
+    durationSec: Math.max(0, Math.floor(Number(data.durationSec) || 0)),
     rateSnapshot:
       data.rateSnapshot && typeof data.rateSnapshot === 'object'
         ? {
@@ -381,7 +408,10 @@ export async function startPrivateCall(
       createdAt: serverTimestamp(),
       createdAtMs: Date.now(),
       connectedAt: null,
+      connectedAtMs: 0,
       answeredAt: null,
+      durationSec: 0,
+      endedAtMs: 0,
       rateSnapshot: snapshot,
       payerUid: snapshot ? me.firebaseUid : null,
       maxBlasts: snapshot ? opts?.maxBlasts ?? null : null,
@@ -399,11 +429,14 @@ export async function startPrivateCall(
 }
 
 export async function answerPrivateCall(chatId: string) {
+  const connectedAtMs = Date.now();
   await updateDoc(doc(db, 'chats', chatId), {
     'call.status': 'active',
     'call.connectedAt': serverTimestamp(),
+    'call.connectedAtMs': connectedAtMs,
     'call.answeredAt': serverTimestamp(),
   });
+  return connectedAtMs;
 }
 
 export async function endPrivateCall(
@@ -411,6 +444,8 @@ export async function endPrivateCall(
   opts?: {
     callId?: string | null;
     outcome?: 'completed' | 'missed' | 'cancelled' | 'declined' | 'ended' | 'failed';
+    durationSec?: number;
+    endedAtMs?: number;
   },
 ) {
   const ref = doc(db, 'chats', chatId);
@@ -418,6 +453,23 @@ export async function endPrivateCall(
   const outcome = opts?.outcome || 'ended';
   const status =
     outcome === 'declined' ? 'rejected' : outcome === 'missed' ? 'missed' : outcome === 'failed' ? 'failed' : 'ended';
+  const endedAtMs = Math.max(0, Math.floor(Number(opts?.endedAtMs) || Date.now()));
+  const durationSec = Math.max(0, Math.floor(Number(opts?.durationSec) || 0));
+
+  // Señal rápida al peer (sin transacción): el otro corta en cuanto llega el snapshot.
+  try {
+    await updateDoc(ref, {
+      'call.status': status,
+      'call.endedAt': serverTimestamp(),
+      'call.endedAtMs': endedAtMs,
+      'call.endedByOutcome': outcome,
+      'call.durationSec': durationSec,
+    });
+    return;
+  } catch {
+    /* fallback con transacción abajo */
+  }
+
   try {
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
@@ -426,21 +478,52 @@ export async function endPrivateCall(
       const currentStatus = String(call.status || '');
       if (ENDED_CALL_STATUSES.has(currentStatus)) return;
       if (wantedId && call.id && String(call.id) !== wantedId) return;
+      const connectedAtMs =
+        Math.max(0, Number(call.connectedAtMs) || 0) || asEpochMs(call.connectedAt) || 0;
+      const fromClock =
+        connectedAtMs > 0 ? Math.max(0, Math.floor((endedAtMs - connectedAtMs) / 1000)) : 0;
+      const resolvedDuration = durationSec > 0 ? durationSec : fromClock;
       tx.update(ref, {
         'call.status': status,
         'call.endedAt': serverTimestamp(),
-        'call.endedAtMs': Date.now(),
+        'call.endedAtMs': endedAtMs,
         'call.endedByOutcome': outcome,
+        'call.durationSec': resolvedDuration,
       });
     });
   } catch {
     await updateDoc(ref, {
       'call.status': status,
       'call.endedAt': serverTimestamp(),
-      'call.endedAtMs': Date.now(),
+      'call.endedAtMs': endedAtMs,
       'call.endedByOutcome': outcome,
+      'call.durationSec': durationSec,
     }).catch(() => undefined);
   }
+}
+
+/** Reloj canónico de la llamada (misma duración para ambos lados). */
+export async function readCallTimingSnapshot(chatId: string) {
+  const snap = await getDoc(doc(db, 'chats', chatId));
+  const call = parseCall(snap.data()?.call);
+  const connectedAtMs = Math.max(0, call?.connectedAtMs || connectedAtToMsLocal(call?.connectedAt) || 0);
+  const endedAtMs = Math.max(0, call?.endedAtMs || 0);
+  let durationSec = Math.max(0, Math.floor(Number(call?.durationSec) || 0));
+  if (durationSec <= 0 && connectedAtMs > 0 && endedAtMs > connectedAtMs) {
+    durationSec = Math.max(0, Math.floor((endedAtMs - connectedAtMs) / 1000));
+  }
+  return {
+    status: call?.status || null,
+    connectedAtMs,
+    endedAtMs,
+    durationSec,
+  };
+}
+
+function connectedAtToMsLocal(value: string | null | undefined): number {
+  if (!value) return 0;
+  const t = Date.parse(value);
+  return Number.isFinite(t) && t > 0 ? t : 0;
 }
 
 /** Estado remoto de la llamada en el chat (para answered-elsewhere). */
@@ -500,6 +583,67 @@ export function listenPresence(uid: string, onChange: (online: boolean) => void)
     const age = Date.now() - new Date(asIso(at)).getTime();
     onChange(age < 90_000);
   });
+}
+
+const TYPING_FRESH_MS = 5000;
+
+/** Marca que el usuario está escribiendo en este chat (TTL corto en el cliente). */
+export async function setChatTyping(chatId: string, uid: string): Promise<void> {
+  if (!chatId || !uid) return;
+  // Campo en el doc del chat (update ya permitido a participantes) — más fiable que subcolección.
+  await updateDoc(doc(db, 'chats', chatId), {
+    [`typingAt.${uid}`]: Date.now(),
+  });
+}
+
+/** Limpia el estado de escritura (al enviar, salir o dejar de teclear). */
+export async function clearChatTyping(chatId: string, uid: string): Promise<void> {
+  if (!chatId || !uid) return;
+  await updateDoc(doc(db, 'chats', chatId), {
+    [`typingAt.${uid}`]: deleteField(),
+  }).catch(() => undefined);
+}
+
+/** Escucha si el otro participante está escribiendo ahora. */
+export function listenPeerTyping(
+  chatId: string,
+  peerUid: string,
+  onChange: (typing: boolean) => void,
+): Unsubscribe {
+  if (!chatId || !peerUid) {
+    onChange(false);
+    return () => undefined;
+  }
+  let expireTimer = 0;
+  const apply = (atMs: number) => {
+    window.clearTimeout(expireTimer);
+    const remaining = TYPING_FRESH_MS - (Date.now() - atMs);
+    if (!atMs || remaining <= 0) {
+      onChange(false);
+      return;
+    }
+    onChange(true);
+    expireTimer = window.setTimeout(() => onChange(false), remaining + 40);
+  };
+  const unsub = onSnapshot(
+    doc(db, 'chats', chatId),
+    (snap) => {
+      const raw = snap.data()?.typingAt;
+      const map =
+        raw && typeof raw === 'object' && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>)
+          : {};
+      apply(Math.floor(Number(map[peerUid]) || 0));
+    },
+    () => {
+      window.clearTimeout(expireTimer);
+      onChange(false);
+    },
+  );
+  return () => {
+    window.clearTimeout(expireTimer);
+    unsub();
+  };
 }
 
 function chipFromData(uid: string, data: Record<string, unknown>): FriendChip {
@@ -1105,6 +1249,7 @@ export function listenConversations(
         lastMessage?: string | null;
         lastAt?: unknown;
         lastFromUid?: string;
+        typingAt?: Record<string, unknown>;
         call?: unknown;
         unread?: Record<string, number>;
         clearedAtMs?: unknown;
@@ -1113,6 +1258,7 @@ export function listenConversations(
       };
       const otherUid = (data.participants || []).find((value) => value !== uid) || '';
       const profile = data.profiles?.[otherUid] || {};
+      const peerTypingAt = Math.floor(Number(data.typingAt?.[otherUid]) || 0);
       return {
         chatId: item.id,
         uid: otherUid,
@@ -1122,6 +1268,7 @@ export function listenConversations(
         lastMessage: data.lastMessage ?? null,
         lastAt: data.lastAt ? asIso(data.lastAt) : null,
         lastFromUid: data.lastFromUid ? String(data.lastFromUid) : null,
+        peerTypingAt,
         call: parseCall(data.call),
         unread: Math.max(0, Number(data.unread?.[uid] || 0)),
         clearedAtMs: Math.max(0, Math.floor(Number(data.clearedAtMs) || 0)),
@@ -1155,6 +1302,18 @@ export function listenMessages(
       const hiddenForMe = hiddenFor.includes(viewerUid);
       const tombstone = deletedForEveryone || hiddenForMe;
       const callMetaRaw = data.callMeta as ChatMessage['callMeta'] | undefined;
+      const replyRaw = data.replyTo as Record<string, unknown> | undefined;
+      const replyTo: ChatMessage['replyTo'] =
+        replyRaw && typeof replyRaw === 'object' && String(replyRaw.messageId || '').trim()
+          ? {
+              messageId: String(replyRaw.messageId || '').trim(),
+              fromUid: String(replyRaw.fromUid || '').trim(),
+              authorLabel: String(replyRaw.authorLabel || '').trim() || 'Mensaje',
+              text: String(replyRaw.text || '').trim().slice(0, 160),
+              mediaType: (replyRaw.mediaType as ChatMessage['mediaType']) || null,
+              fileName: String(replyRaw.fileName || '').trim() || null,
+            }
+          : null;
       list.push({
         id: item.id,
         text: tombstone ? '' : String(data.text || ''),
@@ -1168,6 +1327,20 @@ export function listenMessages(
         fileName: tombstone ? null : String(data.fileName || '').trim() || null,
         fileSize: tombstone ? null : Number(data.fileSize) || null,
         giftId: tombstone ? null : String(data.giftId || '').trim() || null,
+        replyTo: tombstone ? null : replyTo,
+        emojiReactions: tombstone
+          ? undefined
+          : (() => {
+              const raw = data.emojiReactions;
+              if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+              const out: Record<string, string[]> = {};
+              for (const [emoji, uids] of Object.entries(raw as Record<string, unknown>)) {
+                if (!Array.isArray(uids)) continue;
+                const list = uids.map(String).filter(Boolean);
+                if (list.length) out[emoji] = list;
+              }
+              return Object.keys(out).length ? out : undefined;
+            })(),
         status: (data.status as ChatMessage['status']) || 'sent',
         editedAt: tombstone ? null : data.editedAt ? asIso(data.editedAt) : null,
         deleted: deletedForEveryone,
@@ -1636,6 +1809,7 @@ export async function sendChatMessage(
     mimeType?: string | null;
     storagePath?: string | null;
     giftId?: string | null;
+    replyTo?: ChatReplyTo | null;
   },
 ) {
   const body = text.trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
@@ -1663,6 +1837,16 @@ export async function sendChatMessage(
   if (extras?.mimeType) payload.mimeType = extras.mimeType;
   if (extras?.storagePath) payload.storagePath = extras.storagePath;
   if (giftId) payload.giftId = giftId;
+  if (extras?.replyTo?.messageId) {
+    payload.replyTo = {
+      messageId: extras.replyTo.messageId,
+      fromUid: extras.replyTo.fromUid,
+      authorLabel: String(extras.replyTo.authorLabel || '').slice(0, 80),
+      text: String(extras.replyTo.text || '').slice(0, 160),
+      mediaType: extras.replyTo.mediaType || null,
+      fileName: extras.replyTo.fileName || null,
+    };
+  }
 
   await addDoc(collection(db, 'chats', id, 'messages'), payload);
   const unreadKey = `unread.${friend.uid}`;
@@ -1679,7 +1863,58 @@ export async function sendChatMessage(
     lastFromUid: me.firebaseUid,
     [unreadKey]: increment(1),
   });
+
+  try {
+    const { enqueuePushNotify } = await import('./pushNotifications');
+    enqueuePushNotify({
+      recipientUids: [friend.uid],
+      title: me.displayName || `@${me.handle}` || 'LiveBoom',
+      body: preview || 'Te envió un mensaje',
+      channel: 'messages',
+      type: 'message',
+      href: `/mensajes?con=${encodeURIComponent(me.handle)}`,
+    });
+  } catch {
+    /* push opcional */
+  }
+
   return id;
+}
+
+export const CHAT_QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
+
+/** Alterna una reacción emoji en un mensaje de chat (estilo WhatsApp). */
+export async function toggleChatMessageEmoji(
+  chatId: string,
+  messageId: string,
+  uid: string,
+  emoji: string,
+): Promise<void> {
+  const safeEmoji = String(emoji || '').trim().slice(0, 8);
+  if (!chatId || !messageId || !uid || !safeEmoji) return;
+  const ref = doc(db, 'chats', chatId, 'messages', messageId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const data = snap.data() as Record<string, unknown>;
+    const prev =
+      data.emojiReactions && typeof data.emojiReactions === 'object' && !Array.isArray(data.emojiReactions)
+        ? (data.emojiReactions as Record<string, unknown>)
+        : {};
+    const map: Record<string, string[]> = {};
+    for (const [key, value] of Object.entries(prev)) {
+      if (!Array.isArray(value)) continue;
+      const list = value.map(String).filter((id) => id && id !== uid);
+      if (list.length) map[key] = list;
+    }
+    const already = Array.isArray(prev[safeEmoji])
+      ? (prev[safeEmoji] as unknown[]).map(String).includes(uid)
+      : false;
+    if (!already) {
+      map[safeEmoji] = [...(map[safeEmoji] || []), uid];
+    }
+    tx.update(ref, { emojiReactions: Object.keys(map).length ? map : deleteField() });
+  });
 }
 
 function postFromDoc(id: string, data: Record<string, unknown>): FsPost {

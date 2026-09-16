@@ -83,6 +83,72 @@ async function debitSenderCoins(senderUid: string, amount: number): Promise<numb
   });
 }
 
+/** Acredita Blast al receptor como ganados (regalos / llamadas). */
+async function creditRecipientEarned(
+  recipientUid: string,
+  amount: number,
+  meta: {
+    senderUid: string;
+    senderName?: string;
+    giftId?: string;
+    giftName?: string;
+    emoji?: string;
+    clientId?: string;
+    postId?: string | null;
+    source: 'gift' | 'live_gift' | 'call_billing';
+  },
+): Promise<number> {
+  const coins = Math.max(0, Math.floor(Number(amount) || 0));
+  if (!coins) return 0;
+  return runTransaction(db, async (tx) => {
+    const userRef = doc(db, 'users', recipientUid);
+    const userSnap = await tx.get(userRef);
+    const bal = normalizeBlastBalances(
+      userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : {},
+    );
+    const next = normalizeBlastBalances({
+      purchasedBlastBalance: bal.purchasedBlastBalance,
+      earnedBlastBalance: bal.earnedBlastBalance + coins,
+      earnedBlastSpent: bal.earnedBlastSpent,
+      earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
+    });
+    const inboxRef = meta.clientId
+      ? doc(db, 'users', recipientUid, 'giftInbox', String(meta.clientId).slice(0, 80))
+      : doc(collection(db, 'users', recipientUid, 'giftInbox'));
+    const existingInbox = meta.clientId ? await tx.get(inboxRef) : null;
+    if (existingInbox?.exists() && existingInbox.data()?.processed) {
+      return bal.earnedBlastBalance;
+    }
+    tx.set(
+      userRef,
+      {
+        coinsBalance: next.coinsBalance,
+        purchasedBlastBalance: next.purchasedBlastBalance,
+        earnedBlastBalance: next.earnedBlastBalance,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    tx.set(inboxRef, {
+      senderUid: meta.senderUid,
+      senderName: meta.senderName || null,
+      recipientUid,
+      giftId: meta.giftId || null,
+      giftName: meta.giftName || null,
+      emoji: meta.emoji || null,
+      coins,
+      postId: meta.postId ?? null,
+      clientId: meta.clientId || null,
+      source: meta.source,
+      processed: true,
+      processedAtMs: Date.now(),
+      createdAt: serverTimestamp(),
+      createdAtMs: Date.now(),
+    });
+    return next.earnedBlastBalance;
+  });
+}
+
 /** Acredita Blast pendientes en la bandeja del receptor (como ganados). */
 export async function processGiftInbox(uid: string): Promise<number> {
   const id = String(uid || '').trim();
@@ -154,6 +220,15 @@ async function sendGiftViaFirestore(
 
   if (isLive && input.roomName) {
     const senderBalance = await debitSenderCoins(input.senderUid, totalCoins);
+    await creditRecipientEarned(recipientUid, totalCoins, {
+      senderUid: input.senderUid,
+      senderName: input.senderName,
+      giftId: catalog.id,
+      giftName: catalog.name,
+      emoji: catalog.emoji,
+      clientId: input.clientId,
+      source: 'live_gift',
+    });
     await publishLiveGift(input.roomName, {
       clientId: input.clientId,
       giftId: catalog.id,
@@ -169,7 +244,8 @@ async function sendGiftViaFirestore(
 
   const senderBalance = await runTransaction(db, async (tx) => {
     const senderRef = doc(db, 'users', input.senderUid);
-    const senderSnap = await tx.get(senderRef);
+    const recipientRef = doc(db, 'users', recipientUid);
+    const [senderSnap, recipientSnap] = await Promise.all([tx.get(senderRef), tx.get(recipientRef)]);
     const bal = normalizeBlastBalances(
       senderSnap.exists() ? (senderSnap.data() as Record<string, unknown>) : {},
     );
@@ -184,6 +260,15 @@ async function sendGiftViaFirestore(
       earnedBlastSpent: bal.earnedBlastSpent + useEarned,
       earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
     });
+    const recipientBal = normalizeBlastBalances(
+      recipientSnap.exists() ? (recipientSnap.data() as Record<string, unknown>) : {},
+    );
+    const recipientNext = normalizeBlastBalances({
+      purchasedBlastBalance: recipientBal.purchasedBlastBalance,
+      earnedBlastBalance: recipientBal.earnedBlastBalance + totalCoins,
+      earnedBlastSpent: recipientBal.earnedBlastSpent,
+      earnedBlastWithdrawn: recipientBal.earnedBlastWithdrawn,
+    });
     tx.set(
       senderRef,
       {
@@ -191,6 +276,16 @@ async function sendGiftViaFirestore(
         purchasedBlastBalance: next.purchasedBlastBalance,
         earnedBlastBalance: next.earnedBlastBalance,
         earnedBlastSpent: next.earnedBlastSpent,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    tx.set(
+      recipientRef,
+      {
+        coinsBalance: recipientNext.coinsBalance,
+        purchasedBlastBalance: recipientNext.purchasedBlastBalance,
+        earnedBlastBalance: recipientNext.earnedBlastBalance,
         updatedAt: serverTimestamp(),
       },
       { merge: true },
@@ -208,7 +303,9 @@ async function sendGiftViaFirestore(
       multiplier: mult,
       postId: input.postId || null,
       clientId: input.clientId,
-      processed: false,
+      source: 'gift',
+      processed: true,
+      processedAtMs: Date.now(),
       createdAt: serverTimestamp(),
       createdAtMs: Date.now(),
     });
@@ -251,6 +348,22 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
         multiplier: mult,
       }),
     });
+    // Billetera (Ganados) vive en Firestore: acredita al receptor aunque el API haya cobrado.
+    try {
+      const recipientUid = await resolveRecipientUid(input.recipientUsername, input.recipientUid);
+      await creditRecipientEarned(recipientUid, totalCoins, {
+        senderUid: input.senderUid,
+        senderName: input.senderName,
+        giftId: catalog.id,
+        giftName: catalog.name,
+        emoji: catalog.emoji,
+        clientId: input.clientId,
+        postId: input.postId || null,
+        source: input.roomName ? 'live_gift' : 'gift',
+      });
+    } catch {
+      /* no bloquear el envío si el crédito FS falla */
+    }
     return { senderBalance: result.senderBalance, usedFallback: false };
   } catch (error) {
     if (!shouldFallbackToFirestore(error)) {

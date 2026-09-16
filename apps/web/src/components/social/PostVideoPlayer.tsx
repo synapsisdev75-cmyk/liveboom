@@ -162,6 +162,9 @@ function MediaMuteFab({
     <button
       type="button"
       onClick={onToggle}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
       className="lb-media-mute-fab"
       aria-label={muted ? unmuteLabel : muteLabel}
     >
@@ -196,6 +199,7 @@ export function PostVideoPlayer({
   onExpandChange,
   onRequestExpand,
   overlayOnly = false,
+  reelFeed = false,
   reelNavigation,
   reelPosition,
   userNavigation,
@@ -253,6 +257,7 @@ export function PostVideoPlayer({
   const [playbackFlash, setPlaybackFlash] = useState<'play' | 'pause' | null>(null);
   const playbackFlashTimerRef = useRef<number | null>(null);
   const [mediaSize, setMediaSize] = useState({ width: 0, height: 0 });
+  const [frameReady, setFrameReady] = useState(false);
   const shareUrl =
     authorUsername && postId
       ? buildPostShareUrl(authorUsername, postId, authorUid)
@@ -279,6 +284,7 @@ export function PostVideoPlayer({
   useEffect(() => {
     posterCapturedRef.current = false;
     setRuntimePoster(null);
+    setFrameReady(false);
   }, [src]);
 
   useEffect(() => {
@@ -424,18 +430,27 @@ export function PostVideoPlayer({
     if (!video) return;
     let cancelled = false;
     const bindGen = exploreNavCurrentGen();
-    const start = () => {
+    const kick = () => {
       if (cancelled) return;
       if (fastNav && !exploreNavIsCurrent(bindGen)) return;
-      if (fastNav && !video.paused) return;
+      video.muted = true;
       void video.play().catch(() => undefined);
     };
-    if (video.readyState >= 2) start();
-    else video.addEventListener('loadeddata', start);
+    // Varios eventos: en WebView Android loadeddata a veces llega tarde o no basta.
+    if (video.readyState >= 2) kick();
+    video.addEventListener('loadeddata', kick);
+    video.addEventListener('canplay', kick);
+    video.addEventListener('canplaythrough', kick);
+    const retry = window.setTimeout(kick, 120);
+    const retry2 = window.setTimeout(kick, 400);
     return () => {
       cancelled = true;
-      video.removeEventListener('loadeddata', start);
-      if (fastNav) video.pause();
+      video.removeEventListener('loadeddata', kick);
+      video.removeEventListener('canplay', kick);
+      video.removeEventListener('canplaythrough', kick);
+      window.clearTimeout(retry);
+      window.clearTimeout(retry2);
+      // No pausar en fastNav: el pause deja el overlay play nativo gris del WebView Android.
     };
   }, [overlayOnly, src, postId, fastNav]);
 
@@ -667,66 +682,86 @@ export function PostVideoPlayer({
   }, [overlayOnly, posterUrlProp]);
 
   const videoNode = (
-    <video
-      ref={videoRef}
-      src={src}
-      /*
-       * APK/AAB (Android WebView): sin atributo poster, el WebView pinta su
-       * "default video poster" (play negro gigante) mientras no hay frame.
-       * En viewers con autoplay (Explorar / Boom Clip / Flash Boom / expandido)
-       * usamos un poster transparente de respaldo; el poster desaparece al
-       * iniciar la reproducción. Tarjetas colapsadas del feed quedan igual.
-       */
-      poster={resolvedPoster || (expanded || overlayOnly ? TRANSPARENT_VIDEO_POSTER : undefined)}
-      className="lb-post-media__video h-full w-full object-contain"
-      muted={muted}
-      loop={!storyMode}
-      playsInline
-      preload={expanded || overlayOnly ? 'auto' : 'metadata'}
-      onClick={
-        !expanded && !overlayOnly
-          ? openExpand
-          : undefined
-      }
-      onLoadedMetadata={(event) => {
-        const video = event.currentTarget;
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-          setMediaSize({ width: video.videoWidth, height: video.videoHeight });
+    <div className="relative h-full w-full bg-zinc-900">
+      {resolvedPoster && !frameReady ? (
+        <img
+          src={resolvedPoster}
+          alt=""
+          className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain"
+          draggable={false}
+        />
+      ) : null}
+      {!resolvedPoster && !frameReady ? (
+        <div className="pointer-events-none absolute inset-0 z-[1] bg-zinc-900" />
+      ) : null}
+      <video
+        ref={videoRef}
+        src={src}
+        /*
+         * APK/AAB (Android WebView): sin atributo poster, el WebView pinta su
+         * "default video poster" (play negro gigante) mientras no hay frame.
+         * En viewers con autoplay (Explorar / Boom Clip / Flash Boom / expandido)
+         * usamos un poster transparente de respaldo; el poster desaparece al
+         * iniciar la reproducción. Tarjetas colapsadas del feed quedan igual.
+         */
+        poster={resolvedPoster || (expanded || overlayOnly ? TRANSPARENT_VIDEO_POSTER : undefined)}
+        className={`lb-post-media__video h-full w-full object-contain transition-opacity duration-150 ${
+          frameReady ? 'opacity-100' : 'opacity-0'
+        }`}
+        muted={muted}
+        loop={!storyMode}
+        playsInline
+        preload={expanded || overlayOnly || fastNav ? 'auto' : 'metadata'}
+        autoPlay={overlayOnly || expanded}
+        onClick={
+          !expanded && !overlayOnly
+            ? openExpand
+            : undefined
         }
-      }}
-      onLoadedData={() => {
-        tryCapturePoster();
-        if (firstFrameSrcRef.current !== src) {
-          firstFrameSrcRef.current = src;
-          onFirstFrameRef.current?.();
-        }
-      }}
-      onPlaying={() => {
-        if (firstFrameSrcRef.current !== src) {
-          firstFrameSrcRef.current = src;
-          onFirstFrameRef.current?.();
-        }
-      }}
-      onTimeUpdate={(event) => {
-        if (!storyMode || storyHeld) return;
-        const video = event.currentTarget;
-        const reported = video.duration;
-        const dur =
-          Number.isFinite(reported) && reported > 0
-            ? reported
-            : Number(durationSecProp) > 0
-              ? Number(durationSecProp)
-              : 0;
-        if (dur > 0) {
-          setStoryProgress(Math.min(1, video.currentTime / dur));
-        }
-      }}
-      onEnded={() => {
-        if (!storyMode || storyHeld || !reelNavigation) return;
-        setStoryProgress(1);
-        reelNavigation.onNext();
-      }}
-    />
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget;
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setMediaSize({ width: video.videoWidth, height: video.videoHeight });
+          }
+        }}
+        onLoadedData={() => {
+          tryCapturePoster();
+          if (firstFrameSrcRef.current !== src) {
+            firstFrameSrcRef.current = src;
+            onFirstFrameRef.current?.();
+          }
+        }}
+        onPlaying={() => {
+          setFrameReady(true);
+          if (firstFrameSrcRef.current !== src) {
+            firstFrameSrcRef.current = src;
+            onFirstFrameRef.current?.();
+          }
+        }}
+        onTimeUpdate={(event) => {
+          if (!frameReady && event.currentTarget.currentTime > 0.01) {
+            setFrameReady(true);
+          }
+          if (!storyMode || storyHeld) return;
+          const video = event.currentTarget;
+          const reported = video.duration;
+          const dur =
+            Number.isFinite(reported) && reported > 0
+              ? reported
+              : Number(durationSecProp) > 0
+                ? Number(durationSecProp)
+                : 0;
+          if (dur > 0) {
+            setStoryProgress(Math.min(1, video.currentTime / dur));
+          }
+        }}
+        onEnded={() => {
+          if (!storyMode || storyHeld || !reelNavigation) return;
+          setStoryProgress(1);
+          reelNavigation.onNext();
+        }}
+      />
+    </div>
   );
 
   const immersiveW = pubW || videoAspect.width || 9;
@@ -880,7 +915,7 @@ export function PostVideoPlayer({
           ) : null}
 
           <div
-            className={`pointer-events-auto flex shrink-0 items-start justify-between gap-3 p-3 ${
+            className={`pointer-events-none flex shrink-0 items-start justify-between gap-3 p-3 ${
               storyMode
                 ? 'pt-2'
                 : parkRailAtDeviceEdge
@@ -896,14 +931,15 @@ export function PostVideoPlayer({
               <button
                 type="button"
                 onClick={closeExpand}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
+                className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
                 aria-label="Cerrar"
               >
                 <X size={18} />
               </button>
             )}
-            <div className="flex items-center gap-2">
-              {reelPosition && !embedded ? (
+            <div className="pointer-events-none flex items-center gap-2">
+              {/* Contador numérico solo fuera de Flash Boom / Boom Clip (storyMode / reelFeed). */}
+              {reelPosition && !embedded && !storyMode && !reelFeed ? (
                 <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/80 backdrop-blur-sm">
                   {reelPosition.current}/{reelPosition.total}
                 </span>

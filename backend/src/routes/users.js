@@ -47,6 +47,10 @@ function serializeUser(user) {
     birthDate: birth,
     category: user.category ?? null,
     coinsBalance: Number(user.coinsBalance ?? 0),
+    purchasedBlastBalance:
+      user.purchasedBlastBalance != null ? Number(user.purchasedBlastBalance) : undefined,
+    earnedBlastBalance:
+      user.earnedBlastBalance != null ? Number(user.earnedBlastBalance) : undefined,
     createdAt: user.createdAt || new Date().toISOString(),
     updatedAt: user.updatedAt || new Date().toISOString(),
   };
@@ -70,11 +74,26 @@ function yearsOld(isoDate) {
 }
 
 function mergeProfileRecord(uid, dbUser, memory) {
-  const { setBalance } = require('../lib/walletMemory');
-  const coinsBalance = Number(dbUser?.coinsBalance ?? getBalance(uid));
-  setBalance(uid, coinsBalance);
+  const { setBalances, getBalances } = require('../lib/walletMemory');
+  const { normalizeBlastBalances } = require('../lib/blastBalances');
+  // No usar setBalance(total): eso pone earned=0 y rompe Ganados en memoria.
+  const fromDb = normalizeBlastBalances(dbUser || {});
+  const fromMem = getBalances(uid);
+  const merged = normalizeBlastBalances({
+    purchasedBlastBalance: Math.max(fromDb.purchasedBlastBalance, fromMem.purchasedBlastBalance),
+    earnedBlastBalance: Math.max(fromDb.earnedBlastBalance, fromMem.earnedBlastBalance),
+    earnedBlastSpent: Math.max(fromDb.earnedBlastSpent, fromMem.earnedBlastSpent),
+    earnedBlastWithdrawn: Math.max(fromDb.earnedBlastWithdrawn, fromMem.earnedBlastWithdrawn),
+  });
+  setBalances(uid, merged);
+  const coinsBalance = merged.coinsBalance;
   if (!memory) {
-    return serializeUser({ ...dbUser, coinsBalance });
+    return serializeUser({
+      ...dbUser,
+      coinsBalance,
+      purchasedBlastBalance: merged.purchasedBlastBalance,
+      earnedBlastBalance: merged.earnedBlastBalance,
+    });
   }
   const memUpdated = memory.updatedAt ? new Date(memory.updatedAt).getTime() : 0;
   const dbUpdated = dbUser?.updatedAt ? new Date(dbUser.updatedAt).getTime() : 0;
@@ -92,6 +111,8 @@ function mergeProfileRecord(uid, dbUser, memory) {
     birthDate: memory.birthDate ?? dbUser?.birthDate ?? null,
     category: memory.category ?? dbUser?.category ?? null,
     coinsBalance,
+    purchasedBlastBalance: merged.purchasedBlastBalance,
+    earnedBlastBalance: merged.earnedBlastBalance,
   });
 }
 

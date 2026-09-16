@@ -437,7 +437,8 @@ export function PostPhotoViewer({
             </span>
           )}
           <div className="flex items-center gap-2">
-            {position && !embedded ? (
+            {/* Sin contador en Flash Boom (storyMode): basta la barra de segmentos. */}
+            {position && !embedded && !storyMode ? (
               <span className="rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-semibold text-white/80">
                 {position.current}/{position.total}
               </span>

@@ -23,6 +23,7 @@ import {
   exploreNavRecordUi,
   exploreNavRelease,
 } from '../../lib/exploreVideoPool';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 export type ReelFeedItem = {
   id: string;
@@ -372,7 +373,9 @@ export function ReelFeedViewer({
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
           overlays={reel.overlays}
-          posterUrl={exploreFastNav ? reel.thumbUrl : undefined}
+          posterUrl={
+            exploreFastNav ? reel.thumbUrl || TRANSPARENT_VIDEO_POSTER : undefined
+          }
           mediaWidth={exploreFastNav ? reel.mediaWidth || undefined : undefined}
           mediaHeight={exploreFastNav ? reel.mediaHeight || undefined : undefined}
           skipRemoteAspectProbe={exploreFastNav}

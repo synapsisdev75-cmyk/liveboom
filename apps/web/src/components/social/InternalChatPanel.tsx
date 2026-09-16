@@ -22,6 +22,9 @@ import {
   Trash2,
   Video,
   X,
+  Reply,
+  Smile,
+  ChevronDown,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -77,11 +80,17 @@ import {
   listenMessages,
   listenPresence,
   listenBlocked,
+  listenPeerTyping,
+  setChatTyping,
+  clearChatTyping,
   markMessagesDelivered,
   markMessagesRead,
   sendChatMessage,
+  toggleChatMessageEmoji,
+  CHAT_QUICK_EMOJIS,
   MAX_CHAT_MESSAGE_LENGTH,
   type ChatMessage,
+  type ChatReplyTo,
   type Conversation,
   type FriendChip,
 } from '../../lib/socialFirestore';
@@ -94,6 +103,7 @@ import {
 import { generateConversationPdf } from '../../lib/chatExportPdf';
 import { ConversationActionsModal } from './ConversationActionsModal';
 import { ChatSafetyMenu } from './ChatSafetyMenu';
+import { ChatTypingIndicator } from './ChatTypingIndicator';
 import { useAuthStore } from '../../store/authStore';
 import { formatCallClock, useCallElapsed, useCallStore } from '../../store/callStore';
 import { registerChatCallSurface } from '../../lib/chatCallSurface';
@@ -116,7 +126,38 @@ type PersonRow = FriendChip & {
   lastAt: string | null;
   unread: number;
   chatId: string | null;
+  peerTypingAt: number;
 };
+
+const TYPING_LIST_FRESH_MS = 5000;
+
+function draftStorageKey(meUid: string) {
+  return `lb.chat.drafts.${meUid}`;
+}
+
+function loadDraftMap(meUid: string): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(draftStorageKey(meUid));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'string' && v.trim()) out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function saveDraftMap(meUid: string, map: Record<string, string>) {
+  try {
+    localStorage.setItem(draftStorageKey(meUid), JSON.stringify(map));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 function comparePeopleByPresence(a: PersonRow, b: PersonRow, onlineByUid: Record<string, boolean>) {
   const aOnline = Boolean(onlineByUid[a.uid]);
@@ -128,6 +169,35 @@ function comparePeopleByPresence(a: PersonRow, b: PersonRow, onlineByUid: Record
 function detectLink(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s]+/i);
   return match ? match[0] : null;
+}
+
+function replySnippetForMessage(message: ChatMessage): string {
+  if (message.deleted || message.deletedForEveryone || message.hiddenForMe) return 'Mensaje eliminado';
+  if (message.fileName) return message.fileName;
+  if (message.mediaType === 'image') return 'Foto';
+  if (message.mediaType === 'video') return 'Video';
+  if (message.mediaType === 'audio') return 'Audio';
+  if (message.mediaType === 'gif') return 'GIF';
+  if (message.mediaType === 'file') return 'Archivo';
+  if (message.giftId) return 'Regalo';
+  if (message.linkUrl) return message.linkUrl;
+  const text = (message.text || '').trim();
+  if (!text) return 'Mensaje';
+  return text.length > 90 ? `${text.slice(0, 90)}…` : text;
+}
+
+function buildReplyTo(
+  message: ChatMessage,
+  peerLabel: string,
+): ChatReplyTo {
+  return {
+    messageId: message.id,
+    fromUid: message.fromUid,
+    authorLabel: message.mine ? 'Tú' : peerLabel || 'Usuario',
+    text: replySnippetForMessage(message),
+    mediaType: message.mediaType || null,
+    fileName: message.fileName || null,
+  };
 }
 
 function formatAudioClock(sec: number) {
@@ -549,6 +619,13 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [replyTo, setReplyTo] = useState<ChatReplyTo | null>(null);
+  const [peerTyping, setPeerTyping] = useState(false);
+  const [typingTick, setTypingTick] = useState(0);
+  const draftByPeerRef = useRef<Record<string, string>>({});
+  const activeUidRef = useRef<string | null>(null);
+  const draftRef = useRef('');
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [docVisible, setDocVisible] = useState(
@@ -598,9 +675,13 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [newMsgOpen, setNewMsgOpen] = useState(false);
   const [menuMessageId, setMenuMessageId] = useState<string | null>(null);
-  const deleteMenuRootRef = useRef<HTMLSpanElement>(null);
-  const closeDeleteMenu = useCallback(() => setMenuMessageId(null), []);
-  useDismissOnOutside(Boolean(menuMessageId), deleteMenuRootRef, closeDeleteMenu);
+  const [reactMessageId, setReactMessageId] = useState<string | null>(null);
+  const deleteMenuRootRef = useRef<HTMLDivElement>(null);
+  const closeDeleteMenu = useCallback(() => {
+    setMenuMessageId(null);
+    setReactMessageId(null);
+  }, []);
+  useDismissOnOutside(Boolean(menuMessageId || reactMessageId), deleteMenuRootRef, closeDeleteMenu);
   const bottomRef = useRef<HTMLDivElement>(null);
   const holdTimerRef = useRef(0);
   const lastMsgCount = useRef(0);
@@ -638,6 +719,56 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  // Cargar borradores locales por usuario.
+  useEffect(() => {
+    if (!profile?.firebaseUid) {
+      draftByPeerRef.current = {};
+      return;
+    }
+    draftByPeerRef.current = loadDraftMap(profile.firebaseUid);
+  }, [profile?.firebaseUid]);
+
+  // Al cambiar de chat: guardar borrador del anterior y restaurar el del nuevo (no se mezcla entre usuarios).
+  useEffect(() => {
+    const me = profile?.firebaseUid;
+    const prev = activeUidRef.current;
+    if (me && prev && prev !== activeUid) {
+      const text = draftRef.current;
+      if (text.trim()) draftByPeerRef.current[prev] = text;
+      else delete draftByPeerRef.current[prev];
+      saveDraftMap(me, draftByPeerRef.current);
+    }
+    activeUidRef.current = activeUid;
+    if (!activeUid) {
+      setDraft('');
+      return;
+    }
+    setDraft(draftByPeerRef.current[activeUid] || '');
+  }, [activeUid, profile?.firebaseUid]);
+
+  // Persistencia continua del borrador del chat abierto.
+  useEffect(() => {
+    if (!profile?.firebaseUid || !activeUid) return;
+    if (draft.trim()) draftByPeerRef.current[activeUid] = draft;
+    else delete draftByPeerRef.current[activeUid];
+    const t = window.setTimeout(() => {
+      saveDraftMap(profile.firebaseUid, draftByPeerRef.current);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [draft, activeUid, profile?.firebaseUid]);
+
+  // Reloj ligero para caducar "escribiendo…" en la lista.
+  useEffect(() => {
+    const anyTyping = conversations.some((c) => (c.peerTypingAt || 0) > 0);
+    if (!anyTyping) return;
+    const id = window.setInterval(() => setTypingTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [conversations]);
 
   useEffect(() => {
     if (!profile) return;
@@ -761,6 +892,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           lastAt: chat?.lastAt ?? null,
           unread: chat?.unread ?? 0,
           chatId: chat?.chatId ?? null,
+          peerTypingAt: chat?.peerTypingAt ?? 0,
         } satisfies PersonRow;
       })
       .sort((a, b) => {
@@ -928,6 +1060,15 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, activeUid]);
 
+  const scrollChatToBottom = useCallback((smooth = true) => {
+    const el = chatScrollRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+      return;
+    }
+    bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+  }, []);
+
   useEffect(() => {
     if (!activeUid && !chatId) return;
     try {
@@ -1000,6 +1141,77 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     }
   }, [chatId, messages]);
 
+  useEffect(() => {
+    // Solo el que espera ve la animación del otro — nunca la propia.
+    const peerUid = activeFriend?.uid;
+    const meUid = profile?.firebaseUid;
+    if (!chatId || !peerUid || !meUid || peerUid === meUid || !docVisible) {
+      setPeerTyping(false);
+      return;
+    }
+    return listenPeerTyping(chatId, peerUid, setPeerTyping);
+  }, [chatId, activeFriend?.uid, profile?.firebaseUid, docVisible]);
+
+  // Publicar / limpiar "escribiendo" según el draft local (solo si el chat está abierto y visible).
+  useEffect(() => {
+    if (!profile?.firebaseUid || !chatId || !docVisible) {
+      if (profile?.firebaseUid && chatId) void clearChatTyping(chatId, profile.firebaseUid);
+      return;
+    }
+    const meUid = profile.firebaseUid;
+    const text = draft.trim();
+    if (!text) {
+      void clearChatTyping(chatId, meUid);
+      return;
+    }
+
+    let cancelled = false;
+    const pulse = () => {
+      if (cancelled) return;
+      void setChatTyping(chatId, meUid).catch((err) => {
+        console.warn('[chat] typing pulse', err);
+      });
+    };
+    pulse();
+    const keepAlive = window.setInterval(pulse, 1600);
+    const stopTimer = window.setTimeout(() => {
+      void clearChatTyping(chatId, meUid);
+    }, 2800);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(keepAlive);
+      window.clearTimeout(stopTimer);
+    };
+  }, [draft, chatId, profile?.firebaseUid, docVisible]);
+
+  useEffect(() => {
+    if (!peerTyping || !docVisible) return;
+    scrollChatToBottom(true);
+    const t1 = window.setTimeout(() => scrollChatToBottom(true), 480);
+    const t2 = window.setTimeout(() => scrollChatToBottom(false), 900);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [peerTyping, docVisible, scrollChatToBottom]);
+
+  // Al salir del chat / otra pantalla: ocultar y limpiar escritura.
+  useEffect(() => {
+    if (!profile?.firebaseUid || !chatId) return;
+    const meUid = profile.firebaseUid;
+    const id = chatId;
+    return () => {
+      void clearChatTyping(id, meUid);
+    };
+  }, [chatId, profile?.firebaseUid]);
+
+  // Si cambia de conversación o cierra el hilo, no dejar la burbuja colgada.
+  useEffect(() => {
+    if (!activeUid) setPeerTyping(false);
+    setReplyTo(null);
+  }, [activeUid]);
+
   async function send(
     text: string,
     extras?: {
@@ -1011,12 +1223,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       mimeType?: string | null;
       storagePath?: string | null;
       giftId?: string | null;
+      replyTo?: ChatReplyTo | null;
     },
   ) {
     if (!profile || !activeFriend || busy) return;
     setBusy(true);
     setError(null);
     try {
+      if (chatId) {
+        void clearChatTyping(chatId, profile.firebaseUid);
+      }
+      const replyPayload = extras?.replyTo ?? replyTo;
       await sendChatMessage(
         {
           firebaseUid: profile.firebaseUid,
@@ -1026,10 +1243,15 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         },
         activeFriend,
         text,
-        extras,
+        { ...extras, replyTo: replyPayload },
       );
       playMessagePop();
+      if (activeFriend?.uid) {
+        delete draftByPeerRef.current[activeFriend.uid];
+        if (profile.firebaseUid) saveDraftMap(profile.firebaseUid, draftByPeerRef.current);
+      }
       setDraft('');
+      setReplyTo(null);
       window.setTimeout(() => composerInputRef.current?.focus(), 0);
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'No se pudo enviar';
@@ -1540,7 +1762,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     <div
       className={`flex min-h-0 flex-col border-white/[0.06] bg-[#0a0a0b] ${
         isPage
-          ? `w-full md:w-[min(38%,21.25rem)] md:shrink-0 md:border-l ${mobileHideList ? 'hidden md:flex' : 'flex'}`
+          ? `w-full md:w-[min(32%,18rem)] lg:w-[min(26%,16.5rem)] md:shrink-0 md:border-l ${mobileHideList ? 'hidden md:flex' : 'flex'}`
           : 'flex w-full md:w-48 md:border-r'
       }`}
     >
@@ -1686,6 +1908,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 rowIncoming || (friend.chatId && callChatId === friend.chatId && callStatus !== 'idle'),
               );
               const rowLive = rowInCall && callStatus === 'active';
+              const peerWriting =
+                friend.peerTypingAt > 0 &&
+                Date.now() - friend.peerTypingAt < TYPING_LIST_FRESH_MS &&
+                typingTick >= 0;
               return (
                 <li key={friend.uid} className="flex items-stretch gap-1">
                   <button
@@ -1715,6 +1941,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                         className={`mt-0.5 block truncate text-xs ${
                           rowInCall
                             ? 'font-semibold text-cyan-300'
+                            : peerWriting
+                              ? 'font-medium text-cyan-300'
                             : friend.unread > 0 && friend.uid !== activeUid
                               ? 'font-medium text-zinc-300'
                               : 'text-zinc-500'
@@ -1728,6 +1956,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                               : 'Te está llamando...'
                           : rowInCall
                             ? 'Llamando...'
+                            : peerWriting
+                              ? 'escribiendo…'
                             : friend.lastMessage || `@${friend.username}`}
                       </span>
                     </span>
@@ -1885,6 +2115,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div id="lb-chat-call-host" ref={callHostRef} className="lb-chat-call-host" />
         <div
+          ref={chatScrollRef}
           className="chat-scroll flex-1 space-y-3 overflow-y-auto px-4 py-4"
           style={{
             paddingLeft: 'max(1rem, var(--lb-safe-left))',
@@ -1924,7 +2155,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                 !/^GIF$/i.test(message.text.trim()) &&
                 !/^📎/.test(message.text.trim());
               return (
-                <div key={message.id}>
+                <div key={message.id} id={`lb-msg-${message.id}`}>
                   {showDay ? (
                     <p className="mb-3 text-center text-[11px] font-medium text-zinc-500">
                       {dayLabel(message.createdAt)}
@@ -1939,12 +2170,20 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                     />
                   ) : (
                     <div
+                      ref={
+                        menuMessageId === message.id || reactMessageId === message.id
+                          ? deleteMenuRootRef
+                          : undefined
+                      }
                       className={`group relative flex flex-col ${
-                        isCall ? 'max-w-[min(85%,20rem)]' : 'max-w-[min(85%,22rem)]'
+                        isCall
+                          ? 'max-w-[min(85%,20rem)] lg:max-w-[min(70%,28rem)]'
+                          : 'max-w-[min(85%,22rem)] lg:max-w-[min(72%,36rem)]'
                       } ${message.mine ? 'ml-auto items-end' : 'mr-auto items-start'}`}
                       onPointerDown={() => {
                         window.clearTimeout(holdTimerRef.current);
                         holdTimerRef.current = window.setTimeout(() => {
+                          setReactMessageId(null);
                           setMenuMessageId(message.id);
                         }, 480);
                       }}
@@ -1952,6 +2191,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                       onPointerCancel={() => window.clearTimeout(holdTimerRef.current)}
                       onContextMenu={(event) => {
                         event.preventDefault();
+                        setReactMessageId(null);
                         setMenuMessageId(message.id);
                       }}
                     >
@@ -1959,16 +2199,58 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                         <CallEventBubble message={message} mine={message.mine} />
                       ) : (
                       <div
+                        className={`lb-chat-msg-row flex items-end gap-1.5 ${
+                          message.mine ? 'flex-row-reverse' : ''
+                        }`}
+                      >
+                      <div className="relative min-w-0">
+                      <button
+                        type="button"
+                        className={`lb-chat-msg-chevron ${
+                          menuMessageId === message.id || reactMessageId === message.id
+                            ? 'is-open'
+                            : ''
+                        } ${message.mine ? 'is-out' : 'is-in'}`}
+                        aria-label="Opciones del mensaje"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setReactMessageId(null);
+                          setMenuMessageId((id) => (id === message.id ? null : message.id));
+                        }}
+                      >
+                        <ChevronDown size={12} strokeWidth={2.2} />
+                      </button>
+                      <div
                         className={`break-words ${
                           isVideo
                             ? 'bg-transparent p-0'
-                            : `lb-chat-bubble rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                            : `lb-chat-bubble rounded-2xl py-2.5 text-[13px] leading-relaxed ${
                                 message.mine
-                                  ? 'is-out rounded-br-md'
-                                  : 'is-in rounded-bl-md'
+                                  ? 'is-out rounded-br-md pl-7 pr-3.5'
+                                  : 'is-in rounded-bl-md pl-3.5 pr-7'
                               }`
                         }`}
                       >
+                            {message.replyTo ? (
+                              <button
+                                type="button"
+                                className="lb-chat-bubble-reply"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  const target = document.getElementById(
+                                    `lb-msg-${message.replyTo!.messageId}`,
+                                  );
+                                  target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }}
+                              >
+                                <span className="lb-chat-bubble-reply__author">
+                                  {message.replyTo.authorLabel}
+                                </span>
+                                <span className="lb-chat-bubble-reply__snippet">
+                                  {message.replyTo.fileName || message.replyTo.text || 'Mensaje'}
+                                </span>
+                              </button>
+                            ) : null}
                             {isVideo && message.mediaUrl ? (
                               <VideoNoteBubble src={message.mediaUrl} mine={message.mine} />
                             ) : null}
@@ -2073,11 +2355,104 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                               </p>
                             ) : null}
                       </div>
+                      {message.emojiReactions && Object.keys(message.emojiReactions).length > 0 ? (
+                        <div className={`lb-chat-emoji-chips ${message.mine ? 'is-out' : 'is-in'}`}>
+                          {Object.entries(message.emojiReactions).map(([emoji, uids]) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              className={`lb-chat-emoji-chip ${
+                                profile?.firebaseUid && uids.includes(profile.firebaseUid)
+                                  ? 'is-mine'
+                                  : ''
+                              }`}
+                              onClick={() => {
+                                if (!chatId || !profile?.firebaseUid) return;
+                                void toggleChatMessageEmoji(
+                                  chatId,
+                                  message.id,
+                                  profile.firebaseUid,
+                                  emoji,
+                                );
+                              }}
+                            >
+                              <span aria-hidden>{emoji}</span>
+                              {uids.length > 1 ? (
+                                <span className="lb-chat-emoji-chip__n">{uids.length}</span>
+                              ) : null}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {reactMessageId === message.id ? (
+                        <div
+                          className={`lb-chat-react-pop ${message.mine ? 'is-out' : 'is-in'}`}
+                          role="listbox"
+                          aria-label="Reaccionar"
+                        >
+                          {CHAT_QUICK_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              className="lb-chat-react-pop__btn"
+                              onClick={() => {
+                                if (!chatId || !profile?.firebaseUid) return;
+                                void toggleChatMessageEmoji(
+                                  chatId,
+                                  message.id,
+                                  profile.firebaseUid,
+                                  emoji,
+                                );
+                                setReactMessageId(null);
+                              }}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      </div>
+                      <div
+                        className={`lb-chat-msg-quick ${
+                          menuMessageId === message.id || reactMessageId === message.id
+                            ? 'is-open'
+                            : ''
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          className="lb-chat-msg-quick__btn"
+                          aria-label="Reaccionar"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setMenuMessageId(null);
+                            setReactMessageId((id) => (id === message.id ? null : message.id));
+                          }}
+                        >
+                          <Smile size={13} strokeWidth={1.75} />
+                        </button>
+                        <button
+                          type="button"
+                          className="lb-chat-msg-quick__btn"
+                          aria-label="Responder"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const peerLabel =
+                              activeFriend?.displayName || activeFriend?.username || 'Usuario';
+                            setReplyTo(buildReplyTo(message, peerLabel));
+                            setMenuMessageId(null);
+                            setReactMessageId(null);
+                            window.setTimeout(() => composerInputRef.current?.focus(), 0);
+                          }}
+                        >
+                          <Reply size={13} strokeWidth={1.75} />
+                        </button>
+                      </div>
+                      </div>
                       )}
                       <div className="mt-1 flex items-center gap-1.5 px-1">
                         {!message.deleted ? (
                           <span
-                            ref={menuMessageId === message.id ? deleteMenuRootRef : undefined}
                             className={`relative z-20 flex items-center gap-1 ${
                               menuMessageId === message.id
                                 ? 'opacity-100'
@@ -2097,16 +2472,6 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                                 <Pencil size={11} />
                               </button>
                             ) : null}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setMenuMessageId((id) => (id === message.id ? null : message.id))
-                              }
-                              className="text-zinc-500 hover:text-rose-300"
-                              aria-label="Eliminar"
-                            >
-                              <Trash2 size={11} />
-                            </button>
                             {menuMessageId === message.id ? (
                               <div
                                 className={`lb-chat-msg-menu absolute bottom-5 z-30 ${
@@ -2114,6 +2479,22 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                                 }`}
                                 role="menu"
                               >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const peerLabel =
+                                      activeFriend?.displayName ||
+                                      activeFriend?.username ||
+                                      'Usuario';
+                                    setReplyTo(buildReplyTo(message, peerLabel));
+                                    setMenuMessageId(null);
+                                    window.setTimeout(() => composerInputRef.current?.focus(), 0);
+                                  }}
+                                  className="lb-chat-msg-menu__item"
+                                >
+                                  <Reply size={14} className="opacity-80" />
+                                  Responder
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => void removeMessage(message.id, 'me')}
@@ -2145,6 +2526,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           )}
           <div ref={bottomRef} />
         </div>
+
+        <ChatTypingIndicator active={Boolean(peerTyping && docVisible && activeUid)} />
 
         {peerBlocked ? (
           <div className="lb-chat-blocked-banner" role="status">
@@ -2240,6 +2623,26 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         ) : null}
 
         {error ? <p className="px-4 text-[11px] text-fuchsia-300">{error}</p> : null}
+
+        {replyTo && !peerBlocked ? (
+          <div className="lb-chat-reply-bar" role="status">
+            <span className="lb-chat-reply-bar__accent" aria-hidden />
+            <div className="lb-chat-reply-bar__body">
+              <span className="lb-chat-reply-bar__author">{replyTo.authorLabel}</span>
+              <span className="lb-chat-reply-bar__snippet">
+                {replyTo.fileName || replyTo.text || 'Mensaje'}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="lb-chat-reply-bar__close"
+              aria-label="Cancelar respuesta"
+              onClick={() => setReplyTo(null)}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : null}
 
         <div
           className="lb-chat-composer flex min-w-0 shrink-0 items-end gap-2 overflow-x-hidden border-t border-[color:var(--border-soft)] px-3 py-2"

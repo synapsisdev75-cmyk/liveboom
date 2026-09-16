@@ -31,9 +31,9 @@ type Props = {
    */
   posterUrl?: string | null;
   insets?: Partial<ImmersiveLayoutInsets>;
-  embedded?: boolean;
   /** Rail de acciones al lado del media en PC (Explorar, Publicaciones, Clips). */
   landscapeRailAside?: boolean;
+  embedded?: boolean;
   onSwipeStart?: (x: number, y: number) => void;
   onSwipeEnd?: (x: number, y: number) => void;
   /** Pointer unificado (touch/mouse/lápiz) con eje bloqueado. */

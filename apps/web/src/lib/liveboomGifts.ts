@@ -142,8 +142,25 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
   { id: 'dios_del_live', name: 'Dios del Live', emoji: '⚡', coins: 500000, level: 5, animation: 'Escena total — vino a facturar' },
 ];
 
+import { runtimeAllLiveGifts, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
+
 export function findLiveGift(giftId: string | undefined | null): LiveGift | null {
   if (!giftId) return null;
+  const remote = runtimeFindGift(giftId);
+  if (remote) {
+    return {
+      id: remote.id,
+      name: remote.name,
+      emoji: remote.emoji,
+      image: remote.image,
+      video: remote.video,
+      coins: remote.coins,
+      level: remote.level,
+      animation: remote.animation,
+      liveOnly: remote.liveOnly,
+      deeparFilter: remote.deeparFilter,
+    };
+  }
   return LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
 }
 
@@ -153,14 +170,53 @@ export function isDeeparLiveGift(giftId: string | undefined | null): boolean {
 
 /** Catálogo para publicaciones / clips / flash — sin filtros DeepAR. */
 export function sortedLiveboomGiftCatalog(): LiveGift[] {
+  const remote = runtimeGiftsFor('post');
+  const fromClip = runtimeGiftsFor('boom_clip');
+  const fromFlash = runtimeGiftsFor('flashboom');
+  if (remote.length || fromClip.length || fromFlash.length) {
+    const map = new Map<string, LiveGift>();
+    for (const g of [...remote, ...fromClip, ...fromFlash]) {
+      if (g.deeparFilter) continue;
+      map.set(g.id, {
+        id: g.id,
+        name: g.name,
+        emoji: g.emoji,
+        image: g.image,
+        video: g.video,
+        coins: g.coins,
+        level: g.level,
+        animation: g.animation,
+        liveOnly: g.liveOnly,
+        deeparFilter: g.deeparFilter,
+      });
+    }
+    return [...map.values()].sort((a, b) => a.coins - b.coins);
+  }
   return LIVEBOOM_GIFTS.filter((gift) => !gift.liveOnly).sort((a, b) => a.coins - b.coins);
 }
 
 /** Catálogo completo del LIVE (incluye regalos DeepAR). */
 export function sortedLiveGiftCatalog(): LiveGift[] {
+  const remote = runtimeAllLiveGifts();
+  if (remote.length) {
+    return remote.map((g) => ({
+      id: g.id,
+      name: g.name,
+      emoji: g.emoji,
+      image: g.image,
+      video: g.video,
+      coins: g.coins,
+      level: g.level,
+      animation: g.animation,
+      liveOnly: g.liveOnly,
+      deeparFilter: g.deeparFilter,
+    }));
+  }
   return [...LIVEBOOM_GIFTS].sort((a, b) => a.coins - b.coins);
 }
 
 export function giftsByLevel(level: GiftLevel) {
+  const remote = runtimeAllLiveGifts();
+  if (remote.length) return remote.filter((g) => g.level === level);
   return LIVEBOOM_GIFTS.filter((g) => g.level === level);
 }

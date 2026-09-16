@@ -6,14 +6,14 @@ import type { BroadcastMode, LiveStudioFormat } from '../components/live/studio/
 import { studioFormatToAspect } from '../components/live/studio/liveStudioTypes';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  cameraConstraints,
+  getLiveUserMedia,
   listLiveMediaDevices,
   liveCameraDeniedMessage,
   loadLiveMediaPrefs,
-  micConstraints,
   pickExistingId,
   saveLiveMediaPrefs,
 } from '../lib/liveMediaDevices';
+import { ensureNativeLiveAvPermissions } from '../lib/nativeLiveMedia';
 import { stashLiveCameraHandoff } from '../lib/liveCameraHandoff';
 import { warmLiveGoLiveChunks } from '../lib/routePrefetch';
 
@@ -133,8 +133,9 @@ export function TransmitView() {
   }, []);
 
   const replaceVideoTrack = useCallback(async (deviceId: string) => {
-    const next = await navigator.mediaDevices.getUserMedia({
-      video: cameraConstraints(deviceId),
+    const next = await getLiveUserMedia({
+      cameraId: deviceId,
+      video: true,
       audio: false,
     });
     const incoming = next.getVideoTracks()[0];
@@ -158,9 +159,10 @@ export function TransmitView() {
   }, [attachPreview]);
 
   const replaceAudioTrack = useCallback(async (deviceId: string) => {
-    const next = await navigator.mediaDevices.getUserMedia({
+    const next = await getLiveUserMedia({
+      microphoneId: deviceId,
       video: false,
-      audio: micConstraints(deviceId),
+      audio: true,
     });
     const incoming = next.getAudioTracks()[0];
     if (!incoming) {
@@ -194,9 +196,13 @@ export function TransmitView() {
     handedOffRef.current = false;
     void (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: cameraConstraints(cameraIdRef.current || savedPrefs.cameraId),
-          audio: micConstraints(micIdRef.current || savedPrefs.microphoneId),
+        await ensureNativeLiveAvPermissions();
+        if (cancelled) return;
+        const stream = await getLiveUserMedia({
+          cameraId: cameraIdRef.current || savedPrefs.cameraId,
+          microphoneId: micIdRef.current || savedPrefs.microphoneId,
+          video: true,
+          audio: true,
         });
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());

@@ -1024,8 +1024,8 @@ export function CreatePostModal({
     if (isMediaTab) {
       if (!mediaFile && !(isEditMode && previewUrl) && reconstruction?.status !== 'ready') {
         setError(`Elige una foto o video para tu ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}.`);
-        return;
-      }
+      return;
+    }
     } else if (
       kind === 'photo' &&
       !mediaFile &&
@@ -1349,8 +1349,8 @@ export function CreatePostModal({
       ) : trimDraft && isModalOpen ? null : (
         <>
           <div className={`composer-kind-tabs ${isInline || isModalOpen ? 'mt-0' : 'mt-3'}`}>
-            <button
-              type="button"
+      <button
+        type="button"
               onClick={() => switchTab('publication')}
               className={`composer-kind-tab composer-kind-tab--publication ${
                 composeTab === 'publication' ? 'is-active' : ''
@@ -1358,7 +1358,7 @@ export function CreatePostModal({
             >
               <PenLine size={12} />
               <span>Publicación</span>
-            </button>
+      </button>
             {!isEditMode ? (
               <>
             <button
@@ -1498,8 +1498,8 @@ export function CreatePostModal({
                       </div>
                     </div>
                     <div className="absolute left-2 top-2 z-[6] flex max-w-[calc(100%-5.5rem)] flex-wrap items-center gap-1">
-                      <button
-                        type="button"
+                <button
+                  type="button"
                         onClick={() => openGallery(composeTab === 'boomclip' ? 'video' : 'any')}
                         className="inline-flex min-h-9 items-center rounded-full border border-white/15 bg-black/55 px-2.5 text-[11px] font-semibold text-white backdrop-blur-sm"
                       >
@@ -1512,12 +1512,12 @@ export function CreatePostModal({
                       >
                         <Trash2 size={12} />
                         Eliminar
-                      </button>
-                    </div>
+                </button>
+              </div>
                     <div className="absolute right-2 top-2 z-[6] flex items-center gap-1">
                       {photoStageOpen ? (
                         <>
-                          <button
+                    <button
                             type="button"
                             onClick={undoEdit}
                             disabled={historyIndex <= 0}
@@ -1538,8 +1538,8 @@ export function CreatePostModal({
                         </>
                       ) : null}
                       <button
-                        type="button"
-                        onClick={() => {
+                      type="button"
+                      onClick={() => {
                           if (previewIsVideo) {
                             setEditMenuOpen((value) => !value);
                             return;
@@ -1649,8 +1649,8 @@ export function CreatePostModal({
                           }`}
                         >
                           <img src={url} alt="" className="h-full w-full object-cover" />
-                        </button>
-                      ))}
+                    </button>
+                  ))}
                       <button
                         type="button"
                         onClick={() => {
@@ -1664,7 +1664,7 @@ export function CreatePostModal({
                         <Plus size={14} />
                         Agregar
                       </button>
-                    </div>
+                </div>
                   ) : null}
                 </div>
                 {photoStageOpen ? (
@@ -1679,9 +1679,9 @@ export function CreatePostModal({
                     onApply={() => void applyCurrentPhotoEdit()}
                     applying={editBusy}
                   />
-                ) : null}
+                        ) : null}
               </div>
-            ) : null}
+                        ) : null}
 
             <div ref={mediaMenuRef} className="relative flex min-w-0 flex-wrap items-center gap-1.5">
               <EmojiPickerButton
@@ -1694,8 +1694,8 @@ export function CreatePostModal({
                   })
                 }
               />
-              <button
-                type="button"
+                        <button
+                          type="button"
                 onClick={() => setMediaMenuOpen((value) => !value)}
                 className={`lb-composer-attach inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border px-2 transition ${
                   mediaMenuOpen ? 'is-open' : ''
@@ -1705,7 +1705,7 @@ export function CreatePostModal({
               >
                 <Paperclip size={16} />
                 <span className="hidden text-[11px] font-semibold sm:inline">Adjuntar</span>
-              </button>
+                        </button>
               {mediaMenuOpen ? (
                 <div className="lb-composer-attach-menu absolute bottom-full left-0 z-20 mb-1.5 w-[min(18.5rem,calc(100vw-2.5rem))] rounded-2xl p-px">
                   <div className="lb-composer-attach-menu__inner overflow-hidden rounded-[15px]">
@@ -1719,7 +1719,7 @@ export function CreatePostModal({
                         <span className="lb-composer-attach-menu__title block text-sm font-bold">Galería</span>
                         <span className="lb-composer-attach-menu__sub block text-[11px] leading-snug">
                           Elige fotos o videos
-                        </span>
+                      </span>
                       </span>
                     </button>
                     <div className="lb-composer-attach-menu__rule mx-3 h-px" />
@@ -1738,7 +1738,7 @@ export function CreatePostModal({
                     </button>
                   </div>
                 </div>
-              ) : null}
+                ) : null}
               <button
                 type="button"
                 onClick={() => setGifPickerOpen(true)}
@@ -1772,16 +1772,16 @@ export function CreatePostModal({
                   role="group"
                   aria-label="Quién puede verlo"
                 >
-                  {(
-                    [
-                      ['public', Globe, 'Público'],
-                      ['friends', Users, 'Amigos'],
-                      ['private', Lock, 'Privado'],
-                    ] as const
-                  ).map(([value, Icon, label]) => (
-                    <button
-                      key={value}
-                      type="button"
+              {(
+                [
+                  ['public', Globe, 'Público'],
+                  ['friends', Users, 'Amigos'],
+                  ['private', Lock, 'Privado'],
+                ] as const
+              ).map(([value, Icon, label]) => (
+                <button
+                  key={value}
+                  type="button"
                       onClick={() => {
                         setVisibility(value);
                         if (value === 'friends') setNotifyFriends(true);
@@ -1795,9 +1795,9 @@ export function CreatePostModal({
                     >
                       <Icon size={12} className="shrink-0" />
                       <span className="truncate">{label}</span>
-                    </button>
-                  ))}
-                </div>
+                </button>
+              ))}
+            </div>
               ) : null}
             </div>
           </div>
@@ -1848,18 +1848,18 @@ export function CreatePostModal({
         <div className={`mt-3 flex justify-end gap-2 ${isInline ? '' : 'pb-[max(0.5rem,env(safe-area-inset-bottom))]'}`}>
           {!isInline ? (
             <button type="button" onClick={requestClose} className="px-4 py-2 text-sm text-zinc-400">
-              Cancelar
-            </button>
+                Cancelar
+              </button>
           ) : null}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void publish()}
-            className="rounded-full bg-cyan-500 px-5 py-2 text-sm font-bold text-zinc-950 disabled:opacity-60"
-          >
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void publish()}
+                className="rounded-full bg-cyan-500 px-5 py-2 text-sm font-bold text-zinc-950 disabled:opacity-60"
+              >
             {submitLabel}
-          </button>
-        </div>
+              </button>
+            </div>
       ) : null}
     </>
   ) : null;
@@ -1963,9 +1963,9 @@ export function CreatePostModal({
                     Descartar
                   </button>
                 </div>
-              </div>
-            </div>
-          ) : null}
+          </div>
+        </div>
+      ) : null}
         </div>
       </div>
     ) : null;

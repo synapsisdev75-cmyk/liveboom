@@ -1,0 +1,237 @@
+import {
+  doc,
+  getDoc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  type Unsubscribe,
+} from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { db, storage } from './firebase';
+import { COIN_PACKAGES } from './coinPackages';
+import {
+  FACE_GIFT_PROPS,
+  type FaceGiftProp,
+} from './faceGiftAnchors';
+import {
+  LIVEBOOM_GIFTS,
+  giftLevelFromCoins,
+  type GiftLevel,
+  type LiveGift,
+} from './liveboomGifts';
+
+export type GiftPlacement = 'live' | 'post' | 'boom_clip' | 'flashboom' | 'call' | 'chat';
+
+export const ALL_GIFT_PLACEMENTS: GiftPlacement[] = [
+  'live',
+  'post',
+  'boom_clip',
+  'flashboom',
+  'call',
+  'chat',
+];
+
+export type EditableGift = LiveGift & {
+  enabled: boolean;
+  placements: GiftPlacement[];
+  face?: FaceGiftProp | null;
+};
+
+export type EditableCoinPackage = {
+  id: string;
+  name: string;
+  coins: number;
+  amountInCop: number;
+  popular: boolean;
+  bestValue: boolean;
+  artUrl: string;
+  enabled: boolean;
+};
+
+export type GiftsCatalogDoc = {
+  version: number;
+  updatedBy?: string;
+  gifts: EditableGift[];
+};
+
+export type CoinPackagesDoc = {
+  version: number;
+  updatedBy?: string;
+  packages: EditableCoinPackage[];
+};
+
+const GIFTS_PATH = 'config/giftsCatalog';
+const PACKS_PATH = 'config/coinPackages';
+
+function defaultPlacements(gift: LiveGift): GiftPlacement[] {
+  if (gift.liveOnly) return ['live'];
+  return ['live', 'post', 'boom_clip', 'flashboom', 'call', 'chat'];
+}
+
+export function buildDefaultGiftsCatalog(): GiftsCatalogDoc {
+  return {
+    version: 1,
+    gifts: LIVEBOOM_GIFTS.map((gift) => ({
+      ...gift,
+      enabled: true,
+      placements: defaultPlacements(gift),
+      face: FACE_GIFT_PROPS[gift.id] ? { ...FACE_GIFT_PROPS[gift.id]! } : null,
+    })),
+  };
+}
+
+export function buildDefaultCoinPackages(): CoinPackagesDoc {
+  return {
+    version: 1,
+    packages: COIN_PACKAGES.map((pack) => ({
+      id: pack.id,
+      name: pack.name,
+      coins: pack.coins,
+      amountInCop: pack.amountInCop,
+      popular: pack.popular,
+      bestValue: pack.bestValue,
+      artUrl: pack.artUrl,
+      enabled: true,
+    })),
+  };
+}
+
+function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): EditableGift | null {
+  const id = String(raw.id || fallback?.id || '').trim();
+  if (!id) return null;
+  const coins = Math.max(0, Math.floor(Number(raw.coins ?? fallback?.coins) || 0));
+  const level = (Math.min(5, Math.max(1, Math.floor(Number(raw.level) || giftLevelFromCoins(coins)))) ||
+    1) as GiftLevel;
+  const placementsRaw = Array.isArray(raw.placements) ? raw.placements : fallback?.placements;
+  const placements = (placementsRaw || defaultPlacements(fallback || ({ liveOnly: false } as LiveGift)))
+    .map((p) => String(p) as GiftPlacement)
+    .filter((p) => ALL_GIFT_PLACEMENTS.includes(p));
+  const faceRaw = raw.face && typeof raw.face === 'object' ? (raw.face as Record<string, unknown>) : null;
+  let face: FaceGiftProp | null = fallback?.face ?? null;
+  if (faceRaw) {
+    const anchor = String(faceRaw.anchor || 'hat') as FaceGiftProp['anchor'];
+    face = {
+      emoji: String(faceRaw.emoji || fallback?.emoji || '🎁'),
+      anchor: ['hat', 'crown', 'mask', 'glasses', 'kiss'].includes(anchor) ? anchor : 'hat',
+      scale: Number(faceRaw.scale) || 1,
+      offsetY: Number(faceRaw.offsetY) || 0,
+    };
+  } else if (raw.face === null) {
+    face = null;
+  }
+  return {
+    id,
+    name: String(raw.name || fallback?.name || id),
+    emoji: String(raw.emoji || fallback?.emoji || '🎁'),
+    image: raw.image != null ? String(raw.image) : fallback?.image,
+    video: raw.video != null ? String(raw.video) : fallback?.video,
+    coins,
+    level,
+    animation: String(raw.animation || fallback?.animation || ''),
+    liveOnly: placements.length === 1 && placements[0] === 'live',
+    deeparFilter: (raw.deeparFilter as LiveGift['deeparFilter']) || fallback?.deeparFilter,
+    enabled: raw.enabled === false ? false : true,
+    placements: placements.length ? placements : ['live'],
+    face,
+  };
+}
+
+export function mergeGiftsCatalog(doc: GiftsCatalogDoc | null): EditableGift[] {
+  const base = buildDefaultGiftsCatalog().gifts;
+  if (!doc?.gifts?.length) return base;
+  const byId = new Map(doc.gifts.map((g) => [g.id, g]));
+  const merged = base.map((gift) => {
+    const override = byId.get(gift.id);
+    if (!override) return gift;
+    return normalizeGift(override as unknown as Record<string, unknown>, gift) || gift;
+  });
+  for (const gift of doc.gifts) {
+    if (!merged.some((g) => g.id === gift.id)) {
+      const next = normalizeGift(gift as unknown as Record<string, unknown>);
+      if (next) merged.push(next);
+    }
+  }
+  return merged;
+}
+
+export function mergeCoinPackages(doc: CoinPackagesDoc | null): EditableCoinPackage[] {
+  const base = buildDefaultCoinPackages().packages;
+  if (!doc?.packages?.length) return base;
+  const byId = new Map(doc.packages.map((p) => [p.id, p]));
+  return base.map((pack) => {
+    const override = byId.get(pack.id);
+    if (!override) return pack;
+    return {
+      ...pack,
+      name: String(override.name || pack.name),
+      coins: Math.max(1, Math.floor(Number(override.coins) || pack.coins)),
+      amountInCop: Math.max(100, Math.floor(Number(override.amountInCop) || pack.amountInCop)),
+      popular: Boolean(override.popular),
+      bestValue: Boolean(override.bestValue),
+      artUrl: String(override.artUrl || pack.artUrl),
+      enabled: override.enabled === false ? false : true,
+    };
+  });
+}
+
+export async function fetchGiftsCatalog(): Promise<GiftsCatalogDoc | null> {
+  const snap = await getDoc(doc(db, GIFTS_PATH));
+  if (!snap.exists()) return null;
+  return snap.data() as GiftsCatalogDoc;
+}
+
+export async function fetchCoinPackagesConfig(): Promise<CoinPackagesDoc | null> {
+  const snap = await getDoc(doc(db, PACKS_PATH));
+  if (!snap.exists()) return null;
+  return snap.data() as CoinPackagesDoc;
+}
+
+export function listenGiftsCatalog(onChange: (doc: GiftsCatalogDoc | null) => void): Unsubscribe {
+  return onSnapshot(doc(db, GIFTS_PATH), (snap) => {
+    onChange(snap.exists() ? (snap.data() as GiftsCatalogDoc) : null);
+  });
+}
+
+export function listenCoinPackagesConfig(
+  onChange: (doc: CoinPackagesDoc | null) => void,
+): Unsubscribe {
+  return onSnapshot(doc(db, PACKS_PATH), (snap) => {
+    onChange(snap.exists() ? (snap.data() as CoinPackagesDoc) : null);
+  });
+}
+
+export async function saveGiftsCatalog(config: GiftsCatalogDoc, updatedBy: string) {
+  await setDoc(
+    doc(db, GIFTS_PATH),
+    {
+      ...config,
+      updatedBy,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function saveCoinPackagesConfig(config: CoinPackagesDoc, updatedBy: string) {
+  await setDoc(
+    doc(db, PACKS_PATH),
+    {
+      ...config,
+      updatedBy,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function uploadCatalogAsset(
+  folder: 'gifts' | 'blast',
+  id: string,
+  file: File,
+): Promise<string> {
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+  const path = `config/${folder}/${id}-${Date.now()}.${ext}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file, { contentType: file.type || 'application/octet-stream' });
+  return getDownloadURL(storageRef);
+}

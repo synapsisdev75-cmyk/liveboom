@@ -1,7 +1,7 @@
 import { Camera, Image, Send, Video } from 'lucide-react';
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import type { ComposerGif } from '../../lib/composerGifs';
-import { COMMENT_EMOJI_SIZE, insertEmojiToken } from '../../lib/liveboomEmojis';
+import { insertEmojiToken } from '../../lib/liveboomEmojis';
 import { mediaKindFromFile } from '../../lib/mediaFile';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CommentMediaThumb, type CommentMediaKind } from './CommentMediaThumb';
@@ -179,7 +179,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           placeholder={resolvedPlaceholder}
           disabled={disabled || busy}
           maxLength={280}
-          emojiSize={COMMENT_EMOJI_SIZE}
+          emojiSize={18}
           className="lb-comment-bar__field"
           padClassName="px-3 py-2"
           mirrorTextClassName={overlay ? 'text-white/90' : 'lb-comment-bar__value'}

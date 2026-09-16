@@ -93,7 +93,7 @@ function commentComposerMaxPx() {
 }
 
 function commentComposerMinPx() {
-  return 2.5 * 16;
+  return 2 * 16;
 }
 
 function messageComposerMaxPx(lineHeight: number) {
@@ -122,8 +122,8 @@ function visualCaretBox(
   const span = mirrorRoot.firstElementChild as HTMLElement | null;
   if (!raw || !span || span.tagName !== 'SPAN') return null;
 
-  const toBox = (rect: DOMRect) => ({
-    left: rect.left - hostRect.left + host.scrollLeft,
+  const toBox = (rect: DOMRect, atRight = false) => ({
+    left: (atRight ? rect.right : rect.left) - hostRect.left + host.scrollLeft,
     top: rect.top - hostRect.top + host.scrollTop,
     height: Math.max(rect.height, 16),
   });
@@ -138,6 +138,13 @@ function visualCaretBox(
         if (caret <= acc.pos + len) {
           const offset = Math.max(0, Math.min(len, caret - acc.pos));
           const range = document.createRange();
+          // Al final de un nodo, medir el borde derecho del último glifo (evita hueco en wrap).
+          if (offset > 0 && offset === len) {
+            range.setStart(node, offset - 1);
+            range.setEnd(node, offset);
+            const rect = range.getBoundingClientRect();
+            if (rect.height > 0) return toBox(rect, true);
+          }
           range.setStart(node, offset);
           range.collapse(true);
           const rects = range.getClientRects();
@@ -170,7 +177,14 @@ function visualCaretBox(
     return null;
   }
 
-  return walk(span.childNodes);
+  const found = walk(span.childNodes);
+  if (found) return found;
+  if (caret >= raw.length) {
+    const rects = span.getClientRects();
+    const last = rects[rects.length - 1] ?? span.getBoundingClientRect();
+    return toBox(last, true);
+  }
+  return null;
 }
 
 /** Input/textarea con espejo: muestra iconos en lugar de :shortcode: mientras escribes. */
@@ -214,7 +228,12 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     );
 
     const lineHeightPx =
-      resolvedGrow === 'message' ? Math.max(emojiSize + 2, 24) : Math.max(emojiSize + 8, 28);
+      resolvedGrow === 'message'
+        ? Math.max(emojiSize + 2, 24)
+        : resolvedGrow === 'comment'
+          ? // Interlineado denso (ref. imagen): ~1.3–1.35 sobre text-sm, sin solapar.
+            Math.max(Math.min(emojiSize, 18) + 3, 20)
+          : Math.max(emojiSize + 8, 28);
 
     useImperativeHandle(ref, () => ({
       focus: () => fieldRef.current?.focus(),
@@ -246,13 +265,24 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       }
       const start = field.selectionStart ?? 0;
       const end = field.selectionEnd ?? 0;
-      if (start !== end || !value) {
+      if (start !== end) {
         setCaretBox(null);
+        return;
+      }
+      if (!value) {
+        const cs = getComputedStyle(field);
+        const padL = Number.parseFloat(cs.paddingLeft) || 0;
+        const padT = Number.parseFloat(cs.paddingTop) || 0;
+        setCaretBox({
+          left: padL,
+          top: padT,
+          height: lineHeightPx,
+        });
         return;
       }
       const box = visualCaretBox(mirror, value, start, host);
       setCaretBox(box);
-    }, [value]);
+    }, [value, lineHeightPx]);
 
     useLayoutEffect(() => {
       const field = fieldRef.current;
@@ -521,7 +551,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     }
 
     const fieldStyle = { lineHeight: `${lineHeightPx}px` };
-    const showCustomCaret = Boolean(focused && value && caretBox);
+    // Cursor visual alineado al espejo (texto visible); nativo queda transparente.
+    const showCustomCaret = Boolean(focused && caretBox);
     const caretClass = showCustomCaret ? 'caret-transparent' : 'caret-white';
 
     const mirror = value ? (
@@ -608,9 +639,11 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               className={`${mirrorShell} whitespace-pre-wrap break-words ${
                 resolvedGrow === 'message'
                   ? 'lb-chat-composer-mirror'
-                  : resolvedGrow !== 'none'
-                    ? 'overflow-y-auto'
-                    : 'overflow-hidden'
+                  : resolvedGrow === 'comment'
+                    ? 'lb-comment-composer-mirror overflow-y-auto'
+                    : resolvedGrow !== 'none'
+                      ? 'overflow-y-auto'
+                      : 'overflow-hidden'
               }`}
               style={fieldStyle}
             >
@@ -637,6 +670,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               }
               onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
               onKeyDown={onKeyDown}
+              onKeyUp={snapSelection}
               onClick={snapSelection}
               onSelect={snapSelection}
               onFocus={() => setFocused(true)}
@@ -651,7 +685,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                 setFocused(false);
                 setCaretBox(null);
               }}
-              className={`${inputInner} ${caretClass} resize-none ${padClassName} ${
+              spellCheck={resolvedGrow === 'comment' ? false : undefined}
+              className={`${inputInner} ${caretClass} resize-none whitespace-pre-wrap break-words ${padClassName} ${
                 resolvedGrow === 'publication'
                   ? 'publication-composer-input min-h-[4.5rem] overflow-y-auto'
                   : resolvedGrow === 'comment'

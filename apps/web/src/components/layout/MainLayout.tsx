@@ -47,8 +47,8 @@ function UnreadCountBadge({ className = '' }: { className?: string }) {
   );
 }
 
-function SidebarUnreadHint() {
-  return <UnreadCountBadge className="ml-auto" />;
+function SidebarUnreadHint({ className = 'ml-auto' }: { className?: string }) {
+  return <UnreadCountBadge className={className} />;
 }
 
 /** Orden exacto del mockup de barra lateral. */
@@ -93,28 +93,46 @@ type SidebarBodyProps = {
   profile: ReturnType<typeof useAuthStore.getState>['profile'];
   onRecharge: () => void;
   onNavigate?: () => void;
+  /** Solo escritorio /mensajes: rail de iconos para maximizar el chat. */
+  rail?: boolean;
 };
 
 /** Sidebar compacto: 100% alto viewport, sin scroll, todos los ítems visibles. */
-function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
+function SidebarBody({ profile, onRecharge, onNavigate, rail = false }: SidebarBodyProps) {
   const t = useT();
   const locale = useLocaleStore((state) => state.locale);
   const sideNavItems = useSideNavItems();
   const numberLocale = bcp47For(locale);
   return (
     <div className="lb-sidebar-body flex h-full min-h-0 flex-col overflow-x-clip overflow-y-visible">
-      <div className="mb-2 flex shrink-0 items-center gap-1">
+      <div className={`mb-2 flex shrink-0 items-center ${rail ? 'flex-col gap-2' : 'gap-1'}`}>
         <Link
           to="/"
           onClick={onNavigate}
-          className="min-w-0 flex-1 px-0.5 transition hover:opacity-90"
+          className={`min-w-0 transition hover:opacity-90 ${rail ? 'grid place-items-center px-0' : 'flex-1 px-0.5'}`}
+          title="LiveBoom"
+          aria-label="LiveBoom"
         >
-          <Logo compact className="!justify-start [&_img]:!h-[4.25rem] [&_img]:!max-w-[15rem]" />
+          <Logo
+            compact
+            iconOnly={rail}
+            className={
+              rail
+                ? '!justify-center [&_img]:!h-9 [&_img]:!max-w-[2.5rem]'
+                : '!justify-start [&_img]:!h-[4.25rem] [&_img]:!max-w-[15rem]'
+            }
+          />
         </Link>
         <AppearanceControl />
       </div>
 
-      <nav className="lb-side-nav flex min-h-0 shrink flex-col overflow-y-auto overflow-x-clip">
+      <nav
+        className={`lb-side-nav flex min-h-0 shrink flex-col overflow-x-clip ${
+          rail
+            ? 'overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+            : 'overflow-y-auto'
+        }`}
+      >
         {sideNavItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -125,18 +143,31 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
               onClick={onNavigate}
               onPointerEnter={() => prefetchRoute(item.to)}
               onFocus={() => prefetchRoute(item.to)}
-              className={({ isActive }) => (isActive ? activeClass : idleClass)}
+              title={item.label}
+              aria-label={item.label}
+              className={({ isActive }) =>
+                `${isActive ? activeClass : idleClass}${rail ? ' lb-nav-item--rail justify-center px-0' : ''}`
+              }
             >
               {({ isActive }) => (
                 <>
-                  <Icon
-                    size={18}
-                    strokeWidth={isActive ? 2.35 : 1.75}
-                    className={isActive ? 'lb-nav-icon shrink-0' : 'lb-nav-icon lb-nav-icon--idle shrink-0'}
-                    fill={isActive && item.to === '/' ? 'currentColor' : 'none'}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {item.to === '/mensajes' ? <SidebarUnreadHint /> : null}
+                  <span className="relative grid place-items-center">
+                    <Icon
+                      size={rail ? 17 : 18}
+                      strokeWidth={isActive ? 2.35 : 1.75}
+                      className={isActive ? 'lb-nav-icon shrink-0' : 'lb-nav-icon lb-nav-icon--idle shrink-0'}
+                      fill={isActive && item.to === '/' ? 'currentColor' : 'none'}
+                    />
+                    {item.to === '/mensajes' && rail ? (
+                      <SidebarUnreadHint className="absolute -right-1.5 -top-1.5 ml-0" />
+                    ) : null}
+                  </span>
+                  {rail ? null : (
+                    <>
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      {item.to === '/mensajes' ? <SidebarUnreadHint /> : null}
+                    </>
+                  )}
                 </>
               )}
             </NavLink>
@@ -144,8 +175,66 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
         })}
       </nav>
 
-      {/* Bloque inferior: Transmitir + Billetera + Perfil (mockup 2) */}
       <div className="lb-sidebar-footer mt-auto flex shrink-0 flex-col gap-3 overflow-visible pt-2">
+        {rail ? (
+          <>
+            <NavLink
+              to="/transmitir"
+              onClick={onNavigate}
+              title={t('nav.goLive')}
+              aria-label={t('nav.goLive')}
+              onPointerEnter={() => {
+                prefetchRoute('/transmitir');
+                prefetchRoute('/stream');
+              }}
+              className={({ isActive }) =>
+                `lb-sidebar-cta lb-sidebar-cta--rail${isActive ? ' is-active' : ''}`
+              }
+            >
+              <Radio size={18} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
+            </NavLink>
+            {profile ? (
+              <button
+                type="button"
+                onClick={onRecharge}
+                title={`${profile.coinsBalance.toLocaleString(numberLocale)} ${t('nav.coins')}`}
+                aria-label={t('nav.recharge')}
+                className="lb-sidebar-rail-coins"
+              >
+                <span className="lb-sidebar-rail-coins__n">
+                  {profile.coinsBalance > 999
+                    ? `${Math.floor(profile.coinsBalance / 1000)}k`
+                    : profile.coinsBalance}
+                </span>
+              </button>
+            ) : null}
+            {profile ? (
+              <Link
+                to="/perfil"
+                onClick={onNavigate}
+                title={`@${profile.handle}`}
+                aria-label={t('nav.viewProfile')}
+                className="mx-auto grid place-items-center"
+              >
+                <span className="relative shrink-0">
+                  {profile.avatarUrl ? (
+                    <img
+                      src={profile.avatarUrl}
+                      alt=""
+                      className="h-9 w-9 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="grid h-9 w-9 place-items-center rounded-full bg-fuchsia-600/35 text-sm font-bold text-fuchsia-100">
+                      {profile.handle.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-[#0a0a0b] bg-[#22C55E]" />
+                </span>
+              </Link>
+            ) : null}
+          </>
+        ) : (
+          <>
         <div className="lb-sidebar-dock">
         <NavLink
           to="/transmitir"
@@ -243,6 +332,8 @@ function SidebarBody({ profile, onRecharge, onNavigate }: SidebarBodyProps) {
             <ChevronRight size={18} strokeWidth={2} className="shrink-0 text-zinc-500" />
           </Link>
         ) : null}
+          </>
+        )}
       </div>
     </div>
   );
@@ -305,7 +396,7 @@ export function MainLayout() {
     <div
       className={`lb-shell flex h-[100dvh] w-full flex-col overflow-hidden font-sans lg:flex-row${
         onProfilePage ? ' lb-shell--profile' : ''
-      }`}
+      }${onMessages ? ' lb-shell--messages' : ''}`}
     >
       {!hideMobileChrome ? (
       <header className="lb-shell-header flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 lg:hidden">
@@ -347,8 +438,16 @@ export function MainLayout() {
       </header>
       ) : null}
 
-      <aside className="lb-sidebar hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex">
-        <SidebarBody profile={profile} onRecharge={() => setRechargeOpen(true)} />
+      <aside
+        className={`lb-sidebar hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex ${
+          onMessages ? 'lb-sidebar--messages-rail' : ''
+        }`}
+      >
+        <SidebarBody
+          profile={profile}
+          onRecharge={() => setRechargeOpen(true)}
+          rail={onMessages}
+        />
       </aside>
 
       <main

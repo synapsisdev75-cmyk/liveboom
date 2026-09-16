@@ -248,7 +248,6 @@ export function CallChatActions({
 
   const requestVideo = Boolean(videoAccess?.canRequestCall && !videoAccess.canDirectCall);
   const requestVoice = Boolean(voiceAccess?.canRequestCall && !voiceAccess.canDirectCall);
-  const rateHint = videoAccess?.label || voiceAccess?.label || '';
 
   return (
     <>
@@ -288,7 +287,6 @@ export function CallChatActions({
             <Phone size={16} />
           </button>
         ) : null}
-        {rateHint ? <span className="lb-call-rate-hint">{rateHint}</span> : null}
       </div>
       {askVideo ? (
         <VideoCallRequestSheet

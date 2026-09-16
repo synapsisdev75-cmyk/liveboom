@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
+import { AdminCatalogPanel } from '../components/admin/AdminCatalogPanel';
+import { AdminVaultSecurityPanel } from '../components/admin/AdminVaultSecurityPanel';
 import { CommunityHeaderEditor } from '../components/admin/CommunityHeaderEditor';
+import { isOwnerEmail } from '../lib/superAdmin';
+import { useSuperAdminVaultStore } from '../store/superAdminVaultStore';
 import { LevelAvatarFrame } from '../components/profile/LevelAvatarFrame';
 import { LevelInsignia } from '../components/profile/LevelInsignia';
 import {
@@ -16,7 +20,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { useLevelsConfigStore } from '../store/levelsConfigStore';
 
-type AdminTab = 'levels' | 'users' | 'messages' | 'community';
+type AdminTab = 'levels' | 'users' | 'messages' | 'community' | 'catalog' | 'security';
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -80,8 +84,11 @@ function NumRow({
 
 export function SuperAdminView() {
   const profile = useAuthStore((s) => s.profile);
+  const firebaseUser = useAuthStore((s) => s.firebaseUser);
   const liveConfig = useLevelsConfigStore((s) => s.config);
   const liveTiers = useLevelsConfigStore((s) => s.tiers);
+  const lockVault = useSuperAdminVaultStore((s) => s.lock);
+  const owner = isOwnerEmail(profile?.email);
 
   const [tab, setTab] = useState<AdminTab>('users');
   const [draft, setDraft] = useState<LevelsConfigDoc>(() => buildDefaultConfig());
@@ -166,6 +173,15 @@ export function SuperAdminView() {
           <p className="text-xs text-zinc-500">{profile?.email}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              void lockVault(firebaseUser?.uid || profile?.id || null, profile?.email)
+            }
+            className="rounded-xl border border-amber-500/40 px-4 py-2 text-sm text-amber-200 hover:border-amber-400"
+          >
+            Cerrar bóveda
+          </button>
           <Link
             to="/perfil/editar"
             className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
@@ -199,8 +215,10 @@ export function SuperAdminView() {
           [
             { id: 'users' as const, label: 'Usuarios / XP' },
             { id: 'messages' as const, label: 'Mensajes' },
+            { id: 'catalog' as const, label: 'Regalos / Blast' },
             { id: 'levels' as const, label: 'Niveles / Marcos' },
             { id: 'community' as const, label: 'Comunidad' },
+            ...(owner ? [{ id: 'security' as const, label: 'Seguridad' }] : []),
           ] as { id: AdminTab; label: string }[]
         ).map(({ id, label }) => (
           <button
@@ -226,7 +244,9 @@ export function SuperAdminView() {
 
       {tab === 'users' ? <AdminUsersPanel /> : null}
       {tab === 'messages' ? <AdminMessagesPanel /> : null}
+      {tab === 'catalog' ? <AdminCatalogPanel /> : null}
       {tab === 'community' ? <CommunityHeaderEditor /> : null}
+      {tab === 'security' && owner ? <AdminVaultSecurityPanel /> : null}
 
       {tab === 'levels' ? (
       <div className="grid gap-4 lg:grid-cols-[220px_1fr]">

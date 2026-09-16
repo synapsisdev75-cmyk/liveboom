@@ -74,7 +74,17 @@ function mapAuthError(error: unknown): string {
   if (code.includes('permission-denied') || /insufficient permissions/i.test(String((error as Error)?.message || ''))) {
     return t('auth.permissionDenied');
   }
-  return error instanceof Error ? error.message : t('auth.authFailed');
+  const msg = error instanceof Error ? error.message : '';
+  if (/Developer console is not set up correctly|10:\s*\[28444\]|ApiException:\s*10/i.test(msg)) {
+    return 'Google Play no reconoce esta app todavía (SHA / OAuth). Revisa google-services.json y los SHA de Play App Signing en Firebase.';
+  }
+  if (/12501|sign.?in.*canceled|user.*cancel/i.test(msg)) {
+    return t('auth.googleCancelled');
+  }
+  if (/network|timeout|unavailable/i.test(msg)) {
+    return 'No hay conexión con Google. Revisa internet e inténtalo de nuevo.';
+  }
+  return msg || t('auth.authFailed');
 }
 
 async function syncWithBackend(user: FirebaseUser) {
@@ -134,10 +144,10 @@ async function syncWithBackend(user: FirebaseUser) {
           typeof mapPostgresUser
         >[0];
         if (response.ok && data.coinsBalance != null) {
+          // Billetera dual: Firestore es fuente de verdad (comprados/ganados).
+          // No pisar earned/purchased con un total opaco del API en memoria.
           return {
             ...fsProfile,
-            coins: data.coinsBalance,
-            coinsBalance: data.coinsBalance,
             avatarUrl: fsProfile.avatarUrl || data.avatarUrl || googlePhoto,
             birthDate: fsProfile.birthDate || data.birthDate || pendingBirth,
           };
@@ -374,11 +384,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       let user: FirebaseUser;
       if (Capacitor.isNativePlatform()) {
-        // WebView no soporta signInWithPopup: tras elegir la cuenta Google queda en blanco.
+        // WebView no soporta signInWithPopup: usamos plugin nativo + credential Firebase.
         const native = await FirebaseAuthentication.signInWithGoogle();
-        const idToken = native.credential?.idToken;
+        const idToken = String(native.credential?.idToken || '').trim();
         if (!idToken) {
-          throw new Error('Google no devolvió un token de acceso.');
+          throw new Error(
+            'Google no devolvió un token. Verifica SHA-1/SHA-256 de la app en Firebase Authentication.',
+          );
         }
         const cred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
         user = cred.user;
@@ -400,6 +412,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    const uid = auth.currentUser?.uid || null;
+    const email = auth.currentUser?.email || null;
+    try {
+      const { useSuperAdminVaultStore } = await import('./superAdminVaultStore');
+      await useSuperAdminVaultStore.getState().lock(uid, email);
+    } catch {
+      /* ignore */
+    }
     disconnectSocket();
     if (Capacitor.isNativePlatform()) {
       try {

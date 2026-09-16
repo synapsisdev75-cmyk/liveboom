@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 /**
  * Pool de <video> solo para Explorar: latest-wins + prefetch N-1 / N+1 / N+2.
  * No se usa en Boom Clip, Flash Boom ni Publicaciones.
@@ -31,7 +33,17 @@ const metrics = {
   gestureFrameMs: 0,
 };
 
+function isNativeApp() {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
 function connectionBudget(): NavBudget {
+  // En app Capacitor priorizamos sensación inmediata (el overlay nativo de play es peor que más datos).
+  if (isNativeApp()) return { plus2: true, preload: 'auto', warmPlay: true };
   if (typeof navigator === 'undefined') return { plus2: true, preload: 'auto', warmPlay: true };
   const conn = (
     navigator as Navigator & {
@@ -180,6 +192,14 @@ export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: 
   if (!url || gen !== navGen) return;
 
   const warmed = slotFor(url);
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.setAttribute('muted', '');
+
   if (!sameSrc(video, url)) {
     try {
       video.pause();
@@ -187,11 +207,19 @@ export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: 
       /* ignore */
     }
     video.src = url;
+    try {
+      video.load();
+    } catch {
+      /* ignore */
+    }
   }
 
   if (warmed && warmed.el !== video && warmed.el.readyState >= 2) {
     try {
-      if (warmed.el.currentTime > 0.02 && video.readyState < 2) video.currentTime = 0;
+      // Si el warm ya tiene frames, arranca el visible cerca de 0 sin esperar red otra vez.
+      if (video.readyState < 2 && warmed.el.readyState >= 3) {
+        video.currentTime = 0;
+      }
     } catch {
       /* ignore */
     }
@@ -201,6 +229,11 @@ export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: 
     };
     if (video.readyState >= 2) release();
     else video.addEventListener('loadeddata', release, { once: true });
+  }
+
+  // Arranque inmediato (muted) para evitar el botón play nativo del WebView Android.
+  if (video.paused) {
+    void video.play().catch(() => undefined);
   }
 }
 

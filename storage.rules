@@ -249,6 +249,44 @@ service firebase.storage {
         );
     }
 
+    // Catálogo Super Admin — regalos / Blast (AdminCatalogPanel)
+    function isSuperAdminStorage() {
+      return signedIn()
+        && (
+          request.auth.token.email == 'synapsisdev75@gmail.com'
+          || (
+            firestore.exists(/databases/(default)/documents/config/superAdmins)
+            && request.auth.token.email in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
+          )
+        );
+    }
+
+    function hasValidAdminSessionStorage() {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/adminSessions/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/adminSessions/$(request.auth.uid)).data.expiresAt > request.time
+        && firestore.get(/databases/(default)/documents/adminSessions/$(request.auth.uid)).data.email == request.auth.token.email;
+    }
+
+    match /config/gifts/{fileName} {
+      allow read: if true;
+      allow write: if isSuperAdminStorage()
+        && hasValidAdminSessionStorage()
+        && request.resource.size < 25 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+        );
+    }
+
+    match /config/blast/{fileName} {
+      allow read: if true;
+      allow write: if isSuperAdminStorage()
+        && hasValidAdminSessionStorage()
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Pedidos UI — capturas. Solo el UID dueño de la carpeta puede subir.
     // Quién es super admin se valida en Firestore (adminChangeRequests) + UI.
     match /admin/change-requests/{userId}/{fileName} {

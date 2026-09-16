@@ -37,9 +37,11 @@ export const FACE_GIFT_PROPS: Record<string, FaceGiftProp> = {
   tucan_tropical: { emoji: '🦜', anchor: 'hat', scale: 1.05, offsetY: -0.72 },
 };
 
+import { runtimeFaceProp } from './catalogRuntime';
+
 export function getFaceGiftProp(giftId: string | undefined | null): FaceGiftProp | null {
   if (!giftId) return null;
-  return FACE_GIFT_PROPS[giftId] ?? null;
+  return runtimeFaceProp(giftId) ?? FACE_GIFT_PROPS[giftId] ?? null;
 }
 
 export function isFaceAnchoredGift(giftId: string | undefined | null): boolean {

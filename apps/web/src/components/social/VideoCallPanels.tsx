@@ -259,12 +259,6 @@ export function VideoCallEnded({
                 <dt>{summary.received ? 'Blast ganados en esta llamada' : 'Blast utilizados'}</dt>
                 <dd>{Math.max(0, Math.floor(Number(summary.totalBlasts) || 0))}</dd>
               </div>
-              {summary.received && (summary.creatorValueCop || 0) > 0 ? (
-                <div>
-                  <dt>Valor estimado</dt>
-                  <dd>${(summary.creatorValueCop || 0).toLocaleString('es-CO')} COP</dd>
-                </div>
-              ) : null}
             </>
           ) : null}
         </dl>

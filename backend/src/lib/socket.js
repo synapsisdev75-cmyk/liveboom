@@ -15,10 +15,12 @@ function allowedOrigin(origin) {
   return (
     origin === 'http://localhost:5173' ||
     origin === 'http://127.0.0.1:5173' ||
+    origin === 'https://localhost' ||
+    origin === 'capacitor://localhost' ||
+    origin === 'ionic://localhost' ||
+    origin === 'http://localhost' ||
     origin === 'https://liveboom-app.web.app' ||
     origin === 'https://liveboom-app.firebaseapp.com' ||
-    origin === 'https://liveboomapp.com' ||
-    origin === 'https://www.liveboomapp.com' ||
     origin === 'https://liveboomapp.com' ||
     origin === 'https://www.liveboomapp.com' ||
     origin.endsWith('.web.app') ||

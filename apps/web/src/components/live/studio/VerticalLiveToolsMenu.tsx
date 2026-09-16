@@ -11,12 +11,15 @@ import {
   MicOff,
   MonitorUp,
   Plus,
+  Swords,
   Users,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { VsBattleIcon } from './VsBattleIcon';
 
 export type VerticalLiveToolId =
   | 'invite'
+  | 'vs'
   | 'screen'
   | 'mic'
   | 'camera'
@@ -36,6 +39,7 @@ type Props = {
   wishlistCount: number;
   lockActive: boolean;
   onInvite: () => void;
+  onVs?: () => void;
   onScreen: () => void;
   onMic: () => void;
   onCamera: () => void;
@@ -53,6 +57,7 @@ const TOOLS: {
   tone: string;
 }[] = [
   { id: 'invite', label: 'Invitar', tone: 'violet' },
+  { id: 'vs', label: 'Crear VS', tone: 'fuchsia' },
   { id: 'screen', label: 'Pantalla', tone: 'cyan' },
   { id: 'mic', label: 'Micrófono', tone: 'emerald' },
   { id: 'camera', label: 'Cámara', tone: 'amber' },
@@ -87,6 +92,8 @@ function ToolIcon({
   switch (id) {
     case 'invite':
       return <Users size={size} />;
+    case 'vs':
+      return <VsBattleIcon size={size} />;
     case 'screen':
       return <MonitorUp size={size} />;
     case 'mic':
@@ -106,7 +113,7 @@ function ToolIcon({
     case 'withdraw':
       return <Coins size={size} />;
     default:
-      return null;
+      return <Swords size={size} />;
   }
 }
 
@@ -119,6 +126,7 @@ export function VerticalLiveToolsMenu({
   wishlistCount,
   lockActive,
   onInvite,
+  onVs,
   onScreen,
   onMic,
   onCamera,
@@ -154,6 +162,9 @@ export function VerticalLiveToolsMenu({
     switch (id) {
       case 'invite':
         onInvite();
+        break;
+      case 'vs':
+        onVs?.();
         break;
       case 'screen':
         onScreen();
@@ -209,7 +220,7 @@ export function VerticalLiveToolsMenu({
   }
 
   const tools = [
-    ...TOOLS,
+    ...TOOLS.filter((tool) => (tool.id === 'vs' ? Boolean(onVs) : true)),
     ...(onReel ? [REEL_TOOL] : []),
     ...(onWithdraw ? [WITHDRAW_TOOL] : []),
   ];

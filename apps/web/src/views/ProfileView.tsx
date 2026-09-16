@@ -436,15 +436,15 @@ export function ProfileView() {
       let fsSaved;
       if (changed.username) {
         fsSaved = await saveFirestoreProfile({
-          uid: firebaseUser.uid,
-          email: profile.email,
-          username: handle,
-          displayName: name,
-          avatarUrl: avatarToSave || null,
+        uid: firebaseUser.uid,
+        email: profile.email,
+        username: handle,
+        displayName: name,
+        avatarUrl: avatarToSave || null,
           bio: nextBio,
-          birthDate,
-          category,
-        });
+        birthDate,
+        category,
+      });
       } else {
         const fieldPatch: Parameters<typeof updateFirestoreProfileFields>[1] = {};
         if (changed.displayName != null) fieldPatch.displayName = name;
@@ -457,12 +457,12 @@ export function ProfileView() {
         }
         fsSaved = {
           ...profile,
-          displayName: name,
+        displayName: name,
           handle,
           avatarUrl: avatarToSave || profile.avatarUrl,
           bio: nextBio,
-          birthDate,
-          category,
+        birthDate,
+        category,
         };
       }
 
@@ -610,7 +610,7 @@ export function ProfileView() {
         <p className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-50">
           {t('settings.completeProfile')}
         </p>
-      ) : null}
+        ) : null}
 
       {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
 
@@ -624,14 +624,14 @@ export function ProfileView() {
               <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start">
                 <div className="relative mx-auto shrink-0 lg:mx-0" ref={avatarMenuRef}>
                   <div className="h-[5.5rem] w-[5.5rem] overflow-hidden rounded-full bg-zinc-900 ring-2 ring-white/10">
-                    {avatarUrl ? (
-                      <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="grid h-full w-full place-items-center text-zinc-600">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="grid h-full w-full place-items-center text-zinc-600">
                         <Camera size={28} />
-                      </span>
-                    )}
-                  </div>
+                  </span>
+                )}
+              </div>
                   <button
                     type="button"
                     onClick={() => setAvatarMenuOpen((value) => !value)}
@@ -674,15 +674,15 @@ export function ProfileView() {
                     className="hidden"
                     onChange={(e) => void onPickAvatar(e.target.files?.[0])}
                   />
-                  <input
+                <input
                     ref={cameraAvatarRef}
-                    type="file"
-                    accept="image/*"
+                  type="file"
+                  accept="image/*"
                     capture="user"
                     className="hidden"
                     onChange={(e) => void onPickAvatar(e.target.files?.[0])}
-                  />
-                </div>
+                />
+            </div>
 
                 <div className="min-w-0 flex-1 space-y-3">
                   <InfoRow
@@ -692,8 +692,8 @@ export function ProfileView() {
                     onEdit={() => setEditing('displayName')}
                     onCancel={() => setEditing(null)}
                   >
-                    <input
-                      value={displayName}
+              <input
+                value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
                       maxLength={NAME_MAX}
                       className="h-9 w-full rounded-lg border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-500"
@@ -1017,30 +1017,30 @@ export function ProfileView() {
                 void save();
               }}
             >
-              <label className="grid gap-1.5 text-sm">
+            <label className="grid gap-1.5 text-sm">
                 <span className="font-medium text-zinc-300">{t('settings.bio')}</span>
-                <textarea
-                  value={bio}
+              <textarea
+                value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  rows={4}
-                  maxLength={280}
+                rows={4}
+                maxLength={280}
                   className="min-h-[100px] w-full resize-none rounded-xl border border-white/10 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-violet-500"
-                />
-              </label>
-              <label className="grid gap-1.5 text-sm">
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
                 <span className="font-medium text-zinc-300">{t('settings.mainCategory')}</span>
-                <select
-                  value={category}
+              <select
+                value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
-                >
-                  {LIVE_CATEGORIES.map((item) => (
-                    <option key={item.id} value={item.id}>
+              >
+                {LIVE_CATEGORIES.map((item) => (
+                  <option key={item.id} value={item.id}>
                       {item.emoji} {t(categoryMessageKey(item.id))}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  </option>
+                ))}
+              </select>
+            </label>
               <button
                 type="submit"
                 disabled={busy || avatarBusy || !hasChanges}
@@ -1154,7 +1154,7 @@ function InfoRow({
           {editing ? <div className="mt-1 min-w-0">{children}</div> : (
             <p className="mt-0.5 truncate text-sm font-semibold text-white">{value}</p>
           )}
-        </div>
+          </div>
         {editing ? (
           <button
             type="button"

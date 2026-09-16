@@ -7,23 +7,23 @@ import {
   Gem,
   Gift,
   History,
-  Info,
   Shield,
   Zap,
 } from 'lucide-react';
 import {
-  COIN_PACKAGES,
-  coinsToCop,
+  listCoinPackages,
   formatCop,
   packageCopLabel,
-  type CoinPackageId,
+  type ResolvedCoinPackage,
 } from '../lib/coinPackages';
 import { api } from '../lib/api';
 import { normalizeBlastBalances } from '../lib/blastBalances';
+import { processGiftInbox } from '../lib/giftsFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { useAuthStore } from '../store/authStore';
+import { useCatalogConfigStore } from '../store/catalogConfigStore';
 import { useT } from '../i18n';
 
 type WithdrawalRow = {
@@ -37,7 +37,7 @@ type WithdrawalRow = {
 
 const GRADIENT = 'bg-[linear-gradient(to_right,#EC4899,#06B6D4)]';
 
-function packageBadge(pack: (typeof COIN_PACKAGES)[number]) {
+function packageBadge(pack: ResolvedCoinPackage) {
   if (pack.popular) return 'POPULAR';
   if (pack.bestValue) return 'MEJOR VALOR';
   return null;
@@ -63,8 +63,11 @@ export function WalletView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const error = useAuthStore((state) => state.error);
+  const packsVersion = useCatalogConfigStore((s) => s.packsVersion);
+  const coinPackages = listCoinPackages();
+  void packsVersion;
   const [openTopup, setOpenTopup] = useState(false);
-  const [initialPack, setInitialPack] = useState<CoinPackageId | undefined>();
+  const [initialPack, setInitialPack] = useState<string | undefined>();
   const [openWithdraw, setOpenWithdraw] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
@@ -134,6 +137,39 @@ export function WalletView() {
     };
   }, [profile?.firebaseUid]);
 
+  useEffect(() => {
+    if (!profile?.firebaseUid) return;
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        await processGiftInbox(profile.firebaseUid);
+        if (!cancelled) await useAuthStore.getState().syncProfile();
+      } catch {
+        /* ignore */
+      }
+    };
+    void pull();
+    // Reintento corto: el crédito de llamada puede llegar milisegundos después de abrir billetera.
+    const t1 = window.setTimeout(() => {
+      if (!cancelled) void pull();
+    }, 600);
+    const t2 = window.setTimeout(() => {
+      if (!cancelled) void pull();
+    }, 1800);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void pull();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onVis);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onVis);
+    };
+  }, [profile?.firebaseUid]);
+
   const bal = normalizeBlastBalances({
     coinsBalance: profile?.coinsBalance,
     purchasedBlastBalance: profile?.purchasedBlastBalance,
@@ -144,9 +180,8 @@ export function WalletView() {
   const purchased = bal.purchasedBlastBalance;
   const earned = bal.earnedBlastBalance;
   const balance = bal.totalBlastBalance;
-  const balanceCop = coinsToCop(balance);
 
-  function openBuy(packageId?: CoinPackageId) {
+  function openBuy(packageId?: string) {
     setInitialPack(packageId);
     setOpenTopup(true);
   }
@@ -207,20 +242,35 @@ export function WalletView() {
                   blast
                 </span>
               </p>
-              <p className="mt-1.5 text-xs leading-relaxed text-zinc-300 sm:text-sm">
-                <span className="text-zinc-200">Comprados</span> {purchased.toLocaleString('es-CO')}
-                <span className="text-zinc-500"> (recargas)</span>
-                {' · '}
-                <span className="text-zinc-200">Ganados</span> {earned.toLocaleString('es-CO')}
-                <span className="text-zinc-500"> (regalos y llamadas)</span>
-                {' · '}
-                <span className="text-zinc-200">Total</span> {balance.toLocaleString('es-CO')}
-                <span className="text-zinc-500"> (para retirar)</span>
-              </p>
-              <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-zinc-200">
-                ≈ {formatCop(balanceCop)}
-                <Info size={14} className="text-zinc-400" />
-              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-3">
+                <div className="min-w-0 rounded-xl border border-white/10 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-400 sm:text-[11px]">
+                    Comprados
+                  </p>
+                  <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-white sm:text-base">
+                    {purchased.toLocaleString('es-CO')}
+                  </p>
+                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Recargas</p>
+                </div>
+                <div className="min-w-0 rounded-xl border border-emerald-400/25 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-300/90 sm:text-[11px]">
+                    Ganados
+                  </p>
+                  <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-emerald-200 sm:text-base">
+                    {earned.toLocaleString('es-CO')}
+                  </p>
+                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Regalos y llamadas</p>
+                </div>
+                <div className="min-w-0 rounded-xl border border-cyan-400/25 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-cyan-300/90 sm:text-[11px]">
+                    Total
+                  </p>
+                  <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-cyan-100 sm:text-base">
+                    {balance.toLocaleString('es-CO')}
+                  </p>
+                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Recargas + ganados</p>
+                </div>
+              </div>
               <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
                 <button
                   type="button"
@@ -262,7 +312,7 @@ export function WalletView() {
                 ref={packsRef}
                 className="gift-row flex snap-x snap-mandatory gap-3 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               >
-                {COIN_PACKAGES.map((pack) => {
+                {coinPackages.map((pack) => {
                   const badge = packageBadge(pack);
                   return (
                     <article

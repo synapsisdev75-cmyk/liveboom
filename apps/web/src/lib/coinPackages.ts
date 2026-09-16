@@ -44,7 +44,30 @@ export const COIN_PACKAGES = [
   { id: 'titan_25000', name: 'Titan', coins: 25000, amountInCop: packAmountInCop(25000), popular: false, bestValue: false, artUrl: '/blast/pack-titan.png' },
 ] as const;
 
+import { runtimeCoinPackages } from './catalogRuntime';
+
 export type CoinPackageId = (typeof COIN_PACKAGES)[number]['id'];
+
+export type ResolvedCoinPackage = {
+  id: string;
+  name: string;
+  coins: number;
+  amountInCop: number;
+  popular: boolean;
+  bestValue: boolean;
+  artUrl: string;
+};
+
+/** Paquetes activos (defaults + overrides de Super Admin). */
+export function listCoinPackages(): ResolvedCoinPackage[] {
+  const remote = runtimeCoinPackages();
+  if (remote.length) return remote;
+  return COIN_PACKAGES.map((p) => ({ ...p }));
+}
+
+export function getCoinPackage(id: string): ResolvedCoinPackage | null {
+  return listCoinPackages().find((p) => p.id === id) ?? null;
+}
 
 export function coinsToCop(coins: number) {
   return Math.max(0, Math.floor(Number(coins) || 0)) * COIN_TO_COP;

@@ -87,19 +87,24 @@ export function pickExistingId(preferred: string | null | undefined, devices: Me
 
 export function liveCameraDeniedMessage(error: unknown): string {
   const name = error instanceof DOMException ? error.name : '';
-  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-    return 'No se pudo acceder a la cámara. Revisa los permisos del navegador.';
+  const msg = error instanceof Error ? error.message : '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || /permiso|denied/i.test(msg)) {
+    return 'No se pudo acceder a la cámara. En el móvil: Ajustes → LiveBoom → Permisos → Cámara y Micrófono.';
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return 'No se encontró cámara en este dispositivo.';
   }
-  return 'No se pudo acceder a la cámara. Revisa los permisos del navegador.';
+  if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+    return 'La cámara seleccionada no está disponible. Se intentará con la cámara por defecto.';
+  }
+  return 'No se pudo acceder a la cámara. Revisa los permisos de la app.';
 }
 
 export function liveMicDeniedMessage(error: unknown): string {
   const name = error instanceof DOMException ? error.name : '';
-  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-    return 'No se pudo acceder al micrófono. Revisa los permisos del navegador.';
+  const msg = error instanceof Error ? error.message : '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || /permiso|denied/i.test(msg)) {
+    return 'No se pudo acceder al micrófono. En el móvil: Ajustes → LiveBoom → Permisos → Micrófono.';
   }
   if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
     return 'No se encontró micrófono en este dispositivo.';
@@ -108,11 +113,46 @@ export function liveMicDeniedMessage(error: unknown): string {
 }
 
 export function cameraConstraints(deviceId?: string | null, facing: 'user' | 'environment' = 'user') {
-  if (deviceId) return { deviceId: { exact: deviceId } };
+  // En Android/WebView `exact` suele fallar si el deviceId guardado ya no existe.
+  if (deviceId) return { deviceId: { ideal: deviceId }, facingMode: { ideal: facing } };
   return { facingMode: { ideal: facing } };
 }
 
 export function micConstraints(deviceId?: string | null) {
-  if (deviceId) return { deviceId: { exact: deviceId } };
+  if (deviceId) return { deviceId: { ideal: deviceId } };
   return true;
+}
+
+/** getUserMedia con reintento sin deviceId (crítico en app Android). */
+export async function getLiveUserMedia(options: {
+  cameraId?: string | null;
+  microphoneId?: string | null;
+  video?: boolean;
+  audio?: boolean;
+  facing?: 'user' | 'environment';
+}): Promise<MediaStream> {
+  const wantVideo = options.video !== false;
+  const wantAudio = options.audio !== false;
+  const facing = options.facing || 'user';
+  const primary: MediaStreamConstraints = {
+    video: wantVideo ? cameraConstraints(options.cameraId, facing) : false,
+    audio: wantAudio ? micConstraints(options.microphoneId) : false,
+  };
+  try {
+    return await navigator.mediaDevices.getUserMedia(primary);
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : '';
+    if (
+      wantVideo &&
+      (name === 'OverconstrainedError' ||
+        name === 'ConstraintNotSatisfiedError' ||
+        name === 'NotFoundError')
+    ) {
+      return navigator.mediaDevices.getUserMedia({
+        video: wantVideo ? { facingMode: { ideal: facing } } : false,
+        audio: wantAudio ? true : false,
+      });
+    }
+    throw err;
+  }
 }

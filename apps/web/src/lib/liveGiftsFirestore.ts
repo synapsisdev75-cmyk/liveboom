@@ -1028,6 +1028,21 @@ export async function notifyNetworkImLive(input: {
     });
   }
   await batch.commit();
+
+  try {
+    const { enqueuePushNotify } = await import('./pushNotifications');
+    enqueuePushNotify({
+      recipientUids: recipients.filter((uid) => uid !== input.hostUid),
+      title: `${input.hostName} está en LIVE`,
+      body: `@${input.hostUsername} está transmitiendo. Toca para ver el live.`,
+      channel: 'live',
+      type: 'live',
+      href: `/stream/${encodeURIComponent(input.hostUsername)}`,
+    });
+  } catch {
+    /* push opcional */
+  }
+
   return recipients.length;
 }
 

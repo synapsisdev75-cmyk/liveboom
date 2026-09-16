@@ -1,22 +1,23 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import {
-  COIN_PACKAGES,
+  listCoinPackages,
   packageCopLabel,
-  type CoinPackageId,
+  type ResolvedCoinPackage,
 } from '../../lib/coinPackages';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
 import { useAuthStore } from '../../store/authStore';
+import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { PaymentMethodsStrip } from './PaymentMethodsStrip';
 
 type Props = {
   onClose: () => void;
-  initialPackageId?: CoinPackageId;
+  initialPackageId?: string;
 };
 
-const DEFAULT_PACK: CoinPackageId = 'popular_200';
+const DEFAULT_PACK = 'popular_200';
 
-function packBadge(pack: (typeof COIN_PACKAGES)[number]) {
+function packBadge(pack: ResolvedCoinPackage) {
   if (pack.popular) return 'Popular';
   if (pack.bestValue) return 'Mejor valor';
   return pack.name;
@@ -25,8 +26,11 @@ function packBadge(pack: (typeof COIN_PACKAGES)[number]) {
 export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   const syncProfile = useAuthStore((state) => state.syncProfile);
   const currentCoins = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
-  const [selected, setSelected] = useState<CoinPackageId>(
-    initialPackageId && COIN_PACKAGES.some((p) => p.id === initialPackageId)
+  const packsVersion = useCatalogConfigStore((s) => s.packsVersion);
+  const packs = listCoinPackages();
+  void packsVersion;
+  const [selected, setSelected] = useState<string>(
+    initialPackageId && packs.some((p) => p.id === initialPackageId)
       ? initialPackageId
       : DEFAULT_PACK,
   );
@@ -122,7 +126,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     }
   }
 
-  const selectedPack = COIN_PACKAGES.find((pack) => pack.id === selected);
+  const selectedPack = packs.find((pack) => pack.id === selected);
 
   return (
     <div
@@ -156,7 +160,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 sm:pt-4">
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
-            {COIN_PACKAGES.map((pack) => {
+            {packs.map((pack) => {
               const isSelected = selected === pack.id;
               const highlight = pack.popular || pack.bestValue;
               return (

@@ -1,4 +1,5 @@
 /** Pide permiso de micrófono (y cámara si es video) antes de conectar la llamada. */
+import { ensureNativeLiveAvPermissions } from './nativeLiveMedia';
 
 function micDeniedMessage(error: unknown): string {
   const name = error instanceof DOMException ? error.name : '';
@@ -42,6 +43,13 @@ export function releasePendingCallMicrophone() {
 export async function ensureCallMediaPermission(video: boolean): Promise<string | null> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     return 'Este dispositivo no puede iniciar llamadas desde el navegador.';
+  }
+  try {
+    await ensureNativeLiveAvPermissions();
+  } catch (error) {
+    return video
+      ? 'LiveBoom necesita acceso a la cámara y al micrófono. Actívalo en Ajustes → Apps → LiveBoom → Permisos.'
+      : micDeniedMessage(error);
   }
   try {
     const status = await navigator.permissions?.query?.({ name: 'microphone' as PermissionName });

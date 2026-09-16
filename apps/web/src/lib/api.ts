@@ -1,13 +1,27 @@
+import { Capacitor } from '@capacitor/core';
 import { auth } from './firebase';
+
+/** API de producción (Hosting → Cloud Functions). */
+const PROD_API_BASE = 'https://liveboomapp.com';
 
 /**
  * Resuelve la URL del API.
- * Producción: mismo origen (Firebase Hosting → Cloud Function /api).
- * Local: siempre mismo origen (Vite proxy /api → backend en :4000).
+ * - App Capacitor (Android/iOS): WebView es https://localhost → hay que apuntar a producción.
+ * - Local (Vite): mismo origen (proxy /api → backend :4000).
+ * - Producción web: mismo origen (Firebase Hosting → /api).
  */
 export function getApiBase(): string {
-  const host =
-    typeof window !== 'undefined' ? window.location.hostname : '';
+  try {
+    if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+      const fromEnv = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      if (fromEnv && !/vercel\.app/i.test(fromEnv)) return fromEnv;
+      return PROD_API_BASE;
+    }
+  } catch {
+    /* Capacitor no disponible en algunos entornos de test */
+  }
+
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
   const browsingLocal = host === 'localhost' || host === '127.0.0.1';
 
   if (browsingLocal) {

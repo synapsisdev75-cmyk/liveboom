@@ -758,13 +758,13 @@ export function HomeView() {
             <section>
               <div className="mb-3 flex items-end justify-between gap-2">
                 <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-400">Live en línea</h2>
-                <Link
-                  to="/explorar"
+        <Link
+          to="/explorar"
                   className="text-[11px] font-semibold text-cyan-400 hover:underline"
-                >
+        >
                   Ver todos los LIVE →
-                </Link>
-              </div>
+        </Link>
+      </div>
               <LiveAvatarRow streams={regularLives} />
             </section>
           </>
@@ -841,7 +841,7 @@ export function HomeView() {
                 Aún no hay publicaciones. Publica desde Crear o espera un LIVE.
               </div>
             )}
-        </div>
+      </div>
       </section>
 
       {/* Más posts del feed */}

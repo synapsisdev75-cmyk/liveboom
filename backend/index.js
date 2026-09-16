@@ -68,6 +68,7 @@ mount('/api/reports', () => require('./src/routes/reports'));
 mount('/api/ads', () => require('./src/routes/ads'));
 mount('/api/reconstructions', () => require('./src/routes/reconstructions'));
 mount('/api/translate', () => require('./src/routes/translate'));
+mount('/api/push', () => require('./src/routes/push'));
 
 app.get('/api/wallet/:firebaseUid', async (req, res) => {
   const { firebaseUid } = req.params;

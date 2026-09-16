@@ -39,7 +39,7 @@ export function PaidCallMeter() {
   const [callType, setCallType] = useState(platformCallTypeForMedia(video));
   const [low, setLow] = useState(false);
   const [grace, setGrace] = useState(false);
-  const [graceLeft, setGraceLeft] = useState(10);
+  const [graceLeft, setGraceLeft] = useState(5);
   const [earnedPrompt, setEarnedPrompt] = useState(false);
   const syncing = useRef(false);
   const started = useRef(false);
@@ -110,8 +110,23 @@ export function PaidCallMeter() {
         creatorValueCop: Math.max(0, Math.floor(Number(call.creatorValueCop) || 0)),
         connectedSeconds: Math.max(0, Math.floor(Number(call.lastConnectedSeconds) || 0)),
       });
+      // Receptor: refrescar billetera cuando suben Blast ganados durante la llamada.
+      const me = profile?.firebaseUid;
+      const payerUid = call.payerUid || call.fromUid || null;
+      if (me && payerUid && payerUid !== me && (call.spentBlasts || 0) > 0) {
+        void useAuthStore
+          .getState()
+          .syncProfile()
+          .then(() => {
+            // Segundo pull corto por si el write de Firestore aún no propagó.
+            window.setTimeout(() => {
+              void useAuthStore.getState().syncProfile().catch(() => undefined);
+            }, 350);
+          })
+          .catch(() => undefined);
+      }
     });
-  }, [chatId, setCallBilling]);
+  }, [chatId, setCallBilling, profile?.firebaseUid]);
 
   useEffect(() => {
     if (status !== 'active') {
@@ -127,10 +142,10 @@ export function PaidCallMeter() {
 
   useEffect(() => {
     if (!grace) {
-      setGraceLeft(10);
+      setGraceLeft(5);
       return;
     }
-    setGraceLeft(10);
+    setGraceLeft(5);
     const id = window.setInterval(() => {
       setGraceLeft((n) => Math.max(0, n - 1));
     }, 1000);
@@ -141,13 +156,15 @@ export function PaidCallMeter() {
     if (status !== 'active' || !profile || !chatId || !callId) return;
     if (!rate) return;
     if (payer !== profile.firebaseUid || !creatorId) return;
+    // Esperar reloj canónico (connectedAtMs); evita cobrar con un inicio local adelantado.
+    if (!startedAt) return;
 
     const payerId = profile.firebaseUid;
     const activeChatId = String(chatId);
     const activeCallId = String(callId);
     const activeCreatorId = String(creatorId);
     const activeType = callType;
-    const origin = startedAt || Date.now();
+    const origin = startedAt;
 
     function connectedSecondsNow() {
       return Math.max(0, Math.floor((Date.now() - origin) / 1000));
@@ -221,7 +238,7 @@ export function PaidCallMeter() {
           setGrace(true);
           window.setTimeout(() => {
             void hangup();
-          }, 1_200);
+          }, 5_000);
         }
       } catch {
         const bal = useAuthStore.getState().profile?.coinsBalance ?? 0;
@@ -231,7 +248,7 @@ export function PaidCallMeter() {
             const nextBal = useAuthStore.getState().profile?.coinsBalance ?? 0;
             if (nextBal < rate) void hangup();
             else setGrace(false);
-          }, 10_000);
+          }, 5_000);
         }
       } finally {
         syncing.current = false;
@@ -290,7 +307,7 @@ export function PaidCallMeter() {
         setGrace(true);
         window.setTimeout(() => {
           void hangup();
-        }, 1_200);
+        }, 5_000);
       }
     } catch {
       /* el siguiente tick reintenta */
@@ -304,7 +321,7 @@ export function PaidCallMeter() {
     setGrace(true);
     window.setTimeout(() => {
       void hangup();
-    }, 1_200);
+    }, 5_000);
   }
 
   if (status !== 'active' || rate <= 0) return null;

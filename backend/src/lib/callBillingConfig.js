@@ -8,8 +8,8 @@ const CALL_PRICING = {
 /** Valor estimado COP por Blast ganado por el receptor/creador. */
 const CREATOR_VALUE_PER_BLAST = 15;
 
-/** Segundos conectados por debajo de este umbral ⇒ cobro 0. */
-const BILLING_GRACE_SECONDS = 10;
+/** Segundos conectados por debajo de este umbral ⇒ cobro 0. Empieza al contestar. */
+const BILLING_GRACE_SECONDS = 5;
 
 /**
  * @param {'voice'|'video_720'|'video_1080'|'audio'|'video'|string} type
