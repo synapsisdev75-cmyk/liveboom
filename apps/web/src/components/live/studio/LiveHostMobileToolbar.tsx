@@ -3,7 +3,6 @@ import {
   Gift,
   Lock,
   Megaphone,
-  MonitorUp,
   Unlock,
   Users,
   Video,
@@ -22,7 +21,7 @@ type Props = {
   lock: LockInfo | null;
   lockBusy: boolean;
   coinsEarned: number;
-  screenSharing: boolean;
+  screenSharing?: boolean;
   recording: boolean;
   canPublish: boolean;
   videoInputs: MediaDeviceInfo[];
@@ -43,7 +42,7 @@ type Props = {
   onMicPickerToggle?: () => void;
   onSelectMic?: (deviceId: string) => void;
   onRecordReel: () => void;
-  onScreenShare: () => void;
+  onScreenShare?: () => void;
 };
 
 const btn =
@@ -56,7 +55,7 @@ export function LiveHostMobileToolbar({
   lock,
   lockBusy,
   coinsEarned,
-  screenSharing,
+  screenSharing: _screenSharing,
   recording,
   canPublish,
   videoInputs,
@@ -77,7 +76,7 @@ export function LiveHostMobileToolbar({
   onMicPickerToggle,
   onSelectMic,
   onRecordReel,
-  onScreenShare,
+  onScreenShare: _onScreenShare,
 }: Props) {
   return (
     <div
@@ -198,18 +197,6 @@ export function LiveHostMobileToolbar({
             <Video size={13} />
           )}
           {recording ? 'Grabando' : 'Reel 15s'}
-        </button>
-        <button
-          type="button"
-          onClick={onScreenShare}
-          className={`${btn} ${
-            screenSharing
-              ? 'bg-emerald-500/35 text-emerald-100 ring-1 ring-emerald-400/50'
-              : ''
-          }`}
-        >
-          <MonitorUp size={13} />
-          {screenSharing ? 'Pantalla ON' : 'Pantalla'}
         </button>
       </div>
     </div>

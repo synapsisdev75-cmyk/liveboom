@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { type LiveAspectRatio } from '../lib/liveAspectRatio';
 import { useAuthStore } from '../store/authStore';
 import { TransmitStudioBody } from './TransmitStudioBody';
@@ -18,6 +18,15 @@ import { stashLiveCameraHandoff } from '../lib/liveCameraHandoff';
 import { warmLiveGoLiveChunks } from '../lib/routePrefetch';
 
 const CHECKLIST_KEY = 'liveboom.preLiveChecklist.v1';
+
+type GamingLaunchInbound = {
+  gamingSpace?: boolean;
+  gamingShareTarget?: 'full_display' | 'single_app';
+  gamingMicOn?: boolean;
+  gamingDeviceAudioOn?: boolean;
+  category?: string;
+  title?: string;
+};
 
 type ChecklistState = {
   age: boolean;
@@ -54,10 +63,12 @@ type Step = 1 | 2 | 3;
 export function TransmitView() {
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
+  const location = useLocation();
+  const gamingInbound = (location.state as GamingLaunchInbound | null) || {};
   const savedPrefs = useMemo(() => loadLiveMediaPrefs(), []);
   const [step, setStep] = useState<Step>(1);
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
+  const [title, setTitle] = useState(() => String(gamingInbound.title || ''));
+  const [category, setCategory] = useState(() => String(gamingInbound.category || ''));
   const [description, setDescription] = useState('');
   const [goalCoins, setGoalCoins] = useState('500');
   const [goalLabel, setGoalLabel] = useState('Meta en coins');
@@ -67,9 +78,13 @@ export function TransmitView() {
   const [followersOnly, setFollowersOnly] = useState(false);
   const [saveProfile, setSaveProfile] = useState(true);
   const [studioFormat, setStudioFormat] = useState<LiveStudioFormat>(savedPrefs.orientation);
-  const [broadcastMode, setBroadcastMode] = useState<BroadcastMode>('camera');
+  const [broadcastMode, setBroadcastMode] = useState<BroadcastMode>(
+    gamingInbound.gamingSpace ? 'camera' : 'camera',
+  );
   const [mirrorPreview, setMirrorPreview] = useState(savedPrefs.mirror);
-  const [micOnAtStart, setMicOnAtStart] = useState(savedPrefs.micOn);
+  const [micOnAtStart, setMicOnAtStart] = useState(
+    typeof gamingInbound.gamingMicOn === 'boolean' ? gamingInbound.gamingMicOn : savedPrefs.micOn,
+  );
   const [selectedCameraId, setSelectedCameraId] = useState(savedPrefs.cameraId || '');
   const [selectedMicrophoneId, setSelectedMicrophoneId] = useState(savedPrefs.microphoneId || '');
   const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
@@ -362,6 +377,9 @@ export function TransmitView() {
         microphoneId: selectedMicrophoneId || null,
         mirror: mirrorPreview,
         micOn: micOnAtStart,
+        gamingSpace: Boolean(gamingInbound.gamingSpace),
+        gamingShareTarget: gamingInbound.gamingShareTarget || 'full_display',
+        gamingDeviceAudioOn: gamingInbound.gamingDeviceAudioOn !== false,
       },
     });
   }

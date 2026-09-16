@@ -38,6 +38,10 @@ type Props = {
   notifyBusy: boolean;
   wishlistCount: number;
   lockActive: boolean;
+  /** Oculta Compartir pantalla (móvil / Espacio Gaming). */
+  hideScreenShare?: boolean;
+  /** Etiqueta del tool screen (ej. Presentar en Espacio Gaming). */
+  screenToolLabel?: string;
   onInvite: () => void;
   onVs?: () => void;
   onScreen: () => void;
@@ -125,6 +129,8 @@ export function VerticalLiveToolsMenu({
   notifyBusy,
   wishlistCount,
   lockActive,
+  hideScreenShare = false,
+  screenToolLabel,
   onInvite,
   onVs,
   onScreen,
@@ -215,12 +221,17 @@ export function VerticalLiveToolsMenu({
     if (id === 'camera') return cameraOn ? 'Cámara ON' : 'Cámara OFF';
     if (id === 'mirror') return mirrorOn ? 'Espejo ON' : 'Espejo OFF';
     if (id === 'wishlist' && wishlistCount) return `Deseos (${wishlistCount})`;
-    if (id === 'screen' && screenSharing) return 'Pantalla ON';
+    if (id === 'screen' && screenSharing) return screenToolLabel ? `${screenToolLabel} ON` : 'Pantalla ON';
+    if (id === 'screen' && screenToolLabel) return screenToolLabel;
     return label;
   }
 
   const tools = [
-    ...TOOLS.filter((tool) => (tool.id === 'vs' ? Boolean(onVs) : true)),
+    ...TOOLS.filter((tool) => {
+      if (tool.id === 'vs') return Boolean(onVs);
+      if (tool.id === 'screen') return !hideScreenShare;
+      return true;
+    }),
     ...(onReel ? [REEL_TOOL] : []),
     ...(onWithdraw ? [WITHDRAW_TOOL] : []),
   ];

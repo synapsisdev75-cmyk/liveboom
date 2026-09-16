@@ -5,6 +5,7 @@ type Props = {
   resolution?: string;
   fps?: number | null;
   bitrateKbps?: number | null;
+  rttMs?: number | null;
 };
 
 function qualityLabel(q: ConnectionQuality) {
@@ -37,7 +38,7 @@ function qualityDot(q: ConnectionQuality) {
   }
 }
 
-export function StreamHealth({ quality, resolution, fps, bitrateKbps }: Props) {
+export function StreamHealth({ quality, resolution, fps, bitrateKbps, rttMs }: Props) {
   return (
     <div className="lb-live-studio-health rounded-2xl border border-white/[0.08] bg-[#12131a] p-3">
       <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Estado</p>
@@ -65,6 +66,12 @@ export function StreamHealth({ quality, resolution, fps, bitrateKbps }: Props) {
           <div className="flex items-center justify-between gap-2">
             <span className="text-zinc-400">Bitrate</span>
             <span className="font-semibold text-zinc-200">{bitrateKbps} kbps</span>
+          </div>
+        ) : null}
+        {rttMs != null ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-zinc-400">RTT</span>
+            <span className="font-semibold text-zinc-200">{rttMs} ms</span>
           </div>
         ) : null}
       </div>

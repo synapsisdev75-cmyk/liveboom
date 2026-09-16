@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Radio, SquarePen } from 'lucide-react';
+import { Gamepad2, Radio, SquarePen } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MyPromotionsModal } from '../components/ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../components/ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../components/ads/PublicidadSidebarCard';
 import { CreatePostModal } from '../components/social/CreatePostModal';
+import { canUseGamingSpace } from '../lib/liveScreenSharePolicy';
 import { listenActivePromotions, listenMyPromotions, type PromotionAd } from '../lib/promotionsFirestore';
 import { fetchPrivateLocation } from '../lib/userLocation';
 import { useAuthStore } from '../store/authStore';
@@ -14,6 +15,7 @@ export function CreateView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
+  const showGamingSpace = canUseGamingSpace();
   const [createOpen, setCreateOpen] = useState(false);
   const [ads, setAds] = useState<PromotionAd[]>([]);
   const [myAds, setMyAds] = useState<PromotionAd[]>([]);
@@ -68,6 +70,24 @@ export function CreateView() {
           </span>
         </span>
       </button>
+
+      {showGamingSpace ? (
+        <button
+          type="button"
+          onClick={() => navigate('/espacio-gaming')}
+          className="lb-create-action lb-create-action--gaming flex min-h-[4.5rem] items-center gap-3 rounded-2xl p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
+        >
+          <span className="lb-create-action__icon grid h-12 w-12 shrink-0 place-items-center rounded-xl">
+            <Gamepad2 size={22} />
+          </span>
+          <span className="min-w-0">
+            <span className="lb-create-action__title block text-base font-bold">Espacio Gaming</span>
+            <span className="lb-create-page__muted mt-0.5 block text-xs">
+              Presenta juegos con chat flotante, audio del dispositivo y cámara PiP.
+            </span>
+          </span>
+        </button>
+      ) : null}
 
       <button
         type="button"

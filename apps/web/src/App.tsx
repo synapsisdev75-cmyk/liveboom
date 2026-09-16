@@ -55,6 +55,9 @@ const ActivityView = lazy(() =>
 const CreateView = lazy(() =>
   import('./views/CreateView').then((m) => ({ default: m.CreateView })),
 );
+const GamingSpaceView = lazy(() =>
+  import('./views/GamingSpaceView').then((m) => ({ default: m.GamingSpaceView })),
+);
 const TrendsView = lazy(() =>
   import('./views/TrendsView').then((m) => ({ default: m.TrendsView })),
 );
@@ -138,6 +141,7 @@ export default function App() {
             <Route path="tendencias" element={<TrendsView />} />
             <Route path="grupos" element={<GroupsView />} />
             <Route path="crear" element={<CreateView />} />
+            <Route path="espacio-gaming" element={<GamingSpaceView />} />
             <Route path="u/:username" element={<UserProfileView />} />
             <Route path="billetera" element={<WalletView />} />
             <Route path="perfil" element={<ProfileRedirectView />} />

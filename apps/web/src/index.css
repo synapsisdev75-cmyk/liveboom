@@ -5209,6 +5209,19 @@ body {
   background: color-mix(in srgb, var(--accent-primary) 12%, var(--surface-secondary));
 }
 
+.lb-create-action--gaming {
+  border-color: color-mix(in srgb, #a855f7 50%, var(--border-default));
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #22d3ee 16%, var(--surface-secondary)),
+    color-mix(in srgb, #d946ef 14%, var(--surface-secondary))
+  );
+}
+
+.lb-create-action--gaming:hover {
+  border-color: color-mix(in srgb, #22d3ee 55%, var(--border-default));
+}
+
 .lb-create-action--post:hover {
   border-color: color-mix(in srgb, var(--accent-primary) 58%, var(--border-default));
 }

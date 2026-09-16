@@ -17,6 +17,7 @@ type ScreenCaptureResult = {
   active?: boolean;
   sessionId?: number;
   foregroundReady?: boolean;
+  audioCapturing?: boolean;
 };
 
 type ScreenFrameEvent = {
@@ -24,6 +25,13 @@ type ScreenFrameEvent = {
   width: number;
   height: number;
   ts: number;
+  sessionId?: number;
+};
+
+type ScreenAudioPcmEvent = {
+  pcm: string;
+  sampleRate: number;
+  channels: number;
   sessionId?: number;
 };
 
@@ -47,6 +55,7 @@ type LiveMediaPluginApi = {
     allowOverlayCamera?: boolean;
   }) => Promise<{ shown?: boolean; permission?: boolean } | void>;
   hideScreenShareOverlay: () => Promise<void>;
+  setPresentationOverlaysVisible: (opts: { visible: boolean }) => Promise<void>;
   updateScreenShareChatHud: (opts: {
     lines?: string[];
   }) => Promise<void>;
@@ -57,13 +66,28 @@ type LiveMediaPluginApi = {
     id?: number;
   }) => Promise<{ id: number }>;
   cancelNotification: (opts: { id: number }) => Promise<void>;
+  updatePresentationHudState: (opts: {
+    micMuted?: boolean;
+    gameMuted?: boolean;
+  }) => Promise<void>;
   addListener: (
     event:
       | 'screenFrame'
+      | 'cameraFrame'
+      | 'screenAudioPcm'
+      | 'micPcm'
       | 'screenCaptureStopped'
       | 'stopScreenShareRequested'
-      | 'screenShareChatSend',
-    cb: (data: ScreenFrameEvent | { reason?: string } | { text?: string }) => void,
+      | 'screenShareChatSend'
+      | 'presentationHudAction',
+    cb: (
+      data:
+        | ScreenFrameEvent
+        | ScreenAudioPcmEvent
+        | { reason?: string }
+        | { text?: string }
+        | { action?: string },
+    ) => void,
   ) => Promise<PluginListenerHandle>;
 };
 
@@ -73,7 +97,129 @@ let essentialRequestInFlight: Promise<EssentialPermissionResult> | null = null;
 let essentialRequestedOnce = false;
 let nativeScreenHandles: PluginListenerHandle[] = [];
 let nativeScreenStream: MediaStream | null = null;
+let nativeCameraHandles: PluginListenerHandle[] = [];
+let nativeCameraStream: MediaStream | null = null;
+let nativeCameraRaf = 0;
+let nativeCameraDrawGen = 0;
+let nativeAudioHandle: PluginListenerHandle | null = null;
+let nativeAudioStream: MediaStream | null = null;
+let nativeAudioCtx: AudioContext | null = null;
+let nativeAudioProcessor: ScriptProcessorNode | null = null;
+let nativeMicHandle: PluginListenerHandle | null = null;
+let nativeMicStream: MediaStream | null = null;
+let nativeMicCtx: AudioContext | null = null;
+let nativeMicProcessor: ScriptProcessorNode | null = null;
 let stopShareExternalHandler: (() => void) | null = null;
+let lastNativeAudioCapturing = false;
+let keepLiveTracksHooked = false;
+/** Preferencia usuario: ganancia juego (0–1). El ducking no la pisa. */
+let userGameAudioGain = 0.42;
+/** Preferencia usuario: ganancia mic (0–1). */
+let userMicGain = 1;
+let gameAudioMuted = false;
+let micAudioMuted = false;
+let voiceOpenUntil = 0;
+let lastMicLevel = 0;
+let lastGameLevel = 0;
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
+}
+
+function effectiveGameAudioGain(): number {
+  if (gameAudioMuted) return 0;
+  if (performance.now() < voiceOpenUntil) return Math.min(userGameAudioGain, 0.08);
+  return userGameAudioGain;
+}
+
+function effectiveMicGain(): number {
+  if (micAudioMuted) return 0;
+  return userMicGain;
+}
+
+export type NativeAudioMixerState = {
+  micVolume: number;
+  gameVolume: number;
+  micMuted: boolean;
+  gameMuted: boolean;
+  micLevel: number;
+  gameLevel: number;
+};
+
+export function getNativeAudioMixerState(): NativeAudioMixerState {
+  return {
+    micVolume: userMicGain,
+    gameVolume: userGameAudioGain,
+    micMuted: micAudioMuted,
+    gameMuted: gameAudioMuted,
+    micLevel: lastMicLevel,
+    gameLevel: lastGameLevel,
+  };
+}
+
+export function setNativeMicVolume(value: number): void {
+  userMicGain = clamp01(value);
+}
+
+export function setNativeGameVolume(value: number): void {
+  userGameAudioGain = clamp01(value);
+}
+
+export function setNativeMicMuted(muted: boolean): void {
+  micAudioMuted = Boolean(muted);
+  void syncPresentationHudState();
+}
+
+export function setNativeGameAudioMuted(muted: boolean): void {
+  gameAudioMuted = Boolean(muted);
+  void syncPresentationHudState();
+}
+
+export function toggleNativeMicMuted(): boolean {
+  micAudioMuted = !micAudioMuted;
+  void syncPresentationHudState();
+  return micAudioMuted;
+}
+
+export function toggleNativeGameAudioMuted(): boolean {
+  gameAudioMuted = !gameAudioMuted;
+  void syncPresentationHudState();
+  return gameAudioMuted;
+}
+
+async function syncPresentationHudState(): Promise<void> {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await LiveMedia.updatePresentationHudState({
+      micMuted: micAudioMuted,
+      gameMuted: gameAudioMuted,
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function ensureKeepLiveTracksHook() {
+  if (keepLiveTracksHooked || typeof window === 'undefined') return;
+  keepLiveTracksHooked = true;
+  (window as unknown as { __lbKeepLiveTracks?: () => void }).__lbKeepLiveTracks = () => {
+    try {
+      nativeScreenStream?.getVideoTracks().forEach((t) => {
+        (t as MediaStreamTrack & { requestFrame?: () => void }).requestFrame?.();
+      });
+      nativeCameraStream?.getVideoTracks().forEach((t) => {
+        (t as MediaStreamTrack & { requestFrame?: () => void }).requestFrame?.();
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
+export function wasNativeScreenAudioCapturing(): boolean {
+  return lastNativeAudioCapturing;
+}
 
 export function isNativeAndroidApp(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
@@ -206,6 +352,16 @@ export async function showScreenShareOverlayIfAllowed(opts?: {
   }
 }
 
+/** Meet-like: overlays solo fuera de LiveBoom; dentro de la app se ocultan. */
+export async function setNativePresentationOverlaysVisible(visible: boolean): Promise<void> {
+  if (!isNativeAndroidApp()) return;
+  try {
+    await LiveMedia.setPresentationOverlaysVisible({ visible });
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Escucha “Dejar de compartir” desde overlay / notificación nativa. */
 export async function bindNativeStopScreenShare(handler: () => void): Promise<() => void> {
   stopShareExternalHandler = handler;
@@ -305,14 +461,15 @@ export async function startNativeScreenShareStream(opts?: {
   if (!isNativeAndroidApp()) {
     throw new Error('Captura nativa solo en Android');
   }
+  ensureKeepLiveTracksHook();
   await stopNativeScreenShareStream();
   await prepareNativeLiveWebView();
   await prepareNativeScreenShareService();
   // Overlay NO bloquea el inicio (Settings rompe el flujo). Se pide después.
 
   const canvas = document.createElement('canvas');
-  canvas.width = 360;
-  canvas.height = 640;
+  canvas.width = 720;
+  canvas.height = 1280;
   attachCompositedCanvas(canvas);
   nativeScreenCanvasEl = canvas;
 
@@ -346,24 +503,13 @@ export async function startNativeScreenShareStream(opts?: {
   let realFrameCount = 0;
   let drawPending = false;
   let resolveFirst: (() => void) | null = null;
-  let rejectFirst: ((err: Error) => void) | null = null;
-  const firstFrame = new Promise<void>((resolve, reject) => {
-    resolveFirst = resolve;
-    rejectFirst = reject;
-    window.setTimeout(() => {
-      if (realFrameCount < 1 && frameCount < 1) {
-        rejectFirst?.(
-          new Error('No llegaron frames de la pantalla. Acepta el permiso e inténtalo de nuevo.'),
-        );
-        rejectFirst = null;
-        resolveFirst = null;
-      } else if (resolveFirst) {
-        // Hubo frames aunque el muestreo de luminancia falle (pantalla oscura / juego).
-        resolveFirst();
-        resolveFirst = null;
-        rejectFirst = null;
-      }
-    }, 12000);
+  let firstSettled = false;
+  const firstFrame = new Promise<void>((resolve) => {
+    resolveFirst = () => {
+      if (firstSettled) return;
+      firstSettled = true;
+      resolve();
+    };
   });
 
   const bumpTrack = () => {
@@ -389,17 +535,27 @@ export async function startNativeScreenShareStream(opts?: {
     try {
       const bytes = Uint8Array.from(atob(data.jpeg), (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: 'image/jpeg' });
+      const srcW = Math.max(2, data.width || 720);
+      const srcH = Math.max(2, data.height || 1280);
+      let tw = srcW;
+      let th = srcH;
+      const longEdge = Math.max(tw, th);
+      if (longEdge > 1280) {
+        const s = 1280 / longEdge;
+        tw = Math.max(2, Math.round(tw * s));
+        th = Math.max(2, Math.round(th * s));
+      }
       const bitmap = await createImageBitmap(blob, {
-        resizeWidth: Math.min(360, data.width || 360),
-        resizeHeight: Math.min(640, data.height || 640),
-        resizeQuality: 'medium',
+        resizeWidth: tw,
+        resizeHeight: th,
+        resizeQuality: 'high',
       });
       if (gen !== nativeDrawGen) {
         bitmap.close();
         return;
       }
-      const iw = bitmap.width || data.width || canvas.width;
-      const ih = bitmap.height || data.height || canvas.height;
+      const iw = bitmap.width || tw;
+      const ih = bitmap.height || th;
       if (iw > 0 && ih > 0 && (canvas.width !== iw || canvas.height !== ih)) {
         canvas.width = iw;
         canvas.height = ih;
@@ -408,27 +564,11 @@ export async function startNativeScreenShareStream(opts?: {
       bitmap.close();
       bumpTrack();
       frameCount += 1;
+      realFrameCount += 1;
 
-      // Muestreo rápido: un JPEG real casi nunca es negro uniforme.
-      try {
-        const sample = ctx.getImageData(
-          Math.floor(canvas.width / 2),
-          Math.floor(canvas.height / 2),
-          1,
-          1,
-        ).data;
-        const lum = (sample[0] ?? 0) + (sample[1] ?? 0) + (sample[2] ?? 0);
-        if (lum > 12 || data.jpeg.length > 800) {
-          realFrameCount += 1;
-        }
-      } catch {
-        realFrameCount += 1;
-      }
-
-      if (realFrameCount >= 1 || frameCount >= 1) {
+      if (frameCount >= 1) {
         resolveFirst?.();
         resolveFirst = null;
-        rejectFirst = null;
       }
       if (frameCount === 1 || frameCount % 60 === 0) {
         console.log('[SCREEN SHARE] frame', {
@@ -464,8 +604,8 @@ export async function startNativeScreenShareStream(opts?: {
 
   try {
     const started = await LiveMedia.startNativeScreenCapture({
-      maxFps: 15,
-      quality: 40,
+      maxFps: 20,
+      quality: 72,
       allowOverlayCamera: opts?.allowOverlayCamera !== false,
     });
     boundSessionId = Number(started?.sessionId || 0);
@@ -473,11 +613,30 @@ export async function startNativeScreenShareStream(opts?: {
       sessionId: boundSessionId,
       active: started?.active,
       foregroundReady: started?.foregroundReady,
+      audioCapturing: started?.audioCapturing,
     });
-    await firstFrame;
-    attachLocalPreview(stream);
-    // Nunca abrir Ajustes aquí: pagehide cerraría el LIVE. Solo overlay si ya hay permiso.
-    void showScreenShareOverlayIfAllowed();
+    lastNativeAudioCapturing = Boolean(started?.audioCapturing);
+    // Al elegir una app (juego), los frames llegan cuando esa app está al frente.
+    // No tumbar la captura por timeout: publicar ya y seguir recibiendo frames.
+    await Promise.race([
+      firstFrame,
+      new Promise<void>((resolve) => {
+        window.setTimeout(() => {
+          console.log('[SCREEN SHARE] firstFrame soft-timeout; publishing anyway');
+          resolveFirst?.();
+          resolveFirst = null;
+          resolve();
+        }, 2500);
+      }),
+    ]);
+    // En Android no adjuntar preview DOM (ensucia el LIVE al volver a la app).
+    // Fuera de LiveBoom el globo nativo hace de PiP; dentro, el stage LiveKit.
+    if (!isNativeAndroidApp()) {
+      attachLocalPreview(stream);
+    }
+    void showScreenShareOverlayIfAllowed({
+      allowOverlayCamera: opts?.allowOverlayCamera !== false,
+    });
   } catch (err) {
     await stopNativeScreenShareStream();
     throw err;
@@ -486,8 +645,385 @@ export async function startNativeScreenShareStream(opts?: {
   return stream;
 }
 
+/** Cámara del globo nativo → MediaStream para publicar a LiveKit (espectadores). */
+export async function startNativeOverlayCameraStream(): Promise<MediaStream> {
+  if (!isNativeAndroidApp()) {
+    throw new Error('Cámara nativa solo en Android');
+  }
+  await stopNativeOverlayCameraStream();
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 320;
+  canvas.height = 320;
+  canvas.setAttribute('aria-hidden', 'true');
+  canvas.style.cssText =
+    'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:1';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) {
+    canvas.remove();
+    throw new Error('Sin canvas de cámara');
+  }
+  ctx.fillStyle = '#101018';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const stream = canvas.captureStream(0);
+  const videoTrack = stream.getVideoTracks()[0] as MediaStreamTrack & {
+    requestFrame?: () => void;
+  };
+  if (!videoTrack) {
+    canvas.remove();
+    throw new Error('Sin pista de cámara nativa');
+  }
+
+  let drawPending = false;
+  const bump = () => {
+    try {
+      videoTrack.requestFrame?.();
+    } catch {
+      /* ignore */
+    }
+  };
+  const pump = () => {
+    bump();
+    nativeCameraRaf = requestAnimationFrame(pump);
+  };
+  nativeCameraRaf = requestAnimationFrame(pump);
+
+  const frameHandle = await LiveMedia.addListener('cameraFrame', (raw) => {
+    const data = raw as ScreenFrameEvent;
+    if (!data?.jpeg || drawPending) return;
+    const gen = ++nativeCameraDrawGen;
+    drawPending = true;
+    void (async () => {
+      try {
+        const bytes = Uint8Array.from(atob(data.jpeg), (c) => c.charCodeAt(0));
+        const blob = new Blob([bytes], { type: 'image/jpeg' });
+        const bitmap = await createImageBitmap(blob, {
+          resizeWidth: 320,
+          resizeHeight: 320,
+          resizeQuality: 'high',
+        });
+        if (gen !== nativeCameraDrawGen) {
+          bitmap.close();
+          return;
+        }
+        if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+        }
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        bump();
+      } catch {
+        /* drop */
+      } finally {
+        drawPending = false;
+      }
+    })();
+  });
+
+  nativeCameraHandles = [frameHandle];
+  nativeCameraStream = stream;
+  (stream as MediaStream & { __lbCamCanvas?: HTMLCanvasElement }).__lbCamCanvas = canvas;
+  return stream;
+}
+
+export async function stopNativeOverlayCameraStream(): Promise<void> {
+  nativeCameraDrawGen += 1;
+  if (nativeCameraRaf) {
+    try {
+      cancelAnimationFrame(nativeCameraRaf);
+    } catch {
+      /* ignore */
+    }
+    nativeCameraRaf = 0;
+  }
+  for (const handle of nativeCameraHandles) {
+    try {
+      await handle.remove();
+    } catch {
+      /* ignore */
+    }
+  }
+  nativeCameraHandles = [];
+  try {
+    const canvas = (nativeCameraStream as MediaStream & { __lbCamCanvas?: HTMLCanvasElement } | null)
+      ?.__lbCamCanvas;
+    canvas?.remove();
+  } catch {
+    /* ignore */
+  }
+  try {
+    nativeCameraStream?.getTracks().forEach((t) => t.stop());
+  } catch {
+    /* ignore */
+  }
+  nativeCameraStream = null;
+}
+
+/**
+ * Audio de juego/presentación (AudioPlaybackCapture) → MediaStream.
+ * Devuelve null si el entorno no está capturando audio (juego bloquea o API no disponible).
+ */
+export async function startNativeScreenAudioStream(): Promise<MediaStream | null> {
+  if (!isNativeAndroidApp()) return null;
+  await stopNativeScreenAudioStream();
+
+  const AudioCtx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return null;
+
+  const ctx = new AudioCtx({ sampleRate: 44100 });
+  try {
+    await ctx.resume();
+  } catch {
+    /* ignore */
+  }
+  const dest = ctx.createMediaStreamDestination();
+  const queue: Float32Array[] = [];
+  let queueSamples = 0;
+  const maxQueue = 44100; // ~1s
+
+  const processor = ctx.createScriptProcessor(2048, 1, 1);
+  processor.onaudioprocess = (ev) => {
+    const out = ev.outputBuffer.getChannelData(0);
+    let offset = 0;
+    let energy = 0;
+    const gain = effectiveGameAudioGain();
+    while (offset < out.length) {
+      const next = queue[0];
+      if (!next) {
+        out.fill(0, offset);
+        break;
+      }
+      const need = out.length - offset;
+      if (next.length <= need) {
+        for (let i = 0; i < next.length; i++) {
+          const sample = (next[i] ?? 0) * gain;
+          out[offset + i] = sample;
+          energy += Math.abs(sample);
+        }
+        offset += next.length;
+        queue.shift();
+        queueSamples -= next.length;
+      } else {
+        for (let i = 0; i < need; i++) {
+          const sample = (next[i] ?? 0) * gain;
+          out[offset + i] = sample;
+          energy += Math.abs(sample);
+        }
+        queue[0] = next.subarray(need);
+        queueSamples -= need;
+        offset = out.length;
+      }
+    }
+    lastGameLevel = Math.min(1, (energy / Math.max(1, out.length)) * 4);
+  };
+  processor.connect(dest);
+  // Mantener el grafo vivo.
+  const silent = ctx.createGain();
+  silent.gain.value = 0;
+  processor.connect(silent);
+  silent.connect(ctx.destination);
+
+  const handle = await LiveMedia.addListener('screenAudioPcm', (raw) => {
+    const data = raw as ScreenAudioPcmEvent;
+    if (!data?.pcm) return;
+    try {
+      const bin = atob(data.pcm);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const samples = new Float32Array(bytes.length / 2);
+      const view = new DataView(bytes.buffer);
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = view.getInt16(i * 2, true) / 32768;
+      }
+      queue.push(samples);
+      queueSamples += samples.length;
+      while (queueSamples > maxQueue && queue.length > 1) {
+        const dropped = queue.shift();
+        if (dropped) queueSamples -= dropped.length;
+      }
+    } catch {
+      /* drop */
+    }
+  });
+
+  nativeAudioHandle = handle;
+  nativeAudioCtx = ctx;
+  nativeAudioProcessor = processor;
+  nativeAudioStream = dest.stream;
+  return dest.stream;
+}
+
+export async function stopNativeScreenAudioStream(): Promise<void> {
+  try {
+    await nativeAudioHandle?.remove();
+  } catch {
+    /* ignore */
+  }
+  nativeAudioHandle = null;
+  try {
+    nativeAudioProcessor?.disconnect();
+  } catch {
+    /* ignore */
+  }
+  nativeAudioProcessor = null;
+  try {
+    await nativeAudioCtx?.close();
+  } catch {
+    /* ignore */
+  }
+  nativeAudioCtx = null;
+  try {
+    nativeAudioStream?.getTracks().forEach((t) => t.stop());
+  } catch {
+    /* ignore */
+  }
+  nativeAudioStream = null;
+}
+
+/** Micrófono nativo (FGS) → MediaStream mientras se comparte pantalla/juego. */
+export async function startNativeMicStream(): Promise<MediaStream | null> {
+  if (!isNativeAndroidApp()) return null;
+  await stopNativeMicStream();
+  ensureKeepLiveTracksHook();
+
+  const AudioCtx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return null;
+
+  const ctx = new AudioCtx({ sampleRate: 44100 });
+  try {
+    await ctx.resume();
+  } catch {
+    /* ignore */
+  }
+  const dest = ctx.createMediaStreamDestination();
+  const queue: Float32Array[] = [];
+  let queueSamples = 0;
+  const maxQueue = 44100;
+
+  const processor = ctx.createScriptProcessor(2048, 1, 1);
+  processor.onaudioprocess = (ev) => {
+    const out = ev.outputBuffer.getChannelData(0);
+    let offset = 0;
+    let energy = 0;
+    const gain = effectiveMicGain();
+    while (offset < out.length) {
+      const next = queue[0];
+      if (!next) {
+        out.fill(0, offset);
+        break;
+      }
+      const need = out.length - offset;
+      if (next.length <= need) {
+        for (let i = 0; i < next.length; i++) {
+          const raw = next[i] ?? 0;
+          const sample = raw * gain;
+          out[offset + i] = sample;
+          energy += Math.abs(raw);
+        }
+        offset += next.length;
+        queue.shift();
+        queueSamples -= next.length;
+      } else {
+        for (let i = 0; i < need; i++) {
+          const raw = next[i] ?? 0;
+          const sample = raw * gain;
+          out[offset + i] = sample;
+          energy += Math.abs(raw);
+        }
+        queue[0] = next.subarray(need);
+        queueSamples -= need;
+        offset = out.length;
+      }
+    }
+    const rms = energy / Math.max(1, out.length);
+    lastMicLevel = Math.min(1, rms * 6);
+    const now = performance.now();
+    if (rms > 0.028 && !micAudioMuted) {
+      // Voz activa: priorizar micrófono frente al juego (ducking temporal).
+      voiceOpenUntil = now + 420;
+    }
+  };
+  processor.connect(dest);
+  const silent = ctx.createGain();
+  silent.gain.value = 0;
+  processor.connect(silent);
+  silent.connect(ctx.destination);
+
+  const handle = await LiveMedia.addListener('micPcm', (raw) => {
+    const data = raw as ScreenAudioPcmEvent;
+    if (!data?.pcm) return;
+    try {
+      const bin = atob(data.pcm);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const samples = new Float32Array(bytes.length / 2);
+      const view = new DataView(bytes.buffer);
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = view.getInt16(i * 2, true) / 32768;
+      }
+      queue.push(samples);
+      queueSamples += samples.length;
+      while (queueSamples > maxQueue && queue.length > 1) {
+        const dropped = queue.shift();
+        if (dropped) queueSamples -= dropped.length;
+      }
+    } catch {
+      /* drop */
+    }
+  });
+
+  nativeMicHandle = handle;
+  nativeMicCtx = ctx;
+  nativeMicProcessor = processor;
+  nativeMicStream = dest.stream;
+  return dest.stream;
+}
+
+export async function stopNativeMicStream(): Promise<void> {
+  try {
+    await nativeMicHandle?.remove();
+  } catch {
+    /* ignore */
+  }
+  nativeMicHandle = null;
+  try {
+    nativeMicProcessor?.disconnect();
+  } catch {
+    /* ignore */
+  }
+  nativeMicProcessor = null;
+  try {
+    await nativeMicCtx?.close();
+  } catch {
+    /* ignore */
+  }
+  nativeMicCtx = null;
+  try {
+    nativeMicStream?.getTracks().forEach((t) => t.stop());
+  } catch {
+    /* ignore */
+  }
+  nativeMicStream = null;
+}
+
 export async function stopNativeScreenShareStream(): Promise<void> {
   nativeDrawGen += 1;
+  micAudioMuted = false;
+  gameAudioMuted = false;
+  lastMicLevel = 0;
+  lastGameLevel = 0;
+  voiceOpenUntil = 0;
+  await stopNativeOverlayCameraStream();
+  await stopNativeScreenAudioStream();
+  await stopNativeMicStream();
+  lastNativeAudioCapturing = false;
   for (const handle of nativeScreenHandles) {
     try {
       await handle.remove();
@@ -532,6 +1068,26 @@ export async function bindScreenShareChatSend(
   const handle = await LiveMedia.addListener('screenShareChatSend', (raw) => {
     const text = String((raw as { text?: string })?.text || '').trim();
     if (text) handler(text);
+  });
+  return async () => {
+    try {
+      await handle.remove();
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
+/** HUD nativo sobre el juego: mic / audio / salir. */
+export async function bindPresentationHudAction(
+  handler: (action: 'mic' | 'gameAudio' | 'exit') => void,
+): Promise<() => void> {
+  if (!isNativeAndroidApp()) return () => undefined;
+  const handle = await LiveMedia.addListener('presentationHudAction', (raw) => {
+    const action = String((raw as { action?: string })?.action || '');
+    if (action === 'mic' || action === 'gameAudio' || action === 'exit') {
+      handler(action);
+    }
   });
   return async () => {
     try {

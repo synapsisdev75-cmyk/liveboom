@@ -11,6 +11,7 @@ const loaders: Record<string, Loader> = {
   '/tendencias': () => import('../views/TrendsView'),
   '/grupos': () => import('../views/GroupsView'),
   '/crear': () => import('../views/CreateView'),
+  '/espacio-gaming': () => import('../views/GamingSpaceView'),
   '/billetera': () => import('../views/WalletView'),
   '/perfil': () => import('../views/ProfileRedirectView'),
   '/perfil/editar': () => import('../views/ProfileView'),
