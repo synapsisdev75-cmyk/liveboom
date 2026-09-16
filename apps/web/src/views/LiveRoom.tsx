@@ -285,7 +285,7 @@ type LiveLaunchState = {
   mirror?: boolean;
   micOn?: boolean;
   liveCarouselDir?: 1 | -1;
-  /** LIVE iniciado desde Espacio Gaming (móvil). */
+  /** LIVE iniciado desde Espacio Gaming (móvil y tablet Android). */
   gamingSpace?: boolean;
   gamingShareTarget?: 'full_display' | 'single_app';
   gamingDeviceAudioOn?: boolean;
@@ -2852,36 +2852,40 @@ function CreatorStage({
           return;
         }
         endedBackendOkRef.current = true;
-        await battle.stop().catch(() => undefined);
+        await Promise.all([
+          battle.stop().catch(() => undefined),
+          publishRoomData(room, {
+            type: 'live_ended',
+            hostName: displayName || handle || username,
+          }).catch(() => undefined),
+          stopScreenCaptureRef.current().catch(() => undefined),
+        ]);
         onHangupLiveKit?.();
-        await publishRoomData(room, {
-          type: 'live_ended',
-          hostName: displayName || handle || username,
-        }).catch(() => undefined);
-        await stopScreenCaptureRef.current().catch(() => undefined);
         const local = room.localParticipant;
-        for (const pub of [...local.trackPublications.values()]) {
-          const track = pub.track;
-          try {
-            if (track && 'mediaStreamTrack' in track) {
-              track.mediaStreamTrack?.stop();
+        await Promise.all(
+          [...local.trackPublications.values()].map(async (pub) => {
+            const track = pub.track;
+            try {
+              if (track && 'mediaStreamTrack' in track) {
+                track.mediaStreamTrack?.stop();
+              }
+            } catch {
+              /* ignore */
             }
-          } catch {
-            /* ignore */
-          }
-          try {
-            if (track && 'stop' in track && typeof track.stop === 'function') {
-              track.stop();
+            try {
+              if (track && 'stop' in track && typeof track.stop === 'function') {
+                track.stop();
+              }
+            } catch {
+              /* ignore */
             }
-          } catch {
-            /* ignore */
-          }
-          try {
-            if (track) await local.unpublishTrack(track, true);
-          } catch {
-            /* ignore */
-          }
-        }
+            try {
+              if (track) await local.unpublishTrack(track, true);
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
         try {
           cameraTrackRef.current?.mediaStreamTrack?.stop();
           cameraTrackRef.current?.stop();
@@ -3091,11 +3095,13 @@ function CreatorStage({
         }
       };
 
-      await unpublishScreenOnly(screenAudioLive);
-      await unpublishScreenOnly(screenLive);
-      await unpublishScreenOnly(nativeCamLive);
-      await unpublishScreenOnly(nativeMicLive);
-      await unpublishScreenOnly(composite);
+      await Promise.all([
+        unpublishScreenOnly(screenAudioLive),
+        unpublishScreenOnly(screenLive),
+        unpublishScreenOnly(nativeCamLive),
+        unpublishScreenOnly(nativeMicLive),
+        unpublishScreenOnly(composite),
+      ]);
 
       try {
         const extraScreen = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
@@ -3112,31 +3118,13 @@ function CreatorStage({
 
       screenMedia?.stop();
       screenAudio?.stop();
-      try {
-        await stopNativeOverlayCameraStream();
-      } catch {
-        /* ignore */
-      }
-      try {
-        await stopNativeScreenAudioStream();
-      } catch {
-        /* ignore */
-      }
-      try {
-        await stopNativeMicStream();
-      } catch {
-        /* ignore */
-      }
-      try {
-        await stopNativeScreenShareIfAny();
-      } catch {
-        /* ignore */
-      }
-      try {
-        await setNativePresentationOverlaysVisible(false);
-      } catch {
-        /* ignore */
-      }
+      await Promise.all([
+        stopNativeOverlayCameraStream().catch(() => undefined),
+        stopNativeScreenAudioStream().catch(() => undefined),
+        stopNativeMicStream().catch(() => undefined),
+        stopNativeScreenShareIfAny().catch(() => undefined),
+        setNativePresentationOverlaysVisible(false).catch(() => undefined),
+      ]);
 
       // Volver al LIVE limpio: solo cámara (sin banner / preview / HUD nativo).
       setScreenSharing(false);
@@ -3146,17 +3134,17 @@ function CreatorStage({
       setReelNote(null);
 
       if (isNativeAndroidApp()) {
-        await new Promise<void>((r) => window.setTimeout(r, 80));
+        await new Promise<void>((r) => window.setTimeout(r, 40));
         if (hostCamOn) {
           const cameraId = cameraDeviceId || String(launch.cameraId || '');
           const camOpts = cameraId ? { deviceId: cameraId } : { facingMode: facing };
-          for (let attempt = 0; attempt < 3; attempt += 1) {
+          for (let attempt = 0; attempt < 2; attempt += 1) {
             try {
               await room.localParticipant.setCameraEnabled(true, camOpts);
             } catch {
               /* retry */
             }
-            await new Promise<void>((r) => window.setTimeout(r, 180));
+            await new Promise<void>((r) => window.setTimeout(r, 90));
             const pub = room.localParticipant.getTrackPublication(Track.Source.Camera);
             const media =
               pub?.track && 'mediaStreamTrack' in pub.track
@@ -3355,7 +3343,7 @@ function CreatorStage({
     if (!isHost) return;
     const gamingPresent = canPresentGamingInLive(gamingSpaceActive);
     if (!canUseClassicScreenShare() && !gamingPresent) {
-      setReelNote('En móvil usa Espacio Gaming desde Crear');
+      setReelNote('En móvil y tablet usa Espacio Gaming desde Crear');
       return;
     }
     const gate = screenShareGateRef.current;
@@ -3476,10 +3464,10 @@ function CreatorStage({
           ? {
               videoCodec: 'vp8' as const,
               videoEncoding: {
-                maxBitrate: 3_200_000,
-                maxFramerate: 20,
+                maxBitrate: 2_400_000,
+                maxFramerate: 24,
               },
-              degradationPreference: 'maintain-resolution' as const,
+              degradationPreference: 'maintain-framerate' as const,
             }
           : {
               videoEncoding: {

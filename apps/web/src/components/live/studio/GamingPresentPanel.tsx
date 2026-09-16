@@ -37,7 +37,7 @@ export function GamingPresentPanel({
   onStopPresent,
 }: Props) {
   return (
-    <div className="pointer-events-auto absolute inset-x-2 bottom-[max(5.5rem,calc(var(--lb-safe-bottom)+4.5rem))] z-[47] mx-auto flex w-full max-w-[min(100%,22rem)] flex-col gap-2 sm:inset-x-auto sm:left-3 sm:right-auto sm:mx-0">
+    <div className="pointer-events-auto absolute inset-x-2 bottom-[max(5.5rem,calc(var(--lb-safe-bottom)+4.5rem))] z-[47] mx-auto flex w-full max-w-[min(100%,22rem)] flex-col gap-2 sm:inset-x-auto sm:left-3 sm:right-auto sm:mx-0 md:max-w-[min(100%,28rem)] lg:max-w-[min(100%,32rem)]">
       <div className="flex items-center justify-between gap-2 rounded-2xl border border-emerald-400/40 bg-emerald-950/90 px-3 py-2 text-white shadow-lg backdrop-blur-md">
         <div className="min-w-0">
           <p className="text-[11px] font-black uppercase tracking-wide text-emerald-200">

@@ -33,6 +33,8 @@ El documento de producto tipo OBS / RN 0.74 / Rust NAPI-RS queda como **roadmap 
 
 | Superficie | Acción |
 |------------|--------|
-| Crear (Android) | Espacio Gaming |
+| Crear (Android teléfono **y tablet**) | Espacio Gaming |
 | LIVE PC | Compartir pantalla (clásico) |
-| LIVE Android | Sin Pantalla; usar Espacio Gaming |
+| LIVE Android (teléfono y tablet) | Sin Pantalla; usar Espacio Gaming |
+
+> **Paridad móvil:** tablet Android = misma política que teléfono (CTA Crear, sin share clásico, Presentar + HUD + mixer).

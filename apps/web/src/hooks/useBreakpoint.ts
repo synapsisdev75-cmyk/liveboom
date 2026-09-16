@@ -30,7 +30,8 @@ export function useBreakpoint(): Breakpoint {
 
 export function useIsMobile(): boolean {
   const bp = useBreakpoint();
-  return bp === 'phone';
+  // Producto: tablet = móvil (misma lógica que teléfono). Solo desktop queda fuera.
+  return bp === 'phone' || bp === 'tablet';
 }
 
 export function useIsDesktop(): boolean {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Gamepad2, Mic, Monitor, Radio, Volume2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { canUseGamingSpace } from '../lib/liveScreenSharePolicy';
@@ -7,17 +7,29 @@ import { useAuthStore } from '../store/authStore';
 type ShareTarget = 'full_display' | 'single_app';
 
 /**
- * Entrada móvil “Espacio Gaming”.
+ * Entrada móvil/tablet “Espacio Gaming”.
  * Fase 1: wizard de configuración + handoff a Transmitir/LIVE.
  * La captura nativa y overlays se cablean en el LIVE con flag gamingSpace.
+ * Misma lógica en teléfono y tablet Android.
  */
 export function GamingSpaceView() {
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
-  const allowed = canUseGamingSpace();
+  const [allowed, setAllowed] = useState(() => canUseGamingSpace());
   const [shareTarget, setShareTarget] = useState<ShareTarget>('full_display');
   const [micOn, setMicOn] = useState(true);
   const [deviceAudioOn, setDeviceAudioOn] = useState(true);
+
+  useEffect(() => {
+    const refresh = () => setAllowed(canUseGamingSpace());
+    refresh();
+    const iv = window.setInterval(refresh, 350);
+    const stop = window.setTimeout(() => window.clearInterval(iv), 8_000);
+    return () => {
+      window.clearInterval(iv);
+      window.clearTimeout(stop);
+    };
+  }, []);
 
   const canContinue = useMemo(
     () => Boolean(profile) && micOn && deviceAudioOn,
@@ -39,11 +51,12 @@ export function GamingSpaceView() {
 
   if (!allowed) {
     return (
-      <div className="mx-auto flex min-h-[50dvh] w-full max-w-lg flex-col justify-center gap-4 p-6 text-center">
+      <div className="mx-auto flex min-h-[50dvh] w-full max-w-lg flex-col justify-center gap-4 p-6 text-center md:max-w-2xl">
         <Gamepad2 className="mx-auto text-cyan-300" size={36} />
         <h1 className="text-xl font-bold text-white">Espacio Gaming</h1>
         <p className="text-sm text-zinc-400">
-          Disponible en la app Android de LiveBoom. En PC usa Compartir pantalla dentro del LIVE.
+          Disponible en la app Android de LiveBoom (móvil y tablet). En PC usa Compartir pantalla
+          dentro del LIVE.
         </p>
         <button
           type="button"
@@ -71,13 +84,15 @@ export function GamingSpaceView() {
   }
 
   return (
-    <div className="lb-page mx-auto flex min-h-full w-full max-w-lg flex-col gap-5 overflow-x-hidden p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6">
+    <div className="lb-page mx-auto flex min-h-full w-full max-w-lg flex-col gap-5 overflow-x-hidden p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6 md:max-w-2xl lg:max-w-3xl">
       <header className="min-w-0">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/90">Móvil</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-300/90">
+          Móvil y tablet Android
+        </p>
         <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Espacio Gaming</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Transmite tu juego con chat flotante, audio del dispositivo y cámara PiP — sin mezclar
-          con el LIVE de cámara clásico.
+          Transmite tu juego con chat flotante, audio del dispositivo y cámara PiP — misma
+          experiencia en teléfono y tablet.
         </p>
       </header>
 

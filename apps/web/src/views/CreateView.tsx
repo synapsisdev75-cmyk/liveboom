@@ -15,13 +15,26 @@ export function CreateView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
-  const showGamingSpace = canUseGamingSpace();
+  /** Reactivo: tablet Android nativo debe ver el mismo CTA que el teléfono. */
+  const [showGamingSpace, setShowGamingSpace] = useState(() => canUseGamingSpace());
   const [createOpen, setCreateOpen] = useState(false);
   const [ads, setAds] = useState<PromotionAd[]>([]);
   const [myAds, setMyAds] = useState<PromotionAd[]>([]);
   const [regionId, setRegionId] = useState('nacional');
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [myPromotionsOpen, setMyPromotionsOpen] = useState(false);
+
+  useEffect(() => {
+    const refresh = () => setShowGamingSpace(canUseGamingSpace());
+    refresh();
+    // Capacitor / WebView en tablet a veces reporta native unos cientos de ms después.
+    const iv = window.setInterval(refresh, 350);
+    const stop = window.setTimeout(() => window.clearInterval(iv), 8_000);
+    return () => {
+      window.clearInterval(iv);
+      window.clearTimeout(stop);
+    };
+  }, []);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -49,7 +62,7 @@ export function CreateView() {
   }
 
   return (
-    <div className="lb-page lb-create-page mx-auto flex min-h-full w-full max-w-lg flex-col gap-5 overflow-x-hidden rounded-2xl p-4 sm:p-6">
+    <div className="lb-page lb-create-page mx-auto flex min-h-full w-full max-w-lg flex-col gap-5 overflow-x-hidden rounded-2xl p-4 sm:p-6 md:max-w-2xl lg:max-w-3xl">
       <div className="min-w-0">
         <h1 className="lb-create-page__title text-xl font-bold sm:text-2xl">{t('create.title')}</h1>
         <p className="lb-create-page__muted mt-1 text-sm">{t('create.subtitle')}</p>
@@ -75,7 +88,7 @@ export function CreateView() {
         <button
           type="button"
           onClick={() => navigate('/espacio-gaming')}
-          className="lb-create-action lb-create-action--gaming flex min-h-[4.5rem] items-center gap-3 rounded-2xl p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
+          className="lb-create-action lb-create-action--gaming flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
         >
           <span className="lb-create-action__icon grid h-12 w-12 shrink-0 place-items-center rounded-xl">
             <Gamepad2 size={22} />
@@ -83,7 +96,7 @@ export function CreateView() {
           <span className="min-w-0">
             <span className="lb-create-action__title block text-base font-bold">Espacio Gaming</span>
             <span className="lb-create-page__muted mt-0.5 block text-xs">
-              Presenta juegos con chat flotante, audio del dispositivo y cámara PiP.
+              Móvil y tablet Android · presenta juegos con chat flotante, audio y cámara PiP.
             </span>
           </span>
         </button>

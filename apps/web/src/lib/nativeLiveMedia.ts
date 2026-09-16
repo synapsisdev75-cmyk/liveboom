@@ -222,7 +222,31 @@ export function wasNativeScreenAudioCapturing(): boolean {
 }
 
 export function isNativeAndroidApp(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  try {
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (!/Android/i.test(ua)) return false;
+  // WebView de APK (teléfono y tablet): UA suele incluir "; wv)".
+  if (/;\s*wv\)/i.test(ua)) return true;
+  const host = String(window.location.hostname || '');
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  try {
+    const cap = (
+      window as unknown as {
+        Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+      }
+    ).Capacitor;
+    if (cap?.isNativePlatform?.() && cap?.getPlatform?.() === 'android') return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 export async function prepareNativeLiveWebView(): Promise<void> {
@@ -604,8 +628,8 @@ export async function startNativeScreenShareStream(opts?: {
 
   try {
     const started = await LiveMedia.startNativeScreenCapture({
-      maxFps: 20,
-      quality: 72,
+      maxFps: 24,
+      quality: 68,
       allowOverlayCamera: opts?.allowOverlayCamera !== false,
     });
     boundSessionId = Number(started?.sessionId || 0);
@@ -626,7 +650,7 @@ export async function startNativeScreenShareStream(opts?: {
           resolveFirst?.();
           resolveFirst = null;
           resolve();
-        }, 2500);
+        }, 1200);
       }),
     ]);
     // En Android no adjuntar preview DOM (ensucia el LIVE al volver a la app).
