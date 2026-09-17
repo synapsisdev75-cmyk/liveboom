@@ -4048,8 +4048,8 @@ html[data-lb-theme='dark'] .lb-media-fab {
   flex-direction: column;
   align-items: flex-start;
   gap: clamp(0.28rem, 0.7vw, 0.45rem);
-  width: min(48%, 16.5rem);
-  max-width: min(16.5rem, calc(52% - 0.25rem));
+  width: min(58%, 20rem);
+  max-width: min(20rem, calc(62% - 0.25rem));
   min-width: 0;
 }
 
@@ -4240,7 +4240,22 @@ html[data-lb-theme='dark'] .lb-media-fab {
 }
 
 .lb-live-privacy-row.is-under-goal {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+}
+
+.lb-live-candado-gifts {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.lb-live-candado-gifts .lb-live-wish-marquee {
+  mask-image: linear-gradient(90deg, #000 0%, #000 88%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 88%, transparent 100%);
 }
 
 .lb-live-viewer-goal-col .lb-live-privacy-countdown {
@@ -4935,10 +4950,14 @@ html[data-lb-theme='dark'] .lb-media-fab {
     padding-bottom: 0.85rem;
   }
 
-  .lb-live-viewer-goal-col,
+  .lb-live-viewer-goal-col {
+    width: min(58%, 13.5rem);
+    max-width: calc(60% - 0.2rem);
+  }
+
   .lb-live-wishlist-stack {
-    width: min(48%, 11.5rem);
-    max-width: calc(50% - 0.2rem);
+    width: min(40%, 10rem);
+    max-width: calc(42% - 0.2rem);
   }
 
   .lb-live-wish-achieved-slot.is-host {
@@ -4948,9 +4967,12 @@ html[data-lb-theme='dark'] .lb-media-fab {
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
-  .lb-live-viewer-goal-col,
+  .lb-live-viewer-goal-col {
+    width: min(52%, 17rem);
+  }
+
   .lb-live-wishlist-stack {
-    width: min(44%, 14.5rem);
+    width: min(40%, 13rem);
   }
 }
 
@@ -4959,10 +4981,14 @@ html[data-lb-theme='dark'] .lb-media-fab {
     padding: max(0.5rem, env(safe-area-inset-top)) 0.85rem 1.6rem 0.85rem;
   }
 
-  .lb-live-viewer-goal-col,
+  .lb-live-viewer-goal-col {
+    width: min(44%, 20rem);
+    max-width: 20rem;
+  }
+
   .lb-live-wishlist-stack {
-    width: min(38%, 17rem);
-    max-width: 17rem;
+    width: min(34%, 15rem);
+    max-width: 15rem;
   }
 
   .lb-live-wish-achieved-slot.is-host {

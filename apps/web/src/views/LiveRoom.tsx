@@ -347,6 +347,18 @@ function lockTotalCoins(lock: LockInfo | null | undefined): number {
   return Math.max(0, Number(lock.coins) || 0);
 }
 
+function lockGiftIdsOf(lock: LockInfo | null | undefined): string[] {
+  return lockRequirementsOf(lock).map((row) => row.giftId);
+}
+
+function lockGiftQtyOf(lock: LockInfo | null | undefined): Record<string, number> {
+  const qty: Record<string, number> = {};
+  for (const row of lockRequirementsOf(lock)) {
+    qty[row.giftId] = row.quantity;
+  }
+  return qty;
+}
+
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string; combo?: number };
 
 const REEL_SECONDS = 15;
@@ -1372,6 +1384,9 @@ function LiveGoalWishHud({
   onNewGoal,
   lock = null,
   lockOpen = false,
+  lockDraftIds,
+  lockDraftQty,
+  pendingLockReqs = [],
   pendingRequests = [],
   privateStartsAtMs = null,
   nowMs = Date.now(),
@@ -1392,6 +1407,9 @@ function LiveGoalWishHud({
   onNewGoal?: () => void;
   lock?: LockInfo | null;
   lockOpen?: boolean;
+  lockDraftIds?: string[];
+  lockDraftQty?: Record<string, number>;
+  pendingLockReqs?: Array<{ giftId: string; quantity: number }>;
   pendingRequests?: PrivateAccessRequest[];
   privateStartsAtMs?: number | null;
   nowMs?: number;
@@ -1417,6 +1435,34 @@ function LiveGoalWishHud({
           ? 'Solicitud rechazada'
           : undefined;
 
+  const activeLockGifts = lockGiftIdsOf(lock);
+  const activeLockQty = lockGiftQtyOf(lock);
+  const draftIds = (lockDraftIds || []).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
+  const showDraft = Boolean(isHost && !activeLockGifts.length && draftIds.length > 0);
+  const pendingIds = pendingLockReqs.map((row) => row.giftId).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
+  const showPending = Boolean(!activeLockGifts.length && !showDraft && pendingIds.length > 0);
+  const requestedGiftIds = activeLockGifts.length
+    ? activeLockGifts
+    : showDraft
+      ? draftIds
+      : showPending
+        ? pendingIds
+        : [];
+  const requestedGiftQty = activeLockGifts.length
+    ? activeLockQty
+    : showDraft
+      ? Object.fromEntries(
+          draftIds.map((id) => [id, Math.min(99, Math.max(1, Math.floor(lockDraftQty?.[id] || 1)))]),
+        )
+      : showPending
+        ? Object.fromEntries(
+            pendingLockReqs.map((row) => [
+              row.giftId,
+              Math.min(99, Math.max(1, Math.floor(row.quantity || 1))),
+            ]),
+          )
+        : {};
+
   const privacyControls = (
     <div className="lb-live-privacy-row is-under-goal">
       <LivePrivacyLockButton
@@ -1429,6 +1475,11 @@ function LiveGoalWishHud({
           else if (privateActive && !lockOpen) onRequestAccess?.();
         }}
       />
+      {requestedGiftIds.length > 0 ? (
+        <div className="lb-live-candado-gifts" aria-label="Regalos solicitados del candado">
+          <LiveWishCarousel giftIds={requestedGiftIds} quantities={requestedGiftQty} />
+        </div>
+      ) : null}
       {isHost && privateActive ? (
         <LivePrivacyRequestStrip
           requests={pendingRequests}
@@ -1971,6 +2022,9 @@ function CreatorStage({
   const [privateSessionId, setPrivateSessionIdState] = useState<string | null>(null);
   const [privacyNowMs, setPrivacyNowMs] = useState(() => Date.now());
   const [myPrivacyRequest, setMyPrivacyRequest] = useState<PrivateAccessRequest | null>(null);
+  const [pendingLockReqs, setPendingLockReqs] = useState<Array<{ giftId: string; quantity: number }>>(
+    [],
+  );
   const privateActivateOnceRef = useRef<number | null>(null);
   const pendingPrivacyReqsRef = useRef<Array<{ giftId: string; quantity: number }>>([]);
   const [remoteFrameLayout, setRemoteFrameLayout] = useState<LiveFrameLayout>(() =>
@@ -2307,7 +2361,9 @@ function CreatorStage({
     return listenPrivateSchedule(username, (schedule) => {
       setPrivateStartsAtMs(schedule.privateStartsAtMs);
       setPrivateSessionIdState(schedule.privateSessionId);
-      pendingPrivacyReqsRef.current = schedule.privatePendingRequirements || [];
+      const pending = schedule.privatePendingRequirements || [];
+      pendingPrivacyReqsRef.current = pending;
+      setPendingLockReqs(pending);
       if (schedule.privateActivatedAtMs) {
         privateActivateOnceRef.current = schedule.privateActivatedAtMs;
       }
@@ -5227,6 +5283,9 @@ function CreatorStage({
               celebrating={goalCelebrating}
               lock={lock}
               lockOpen={!lock}
+              lockDraftIds={lockPicker || lock ? lockDraftIds : undefined}
+              lockDraftQty={lockDraftQty}
+              pendingLockReqs={pendingLockReqs}
               pendingRequests={privacyRequests}
               privateStartsAtMs={privateStartsAtMs}
               nowMs={privacyNowMs}
@@ -5322,6 +5381,7 @@ function CreatorStage({
               celebrating={goalCelebrating}
               lock={lock}
               lockOpen={lockUnlocked}
+              pendingLockReqs={pendingLockReqs}
               privateStartsAtMs={privateStartsAtMs}
               nowMs={privacyNowMs}
               myRequestStatus={
