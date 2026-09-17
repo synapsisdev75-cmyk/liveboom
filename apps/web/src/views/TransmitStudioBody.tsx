@@ -68,6 +68,8 @@ type Props = {
   displayTitle: string;
   goToPreview: () => void;
   goLive: () => void;
+  lockSummary?: string;
+  onOpenLock?: () => void;
   mirrorPreview: boolean;
   setMirrorPreview: (v: boolean) => void;
   micOnAtStart: boolean;
@@ -340,7 +342,31 @@ export function TransmitStudioBody(props: Props) {
           <Toggle checked={props.allowGifts} onChange={props.setAllowGifts} label="Permitir regalos" />
           <Toggle checked={props.liveChat} onChange={props.setLiveChat} label="Chat en vivo" />
           <Toggle checked={props.followersOnly} onChange={props.setFollowersOnly} label="Solo seguidores" />
+          {props.onOpenLock ? (
+            <button
+              type="button"
+              onClick={props.onOpenLock}
+              className="flex min-h-11 w-full items-center justify-between rounded-lg border border-sky-400/35 bg-sky-500/10 px-3 py-2 text-left"
+            >
+              <span className="text-xs font-semibold text-sky-200">Candado · LIVE privado</span>
+              <span className="max-w-[55%] truncate text-[11px] text-zinc-300">
+                {props.lockSummary || 'Elegir regalos'}
+              </span>
+            </button>
+          ) : null}
         </div>
+      ) : null}
+      {props.onOpenLock ? (
+        <button
+          type="button"
+          onClick={props.onOpenLock}
+          className="flex min-h-11 w-full items-center justify-between rounded-xl border border-sky-400/40 bg-sky-500/10 px-3 py-2.5 text-left"
+        >
+          <span className="text-xs font-bold text-sky-200">Candado · privado</span>
+          <span className="max-w-[58%] truncate text-[11px] text-zinc-300">
+            {props.lockSummary || 'Elige el regalo para el privado'}
+          </span>
+        </button>
       ) : null}
       <button
         type="button"

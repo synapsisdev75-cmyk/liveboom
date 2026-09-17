@@ -36,6 +36,7 @@ import {
   MessageCircle,
   Plus,
   Gamepad2,
+  Unlock,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -404,6 +405,11 @@ type LiveLaunchState = {
   gamingSpace?: boolean;
   gamingShareTarget?: 'full_display' | 'single_app';
   gamingDeviceAudioOn?: boolean;
+  /** Candado elegido en Transmitir: recolección pública hasta el 100%. */
+  privacyLock?: {
+    requirements: Array<{ giftId: string; quantity: number }>;
+    countdownDurationMs: number;
+  };
 };
 
 type LiveSessionStats = {
@@ -583,6 +589,7 @@ export function LiveRoom() {
   const [gateUnlockFlash, setGateUnlockFlash] = useState(false);
   const [gateGiftError, setGateGiftError] = useState<string | null>(null);
   const gateClaimOnceRef = useRef<string | null>(null);
+  const privacyLaunchAppliedRef = useRef(false);
   const setCoins = useAuthStore((state) => state.setCoins);
   const coinsBalance = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
   const [viewerPaused, setViewerPaused] = useState(false);
@@ -1145,6 +1152,24 @@ export function LiveRoom() {
     setLiveStarted(true);
   }, [username, firebaseUid, session?.isHost, launch.goLive, liveStarted]);
 
+  useEffect(() => {
+    if (!isOwnRoom || !liveStarted || !username) return;
+    const reqs = (launch.privacyLock?.requirements || [])
+      .map((row) => ({
+        giftId: String(row.giftId || '').trim(),
+        quantity: Math.min(99, Math.max(1, Math.floor(Number(row.quantity) || 1))),
+      }))
+      .filter((row) => row.giftId)
+      .slice(0, LIVE_LOCK_ACTIVE_MAX);
+    if (!reqs.length || privacyLaunchAppliedRef.current) return;
+    privacyLaunchAppliedRef.current = true;
+    void startPrivateCollecting(username, {
+      sessionId: newPrivateSessionId(),
+      requirements: reqs,
+      countdownDurationMs: Math.max(0, Math.floor(Number(launch.privacyLock?.countdownDurationMs) || 0)),
+    }).catch(() => undefined);
+  }, [isOwnRoom, liveStarted, username, launch.privacyLock]);
+
   if (!ready) {
     return (
       <div className="grid h-[100dvh] place-items-center bg-zinc-950 text-sm text-zinc-400">
@@ -1212,8 +1237,10 @@ export function LiveRoom() {
           <p className="text-4xl" aria-hidden>
             🔒
           </p>
-          <p className="text-lg font-bold text-white">LIVE privado</p>
-          <p className="text-sm text-zinc-300">Completa los regalos para entrar</p>
+          <p className="text-lg font-bold text-white">El creador está en sala privada</p>
+          <p className="text-sm text-zinc-300">
+            Si deseas entrar, envía el regalo solicitado. Esa opción no se cierra.
+          </p>
           <div className="max-h-[45dvh] space-y-2 overflow-y-auto text-left">
             {rows.map((row) => {
               const done = row.receivedQuantity >= row.requiredQuantity;
@@ -1479,7 +1506,6 @@ function LiveGoalWishHud({
   celebrating = false,
   onNewGoal,
   lock = null,
-  lockOpen = false,
   lockDraftIds,
   lockDraftQty,
   pendingLockReqs = [],
@@ -1492,7 +1518,8 @@ function LiveGoalWishHud({
   onLockClick,
   onRequestClick,
   onOverflowClick,
-  myRequestStatus = null,
+  onReopenPublic,
+  reopenBusy = false,
 }: {
   username: string;
   goal: LiveCoinGoalInfo | null;
@@ -1504,7 +1531,6 @@ function LiveGoalWishHud({
   celebrating?: boolean;
   onNewGoal?: () => void;
   lock?: LockInfo | null;
-  lockOpen?: boolean;
   lockDraftIds?: string[];
   lockDraftQty?: Record<string, number>;
   pendingLockReqs?: Array<{ giftId: string; quantity: number }>;
@@ -1517,7 +1543,8 @@ function LiveGoalWishHud({
   onLockClick?: () => void;
   onRequestClick?: (row: PrivateAccessRequest) => void;
   onOverflowClick?: () => void;
-  myRequestStatus?: PrivateAccessRequest['status'] | null;
+  onReopenPublic?: () => void;
+  reopenBusy?: boolean;
 }) {
   const preparingPrivate = privatePhase === 'collecting' || privatePhase === 'countdown';
   const privateActive = Boolean(lock) || preparingPrivate;
@@ -1528,12 +1555,12 @@ function LiveGoalWishHud({
       ? ' · Meta cumplida ✓'
       : '';
   const viewerLabel =
-    privateActive && lockOpen
-      ? 'Privado desbloqueado'
-      : privateActive && myRequestStatus === 'pending'
-        ? 'Solicitud pendiente'
-        : privateActive && myRequestStatus === 'rejected'
-          ? 'Solicitud rechazada'
+    privatePhase === 'collecting'
+      ? 'Candado abierto: envía el regalo para el privado'
+      : privatePhase === 'countdown'
+        ? 'Candado cerrado: el LIVE pasará a privado'
+        : lock
+          ? 'El creador está en sala privada'
           : undefined;
 
   const activeLockGifts = lockGiftIdsOf(lock);
@@ -1580,7 +1607,7 @@ function LiveGoalWishHud({
     <div className="lb-live-privacy-row is-under-goal">
       <LivePrivacyLockButton
         privateActive={privateActive}
-        unlocked={lockOpen && !preparingPrivate}
+        phase={privatePhase || (lock ? 'private' : null)}
         interactive={Boolean(isHost)}
         label={viewerLabel}
         pulse={lockPulse}
@@ -1639,6 +1666,17 @@ function LiveGoalWishHud({
           requirements={privateRequirements}
           isHost={isHost}
         />
+        {isHost && privateActive && onReopenPublic ? (
+          <button
+            type="button"
+            disabled={reopenBusy}
+            onClick={onReopenPublic}
+            className="lb-live-reopen-public"
+          >
+            <Unlock size={14} aria-hidden />
+            <span>{reopenBusy ? 'Reabriendo…' : 'Volver a público'}</span>
+          </button>
+        ) : null}
       </div>
       <div className="lb-live-wishlist-stack">
         {wishlist.length > 0 ? (
@@ -2134,7 +2172,7 @@ function CreatorStage({
   const gamingStatsPrevRef = useRef<{ bytes: number; ts: number } | null>(null);
   const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
   const [lock, setLock] = useState<LockInfo | null>(null);
-  const [lockUnlocked, setLockUnlocked] = useState(false);
+  const [, setLockUnlocked] = useState(false);
   const [privacyRequests, setPrivacyRequests] = useState<PrivateAccessRequest[]>([]);
   const [privacyRequestsOpen, setPrivacyRequestsOpen] = useState(false);
   const [privacyFocusUid, setPrivacyFocusUid] = useState<string | null>(null);
@@ -3315,7 +3353,7 @@ function CreatorStage({
       await publishRoomData(room, { type: 'lock', lock: next });
       setInviteNote(
         next
-          ? 'LIVE privado activo. Quien complete los regalos entra automáticamente.'
+          ? 'Sala privada activa. Quien envíe el regalo solicitado puede entrar siempre.'
           : 'Candado quitado. Live reabierto al público.',
       );
     } catch (err) {
@@ -3455,9 +3493,7 @@ function CreatorStage({
     if (!isHost) return;
     setPrivacyBusyUid(uid);
     try {
-      await setPrivateRequestStatus(username, uid, 'rejected', {
-        retryAllowedAtMs: Date.now() + 60_000,
-      });
+      await setPrivateRequestStatus(username, uid, 'rejected');
       setPrivacyFocusUid(null);
     } finally {
       setPrivacyBusyUid(null);
@@ -5525,7 +5561,6 @@ function CreatorStage({
               isHost
               celebrating={goalCelebrating}
               lock={lock}
-              lockOpen={!lock}
               lockDraftIds={lockPicker || lock || privatePhase ? lockDraftIds : undefined}
               lockDraftQty={lockDraftQty}
               pendingLockReqs={pendingLockReqs}
@@ -5536,11 +5571,6 @@ function CreatorStage({
               nowMs={privacyNowMs}
               lockPulse={lockPulse}
               onLockClick={() => {
-                if (lock && privacyRequests.length > 0) {
-                  setPrivacyFocusUid(null);
-                  setPrivacyRequestsOpen(true);
-                  return;
-                }
                 openLockPicker();
               }}
               onRequestClick={(row) => {
@@ -5555,6 +5585,8 @@ function CreatorStage({
                 setNewCoinGoalError(null);
                 setNewCoinGoalOpen(true);
               }}
+              onReopenPublic={() => void setLiveLock(null)}
+              reopenBusy={lockBusy}
             />
           </div>
           </>
@@ -5626,7 +5658,6 @@ function CreatorStage({
               leaving={wishAchievedLeaving}
               celebrating={goalCelebrating}
               lock={lock}
-              lockOpen={lockUnlocked}
               pendingLockReqs={pendingLockReqs}
               privatePhase={privatePhase}
               privateRequirements={privateRequirements}

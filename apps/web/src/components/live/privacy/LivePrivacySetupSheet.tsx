@@ -62,8 +62,9 @@ export function LivePrivacySetupSheet({
           </button>
         </div>
         <p className="lb-live-privacy-setup__hint">
-          El LIVE sigue público mientras se reúnen los regalos en conjunto. El contador solo arranca al
-          100%. Quienes aporten un regalo válido quedan clasificados para el privado.
+          Elige el regalo del privado. El candado queda abierto (azul) hasta completar esos regalos;
+          entonces se cierra (rojo) y corre el tiempo para ir a sala privada. Quien envíe el regalo
+          puede entrar siempre.
         </p>
         <p className="lb-live-privacy-setup__section">1. Regalos a reunir (máx. {maxGifts})</p>
         <div className="lb-live-privacy-setup__gifts">

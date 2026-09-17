@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react';
+import { Lock, Unlock } from 'lucide-react';
 import {
   formatCountdown,
   type PrivateGiftRequirementProgress,
@@ -29,8 +29,8 @@ export function LivePrivacyCountdown({
     return (
       <div className="lb-live-privacy-countdown is-collecting" role="status">
         <p className="lb-live-privacy-countdown__title">
-          <Lock size={12} aria-hidden />
-          Preparando LIVE privado
+          <Unlock size={12} aria-hidden />
+          Candado abierto · reuniendo regalos
         </p>
         {incomplete.length > 0 ? (
           <ul className="lb-live-privacy-countdown__reqs">
@@ -59,10 +59,10 @@ export function LivePrivacyCountdown({
       <div className="lb-live-privacy-countdown is-countdown" role="status">
         <p className="lb-live-privacy-countdown__title">
           <Lock size={12} aria-hidden />
-          ✓ Requisitos completados
+          Candado cerrado · yendo a privado
         </p>
         <p className="lb-live-privacy-countdown__timer">
-          Este LIVE será privado en {formatCountdown(remaining)}
+          El LIVE será privado en {formatCountdown(remaining)}
         </p>
       </div>
     );

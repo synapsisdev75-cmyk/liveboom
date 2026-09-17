@@ -108,6 +108,18 @@ export function canManagePrivateAccess(role: 'host' | 'moderator' | 'viewer'): b
   return role === 'host' || role === 'moderator';
 }
 
+/** HUD del candado: abierto azul en recolección; cerrado rojo al 100% / privado. */
+export type PrivacyLockAppearance = 'public' | 'collecting' | 'sealed';
+
+export function privacyLockAppearance(
+  phase: PrivateLivePhase | null,
+  lockActive: boolean,
+): PrivacyLockAppearance {
+  if (phase === 'collecting') return 'collecting';
+  if (phase === 'countdown' || phase === 'private' || lockActive) return 'sealed';
+  return 'public';
+}
+
 /** Activa fase collecting: LIVE sigue público; NO crea privateStartsAtMs. */
 export async function startPrivateCollecting(
   roomName: string,
@@ -661,12 +673,8 @@ export async function requestPrivateAccess(
     if (data.status === 'approved' && data.sessionId === viewer.sessionId) {
       return { ok: true, duplicate: true };
     }
-    if (
-      data.status === 'rejected' &&
-      data.sessionId === viewer.sessionId &&
-      Number(data.retryAllowedAtMs || 0) > Date.now()
-    ) {
-      return { ok: false, error: 'Solicitud rechazada. Espera para volver a pedir acceso.' };
+    if (data.status === 'rejected' && data.sessionId === viewer.sessionId) {
+      /* El privado nunca se cierra: quien envíe el regalo puede entrar. */
     }
   }
   const now = Date.now();

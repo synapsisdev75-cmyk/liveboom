@@ -4245,6 +4245,38 @@ html[data-lb-theme='dark'] .lb-media-fab {
   max-width: 100%;
 }
 
+.lb-live-reopen-public {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: clamp(0.72rem, 0.66rem + 0.28vw, 0.82rem);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+.lb-live-reopen-public:hover,
+.lb-live-reopen-public:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(125, 211, 252, 0.45);
+  color: #fff;
+}
+
+.lb-live-reopen-public:disabled {
+  opacity: 0.55;
+}
+
 .lb-live-candado-gifts {
   flex: 1 1 auto;
   min-width: 0;
@@ -4280,23 +4312,24 @@ html[data-lb-theme='dark'] .lb-media-fab {
   backdrop-filter: blur(8px);
 }
 
-.lb-live-privacy-lock.is-public.is-open,
-.lb-live-privacy-lock.is-unlocked {
-  border-color: rgba(74, 222, 128, 0.5);
-  background: rgba(6, 46, 28, 0.72);
-  color: #bbf7d0;
+.lb-live-privacy-lock.is-public.is-open {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(12, 12, 18, 0.72);
+  color: #e4e4e7;
 }
 
-.lb-live-privacy-lock.is-private.is-closed {
-  border-color: rgba(251, 191, 36, 0.55);
-  background: rgba(69, 40, 8, 0.78);
-  color: #fde68a;
+/* Abierto azul: aún faltan los regalos del candado. */
+.lb-live-privacy-lock.is-collecting {
+  border-color: rgba(56, 189, 248, 0.75);
+  background: rgba(8, 47, 73, 0.88);
+  color: #38bdf8;
 }
 
-.lb-live-privacy-lock.is-private.is-open {
-  border-color: rgba(74, 222, 128, 0.5);
-  background: rgba(6, 46, 28, 0.78);
-  color: #bbf7d0;
+/* Cerrado rojo: regalos al 100% / countdown / sala privada. */
+.lb-live-privacy-lock.is-sealed {
+  border-color: rgba(248, 113, 113, 0.8);
+  background: rgba(69, 10, 10, 0.88);
+  color: #f87171;
 }
 
 .lb-live-privacy-lock.is-interactive {

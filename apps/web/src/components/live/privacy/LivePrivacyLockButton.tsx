@@ -1,8 +1,12 @@
 import { Lock, Unlock } from 'lucide-react';
+import {
+  privacyLockAppearance,
+  type PrivateLivePhase,
+} from '../../../lib/livePrivateAccessFirestore';
 
 type Props = {
   privateActive: boolean;
-  unlocked?: boolean;
+  phase?: PrivateLivePhase | null;
   interactive?: boolean;
   /** Solo para accesibilidad; no se muestra en pantalla. */
   label?: string;
@@ -13,35 +17,33 @@ type Props = {
 
 /**
  * Candado icon-only (debajo/al lado de Deseos).
- * Abierto mientras el LIVE es público o el viewer ya cumplió los regalos.
- * Cerrado cuando el LIVE es privado y aún faltan los regalos del candado.
+ * Abierto azul mientras se reúnen los regalos; cerrado rojo al 100% y en privado.
  */
 export function LivePrivacyLockButton({
   privateActive,
-  unlocked = false,
+  phase = null,
   interactive = false,
   label,
   pulse = false,
   onClick,
 }: Props) {
-  const open = !privateActive || unlocked;
+  const appearance = privacyLockAppearance(phase, privateActive);
+  const open = appearance !== 'sealed';
   const aria =
     label ||
-    (open && privateActive
-      ? 'Privado desbloqueado'
-      : privateActive
-        ? 'LIVE privado'
+    (appearance === 'collecting'
+      ? 'Candado abierto: reuniendo regalos para el privado'
+      : appearance === 'sealed'
+        ? 'Candado cerrado: LIVE privado'
         : 'LIVE público');
   return (
     <button
       type="button"
       disabled={!interactive}
       onClick={onClick}
-      className={`lb-live-privacy-lock${privateActive ? ' is-private' : ' is-public'}${
-        open ? ' is-open' : ' is-closed'
-      }${unlocked ? ' is-unlocked' : ''}${interactive ? ' is-interactive' : ''}${
-        pulse ? ' is-pulse' : ''
-      }`}
+      className={`lb-live-privacy-lock is-${appearance}${open ? ' is-open' : ' is-closed'}${
+        interactive ? ' is-interactive' : ''
+      }${pulse ? ' is-pulse' : ''}`}
       aria-label={aria}
       title={aria}
     >
