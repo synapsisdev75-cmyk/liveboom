@@ -4,12 +4,13 @@ type Props = {
   privateActive: boolean;
   unlocked?: boolean;
   interactive?: boolean;
+  /** Solo para accesibilidad; no se muestra en pantalla. */
   label?: string;
   onClick?: () => void;
 };
 
 /**
- * Candado ancla (debajo de Deseos).
+ * Candado icon-only (debajo/al lado de Deseos).
  * Abierto mientras el LIVE es público o el viewer ya cumplió los regalos.
  * Cerrado cuando el LIVE es privado y aún faltan los regalos del candado.
  */
@@ -21,7 +22,7 @@ export function LivePrivacyLockButton({
   onClick,
 }: Props) {
   const open = !privateActive || unlocked;
-  const text =
+  const aria =
     label ||
     (open && privateActive
       ? 'Privado desbloqueado'
@@ -36,12 +37,12 @@ export function LivePrivacyLockButton({
       className={`lb-live-privacy-lock${privateActive ? ' is-private' : ' is-public'}${
         open ? ' is-open' : ' is-closed'
       }${unlocked ? ' is-unlocked' : ''}${interactive ? ' is-interactive' : ''}`}
-      aria-label={text}
+      aria-label={aria}
+      title={aria}
     >
       <span className="lb-live-privacy-lock__icon" aria-hidden>
         {open ? <Unlock size={18} /> : <Lock size={18} />}
       </span>
-      <span className="lb-live-privacy-lock__label">{text}</span>
     </button>
   );
 }

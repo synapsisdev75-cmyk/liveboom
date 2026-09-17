@@ -4225,15 +4225,14 @@ html[data-lb-theme='dark'] .lb-media-fab {
 }
 
 .lb-live-privacy-lock {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  place-items: center;
   flex: 0 0 auto;
-  width: clamp(2.55rem, 2.25rem + 1.1vw, 3rem);
-  min-height: clamp(2.55rem, 2.25rem + 1.1vw, 3rem);
-  padding: 0.26rem 0.18rem 0.2rem;
-  border-radius: 0.7rem;
+  width: clamp(2.1rem, 1.9rem + 0.9vw, 2.45rem);
+  height: clamp(2.1rem, 1.9rem + 0.9vw, 2.45rem);
+  min-height: clamp(2.1rem, 1.9rem + 0.9vw, 2.45rem);
+  padding: 0;
+  border-radius: 0.65rem;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(12, 12, 18, 0.72);
   color: #f4f4f5;
@@ -4275,14 +4274,27 @@ html[data-lb-theme='dark'] .lb-media-fab {
   line-height: 0;
 }
 
-.lb-live-privacy-lock__label {
-  margin-top: 0.18rem;
-  max-width: 100%;
-  font-size: clamp(0.48rem, 0.42rem + 0.28vw, 0.58rem);
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-  white-space: nowrap;
+.lb-live-wishlist__gifts-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  margin-top: clamp(0.18rem, 0.5vw, 0.35rem);
+}
+
+.lb-live-wishlist__gifts-row .lb-live-wishlist__gifts {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.lb-live-privacy-row.is-inline {
+  margin-top: 0;
+  margin-left: 0;
+  flex: 0 0 auto;
 }
 
 .lb-live-privacy-strip {

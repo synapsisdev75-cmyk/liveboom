@@ -1449,31 +1449,53 @@ function LiveGoalWishHud({
               <Gift size={12} />
               <span>Deseos @{handle}</span>
             </p>
-            <div className="lb-live-wishlist__gifts">
-              <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
+            <div className="lb-live-wishlist__gifts-row">
+              <div className="lb-live-wishlist__gifts">
+                <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
+              </div>
+              <div className="lb-live-privacy-row is-inline">
+                <LivePrivacyLockButton
+                  privateActive={privateActive}
+                  unlocked={lockOpen}
+                  interactive={Boolean(isHost || (privateActive && !lockOpen && onRequestAccess))}
+                  label={viewerLabel}
+                  onClick={() => {
+                    if (isHost) onLockClick?.();
+                    else if (privateActive && !lockOpen) onRequestAccess?.();
+                  }}
+                />
+                {isHost && privateActive ? (
+                  <LivePrivacyRequestStrip
+                    requests={pendingRequests}
+                    onSelect={onRequestClick}
+                    onOverflow={onOverflowClick}
+                  />
+                ) : null}
+              </div>
             </div>
           </div>
-        ) : null}
-        <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
-        <div className="lb-live-privacy-row">
-          <LivePrivacyLockButton
-            privateActive={privateActive}
-            unlocked={lockOpen}
-            interactive={Boolean(isHost || (privateActive && !lockOpen && onRequestAccess))}
-            label={viewerLabel}
-            onClick={() => {
-              if (isHost) onLockClick?.();
-              else if (privateActive && !lockOpen) onRequestAccess?.();
-            }}
-          />
-          {isHost && privateActive ? (
-            <LivePrivacyRequestStrip
-              requests={pendingRequests}
-              onSelect={onRequestClick}
-              onOverflow={onOverflowClick}
+        ) : (
+          <div className="lb-live-privacy-row">
+            <LivePrivacyLockButton
+              privateActive={privateActive}
+              unlocked={lockOpen}
+              interactive={Boolean(isHost || (privateActive && !lockOpen && onRequestAccess))}
+              label={viewerLabel}
+              onClick={() => {
+                if (isHost) onLockClick?.();
+                else if (privateActive && !lockOpen) onRequestAccess?.();
+              }}
             />
-          ) : null}
-        </div>
+            {isHost && privateActive ? (
+              <LivePrivacyRequestStrip
+                requests={pendingRequests}
+                onSelect={onRequestClick}
+                onOverflow={onOverflowClick}
+              />
+            ) : null}
+          </div>
+        )}
+        <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
         <LivePrivacyCountdown privateStartsAtMs={privateStartsAtMs} nowMs={nowMs} />
       </div>
     </div>
