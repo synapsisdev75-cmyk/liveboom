@@ -52,16 +52,16 @@ import {
 } from '../components/live/privacy';
 import {
   applyPrivateCollectingGift,
+  applyPrivateViewerGiftProgress,
   clearPrivateSchedule,
   grantPrivateAccess,
   listenMyPrivateGrant,
-  listenMyPrivateRequest,
   listenPendingPrivateRequests,
   listenPrivateSchedule,
+  listenPrivateViewerProgress,
   markPrivateActivated,
+  mergeViewerRequirementProgress,
   newPrivateSessionId,
-  readPrivateSessionId,
-  requestPrivateAccess,
   startPrivateCollecting,
   setPrivateRequestStatus,
   type PrivateAccessRequest,
@@ -574,8 +574,17 @@ export function LiveRoom() {
   const [liveKitConnect, setLiveKitConnect] = useState(true);
   const [isPrivate, setIsPrivate] = useState(Boolean(launch.isPrivate));
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
-  const [gateRequestBusy, setGateRequestBusy] = useState(false);
-  const [gateRequestNote, setGateRequestNote] = useState<string | null>(null);
+  const [gateSessionId, setGateSessionId] = useState<string | null>(null);
+  const [gateRequirements, setGateRequirements] = useState<PrivateGiftRequirementProgress[] | null>(
+    null,
+  );
+  const [gateProgress, setGateProgress] = useState<Record<string, number>>({});
+  const [gateSendingGiftId, setGateSendingGiftId] = useState<string | null>(null);
+  const [gateUnlockFlash, setGateUnlockFlash] = useState(false);
+  const [gateGiftError, setGateGiftError] = useState<string | null>(null);
+  const gateClaimOnceRef = useRef<string | null>(null);
+  const setCoins = useAuthStore((state) => state.setCoins);
+  const coinsBalance = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
   const [viewerPaused, setViewerPaused] = useState(false);
   const gateLockRef = useRef<LockInfo | null>(null);
   gateLockRef.current = gateLock;
@@ -932,32 +941,132 @@ export function LiveRoom() {
     };
   }, [username, handle, isOwnRoom]);
 
-  async function requestAccessFromGate() {
-    if (!username || !firebaseUid) return;
-    setGateRequestBusy(true);
-    setGateRequestNote(null);
+  async function claimPrivateAccessFromGrant(sessionKey?: string | null) {
+    if (!username || !firebaseUid) return false;
+    const key = sessionKey || gateSessionId || 'grant';
+    if (gateClaimOnceRef.current === key) return true;
+    gateClaimOnceRef.current = key;
     try {
-      const sessionId =
-        (await readPrivateSessionId(username).catch(() => null)) || newPrivateSessionId();
-      const profile = useAuthStore.getState().profile;
-      const result = await requestPrivateAccess(username, {
-        uid: firebaseUid,
-        username: handle || firebaseUid,
-        displayName: profile?.displayName || handle || 'Liveboomer',
-        avatarUrl: profile?.avatarUrl || null,
-        sessionId,
+      await api('/api/stream/claim-access', {
+        method: 'POST',
+        body: JSON.stringify({ roomName: username, handle }),
       });
-      if (!result.ok) {
-        setGateRequestNote(result.error);
-        return;
-      }
-      setGateRequestNote(result.duplicate ? 'Solicitud enviada' : 'Solicitud enviada al anfitrión');
+      setGateLock(null);
+      setViewerPaused(false);
+      setGateUnlockFlash(true);
+      window.setTimeout(() => setGateUnlockFlash(false), 1200);
+      await fetchToken();
+      return true;
     } catch (err) {
-      setGateRequestNote(err instanceof Error ? err.message : 'No se pudo solicitar acceso');
-    } finally {
-      setGateRequestBusy(false);
+      gateClaimOnceRef.current = null;
+      setGateGiftError(err instanceof Error ? err.message : 'No se pudo entrar al privado');
+      return false;
     }
   }
+
+  async function sendGateLockGift(giftId: string, multiplier: 1 | 2 | 4 | 8 = 1) {
+    if (!username || !firebaseUid || !profile || gateSendingGiftId) return;
+    const catalog = findLiveGift(giftId);
+    if (!catalog) return;
+    const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
+    const totalCoins = catalog.coins * mult;
+    if (coinsBalance < totalCoins) {
+      setGateGiftError('Saldo insuficiente. Recarga coins para continuar.');
+      return;
+    }
+    setGateGiftError(null);
+    setGateSendingGiftId(giftId);
+    const clientId = `gate-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const previous = coinsBalance;
+    try {
+      const result = await sendLiveboomGift({
+        giftId: catalog.id,
+        senderUid: firebaseUid,
+        senderName: profile.displayName || profile.handle || 'Liveboomer',
+        senderBalance: previous,
+        recipientUsername: username,
+        clientId,
+        roomName: username,
+        multiplier: mult,
+      });
+      setCoins(result.senderBalance);
+      void setFirestoreCoins(firebaseUid, result.senderBalance).catch(() => undefined);
+      void publishLiveGift(username, {
+        clientId,
+        giftId: catalog.id,
+        giftName: catalog.name,
+        emoji: catalog.emoji,
+        senderName: profile.displayName || profile.handle || 'Liveboomer',
+        senderUid: firebaseUid,
+        coins: totalCoins,
+        multiplier: mult,
+      }).catch(() => undefined);
+
+      void applyPrivateCollectingGift(username, {
+        giftId: catalog.id,
+        units: liveWishGiftUnits(mult),
+        clientId,
+        viewerUid: firebaseUid,
+      }).catch(() => undefined);
+
+      const progressResult = await applyPrivateViewerGiftProgress(username, {
+        giftId: catalog.id,
+        units: liveWishGiftUnits(mult),
+        clientId,
+        viewerUid: firebaseUid,
+      });
+      if (progressResult?.progress) {
+        setGateProgress(progressResult.progress);
+      }
+      if (progressResult?.requirements) {
+        setGateRequirements(progressResult.requirements);
+      }
+      if (progressResult?.accessGranted) {
+        await claimPrivateAccessFromGrant(gateSessionId);
+      }
+    } catch (err) {
+      setCoins(previous);
+      setGateGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
+    } finally {
+      setGateSendingGiftId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!gateLock || !username) return;
+    return listenPrivateSchedule(username, (schedule) => {
+      setGateSessionId(schedule.privateSessionId);
+      if (schedule.privateRequirements?.length) {
+        setGateRequirements(schedule.privateRequirements);
+      } else if (schedule.privatePendingRequirements?.length) {
+        setGateRequirements(
+          schedule.privatePendingRequirements.map((row) => ({
+            giftId: row.giftId,
+            requiredQuantity: row.quantity,
+            receivedQuantity: 0,
+          })),
+        );
+      }
+    });
+  }, [gateLock, username]);
+
+  useEffect(() => {
+    if (!gateLock || !username || !firebaseUid || !gateSessionId) return;
+    return listenPrivateViewerProgress(username, firebaseUid, gateSessionId, (state) => {
+      setGateProgress(state?.progress || {});
+      if (state?.accessGranted) {
+        void claimPrivateAccessFromGrant(gateSessionId);
+      }
+    });
+  }, [gateLock, username, firebaseUid, gateSessionId]);
+
+  useEffect(() => {
+    if (gateLock) return;
+    gateClaimOnceRef.current = null;
+    setGateGiftError(null);
+    setGateSendingGiftId(null);
+  }, [gateLock]);
+
   useEffect(() => {
     return () => {
       // No interpretar desmontaje temporal / cambio de actividad como Finalizar.
@@ -1071,56 +1180,87 @@ export function LiveRoom() {
     );
   }
   if (gateLock) {
-    const reqs = lockRequirementsOf(gateLock);
+    const fallbackReqs = lockRequirementsOf(gateLock).map((row) => ({
+      giftId: row.giftId,
+      requiredQuantity: row.quantity,
+      receivedQuantity: 0,
+      giftName: row.giftName,
+      emoji: row.emoji,
+    }));
+    const merged = mergeViewerRequirementProgress(
+      gateRequirements?.length
+        ? gateRequirements
+        : fallbackReqs.map((row) => ({
+            giftId: row.giftId,
+            requiredQuantity: row.requiredQuantity,
+            receivedQuantity: 0,
+          })),
+      gateProgress,
+    );
+    const rows = merged.map((row) => {
+      const fallback = fallbackReqs.find((item) => item.giftId === row.giftId);
+      const gift = findLiveGift(row.giftId);
+      return {
+        ...row,
+        giftName: gift?.name || fallback?.giftName || row.giftId,
+        emoji: gift?.emoji || fallback?.emoji || '🎁',
+      };
+    });
     return (
       <div className="grid h-[100dvh] place-items-center bg-zinc-950 px-4 text-center">
         <div className="w-full max-w-sm space-y-4 rounded-3xl border border-amber-400/30 bg-zinc-900 p-5 shadow-2xl">
           <p className="text-4xl" aria-hidden>
             🔒
           </p>
-          <p className="text-lg font-bold text-white">Candado · LIVE privado</p>
-          <p className="text-sm text-zinc-300">
-            Este LIVE ahora es privado
-            {username ? (
-              <>
-                {' '}
-                (<strong className="text-amber-300">@{username}</strong>).
-              </>
-            ) : (
-              '.'
-            )}
-          </p>
-          <p className="text-xs text-zinc-400">
-            El acceso para esta sesión ya cerró. Puedes pedir acceso al anfitrión.
-          </p>
-          <div className="max-h-[40dvh] space-y-1.5 overflow-y-auto text-left">
-            {reqs.map((row) => (
-              <div
-                key={row.giftId}
-                className="flex items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-black/35 px-3 py-2"
-              >
-                <span className="inline-flex min-w-0 items-center gap-2 text-sm text-white">
-                  <GiftIcon giftId={row.giftId} size={22} />
-                  <span className="truncate">
-                    {row.giftName}
-                    {row.quantity > 1 ? (
-                      <span className="ml-1 text-amber-300">×{row.quantity}</span>
+          <p className="text-lg font-bold text-white">LIVE privado</p>
+          <p className="text-sm text-zinc-300">Completa los regalos para entrar</p>
+          <div className="max-h-[45dvh] space-y-2 overflow-y-auto text-left">
+            {rows.map((row) => {
+              const done = row.receivedQuantity >= row.requiredQuantity;
+              const missing = Math.max(0, row.requiredQuantity - row.receivedQuantity);
+              return (
+                <div
+                  key={row.giftId}
+                  className="rounded-xl border border-amber-400/20 bg-black/35 px-3 py-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex min-w-0 items-center gap-2 text-sm text-white">
+                      <GiftIcon giftId={row.giftId} size={22} />
+                      <span className="truncate">
+                        {row.giftName}{' '}
+                        <span className={done ? 'text-emerald-300' : 'text-amber-200'}>
+                          {row.receivedQuantity}/{row.requiredQuantity}
+                          {done ? ' ✓' : ''}
+                        </span>
+                      </span>
+                    </span>
+                    {!done ? (
+                      <button
+                        type="button"
+                        disabled={Boolean(gateSendingGiftId)}
+                        onClick={() => void sendGateLockGift(row.giftId, 1)}
+                        className="min-h-11 shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 px-3 py-2 text-[11px] font-bold text-zinc-950 disabled:opacity-60"
+                      >
+                        {gateSendingGiftId === row.giftId
+                          ? 'Enviando…'
+                          : `Enviar ${row.giftName}`}
+                      </button>
                     ) : null}
-                  </span>
-                </span>
-              </div>
-            ))}
+                  </div>
+                  {!done ? (
+                    <p className="mt-1 text-[11px] text-zinc-400">
+                      Falta {missing} {row.giftName}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
+          {gateGiftError ? <p className="text-sm text-fuchsia-400">{gateGiftError}</p> : null}
           {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
-          {gateRequestNote ? <p className="text-sm text-amber-200">{gateRequestNote}</p> : null}
-          <button
-            type="button"
-            disabled={gateRequestBusy}
-            onClick={() => void requestAccessFromGate()}
-            className="min-h-11 w-full rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 py-3 text-sm font-bold text-zinc-950 disabled:opacity-60"
-          >
-            {gateRequestBusy ? 'Enviando…' : 'Pedir acceso al anfitrión'}
-          </button>
+          {gateUnlockFlash ? (
+            <p className="text-sm font-semibold text-emerald-300">✓ Privado desbloqueado</p>
+          ) : null}
           <Link to="/" className="block min-h-11 py-2 text-xs text-cyan-400">
             Volver al inicio
           </Link>
@@ -1348,12 +1488,10 @@ function LiveGoalWishHud({
   privateRequirements = null,
   privateStartsAtMs = null,
   nowMs = Date.now(),
-  viewerQualified = false,
   lockPulse = false,
   onLockClick,
   onRequestClick,
   onOverflowClick,
-  onRequestAccess,
   myRequestStatus = null,
 }: {
   username: string;
@@ -1375,12 +1513,10 @@ function LiveGoalWishHud({
   privateRequirements?: PrivateGiftRequirementProgress[] | null;
   privateStartsAtMs?: number | null;
   nowMs?: number;
-  viewerQualified?: boolean;
   lockPulse?: boolean;
   onLockClick?: () => void;
   onRequestClick?: (row: PrivateAccessRequest) => void;
   onOverflowClick?: () => void;
-  onRequestAccess?: () => void;
   myRequestStatus?: PrivateAccessRequest['status'] | null;
 }) {
   const preparingPrivate = privatePhase === 'collecting' || privatePhase === 'countdown';
@@ -1394,15 +1530,11 @@ function LiveGoalWishHud({
   const viewerLabel =
     privateActive && lockOpen
       ? 'Privado desbloqueado'
-      : privatePhase === 'countdown' && viewerQualified
-        ? 'Acceso asegurado'
-        : privatePhase === 'countdown' && !isHost
-          ? 'Acceso cerrado'
-          : privateActive && myRequestStatus === 'pending'
-            ? 'Solicitud pendiente'
-            : privateActive && myRequestStatus === 'rejected'
-              ? 'Solicitud rechazada'
-              : undefined;
+      : privateActive && myRequestStatus === 'pending'
+        ? 'Solicitud pendiente'
+        : privateActive && myRequestStatus === 'rejected'
+          ? 'Solicitud rechazada'
+          : undefined;
 
   const activeLockGifts = lockGiftIdsOf(lock);
   const activeLockQty = lockGiftQtyOf(lock);
@@ -1449,12 +1581,11 @@ function LiveGoalWishHud({
       <LivePrivacyLockButton
         privateActive={privateActive}
         unlocked={lockOpen && !preparingPrivate}
-        interactive={Boolean(isHost || (Boolean(lock) && !lockOpen && onRequestAccess))}
+        interactive={Boolean(isHost)}
         label={viewerLabel}
         pulse={lockPulse}
         onClick={() => {
           if (isHost) onLockClick?.();
-          else if (lock && !lockOpen) onRequestAccess?.();
         }}
       />
       {requestedGiftIds.length > 0 ? (
@@ -1506,7 +1637,6 @@ function LiveGoalWishHud({
           privateStartsAtMs={privateStartsAtMs}
           nowMs={nowMs}
           requirements={privateRequirements}
-          viewerQualified={viewerQualified}
           isHost={isHost}
         />
       </div>
@@ -2017,10 +2147,8 @@ function CreatorStage({
   const [privateRequirements, setPrivateRequirements] = useState<
     PrivateGiftRequirementProgress[] | null
   >(null);
-  const [qualifiedViewerUids, setQualifiedViewerUids] = useState<string[]>([]);
   const [lockPulse, setLockPulse] = useState(false);
   const [privacyNowMs, setPrivacyNowMs] = useState(() => Date.now());
-  const [myPrivacyRequest, setMyPrivacyRequest] = useState<PrivateAccessRequest | null>(null);
   const [pendingLockReqs, setPendingLockReqs] = useState<Array<{ giftId: string; quantity: number }>>(
     [],
   );
@@ -2411,7 +2539,6 @@ function CreatorStage({
       setPrivatePhase(schedule.privatePhase);
       privatePhaseRef.current = schedule.privatePhase;
       setPrivateRequirements(schedule.privateRequirements);
-      setQualifiedViewerUids(schedule.qualifiedViewerUids);
       qualifiedViewerUidsRef.current = schedule.qualifiedViewerUids;
       const pending = schedule.privatePendingRequirements || [];
       pendingPrivacyReqsRef.current = pending;
@@ -2442,19 +2569,35 @@ function CreatorStage({
   }, [isHost, username, privateSessionId]);
 
   useEffect(() => {
-    if (isHost || !firebaseUid) return;
-    return listenMyPrivateRequest(username, firebaseUid, setMyPrivacyRequest);
-  }, [isHost, username, firebaseUid]);
+    if (isHost || !firebaseUid || !privateSessionId) return;
+    return listenMyPrivateGrant(username, firebaseUid, (grant) => {
+      if (grant && grant.sessionId === privateSessionId && grant.accessGranted) {
+        setLockUnlocked(true);
+        onViewerPausedRef.current?.(false, null);
+        void api('/api/stream/claim-access', {
+          method: 'POST',
+          body: JSON.stringify({ roomName: username, handle }),
+        }).catch(() => undefined);
+      }
+    });
+  }, [isHost, username, firebaseUid, privateSessionId, handle]);
 
   useEffect(() => {
     if (isHost || !firebaseUid || !privateSessionId) return;
-    return listenMyPrivateGrant(username, firebaseUid, (grant) => {
-      if (grant && grant.sessionId === privateSessionId) {
+    if (privatePhase !== 'collecting' && privatePhase !== 'countdown' && privatePhase !== 'private') {
+      return;
+    }
+    return listenPrivateViewerProgress(username, firebaseUid, privateSessionId, (state) => {
+      if (state?.accessGranted) {
         setLockUnlocked(true);
         onViewerPausedRef.current?.(false, null);
+        void api('/api/stream/claim-access', {
+          method: 'POST',
+          body: JSON.stringify({ roomName: username, handle }),
+        }).catch(() => undefined);
       }
     });
-  }, [isHost, username, firebaseUid, privateSessionId]);
+  }, [isHost, username, firebaseUid, privateSessionId, privatePhase, handle]);
 
   useEffect(() => {
     if (!isHost || !privateStartsAtMs || lock) return;
@@ -2476,28 +2619,11 @@ function CreatorStage({
     }
     if (!requirements.length) return;
     privateActivateOnceRef.current = privateStartsAtMs;
-    const qualified = [...qualifiedViewerUidsRef.current];
-    const sessionId = privateSessionId;
     void (async () => {
       await setLiveLock(requirements);
-      if (sessionId && qualified.length) {
-        await Promise.all(
-          qualified.map(async (uid) => {
-            try {
-              await api('/api/stream/grant-access', {
-                method: 'POST',
-                body: JSON.stringify({ roomName: username, viewerUid: uid, handle }),
-              });
-              await grantPrivateAccess(username, uid, sessionId, 'qualified');
-            } catch {
-              // best-effort; el host puede aceptar solicitudes
-            }
-          }),
-        );
-      }
       await markPrivateActivated(username, privateStartsAtMs).catch(() => undefined);
     })();
-  }, [isHost, privateStartsAtMs, privatePhase, lock, privacyNowMs, username, privateSessionId, handle]);
+  }, [isHost, privateStartsAtMs, privatePhase, lock, privacyNowMs, username]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2640,6 +2766,20 @@ function CreatorStage({
         combo = Math.max(combo, giftComboRef.current.count + (explicit > 1 ? explicit : 1));
       }
       giftComboRef.current = { key: comboKey, count: combo, at: now };
+      if (
+        privatePhaseRef.current === 'collecting' ||
+        privatePhaseRef.current === 'countdown' ||
+        privatePhaseRef.current === 'private'
+      ) {
+        if (senderUid) {
+          void applyPrivateViewerGiftProgress(username, {
+            giftId,
+            units: liveWishGiftUnits(multiplier),
+            clientId: id,
+            viewerUid: senderUid,
+          }).catch(() => undefined);
+        }
+      }
       if (privatePhaseRef.current === 'collecting' && senderUid) {
         void applyPrivateCollectingGift(username, {
           giftId,
@@ -2731,15 +2871,21 @@ function CreatorStage({
       if (data.type === 'lock') {
         setLock(data.lock);
         if (data.lock) {
-          const meQualified = Boolean(
-            firebaseUid && qualifiedViewerUidsRef.current.includes(String(firebaseUid)),
-          );
-          if (isHost || meQualified) {
+          if (isHost) {
             setLockUnlocked(true);
-            if (isSpectator) onViewerPausedRef.current?.(false, null);
-          } else if (!isHost) {
-            setLockUnlocked(false);
-            if (isSpectator) onViewerPausedRef.current?.(true, data.lock);
+          } else {
+            void api<{ unlocked?: boolean }>('/api/stream/claim-access', {
+              method: 'POST',
+              body: JSON.stringify({ roomName: username, handle }),
+            })
+              .then(() => {
+                setLockUnlocked(true);
+                onViewerPausedRef.current?.(false, null);
+              })
+              .catch(() => {
+                setLockUnlocked(false);
+                if (isSpectator) onViewerPausedRef.current?.(true, data.lock);
+              });
           }
         } else {
           setLockUnlocked(true);
@@ -3159,7 +3305,7 @@ function CreatorStage({
         setPrivateStartsAtMs(null);
         setPrivatePhase(null);
         setPrivateRequirements(null);
-        setQualifiedViewerUids([]);
+        qualifiedViewerUidsRef.current = [];
         setPrivacyRequests([]);
       }
       await updateLiveRoomFeed(username, {
@@ -3169,7 +3315,7 @@ function CreatorStage({
       await publishRoomData(room, { type: 'lock', lock: next });
       setInviteNote(
         next
-          ? `LIVE privado activo. Clasificados: ${qualifiedViewerUidsRef.current.length}.`
+          ? 'LIVE privado activo. Quien complete los regalos entra automáticamente.'
           : 'Candado quitado. Live reabierto al público.',
       );
     } catch (err) {
@@ -3267,7 +3413,6 @@ function CreatorStage({
         receivedQuantity: 0,
       })),
     );
-    setQualifiedViewerUids([]);
     qualifiedViewerUidsRef.current = [];
     setPrivateStartsAtMs(null);
     setPendingLockReqs(pendingPrivacyReqsRef.current);
@@ -3317,25 +3462,6 @@ function CreatorStage({
     } finally {
       setPrivacyBusyUid(null);
     }
-  }
-
-  async function viewerRequestPrivateAccess() {
-    if (!firebaseUid || !privateSessionId) {
-      setInviteNote('El privado aún no tiene sesión activa.');
-      return;
-    }
-    const result = await requestPrivateAccess(username, {
-      uid: firebaseUid,
-      username: handle || firebaseUid,
-      displayName: displayName || handle || 'Liveboomer',
-      avatarUrl: useAuthStore.getState().profile?.avatarUrl || null,
-      sessionId: privateSessionId,
-    });
-    if (!result.ok) {
-      setInviteNote(result.error);
-      return;
-    }
-    setInviteNote(result.duplicate ? 'Solicitud enviada' : 'Solicitud enviada al anfitrión');
   }
   const flipCamera = useCallback(async () => {
     if (!canPublish || flipping) return;
@@ -5506,16 +5632,7 @@ function CreatorStage({
               privateRequirements={privateRequirements}
               privateStartsAtMs={privateStartsAtMs}
               nowMs={privacyNowMs}
-              viewerQualified={Boolean(
-                firebaseUid && qualifiedViewerUids.includes(firebaseUid),
-              )}
               lockPulse={lockPulse}
-              myRequestStatus={
-                myPrivacyRequest && myPrivacyRequest.sessionId === privateSessionId
-                  ? myPrivacyRequest.status
-                  : null
-              }
-              onRequestAccess={() => void viewerRequestPrivateAccess()}
             />
           </div>
         )}

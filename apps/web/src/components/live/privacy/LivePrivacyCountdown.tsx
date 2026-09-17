@@ -12,19 +12,15 @@ type Props = {
   privateStartsAtMs: number | null;
   nowMs: number;
   requirements?: PrivateGiftRequirementProgress[] | null;
-  /** Viewer (no host): si participó en collecting. */
-  viewerQualified?: boolean;
   isHost?: boolean;
 };
 
-/** Estado de recolección / countdown del LIVE privado (nunca timer antes del 100%). */
+/** Estado de recolección / countdown (timer solo tras 100% global). */
 export function LivePrivacyCountdown({
   phase,
   privateStartsAtMs,
   nowMs,
   requirements = null,
-  viewerQualified = false,
-  isHost = false,
 }: Props) {
   if (phase === 'collecting') {
     const incomplete = (requirements || []).filter(
@@ -68,13 +64,6 @@ export function LivePrivacyCountdown({
         <p className="lb-live-privacy-countdown__timer">
           Este LIVE será privado en {formatCountdown(remaining)}
         </p>
-        {!isHost ? (
-          <p className="lb-live-privacy-countdown__hint">
-            {viewerQualified
-              ? '✓ Acceso asegurado'
-              : 'El acceso a este privado ya cerró'}
-          </p>
-        ) : null}
       </div>
     );
   }

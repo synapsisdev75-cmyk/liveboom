@@ -25,10 +25,19 @@ export type PrivateAccessRequestStatus =
 
 export type PrivateLivePhase = 'collecting' | 'countdown' | 'private' | 'ended';
 
+export type ViewerPrivateAccess = 'locked' | 'progress' | 'granted';
+
 export type PrivateGiftRequirementProgress = {
   giftId: string;
   requiredQuantity: number;
   receivedQuantity: number;
+};
+
+export type PrivateViewerProgressState = {
+  sessionId: string;
+  progress: Record<string, number>;
+  accessGranted: boolean;
+  giftEventIds: string[];
 };
 
 export type PrivateAccessRequest = {
@@ -301,6 +310,294 @@ export async function applyPrivateCollectingGift(
   });
 }
 
+/**
+ * Progreso INDIVIDUAL del viewer hacia el candado (sesión actual).
+ * Independiente del progreso global que dispara el countdown.
+ * Al completar todos los requisitos → accessGranted automático.
+ */
+export async function applyPrivateViewerGiftProgress(
+  roomName: string,
+  payload: {
+    giftId: string;
+    units: number;
+    clientId: string;
+    viewerUid: string;
+  },
+): Promise<{
+  applied: boolean;
+  accessGranted: boolean;
+  progress: Record<string, number>;
+  requirements: PrivateGiftRequirementProgress[];
+} | null> {
+  const giftId = String(payload.giftId || '').trim();
+  const clientId = String(payload.clientId || '').trim();
+  const viewerUid = String(payload.viewerUid || '').trim();
+  const units = Math.max(1, Math.floor(Number(payload.units) || 1));
+  if (!giftId || !clientId || !viewerUid) return null;
+
+  return runTransaction(db, async (tx) => {
+    const room = roomRef(roomName);
+    const grant = grantRef(roomName, viewerUid);
+    const roomSnap = await tx.get(room);
+    const roomData = roomSnap.data() || {};
+    const sessionId =
+      typeof roomData.privateSessionId === 'string' ? roomData.privateSessionId : '';
+    const phase = (roomData.privatePhase as PrivateLivePhase | null) || null;
+    if (!sessionId || !phase || phase === 'ended') {
+      return {
+        applied: false,
+        accessGranted: false,
+        progress: {},
+        requirements: [],
+      };
+    }
+
+    const requirements = parseRequirements(roomData.privateRequirements);
+    if (!requirements?.length) {
+      return {
+        applied: false,
+        accessGranted: false,
+        progress: {},
+        requirements: [],
+      };
+    }
+
+    const grantSnap = await tx.get(grant);
+    const prev = grantSnap.exists() ? grantSnap.data() || {} : {};
+    const sameSession = String(prev.sessionId || '') === sessionId;
+    let progress: Record<string, number> = sameSession && prev.progress && typeof prev.progress === 'object'
+      ? Object.fromEntries(
+          Object.entries(prev.progress as Record<string, unknown>).map(([k, v]) => [
+            k,
+            Math.max(0, Math.floor(Number(v) || 0)),
+          ]),
+        )
+      : {};
+    let eventIds: string[] =
+      sameSession && Array.isArray(prev.giftEventIds)
+        ? prev.giftEventIds.map((id: unknown) => String(id))
+        : [];
+    let accessGranted = sameSession && Boolean(prev.accessGranted);
+
+    if (accessGranted) {
+      return {
+        applied: false,
+        accessGranted: true,
+        progress,
+        requirements: requirements.map((row) => ({
+          ...row,
+          receivedQuantity: Math.min(
+            row.requiredQuantity,
+            Math.max(0, Number(progress[row.giftId] || 0)),
+          ),
+        })),
+      };
+    }
+
+    if (eventIds.includes(clientId)) {
+      return {
+        applied: false,
+        accessGranted: false,
+        progress,
+        requirements: requirements.map((row) => ({
+          ...row,
+          receivedQuantity: Math.min(
+            row.requiredQuantity,
+            Math.max(0, Number(progress[row.giftId] || 0)),
+          ),
+        })),
+      };
+    }
+
+    const req = requirements.find((row) => row.giftId === giftId);
+    if (!req) {
+      return {
+        applied: false,
+        accessGranted: false,
+        progress,
+        requirements: requirements.map((row) => ({
+          ...row,
+          receivedQuantity: Math.min(
+            row.requiredQuantity,
+            Math.max(0, Number(progress[row.giftId] || 0)),
+          ),
+        })),
+      };
+    }
+
+    const already = Math.max(0, Math.floor(Number(progress[giftId] || 0)));
+    if (already >= req.requiredQuantity) {
+      // Este requisito individual ya está completo: no suma más.
+      eventIds = [...eventIds, clientId].slice(-PRIVATE_GIFT_EVENT_MAX);
+      tx.set(
+        grant,
+        {
+          uid: viewerUid,
+          sessionId,
+          progress,
+          giftEventIds: eventIds,
+          accessGranted: false,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return {
+        applied: false,
+        accessGranted: false,
+        progress,
+        requirements: requirements.map((row) => ({
+          ...row,
+          receivedQuantity: Math.min(
+            row.requiredQuantity,
+            Math.max(0, Number(progress[row.giftId] || 0)),
+          ),
+        })),
+      };
+    }
+
+    const add = Math.min(units, req.requiredQuantity - already);
+    progress = { ...progress, [giftId]: already + add };
+    eventIds = [...eventIds, clientId].slice(-PRIVATE_GIFT_EVENT_MAX);
+
+    const viewerRows = requirements.map((row) => ({
+      giftId: row.giftId,
+      requiredQuantity: row.requiredQuantity,
+      receivedQuantity: Math.min(
+        row.requiredQuantity,
+        Math.max(0, Math.floor(Number(progress[row.giftId] || 0))),
+      ),
+    }));
+    accessGranted = requirementsComplete(viewerRows);
+    const now = Date.now();
+
+    tx.set(
+      grant,
+      {
+        uid: viewerUid,
+        sessionId,
+        progress,
+        giftEventIds: eventIds,
+        accessGranted,
+        source: accessGranted ? 'gift' : prev.source || null,
+        grantedAtMs: accessGranted ? now : prev.grantedAtMs || null,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    return {
+      applied: true,
+      accessGranted,
+      progress,
+      requirements: viewerRows,
+    };
+  });
+}
+
+export function listenPrivateViewerProgress(
+  roomName: string,
+  uid: string,
+  sessionId: string | null,
+  onData: (state: PrivateViewerProgressState | null) => void,
+): Unsubscribe {
+  return onSnapshot(grantRef(roomName, uid), (snap) => {
+    if (!snap.exists()) {
+      onData(null);
+      return;
+    }
+    const data = snap.data();
+    const sid = String(data.sessionId || '');
+    if (sessionId && sid !== sessionId) {
+      onData(null);
+      return;
+    }
+    const progressRaw = data.progress && typeof data.progress === 'object' ? data.progress : {};
+    const progress: Record<string, number> = {};
+    for (const [k, v] of Object.entries(progressRaw as Record<string, unknown>)) {
+      progress[k] = Math.max(0, Math.floor(Number(v) || 0));
+    }
+    onData({
+      sessionId: sid,
+      progress,
+      accessGranted: Boolean(data.accessGranted),
+      giftEventIds: Array.isArray(data.giftEventIds)
+        ? data.giftEventIds.map((id: unknown) => String(id))
+        : [],
+    });
+  });
+}
+
+export function viewerAccessFromProgress(
+  requirements: PrivateGiftRequirementProgress[] | null | undefined,
+  progress: Record<string, number> | null | undefined,
+  accessGranted: boolean,
+): ViewerPrivateAccess {
+  if (accessGranted) return 'granted';
+  const rows = requirements || [];
+  if (!rows.length) return 'locked';
+  const any = rows.some((row) => Math.max(0, Number(progress?.[row.giftId] || 0)) > 0);
+  return any ? 'progress' : 'locked';
+}
+
+export function mergeViewerRequirementProgress(
+  requirements: PrivateGiftRequirementProgress[] | null | undefined,
+  progress: Record<string, number> | null | undefined,
+): PrivateGiftRequirementProgress[] {
+  return (requirements || []).map((row) => ({
+    giftId: row.giftId,
+    requiredQuantity: row.requiredQuantity,
+    receivedQuantity: Math.min(
+      row.requiredQuantity,
+      Math.max(0, Math.floor(Number(progress?.[row.giftId] || 0))),
+    ),
+  }));
+}
+
+export async function grantPrivateAccess(
+  roomName: string,
+  uid: string,
+  sessionId: string,
+  source: 'gift' | 'host' | 'unlock' | 'qualified',
+) {
+  const now = Date.now();
+  await setDoc(
+    grantRef(roomName, uid),
+    {
+      uid,
+      sessionId,
+      source,
+      accessGranted: true,
+      grantedAtMs: now,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  const req = requestRef(roomName, uid);
+  const snap = await getDoc(req);
+  if (snap.exists()) {
+    await updateDoc(req, {
+      status: 'approved',
+      updatedAtMs: now,
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
+
+export async function hasPrivateGrant(
+  roomName: string,
+  uid: string,
+  sessionId: string | null,
+): Promise<boolean> {
+  if (!sessionId) return false;
+  const snap = await getDoc(grantRef(roomName, uid));
+  if (!snap.exists()) return false;
+  const data = snap.data();
+  return (
+    String(data.sessionId || '') === sessionId &&
+    (Boolean(data.accessGranted) || data.source === 'host' || data.source === 'unlock')
+  );
+}
+
 export function listenPrivateSchedule(
   roomName: string,
   onData: (schedule: PrivateLiveSchedule) => void,
@@ -406,46 +703,6 @@ export async function setPrivateRequestStatus(
   });
 }
 
-export async function grantPrivateAccess(
-  roomName: string,
-  uid: string,
-  sessionId: string,
-  source: 'gift' | 'host' | 'unlock' | 'qualified',
-) {
-  const now = Date.now();
-  await setDoc(
-    grantRef(roomName, uid),
-    {
-      uid,
-      sessionId,
-      source,
-      grantedAtMs: now,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
-  const req = requestRef(roomName, uid);
-  const snap = await getDoc(req);
-  if (snap.exists()) {
-    await updateDoc(req, {
-      status: 'approved',
-      updatedAtMs: now,
-      updatedAt: serverTimestamp(),
-    });
-  }
-}
-
-export async function hasPrivateGrant(
-  roomName: string,
-  uid: string,
-  sessionId: string | null,
-): Promise<boolean> {
-  if (!sessionId) return false;
-  const snap = await getDoc(grantRef(roomName, uid));
-  if (!snap.exists()) return false;
-  return String(snap.data().sessionId || '') === sessionId;
-}
-
 export function listenPendingPrivateRequests(
   roomName: string,
   sessionId: string | null,
@@ -509,7 +766,11 @@ export function listenMyPrivateRequest(
 export function listenMyPrivateGrant(
   roomName: string,
   uid: string,
-  onData: (grant: { sessionId: string; grantedAtMs: number } | null) => void,
+  onData: (grant: {
+    sessionId: string;
+    grantedAtMs: number;
+    accessGranted: boolean;
+  } | null) => void,
 ): Unsubscribe {
   return onSnapshot(grantRef(roomName, uid), (snap) => {
     if (!snap.exists()) {
@@ -520,6 +781,7 @@ export function listenMyPrivateGrant(
     onData({
       sessionId: String(data.sessionId || ''),
       grantedAtMs: Number(data.grantedAtMs || 0),
+      accessGranted: Boolean(data.accessGranted),
     });
   });
 }

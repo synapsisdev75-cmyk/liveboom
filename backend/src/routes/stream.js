@@ -10,6 +10,7 @@ const social = require('../lib/socialMemory');
 const { getProfile, findByUsername, saveProfile } = require('../lib/profileMemory');
 const { findGift } = require('../lib/gifts');
 const { debit, credit, getBalance, setBalance } = require('../lib/walletMemory');
+const { getAdminDb, firestoreConfigured } = require('../lib/firestoreAdmin');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -25,6 +26,32 @@ function normalize(value) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, '_');
+}
+
+/** Grant durable en Firestore (sessionId + accessGranted). */
+async function syncDurablePrivateUnlock(roomName, uid) {
+  if (!uid || !firestoreConfigured()) return false;
+  try {
+    const key = normalize(roomName);
+    const db = getAdminDb();
+    const roomSnap = await db.collection('liveRooms').doc(key).get();
+    const sessionId = roomSnap.exists ? String(roomSnap.data()?.privateSessionId || '') : '';
+    if (!sessionId) return false;
+    const grantSnap = await db
+      .collection('liveRooms')
+      .doc(key)
+      .collection('privateGrants')
+      .doc(String(uid))
+      .get();
+    if (!grantSnap.exists) return false;
+    const data = grantSnap.data() || {};
+    if (String(data.sessionId || '') !== sessionId) return false;
+    if (!data.accessGranted && data.source !== 'host' && data.source !== 'unlock') return false;
+    liveLocks.markUnlocked(roomName, uid);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function identitiesFromToken(decoded) {
@@ -516,17 +543,45 @@ router.post('/lock', requireAuth, (req, res) => {
   res.json({ ok: true, locked: true, isPrivate: true, lock });
 });
 
-router.get('/lock/:roomName', requireAuth, (req, res) => {
+router.get('/lock/:roomName', requireAuth, async (req, res) => {
   const roomName = normalize(req.params.roomName);
   const claimed = typeof req.query.handle === 'string' ? req.query.handle : undefined;
   const lock = liveLocks.getLock(roomName);
   const host = isRoomHost(req.user, roomName, claimed);
+  let unlocked = host || liveLocks.isUnlocked(roomName, req.user.uid);
+  if (!unlocked && lock) {
+    unlocked = await syncDurablePrivateUnlock(roomName, req.user.uid);
+  }
   res.json({
     locked: Boolean(lock),
     lock,
-    unlocked: host || liveLocks.isUnlocked(roomName, req.user.uid),
+    unlocked,
     isHost: host,
   });
+});
+
+/** Viewer reclama acceso tras completar regalos (grant durable accessGranted). */
+router.post('/claim-access', requireAuth, async (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  if (!roomName) {
+    res.status(400).json({ error: 'roomName es obligatorio' });
+    return;
+  }
+  if (isRoomHost(req.user, roomName, req.body?.handle)) {
+    res.json({ ok: true, unlocked: true, host: true });
+    return;
+  }
+  if (liveLocks.isUnlocked(roomName, req.user.uid)) {
+    res.json({ ok: true, unlocked: true });
+    return;
+  }
+  const ok = await syncDurablePrivateUnlock(roomName, req.user.uid);
+  if (!ok) {
+    res.status(403).json({ error: 'Aún no completaste los regalos del candado' });
+    return;
+  }
+  res.json({ ok: true, unlocked: true });
 });
 
 /** Espectador envía los regalos del candado para poder entrar. */
