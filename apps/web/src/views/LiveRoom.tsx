@@ -586,6 +586,8 @@ export function LiveRoom() {
   const [gateRequestBusy, setGateRequestBusy] = useState(false);
   const [gateRequestNote, setGateRequestNote] = useState<string | null>(null);
   const [viewerPaused, setViewerPaused] = useState(false);
+  const gateLockRef = useRef<LockInfo | null>(null);
+  gateLockRef.current = gateLock;
   const aspectRatioLockedRef = useRef<LiveAspectRatio>(
     launch.aspectRatio ? parseLiveAspectRatio(launch.aspectRatio) : DEFAULT_LIVE_ASPECT_RATIO,
   );
@@ -881,6 +883,63 @@ export function LiveRoom() {
       window.clearInterval(timer);
     };
   }, [gateLock, username, handle]);
+
+  /**
+   * iPhone Safari / Capacitor / cualquier plataforma: al volver de background
+   * re-consultar el candado durable (misma API). No duplica el interval de gateLock:
+   * solo un fetch al foreground / pageshow.
+   */
+  useEffect(() => {
+    if (!username || !handle || isOwnRoom) return;
+    let busy = false;
+    const refreshDurableLock = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (busy) return;
+      busy = true;
+      void api<{
+        locked: boolean;
+        unlocked: boolean;
+        isHost: boolean;
+        lock: LockInfo | null;
+      }>(
+        `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle)}`,
+      )
+        .then((lockState) => {
+          if (lockState.isHost) {
+            if (gateLockRef.current) {
+              setGateLock(null);
+              setViewerPaused(false);
+              void fetchToken();
+            }
+            return;
+          }
+          if (lockState.locked && !lockState.unlocked && lockState.lock) {
+            setGateLock(lockState.lock);
+            setViewerPaused(true);
+            return;
+          }
+          if (gateLockRef.current) {
+            setGateLock(null);
+            setViewerPaused(false);
+            void fetchToken();
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          busy = false;
+        });
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refreshDurableLock();
+    };
+    const onPageShow = () => refreshDurableLock();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [username, handle, isOwnRoom]);
 
   async function unlockAndEnter() {
     if (!username) return;
@@ -2342,6 +2401,51 @@ function CreatorStage({
       })
       .catch(() => undefined);
   }, [isHost, username, handle]);
+
+  /** Misma fuente durable al volver de background (iPhone Safari / WebView / desktop). */
+  useEffect(() => {
+    if (!username) return;
+    let busy = false;
+    const refresh = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (busy) return;
+      busy = true;
+      void api<{
+        lock: LockInfo | null;
+        unlocked?: boolean;
+        isHost?: boolean;
+        locked?: boolean;
+      }>(
+        `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
+      )
+        .then((data) => {
+          setLock(data.lock);
+          const unlocked = Boolean(data.isHost || data.unlocked || !data.lock);
+          setLockUnlocked(unlocked);
+          if (!isHost && isSpectator) {
+            if (data.lock && !unlocked) {
+              onViewerPausedRef.current?.(true, data.lock);
+            } else {
+              onViewerPausedRef.current?.(false, null);
+            }
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          busy = false;
+        });
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const onPageShow = () => refresh();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [username, handle, isHost, isSpectator]);
 
   // Pulso periódico: el feed cierra salas sin heartbeat.
   useEffect(() => {

@@ -312,6 +312,27 @@ export function isNativeAndroidApp(): boolean {
   return false;
 }
 
+/** Capacitor iOS (o futuro shell nativo). Safari iOS sigue siendo web compartida. */
+export function isNativeIosApp(): boolean {
+  try {
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') return true;
+  } catch {
+    /* ignore */
+  }
+  if (typeof window === 'undefined') return false;
+  try {
+    const cap = (
+      window as unknown as {
+        Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
+      }
+    ).Capacitor;
+    if (cap?.isNativePlatform?.() && cap?.getPlatform?.() === 'ios') return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 export async function prepareNativeLiveWebView(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
