@@ -110,7 +110,7 @@ export function LiveHostMobileToolbar({
           className={`${btn} ${lock ? 'bg-amber-500/30 text-amber-200 ring-1 ring-amber-400/50' : ''}`}
         >
           <Lock size={13} />
-          {lock ? 'Privado' : 'Privado'}
+          {lock ? 'Candado' : 'Candado'}
         </button>
         {lock ? (
           <button

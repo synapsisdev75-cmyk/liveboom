@@ -70,7 +70,7 @@ const TOOLS: {
   { id: 'mirror', label: 'Espejo', tone: 'violet' },
   { id: 'notify', label: 'Avisar', tone: 'fuchsia' },
   { id: 'wishlist', label: 'Deseos', tone: 'cyan' },
-  { id: 'lock', label: 'Privado', tone: 'gold' },
+  { id: 'lock', label: 'Candado', tone: 'gold' },
 ];
 
 const REEL_TOOL: { id: VerticalLiveToolId; label: string; tone: string } = {

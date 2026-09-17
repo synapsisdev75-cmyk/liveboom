@@ -1036,7 +1036,7 @@ export function LiveRoom() {
           <p className="text-4xl" aria-hidden>
             🔒
           </p>
-          <p className="text-lg font-bold text-white">Sala en privado</p>
+          <p className="text-lg font-bold text-white">Candado · LIVE privado</p>
           <p className="text-sm text-zinc-300">
             El creador o la creadora se encuentra en privado
             {username ? (
@@ -1049,8 +1049,7 @@ export function LiveRoom() {
             )}
           </p>
           <p className="text-xs text-zinc-400">
-            Envía los deseos requeridos para entrar a la sala privada. Quien no los envíe no podrá
-            ver el LIVE.
+            Envía los regalos del candado para entrar. Quien no los envíe no podrá ver el LIVE.
           </p>
           <div className="max-h-[40dvh] space-y-1.5 overflow-y-auto text-left">
             {reqs.map((row) => (
@@ -1083,7 +1082,7 @@ export function LiveRoom() {
             onClick={() => void unlockAndEnter()}
             className="min-h-11 w-full rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 py-3 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
-            {unlocking ? 'Desbloqueando…' : 'Enviar deseos y entrar'}
+            {unlocking ? 'Desbloqueando…' : 'Enviar regalos del candado y entrar'}
           </button>
           <Link to="/" className="block min-h-11 py-2 text-xs text-cyan-400">
             Volver al inicio
@@ -2792,10 +2791,10 @@ function CreatorStage({
       const reqs = lockRequirementsOf(next);
       setInviteNote(
         next
-          ? `Privado activo: solo entra quien envíe ${reqs
+          ? `Candado activo: solo entra quien envíe ${reqs
               .map((r) => `${r.emoji} ${r.giftName}${r.quantity > 1 ? `×${r.quantity}` : ''}`)
               .join(', ')}. El feed público quedó en pausa.`
-          : 'Live reabierto al público.',
+          : 'Candado quitado. Live reabierto al público.',
       );
     } catch (err) {
       setInviteNote(err instanceof Error ? err.message : 'No se pudo actualizar el candado');
@@ -2855,7 +2854,7 @@ function CreatorStage({
 
   async function applyLockDraft() {
     if (!lockDraftIds.length) {
-      setInviteNote('Elige al menos un regalo (y cantidad) para activar el privado.');
+      setInviteNote('Elige al menos un regalo (y cantidad) para el candado.');
       return;
     }
     const requirements: LockGiftRequirement[] = [];
@@ -5107,15 +5106,15 @@ function CreatorStage({
         <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(52dvh,26rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-amber-300">
-              Privado · deseos (máx. {LIVE_LOCK_ACTIVE_MAX})
+              Candado (máx. {LIVE_LOCK_ACTIVE_MAX} regalos)
             </p>
             <button type="button" onClick={() => setLockPicker(false)} className="text-zinc-400 hover:text-white">
               <X size={14} />
             </button>
           </div>
           <p className="mb-2 text-[10px] text-zinc-400">
-            Elige regalos y cantidades. Quien los envíe entra a la sala privada; el resto verá que
-            estás en privado.
+            Elige regalos y cantidades del candado (no es la lista de deseos). Quien los envíe entra
+            al LIVE privado; el resto verá que estás en privado.
           </p>
           <div className="space-y-1">
             {sortedLiveGiftCatalog().map((gift) => {
@@ -5184,8 +5183,8 @@ function CreatorStage({
               className="min-h-11 w-full rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 py-2.5 text-xs font-bold text-zinc-950 disabled:opacity-50"
             >
               {lockBusy
-                ? 'Activando…'
-                : `Activar privado (${lockDraftIds.reduce(
+                ? 'Activando candado…'
+                : `Activar candado (${lockDraftIds.reduce(
                     (sum, id) =>
                       sum + (findLiveGift(id)?.coins || 0) * (lockDraftQty[id] || 1),
                     0,
@@ -5198,7 +5197,7 @@ function CreatorStage({
                 onClick={() => void setLiveLock(null)}
                 className="min-h-11 w-full rounded-lg border border-white/10 py-2 text-[11px] text-zinc-400"
               >
-                Quitar privado y reabrir al público
+                Quitar candado y reabrir al público
               </button>
             ) : null}
           </div>
