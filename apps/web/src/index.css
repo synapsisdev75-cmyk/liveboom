@@ -4200,7 +4200,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
 .lb-live-wishlist-stack {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: flex-end;
   gap: clamp(0.32rem, 1vw, 0.5rem);
   width: min(72%, 22rem);
   max-width: min(22rem, calc(78% - 0.25rem));
@@ -4209,15 +4209,18 @@ html[data-lb-theme='dark'] .lb-media-fab {
   pointer-events: none;
 }
 
+/* Candado anclado bajo Deseos (zona marcada): fila compacta a la derecha. */
 .lb-live-privacy-row {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 0.45rem;
-  width: 100%;
+  gap: 0.4rem;
+  width: auto;
+  max-width: 100%;
   min-width: 0;
-  margin-top: clamp(0.2rem, 0.6vw, 0.4rem);
+  margin-top: clamp(0.12rem, 0.4vw, 0.28rem);
+  margin-left: auto;
   pointer-events: auto;
 }
 
@@ -4227,9 +4230,9 @@ html[data-lb-theme='dark'] .lb-media-fab {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: clamp(2.6rem, 2.3rem + 1.2vw, 3.1rem);
-  min-height: clamp(2.6rem, 2.3rem + 1.2vw, 3.1rem);
-  padding: 0.28rem 0.2rem 0.22rem;
+  width: clamp(2.55rem, 2.25rem + 1.1vw, 3rem);
+  min-height: clamp(2.55rem, 2.25rem + 1.1vw, 3rem);
+  padding: 0.26rem 0.18rem 0.2rem;
   border-radius: 0.7rem;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(12, 12, 18, 0.72);
@@ -4238,14 +4241,22 @@ html[data-lb-theme='dark'] .lb-media-fab {
   backdrop-filter: blur(8px);
 }
 
-.lb-live-privacy-lock.is-private {
+.lb-live-privacy-lock.is-public.is-open,
+.lb-live-privacy-lock.is-unlocked {
+  border-color: rgba(74, 222, 128, 0.5);
+  background: rgba(6, 46, 28, 0.72);
+  color: #bbf7d0;
+}
+
+.lb-live-privacy-lock.is-private.is-closed {
   border-color: rgba(251, 191, 36, 0.55);
   background: rgba(69, 40, 8, 0.78);
   color: #fde68a;
 }
 
-.lb-live-privacy-lock.is-unlocked {
-  border-color: rgba(74, 222, 128, 0.45);
+.lb-live-privacy-lock.is-private.is-open {
+  border-color: rgba(74, 222, 128, 0.5);
+  background: rgba(6, 46, 28, 0.78);
   color: #bbf7d0;
 }
 
@@ -4276,11 +4287,12 @@ html[data-lb-theme='dark'] .lb-media-fab {
 
 .lb-live-privacy-strip {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   align-items: center;
   justify-content: flex-start;
   gap: 0.38rem;
   min-width: 0;
+  max-width: min(11.5rem, 48vw);
   overflow: hidden;
 }
 
@@ -4329,11 +4341,14 @@ html[data-lb-theme='dark'] .lb-media-fab {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
+  align-self: flex-end;
   gap: 0.3rem;
   margin: 0.25rem 0 0;
+  max-width: 100%;
   color: #fde68a;
   font-size: clamp(0.58rem, 0.5rem + 0.35vw, 0.72rem);
   font-weight: 700;
+  text-align: right;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
   pointer-events: none;
 }
@@ -4570,6 +4585,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   backdrop-filter: none;
   text-align: right;
   overflow: hidden;
+  align-self: stretch;
 }
 
 .lb-live-wishlist__title {

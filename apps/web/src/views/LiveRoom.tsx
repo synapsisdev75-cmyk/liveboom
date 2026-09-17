@@ -5222,7 +5222,7 @@ function CreatorStage({
               isHost
               celebrating={goalCelebrating}
               lock={lock}
-              lockOpen={false}
+              lockOpen={!lock}
               pendingRequests={privacyRequests}
               privateStartsAtMs={privateStartsAtMs}
               nowMs={privacyNowMs}
