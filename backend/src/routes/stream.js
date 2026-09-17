@@ -449,12 +449,14 @@ router.post('/invite/kick', requireAuth, async (req, res) => {
   res.json({ ok: true, room: roomName, banned: invites.listBans(roomName) });
 });
 
-/** Candado en vivo: el host elige el regalo que desbloquea la entrada. */
+/** Candado en vivo: el host elige regalos (+ cantidades) que desbloquean la entrada. */
 router.post('/lock', requireAuth, (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
   const giftId = typeof req.body?.giftId === 'string' ? req.body.giftId.trim() : '';
+  const quantity = Math.min(99, Math.max(1, Math.floor(Number(req.body?.quantity) || 1)));
   const clear = Boolean(req.body?.clear);
+  const rawReqs = Array.isArray(req.body?.requirements) ? req.body.requirements : null;
   if (!roomName) {
     res.status(400).json({ error: 'roomName es obligatorio' });
     return;
@@ -463,35 +465,52 @@ router.post('/lock', requireAuth, (req, res) => {
     res.status(403).json({ error: 'Solo quien transmite puede activar el candado' });
     return;
   }
-  if (clear || !giftId) {
+  if (clear || (!giftId && !(rawReqs && rawReqs.length))) {
     liveLocks.clearLock(roomName);
     if (typeof upsertLive === 'function') {
       // Reabre transmisión pública en el feed.
       upsertLive({ username: roomName, isPrivate: false, lockGiftId: null });
     }
-    res.json({ ok: true, locked: false, isPrivate: false });
+    res.json({ ok: true, locked: false, isPrivate: false, lock: null });
     return;
   }
-  const gift = findGift(giftId);
-  if (!gift) {
-    res.status(400).json({ error: 'Regalo de candado inválido' });
+
+  const resolved = [];
+  const source = rawReqs && rawReqs.length
+    ? rawReqs
+    : [{ giftId, quantity }];
+  for (const row of source.slice(0, 5)) {
+    const id = typeof row?.giftId === 'string' ? row.giftId.trim() : '';
+    if (!id) continue;
+    const gift = findGift(id);
+    if (!gift) {
+      res.status(400).json({ error: `Regalo de candado inválido: ${id}` });
+      return;
+    }
+    const qty = Math.min(99, Math.max(1, Math.floor(Number(row?.quantity) || 1)));
+    resolved.push({
+      giftId: gift.id,
+      giftName: gift.name,
+      coins: gift.coins,
+      emoji: gift.emoji,
+      quantity: qty,
+    });
+  }
+  if (!resolved.length) {
+    res.status(400).json({ error: 'Selecciona al menos un regalo para el privado' });
     return;
   }
-  const lock = liveLocks.setLock(roomName, {
-    giftId: gift.id,
-    giftName: gift.name,
-    coins: gift.coins,
-    emoji: gift.emoji,
-  });
+
+  const lock = liveLocks.setLock(roomName, { requirements: resolved });
   if (typeof upsertLive === 'function') {
     // Cierra la transmisión pública: desaparece del feed; solo entran con regalo.
     upsertLive({
       username: roomName,
       isPrivate: true,
-      lockGiftId: gift.id,
-      lockGiftName: gift.name,
-      lockCoins: gift.coins,
-      lockEmoji: gift.emoji,
+      lockGiftId: lock.giftId,
+      lockGiftName: lock.giftName,
+      lockCoins: lock.coins,
+      lockEmoji: lock.emoji,
     });
   }
   res.json({ ok: true, locked: true, isPrivate: true, lock });
@@ -510,7 +529,7 @@ router.get('/lock/:roomName', requireAuth, (req, res) => {
   });
 });
 
-/** Espectador envía el regalo del candado para poder entrar. */
+/** Espectador envía los regalos del candado para poder entrar. */
 router.post('/unlock', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
@@ -531,20 +550,49 @@ router.post('/unlock', requireAuth, async (req, res) => {
     res.json({ ok: true, unlocked: true, lock });
     return;
   }
-  const gift = findGift(lock.giftId);
-  if (!gift) {
-    res.status(400).json({ error: 'Regalo de candado no disponible' });
-    return;
+
+  const requirements = Array.isArray(lock.requirements) && lock.requirements.length
+    ? lock.requirements
+    : [
+        {
+          giftId: lock.giftId,
+          giftName: lock.giftName,
+          coins: lock.coins,
+          emoji: lock.emoji,
+          quantity: lock.quantity || 1,
+        },
+      ];
+
+  const giftsPaid = [];
+  let totalCoins = 0;
+  for (const row of requirements) {
+    const gift = findGift(row.giftId);
+    if (!gift) {
+      res.status(400).json({ error: 'Regalo de candado no disponible' });
+      return;
+    }
+    const qty = Math.min(99, Math.max(1, Math.floor(Number(row.quantity) || 1)));
+    const lineCoins = gift.coins * qty;
+    totalCoins += lineCoins;
+    giftsPaid.push({
+      id: gift.id,
+      name: gift.name,
+      emoji: gift.emoji,
+      coins: gift.coins,
+      quantity: qty,
+      lineCoins,
+    });
   }
+
   const floorFromClient = Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0));
   if (floorFromClient > getBalance(req.user.uid)) {
     setBalance(req.user.uid, floorFromClient);
   }
-  const next = debit(req.user.uid, gift.coins);
+  const next = debit(req.user.uid, totalCoins);
   if (next == null) {
     res.status(402).json({
       error: 'Saldo insuficiente',
-      requiredCoins: gift.coins,
+      requiredCoins: totalCoins,
       balance: getBalance(req.user.uid),
       lock,
     });
@@ -552,7 +600,7 @@ router.post('/unlock', requireAuth, async (req, res) => {
   }
   const host = findByUsername(roomName);
   if (host?.firebaseUid && host.firebaseUid !== req.user.uid) {
-    credit(host.firebaseUid, gift.coins);
+    credit(host.firebaseUid, totalCoins);
   }
   liveLocks.markUnlocked(roomName, req.user.uid);
   // Suma el regalo de entrada a la recaudación de la sala.
@@ -560,17 +608,22 @@ router.post('/unlock', requireAuth, async (req, res) => {
     liveSession.addGift(roomName, {
       uid: req.user.uid,
       name: req.user.name || req.user.email || 'Liveboomer',
-      coins: gift.coins,
+      coins: totalCoins,
     });
   } catch {
     // optional
   }
+  const primary = giftsPaid[0];
   res.json({
     ok: true,
     unlocked: true,
     lock,
     senderBalance: next,
-    gift: { id: gift.id, name: gift.name, emoji: gift.emoji, coins: gift.coins },
+    gift: primary
+      ? { id: primary.id, name: primary.name, emoji: primary.emoji, coins: totalCoins }
+      : undefined,
+    gifts: giftsPaid,
+    totalCoins,
   });
 });
 

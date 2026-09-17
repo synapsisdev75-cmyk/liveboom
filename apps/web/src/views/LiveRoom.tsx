@@ -273,12 +273,55 @@ import { getLocale } from '../store/localeStore';
 import { TranslatedText } from '../components/i18n/TranslatedText';
 import { useT } from '../i18n';
 
+type LockGiftRequirement = {
+  giftId: string;
+  giftName: string;
+  coins: number;
+  emoji: string;
+  quantity: number;
+};
+
 type LockInfo = {
   giftId: string;
   giftName: string;
   coins: number;
   emoji: string;
+  quantity?: number;
+  requirements?: LockGiftRequirement[];
 };
+
+const LIVE_LOCK_ACTIVE_MAX = 5;
+
+function lockRequirementsOf(lock: LockInfo | null | undefined): LockGiftRequirement[] {
+  if (!lock) return [];
+  if (Array.isArray(lock.requirements) && lock.requirements.length) {
+    return lock.requirements.map((row) => ({
+      giftId: row.giftId,
+      giftName: row.giftName || row.giftId,
+      coins: Math.max(0, Number(row.coins) || 0),
+      emoji: row.emoji || '🔒',
+      quantity: Math.min(99, Math.max(1, Math.floor(Number(row.quantity) || 1))),
+    }));
+  }
+  return [
+    {
+      giftId: lock.giftId,
+      giftName: lock.giftName,
+      coins: Math.max(0, Number(lock.coins) || 0),
+      emoji: lock.emoji || '🔒',
+      quantity: Math.min(99, Math.max(1, Math.floor(Number(lock.quantity) || 1))),
+    },
+  ];
+}
+
+function lockTotalCoins(lock: LockInfo | null | undefined): number {
+  if (!lock) return 0;
+  const reqs = lockRequirementsOf(lock);
+  if (reqs.length) {
+    return reqs.reduce((sum, row) => sum + row.coins * row.quantity, 0);
+  }
+  return Math.max(0, Number(lock.coins) || 0);
+}
 
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string; combo?: number };
 
@@ -810,6 +853,15 @@ export function LiveRoom() {
       const result = await api<{
         senderBalance?: number;
         gift?: { id: string; name: string; emoji: string; coins: number };
+        gifts?: Array<{
+          id: string;
+          name: string;
+          emoji: string;
+          coins: number;
+          quantity: number;
+          lineCoins: number;
+        }>;
+        totalCoins?: number;
       }>('/api/stream/unlock', {
         method: 'POST',
         body: JSON.stringify({
@@ -819,24 +871,40 @@ export function LiveRoom() {
       });
       if (typeof result.senderBalance === 'number') setCoins(result.senderBalance);
       const profile = useAuthStore.getState().profile;
-      const giftMeta = result.gift || (lockInfo
-        ? {
-            id: lockInfo.giftId,
-            name: lockInfo.giftName,
-            emoji: lockInfo.emoji,
-            coins: lockInfo.coins,
-          }
-        : null);
-      if (profile && giftMeta) {
-        void publishLiveGift(username, {
-          clientId: `unlock-${Date.now()}`,
-          giftId: giftMeta.id,
-          giftName: giftMeta.name,
-          emoji: giftMeta.emoji,
-          senderName: profile.displayName || profile.handle || 'Liveboomer',
-          senderUid: profile.firebaseUid,
-          coins: giftMeta.coins,
-        }).catch(() => undefined);
+      const paid =
+        result.gifts?.length
+          ? result.gifts
+          : result.gift
+            ? [
+                {
+                  id: result.gift.id,
+                  name: result.gift.name,
+                  emoji: result.gift.emoji,
+                  coins: result.gift.coins,
+                  quantity: 1,
+                  lineCoins: result.gift.coins,
+                },
+              ]
+            : lockRequirementsOf(lockInfo).map((row) => ({
+                id: row.giftId,
+                name: row.giftName,
+                emoji: row.emoji,
+                coins: row.coins,
+                quantity: row.quantity,
+                lineCoins: row.coins * row.quantity,
+              }));
+      if (profile && paid.length) {
+        for (const giftMeta of paid) {
+          void publishLiveGift(username, {
+            clientId: `unlock-${giftMeta.id}-${Date.now()}`,
+            giftId: giftMeta.id,
+            giftName: giftMeta.name,
+            emoji: giftMeta.emoji,
+            senderName: profile.displayName || profile.handle || 'Liveboomer',
+            senderUid: profile.firebaseUid,
+            coins: giftMeta.lineCoins || giftMeta.coins * (giftMeta.quantity || 1),
+          }).catch(() => undefined);
+        }
       }
       setGateLock(null);
       setViewerPaused(false);
@@ -960,26 +1028,64 @@ export function LiveRoom() {
     );
   }
   if (gateLock) {
+    const reqs = lockRequirementsOf(gateLock);
+    const total = lockTotalCoins(gateLock);
     return (
-      <div className="grid h-[100dvh] place-items-center bg-zinc-950 px-6 text-center">
-        <div className="max-w-sm space-y-4 rounded-3xl border border-amber-400/30 bg-zinc-900 p-6">
-          <p className="text-4xl">{gateLock.emoji || '🔒'}</p>
-          <p className="text-lg font-bold text-white">Live con candado</p>
-          <p className="text-sm text-zinc-400">
-            El live pasó a <strong className="text-amber-300">privado</strong>. Envía{' '}
-            <strong className="text-amber-300">{gateLock.giftName}</strong> (
-            {gateLock.coins.toLocaleString('es-CO')} coins) para ver. El público queda en pausa.
+      <div className="grid h-[100dvh] place-items-center bg-zinc-950 px-4 text-center">
+        <div className="w-full max-w-sm space-y-4 rounded-3xl border border-amber-400/30 bg-zinc-900 p-5 shadow-2xl">
+          <p className="text-4xl" aria-hidden>
+            🔒
+          </p>
+          <p className="text-lg font-bold text-white">Sala en privado</p>
+          <p className="text-sm text-zinc-300">
+            El creador o la creadora se encuentra en privado
+            {username ? (
+              <>
+                {' '}
+                (<strong className="text-amber-300">@{username}</strong>).
+              </>
+            ) : (
+              '.'
+            )}
+          </p>
+          <p className="text-xs text-zinc-400">
+            Envía los deseos requeridos para entrar a la sala privada. Quien no los envíe no podrá
+            ver el LIVE.
+          </p>
+          <div className="max-h-[40dvh] space-y-1.5 overflow-y-auto text-left">
+            {reqs.map((row) => (
+              <div
+                key={row.giftId}
+                className="flex items-center justify-between gap-2 rounded-xl border border-amber-400/20 bg-black/35 px-3 py-2"
+              >
+                <span className="inline-flex min-w-0 items-center gap-2 text-sm text-white">
+                  <GiftIcon giftId={row.giftId} size={22} />
+                  <span className="truncate">
+                    {row.giftName}
+                    {row.quantity > 1 ? (
+                      <span className="ml-1 text-amber-300">×{row.quantity}</span>
+                    ) : null}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs font-semibold text-cyan-300">
+                  {(row.coins * row.quantity).toLocaleString('es-CO')}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] font-semibold text-amber-200">
+            Total: {total.toLocaleString('es-CO')} coins
           </p>
           {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
           <button
             type="button"
             disabled={unlocking}
             onClick={() => void unlockAndEnter()}
-            className="w-full rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 py-3 text-sm font-bold text-zinc-950 disabled:opacity-60"
+            className="min-h-11 w-full rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 py-3 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
-            {unlocking ? 'Desbloqueando…' : `Enviar ${gateLock.emoji} y entrar`}
+            {unlocking ? 'Desbloqueando…' : 'Enviar deseos y entrar'}
           </button>
-          <Link to="/" className="block text-xs text-cyan-400">
+          <Link to="/" className="block min-h-11 py-2 text-xs text-cyan-400">
             Volver al inicio
           </Link>
         </div>
@@ -1863,6 +1969,8 @@ function CreatorStage({
 
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
+  const [lockDraftIds, setLockDraftIds] = useState<string[]>([]);
+  const [lockDraftQty, setLockDraftQty] = useState<Record<string, number>>({});
   const [viewersList, setViewersList] = useState<SalaInviteViewer[]>([]);
   const [liveStats, setLiveStats] = useState<LiveSessionStats | null>(
     goalCoins || goalLabel
@@ -2649,19 +2757,26 @@ function CreatorStage({
     };
   }, [isHost, username, firebaseUid]);
 
-  async function setLiveLock(giftId: string | null) {
+  async function setLiveLock(requirements: LockGiftRequirement[] | null) {
     if (!isHost) return;
     setLockBusy(true);
     try {
+      const body =
+        requirements && requirements.length
+          ? {
+              roomName: username,
+              handle,
+              requirements: requirements.map((row) => ({
+                giftId: row.giftId,
+                quantity: row.quantity,
+              })),
+            }
+          : { roomName: username, clear: true, handle };
       const result = await api<{ lock: LockInfo | null; locked: boolean; isPrivate?: boolean }>(
         '/api/stream/lock',
         {
-        method: 'POST',
-        body: JSON.stringify(
-          giftId
-              ? { roomName: username, giftId, handle }
-              : { roomName: username, clear: true, handle },
-        ),
+          method: 'POST',
+          body: JSON.stringify(body),
         },
       );
       const next = result.locked ? result.lock : null;
@@ -2674,9 +2789,12 @@ function CreatorStage({
         lockGiftId: next?.giftId ?? null,
       }).catch(() => undefined);
       await publishRoomData(room, { type: 'lock', lock: next });
+      const reqs = lockRequirementsOf(next);
       setInviteNote(
         next
-          ? `Privado activo: solo entra quien envíe ${next.emoji} ${next.giftName}. El feed público quedó en pausa.`
+          ? `Privado activo: solo entra quien envíe ${reqs
+              .map((r) => `${r.emoji} ${r.giftName}${r.quantity > 1 ? `×${r.quantity}` : ''}`)
+              .join(', ')}. El feed público quedó en pausa.`
           : 'Live reabierto al público.',
       );
     } catch (err) {
@@ -2684,6 +2802,75 @@ function CreatorStage({
     } finally {
       setLockBusy(false);
     }
+  }
+
+  function openLockPicker() {
+    const reqs = lockRequirementsOf(lock);
+    const ids = reqs.map((row) => row.giftId);
+    const qty: Record<string, number> = {};
+    for (const row of reqs) qty[row.giftId] = row.quantity;
+    setLockDraftIds(ids);
+    setLockDraftQty(qty);
+    setWishlistOpen(false);
+    setLockPicker(true);
+  }
+
+  function toggleLockDraftGift(giftId: string) {
+    const selected = lockDraftIds.includes(giftId);
+    if (selected) {
+      setLockDraftIds((current) => current.filter((id) => id !== giftId));
+      setLockDraftQty((current) => {
+        const next = { ...current };
+        delete next[giftId];
+        return next;
+      });
+      return;
+    }
+    if (lockDraftIds.length >= LIVE_LOCK_ACTIVE_MAX) return;
+    setLockDraftIds((current) => [...current, giftId]);
+    setLockDraftQty((current) => ({ ...current, [giftId]: 1 }));
+  }
+
+  function setLockDraftQuantity(giftId: string, value: number) {
+    const qty = Math.min(99, Math.max(0, Math.floor(Number(value) || 0)));
+    const selected = lockDraftIds.includes(giftId);
+    if (qty <= 0) {
+      if (!selected) return;
+      setLockDraftIds((current) => current.filter((id) => id !== giftId));
+      setLockDraftQty((current) => {
+        const next = { ...current };
+        delete next[giftId];
+        return next;
+      });
+      return;
+    }
+    if (!selected) {
+      if (lockDraftIds.length >= LIVE_LOCK_ACTIVE_MAX) return;
+      setLockDraftIds((current) => [...current, giftId]);
+      setLockDraftQty((current) => ({ ...current, [giftId]: qty }));
+      return;
+    }
+    setLockDraftQty((current) => ({ ...current, [giftId]: qty }));
+  }
+
+  async function applyLockDraft() {
+    if (!lockDraftIds.length) {
+      setInviteNote('Elige al menos un regalo (y cantidad) para activar el privado.');
+      return;
+    }
+    const requirements: LockGiftRequirement[] = [];
+    for (const giftId of lockDraftIds.slice(0, LIVE_LOCK_ACTIVE_MAX)) {
+      const gift = findLiveGift(giftId);
+      if (!gift) continue;
+      requirements.push({
+        giftId: gift.id,
+        giftName: gift.name,
+        coins: gift.coins,
+        emoji: gift.emoji || '🎁',
+        quantity: Math.min(99, Math.max(1, Math.floor(lockDraftQty[giftId] || 1))),
+      });
+    }
+    await setLiveLock(requirements);
   }
   const flipCamera = useCallback(async () => {
     if (!canPublish || flipping) return;
@@ -4339,8 +4526,7 @@ function CreatorStage({
                   setWishlistOpen(true);
                 }}
                 onLock={() => {
-                  setWishlistOpen(false);
-                  setLockPicker(true);
+                  openLockPicker();
                 }}
                 onReel={verticalHost ? undefined : () => void recordReel()}
                 onWithdraw={verticalHost ? undefined : () => setWithdrawOpen(true)}
@@ -4918,46 +5104,104 @@ function CreatorStage({
         </div>
       ) : null}
       {lockPicker && isHost ? (
-        <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-20 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
+        <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(52dvh,26rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-amber-300">
-              Modo privado (regalo)
+              Privado · deseos (máx. {LIVE_LOCK_ACTIVE_MAX})
             </p>
             <button type="button" onClick={() => setLockPicker(false)} className="text-zinc-400 hover:text-white">
               <X size={14} />
             </button>
           </div>
           <p className="mb-2 text-[10px] text-zinc-400">
-            Al activarlo se oculta del feed público y se pausa para quien no envíe el regalo. Solo
-            entran quienes paguen. Puedes reabrir al público cuando quieras.
+            Elige regalos y cantidades. Quien los envíe entra a la sala privada; el resto verá que
+            estás en privado.
           </p>
           <div className="space-y-1">
-            {sortedLiveGiftCatalog().map((gift) => (
-              <button
-                key={gift.id}
-                type="button"
-                disabled={lockBusy}
-                onClick={() => void setLiveLock(gift.id)}
-                className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs text-white hover:bg-white/5"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <GiftIcon giftId={gift.id} size={18} />
-                  {gift.name}
-                </span>
-                <span className="text-cyan-400">{gift.coins}</span>
-              </button>
-            ))}
+            {sortedLiveGiftCatalog().map((gift) => {
+              const active = lockDraftIds.includes(gift.id);
+              const qty = active ? lockDraftQty[gift.id] || 1 : 0;
+              return (
+                <div
+                  key={gift.id}
+                  className={`rounded-lg px-2 py-1.5 ${
+                    active ? 'bg-amber-500/20 text-amber-100' : 'text-white'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleLockDraftGift(gift.id)}
+                    className="flex w-full min-w-0 items-center justify-between gap-2 text-left text-xs"
+                  >
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      <GiftIcon giftId={gift.id} size={16} />
+                      <span className="truncate">{gift.name}</span>
+                    </span>
+                    <span className="shrink-0 text-cyan-400">{gift.coins}</span>
+                  </button>
+                  {active ? (
+                    <div className="lb-live-wish-qty mt-1.5">
+                      <button
+                        type="button"
+                        aria-label="Menos"
+                        onClick={() => setLockDraftQuantity(gift.id, qty - 1)}
+                      >
+                        −
+                      </button>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={qty}
+                        aria-label={`Cantidad de ${gift.name}`}
+                        onChange={(event) => {
+                          const digits = event.target.value.replace(/\D/g, '').slice(0, 2);
+                          if (!digits) {
+                            setLockDraftQuantity(gift.id, 0);
+                            return;
+                          }
+                          setLockDraftQuantity(gift.id, Number(digits));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-label="Más"
+                        onClick={() => setLockDraftQuantity(gift.id, qty + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-          {lock ? (
+          <div className="mt-3 space-y-2">
             <button
               type="button"
-              disabled={lockBusy}
-              onClick={() => void setLiveLock(null)}
-              className="mt-2 w-full rounded-lg border border-white/10 py-1.5 text-[11px] text-zinc-400"
+              disabled={lockBusy || lockDraftIds.length === 0}
+              onClick={() => void applyLockDraft()}
+              className="min-h-11 w-full rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 py-2.5 text-xs font-bold text-zinc-950 disabled:opacity-50"
             >
-              Quitar privado y reabrir al público
+              {lockBusy
+                ? 'Activando…'
+                : `Activar privado (${lockDraftIds.reduce(
+                    (sum, id) =>
+                      sum + (findLiveGift(id)?.coins || 0) * (lockDraftQty[id] || 1),
+                    0,
+                  ).toLocaleString('es-CO')} coins)`}
             </button>
-          ) : null}
+            {lock ? (
+              <button
+                type="button"
+                disabled={lockBusy}
+                onClick={() => void setLiveLock(null)}
+                className="min-h-11 w-full rounded-lg border border-white/10 py-2 text-[11px] text-zinc-400"
+              >
+                Quitar privado y reabrir al público
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
       <SalaBoomModal
