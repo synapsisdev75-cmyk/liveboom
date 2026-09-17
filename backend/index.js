@@ -1,12 +1,30 @@
-// Env local (.env / .env.local) o empaquetado en Functions (.env.liveboom-app / .env.functions).
-// En Cloud Functions, `.env` y `.env.local` suelen estar en ignore; `.env.liveboom-app` sí se
-// empaqueta. override:false en esos archivos = no pisa vars ya inyectadas por Firebase CLI.
+// Env para local y Cloud Functions.
+// `.env` / `.env.local` están en ignore del deploy; `.env.liveboom-app` sí se empaqueta.
+// fillEnvFromFile rellena solo claves ausentes o vacías (no pisa secretos ya inyectados).
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
-require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
-require('dotenv').config({ path: path.join(__dirname, '.env.liveboom-app'), override: false });
-require('dotenv').config({ path: path.join(__dirname, '.env.functions'), override: false });
-require('dotenv').config({ path: path.join(__dirname, '../.env'), override: false });
+const fs = require('fs');
+const dotenv = require('dotenv');
+
+function fillEnvFromFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return;
+    const parsed = dotenv.parse(fs.readFileSync(filePath));
+    for (const [key, value] of Object.entries(parsed)) {
+      const cur = process.env[key];
+      if (cur === undefined || String(cur).trim() === '') {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+require('dotenv').config({ path: path.join(__dirname, '.env'), override: false });
+require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: false });
+fillEnvFromFile(path.join(__dirname, '.env.liveboom-app'));
+fillEnvFromFile(path.join(__dirname, '.env.functions'));
+fillEnvFromFile(path.join(__dirname, '../.env'));
 
 const http = require('http');
 const express = require('express');
@@ -28,12 +46,20 @@ app.use(express.json({ limit: '5mb' }));
 
 // Health primero: si una ruta falla al montar, esto igual puede responder en deploys previos.
 app.get('/api/health', async (_req, res) => {
+  let livekitConfigured = false;
+  try {
+    const { livekitEnabled } = require('./src/lib/livekit');
+    livekitConfigured = typeof livekitEnabled === 'function' && livekitEnabled();
+  } catch {
+    livekitConfigured = false;
+  }
   res.json({
     status: 'ok',
     message: 'Liveboom Backend Running',
     db: prisma ? 'connected-or-ready' : 'disconnected',
     api: 'https://liveboomapp.com',
     auth: 'firebase-jwt-crypto',
+    livekitConfigured,
   });
 });
 
