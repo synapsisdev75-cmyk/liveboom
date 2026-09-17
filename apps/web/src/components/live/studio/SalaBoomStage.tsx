@@ -71,16 +71,17 @@ function buildOccupied(
   hostRef: TrackReference,
   guests: TrackReference[],
   layout: SalaBoomLayout,
-  speakingIds: string[],
   pinnedIdentity: string | null | undefined,
   camOffIdentities: string[] = [],
   identityLabels?: Map<string, string>,
 ): Slot[] {
   const max = layout === 'grid' ? 9 : 8;
-  const people: Slot[] = [
-    toSlot(hostRef, true),
-    ...guests.slice(0, max - 1).map((guest) => toSlot(guest, false)),
-  ];
+  // Orden estable de invitados (por identity) para que useTracks no reordene tiles.
+  const guestSlots = guests
+    .slice(0, max - 1)
+    .map((guest) => toSlot(guest, false))
+    .sort((a, b) => a.identity.localeCompare(b.identity));
+  const people: Slot[] = [toSlot(hostRef, true), ...guestSlots];
   for (const identity of camOffIdentities) {
     if (people.some((slot) => slot.identity === identity)) continue;
     if (people.length >= max) break;
@@ -94,15 +95,12 @@ function buildOccupied(
     });
   }
 
-  if (layout === 'mosaic' && people.length > 1) {
+  // Mosaico: orden ESTABLE. Nunca reordenar por quién habla (evita saltos de tile).
+  // Solo el pin (si hay) mueve a alguien a la casilla grande.
+  if (layout === 'mosaic' && people.length > 1 && pinnedIdentity) {
     people.sort((a, b) => {
-      if (pinnedIdentity) {
-        if (a.identity === pinnedIdentity) return -1;
-        if (b.identity === pinnedIdentity) return 1;
-      }
-      const aTalk = speakingIds.includes(a.identity) ? 1 : 0;
-      const bTalk = speakingIds.includes(b.identity) ? 1 : 0;
-      if (aTalk !== bTalk) return bTalk - aTalk;
+      if (a.identity === pinnedIdentity) return -1;
+      if (b.identity === pinnedIdentity) return 1;
       if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
       return 0;
     });
@@ -354,12 +352,11 @@ export function SalaBoomStage({
         hostRef,
         guests,
         layout,
-        speakingIds,
         pinnedIdentity,
         camOffIdentities,
         identityLabels,
       ),
-    [hostRef, guests, layout, speakingIds, pinnedIdentity, camOffIdentities, identityLabels],
+    [hostRef, guests, layout, pinnedIdentity, camOffIdentities, identityLabels],
   );
 
   const tile = (slot: Slot, index: number) => (

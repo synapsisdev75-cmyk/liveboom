@@ -88,6 +88,11 @@ export function rememberLiveToken(username: string, data: LiveSwitchToken) {
   tokenCache.set(cacheKey(username), { at: Date.now(), data });
 }
 
+/** Invalida token de espectador (p. ej. al aceptar Sala Boom / rejoin). */
+export function forgetLiveToken(username: string) {
+  tokenCache.delete(cacheKey(username));
+}
+
 function abortStaleTokenFetches(keepGen: number, keepRoom?: string) {
   const keepKey = keepRoom ? cacheKey(keepRoom) : '';
   for (const [key, job] of inflight) {

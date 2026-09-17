@@ -40,6 +40,8 @@ type LiveMediaPluginApi = {
   prepareWebView: () => Promise<void>;
   checkAvPermissions: () => Promise<AvPermissionResult>;
   requestAvPermissions: () => Promise<AvPermissionResult>;
+  checkMicrophonePermission: () => Promise<{ microphone: boolean }>;
+  requestMicrophonePermission: () => Promise<{ microphone: boolean }>;
   checkEssentialPermissions: () => Promise<EssentialPermissionResult>;
   requestEssentialPermissions: () => Promise<EssentialPermissionResult>;
   prepareScreenShare: () => Promise<void>;
@@ -90,7 +92,8 @@ type LiveMediaPluginApi = {
       | 'stopScreenShareRequested'
       | 'screenShareChatSend'
       | 'presentationHudAction'
-      | 'screenShareAudioLimited',
+      | 'screenShareAudioLimited'
+      | 'screenShareOverlaysVisible',
     cb: (
       data:
         | ScreenFrameEvent
@@ -98,7 +101,8 @@ type LiveMediaPluginApi = {
         | { reason?: string }
         | { text?: string }
         | { action?: string }
-        | { message?: string },
+        | { message?: string }
+        | { visible?: boolean },
     ) => void,
   ) => Promise<PluginListenerHandle>;
 };
@@ -135,6 +139,8 @@ let micAudioMuted = false;
 let voiceOpenUntil = 0;
 let lastMicLevel = 0;
 let lastGameLevel = 0;
+let micPcmPackets = 0;
+let gamePcmPackets = 0;
 
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -177,6 +183,41 @@ export function getNativeAudioMixerState(): NativeAudioMixerState {
     gameMuted: gameAudioMuted,
     micLevel: lastMicLevel,
     gameLevel: lastGameLevel,
+  };
+}
+
+/** Espera PCM del mic FGS (paquetes). Sin paquetes = rama muerta → fallback WebRTC. */
+export async function waitForNativeMicSignal(timeoutMs = 2000): Promise<boolean> {
+  const startPackets = micPcmPackets;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (micPcmPackets > startPackets + 2) return true;
+    await new Promise((r) => window.setTimeout(r, 120));
+  }
+  return micPcmPackets > startPackets + 2;
+}
+
+/** Espera PCM de audio de juego. Sin paquetes = no publicar pista vacía. */
+export async function waitForNativeGameAudioSignal(timeoutMs = 2500): Promise<boolean> {
+  const startPackets = gamePcmPackets;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (gamePcmPackets > startPackets + 2) return true;
+    await new Promise((r) => window.setTimeout(r, 120));
+  }
+  return gamePcmPackets > startPackets + 2;
+}
+
+export async function bindScreenShareOverlaysVisible(
+  handler: (visible: boolean) => void,
+): Promise<() => void> {
+  if (!isNativeAndroidApp()) return () => undefined;
+  const handle = await LiveMedia.addListener('screenShareOverlaysVisible', (raw) => {
+    const visible = Boolean((raw as { visible?: boolean })?.visible);
+    handler(visible);
+  });
+  return () => {
+    void handle.remove();
   };
 }
 
@@ -294,6 +335,34 @@ export async function ensureNativeLiveAvPermissions(): Promise<AvPermissionResul
     throw new Error(
       message ||
         'Activa cámara y micrófono en Ajustes → Apps → LiveBoom → Permisos.',
+    );
+  }
+}
+
+/**
+ * Permisos exclusivos de Screen Share / Mobile Gaming.
+ * NUNCA solicita CAMERA. Solo micrófono (si hace falta) + prep FGS/WebView.
+ */
+export async function ensureNativeScreenSharePermissions(opts?: {
+  microphoneEnabled?: boolean;
+}): Promise<{ microphone: boolean }> {
+  if (!isNativeAndroidApp()) {
+    return { microphone: true };
+  }
+  await prepareNativeLiveWebView();
+  await prepareNativeScreenShareService();
+  if (opts?.microphoneEnabled === false) {
+    return { microphone: true };
+  }
+  try {
+    const current = await LiveMedia.checkMicrophonePermission();
+    if (current.microphone) return current;
+    return await LiveMedia.requestMicrophonePermission();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err || '');
+    throw new Error(
+      message ||
+        'Activa el micrófono en Ajustes → Apps → LiveBoom → Permisos para presentar con audio.',
     );
   }
 }
@@ -958,6 +1027,7 @@ export async function startNativeScreenAudioStream(): Promise<MediaStream | null
   const handle = await LiveMedia.addListener('screenAudioPcm', (raw) => {
     const data = raw as ScreenAudioPcmEvent;
     if (!data?.pcm) return;
+    gamePcmPackets += 1;
     try {
       const bin = atob(data.pcm);
       const bytes = new Uint8Array(bin.length);
@@ -1086,6 +1156,7 @@ export async function startNativeMicStream(): Promise<MediaStream | null> {
   const handle = await LiveMedia.addListener('micPcm', (raw) => {
     const data = raw as ScreenAudioPcmEvent;
     if (!data?.pcm) return;
+    micPcmPackets += 1;
     try {
       const bin = atob(data.pcm);
       const bytes = new Uint8Array(bin.length);
@@ -1146,6 +1217,8 @@ export async function stopNativeScreenShareStream(): Promise<void> {
   gameAudioMuted = false;
   lastMicLevel = 0;
   lastGameLevel = 0;
+  micPcmPackets = 0;
+  gamePcmPackets = 0;
   voiceOpenUntil = 0;
   await stopNativeOverlayCameraStream();
   await stopNativeScreenAudioStream();

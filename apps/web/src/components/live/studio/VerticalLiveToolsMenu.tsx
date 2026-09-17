@@ -40,6 +40,8 @@ type Props = {
   lockActive: boolean;
   /** Oculta Compartir pantalla (móvil / Espacio Gaming). */
   hideScreenShare?: boolean;
+  /** Oculta Cámara durante Mobile Gaming Screen Share. */
+  hideCamera?: boolean;
   /** Etiqueta del tool screen (ej. Presentar en Espacio Gaming). */
   screenToolLabel?: string;
   onInvite: () => void;
@@ -130,6 +132,7 @@ export function VerticalLiveToolsMenu({
   wishlistCount,
   lockActive,
   hideScreenShare = false,
+  hideCamera = false,
   screenToolLabel,
   onInvite,
   onVs,
@@ -230,6 +233,7 @@ export function VerticalLiveToolsMenu({
     ...TOOLS.filter((tool) => {
       if (tool.id === 'vs') return Boolean(onVs);
       if (tool.id === 'screen') return !hideScreenShare;
+      if (tool.id === 'camera') return !hideCamera;
       return true;
     }),
     ...(onReel ? [REEL_TOOL] : []),

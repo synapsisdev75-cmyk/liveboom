@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Gamepad2, Radio, SquarePen } from 'lucide-react';
+import { Radio, SquarePen } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MyPromotionsModal } from '../components/ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../components/ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../components/ads/PublicidadSidebarCard';
 import { CreatePostModal } from '../components/social/CreatePostModal';
-import { canUseGamingSpace } from '../lib/liveScreenSharePolicy';
 import { listenActivePromotions, listenMyPromotions, type PromotionAd } from '../lib/promotionsFirestore';
 import { fetchPrivateLocation } from '../lib/userLocation';
 import { useAuthStore } from '../store/authStore';
@@ -15,26 +14,12 @@ export function CreateView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
-  /** Reactivo: tablet Android nativo debe ver el mismo CTA que el teléfono. */
-  const [showGamingSpace, setShowGamingSpace] = useState(() => canUseGamingSpace());
   const [createOpen, setCreateOpen] = useState(false);
   const [ads, setAds] = useState<PromotionAd[]>([]);
   const [myAds, setMyAds] = useState<PromotionAd[]>([]);
   const [regionId, setRegionId] = useState('nacional');
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [myPromotionsOpen, setMyPromotionsOpen] = useState(false);
-
-  useEffect(() => {
-    const refresh = () => setShowGamingSpace(canUseGamingSpace());
-    refresh();
-    // Capacitor / WebView en tablet a veces reporta native unos cientos de ms después.
-    const iv = window.setInterval(refresh, 350);
-    const stop = window.setTimeout(() => window.clearInterval(iv), 8_000);
-    return () => {
-      window.clearInterval(iv);
-      window.clearTimeout(stop);
-    };
-  }, []);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -83,24 +68,6 @@ export function CreateView() {
           </span>
         </span>
       </button>
-
-      {showGamingSpace ? (
-        <button
-          type="button"
-          onClick={() => navigate('/espacio-gaming')}
-          className="lb-create-action lb-create-action--gaming flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl p-3.5 text-left transition hover:brightness-110 sm:gap-4 sm:p-4"
-        >
-          <span className="lb-create-action__icon grid h-12 w-12 shrink-0 place-items-center rounded-xl">
-            <Gamepad2 size={22} />
-          </span>
-          <span className="min-w-0">
-            <span className="lb-create-action__title block text-base font-bold">Espacio Gaming</span>
-            <span className="lb-create-page__muted mt-0.5 block text-xs">
-              Móvil y tablet Android · presenta juegos con chat flotante, audio y cámara PiP.
-            </span>
-          </span>
-        </button>
-      ) : null}
 
       <button
         type="button"

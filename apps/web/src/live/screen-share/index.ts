@@ -11,3 +11,6 @@ export * from './ScreenShareChat';
 export * from './ScreenShareDiagnostics';
 export * from './ScreenShareController';
 export { ScreenShareVideo } from './ScreenShareVideo';
+export { ScreenShareContainer } from './ScreenShareContainer';
+export { useScreenShareSynchronization } from './useScreenShareSynchronization';
+export { useSalaSynchronization } from './useSalaSynchronization';
