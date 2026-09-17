@@ -1,29 +1,41 @@
 ---
-description: Esta máquina trabaja y despliega la rama main (principal / producción), no jhonantan
+description: Auto-run deploy siempre al hosting principal (liveboomapp.com)
 alwaysApply: true
 ---
 
-# LiveBoom: rama main (esta máquina)
+# LiveBoom: rama main + deploy automático (esta máquina)
 
 Repo: `https://github.com/synapsisdev75-cmyk/liveboom`  
-Rama de trabajo: **`main`** (principal / producción)
+Rama: **`main`** (producción)
 
-## Git
+## Hosting fijo (nunca otro destino)
 
-- Trabajar, commitear y hacer push a **`origin/main`**.
-- Antes de cualquier git push o deploy: `git branch --show-current` debe ser `main`. Si no, cambiar a esa rama.
-- No usar la rama `jhonantan` ni canales de preview como flujo por defecto en esta máquina.
+Siempre publicar en el **sitio principal**:
 
-## Cuando el usuario pida desplegar
+- https://liveboomapp.com
+- https://www.liveboomapp.com
+- https://liveboom-app.web.app
 
-Desplegar el código de **`main`** al sitio principal:
+Comando: `npx firebase deploy --only hosting --project liveboom-app`  
+**No** canal preview `jhonantan`. **No** preguntar a qué hosting ir.
 
-1. Confirmar que HEAD es `main` (y push a `origin/main` si el usuario lo pide).
-2. Hosting producción (live / www):
-   - `npm run build -w apps/web`
-   - `npx firebase deploy --only hosting --project liveboom-app`
-   - (o `npm run deploy:hosting` / `deploy:prod` según el script del repo)
-3. Functions / API cuando el cambio lo requiera: `npm run deploy:api` o `deploy:prod`.
-4. URLs de entrega: **https://liveboomapp.com** / **https://www.liveboomapp.com** / **https://liveboom-app.web.app**
+## Run / desplegar = automático (sin preguntar)
 
-No dar por listo un preview de canal `jhonantan` cuando el usuario pidió desplegar en esta máquina.
+Si el usuario dice **desplegar**, **deploy**, **run**, **sube**, **publica**, o equivalente:
+
+1. Ejecutar de inmediato (no preguntar “¿lo despliego?”).
+2. `git branch --show-current` → debe ser `main` (cambiar si no).
+3. Commit de cambios relevantes del trabajo (sin `.tmp-*`, sin secretos) si hay diffs.
+4. `git push origin main`.
+5. `npm run build -w apps/web`.
+6. `npx firebase deploy --only hosting --project liveboom-app`.
+7. Si el cambio toca `backend/` → también `npx firebase deploy --only functions --project liveboom-app` (o `deploy:prod`).
+8. Responder con las URLs de arriba + commit corto.
+
+Si Auto-review bloquea push/deploy: reintentar con aprobación smart mode (mismo comando) para que el usuario apruebe; no abandonar el deploy.
+
+## Git en esta máquina
+
+- Trabajar, commitear y push a **`origin/main`**.
+- No usar rama `jhonantan` ni preview como flujo por defecto.
+- No actualizar `git config`; si falta identidad, usar `git -c user.name=... -c user.email=...` con el autor del último commit del repo.

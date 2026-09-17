@@ -19,8 +19,10 @@ Ver también `liveboom-responsive-universal.mdc`: **una sola app** PC/tablet/mó
 
 ## Deploy (esta máquina = rama `main`)
 
-En esta máquina rige `liveboom-jhonantan-branch.mdc` (política main): un “desplegar” publica el **sitio principal**.
+En esta máquina rige `liveboom-jhonantan-branch.mdc`: **run/desplegar = automático** al sitio principal.
 
-- Default: rama **`main`** + Firebase Hosting live (`firebase deploy --only hosting --project liveboom-app`).
-- URLs: `liveboomapp.com` / `www` / `liveboom-app.web.app`.
-- No usar el canal preview `jhonantan` como flujo por defecto aquí.
+- Sin preguntar destino ni confirmación extra.
+- Rama **`main`** + `firebase deploy --only hosting --project liveboom-app`.
+- URLs fijas: **https://liveboomapp.com** · **https://www.liveboomapp.com** · **https://liveboom-app.web.app**.
+- No canal preview `jhonantan`.
+
