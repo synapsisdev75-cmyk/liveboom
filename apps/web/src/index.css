@@ -4213,6 +4213,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   pointer-events: none;
   width: 100%;
   min-width: 0;
+  margin-top: clamp(0.2rem, 0.6vw, 0.4rem);
   text-align: right;
   overflow: hidden;
 }

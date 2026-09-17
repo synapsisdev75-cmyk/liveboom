@@ -1317,6 +1317,8 @@ function LiveGoalWishHud({
   onNewGoal,
   lock = null,
   lockOpen = false,
+  lockDraftIds,
+  lockDraftQty,
 }: {
   username: string;
   goal: LiveCoinGoalInfo | null;
@@ -1330,9 +1332,28 @@ function LiveGoalWishHud({
   lock?: LockInfo | null;
   /** true = meta de regalos del candado cumplida (candado abierto). */
   lockOpen?: boolean;
+  /** Borrador del host al elegir regalos del candado (preview en HUD). */
+  lockDraftIds?: string[];
+  lockDraftQty?: Record<string, number>;
 }) {
-  const lockGifts = lockGiftIdsOf(lock);
-  const lockQty = lockGiftQtyOf(lock);
+  const activeLockGifts = lockGiftIdsOf(lock);
+  const activeLockQty = lockGiftQtyOf(lock);
+  const draftIds = (lockDraftIds || []).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
+  const showDraft = Boolean(isHost && !activeLockGifts.length && draftIds.length > 0);
+  const lockGifts = activeLockGifts.length ? activeLockGifts : showDraft ? draftIds : [];
+  const lockQty = activeLockGifts.length
+    ? activeLockQty
+    : showDraft
+      ? Object.fromEntries(
+          draftIds.map((id) => [id, Math.min(99, Math.max(1, Math.floor(lockDraftQty?.[id] || 1)))]),
+        )
+      : {};
+  const lockCoins = activeLockGifts.length
+    ? lockTotalCoins(lock)
+    : lockGifts.reduce(
+        (sum, id) => sum + (findLiveGift(id)?.coins || 0) * (lockQty[id] || 1),
+        0,
+      );
   if (!goal && wishlist.length === 0 && !achievedWish && lockGifts.length === 0) return null;
   const handle = username.replace(/^@/, '');
   const statusText = celebrating
@@ -1371,6 +1392,19 @@ function LiveGoalWishHud({
       )}
       {wishlist.length > 0 || achievedWish || lockGifts.length > 0 ? (
         <div className="lb-live-wishlist-stack">
+          {/* Deseos arriba; Candado debajo (zona del recuadro señalado). */}
+          {wishlist.length > 0 ? (
+            <div className="lb-live-wishlist">
+              <p className="lb-live-wishlist__title">
+                <Gift size={12} />
+                <span>Deseos @{handle}</span>
+              </p>
+              <div className="lb-live-wishlist__gifts">
+                <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
+              </div>
+            </div>
+          ) : null}
+          <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
           {lockGifts.length > 0 ? (
             <div className={`lb-live-candado${lockOpen ? ' is-open' : ' is-closed'}`}>
               <p className="lb-live-candado__title">
@@ -1385,22 +1419,12 @@ function LiveGoalWishHud({
               <p className="lb-live-candado__hint">
                 {lockOpen
                   ? 'Meta de regalos cumplida'
-                  : `Requiere ${lockTotalCoins(lock).toLocaleString('es-CO')} coins`}
+                  : showDraft
+                    ? 'Elige y activa el candado'
+                    : `Requiere ${lockCoins.toLocaleString('es-CO')} coins`}
               </p>
             </div>
           ) : null}
-          {wishlist.length > 0 ? (
-            <div className="lb-live-wishlist">
-              <p className="lb-live-wishlist__title">
-                <Gift size={12} />
-                <span>Deseos @{handle}</span>
-              </p>
-              <div className="lb-live-wishlist__gifts">
-                <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
-              </div>
-            </div>
-          ) : null}
-          <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
         </div>
       ) : null}
     </div>
@@ -4986,6 +5010,8 @@ function CreatorStage({
               celebrating={goalCelebrating}
               lock={lock}
               lockOpen={!isHost && lockUnlocked}
+              lockDraftIds={lockPicker || lock ? lockDraftIds : undefined}
+              lockDraftQty={lockDraftQty}
               onNewGoal={() => {
                 setNewCoinGoalError(null);
                 setNewCoinGoalOpen(true);
