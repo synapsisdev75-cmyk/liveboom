@@ -627,6 +627,24 @@ router.post('/unlock', requireAuth, async (req, res) => {
   });
 });
 
+/** Host otorga acceso al LIVE privado sin cobrar regalo (solicitud aceptada). */
+router.post('/grant-access', requireAuth, (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const viewerUid =
+    typeof req.body?.viewerUid === 'string' ? String(req.body.viewerUid).trim() : '';
+  if (!roomName || !viewerUid) {
+    res.status(400).json({ error: 'roomName y viewerUid son obligatorios' });
+    return;
+  }
+  if (!isRoomHost(req.user, roomName, req.body?.handle)) {
+    res.status(403).json({ error: 'Solo el anfitrión puede aceptar solicitudes' });
+    return;
+  }
+  liveLocks.markUnlocked(roomName, viewerUid);
+  res.json({ ok: true, unlocked: true, viewerUid });
+});
+
 router.get('/reels', (_req, res) => {
   res.json({ reels: reelStore.listSharedReels() });
 });

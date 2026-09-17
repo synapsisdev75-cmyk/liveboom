@@ -21,8 +21,6 @@ import {
 import {
   Eye,
   Gift,
-  Lock,
-  Unlock,
   Radio,
   Send,
   Share2,
@@ -44,6 +42,30 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-route
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { LiveWishCarousel } from '../components/live/LiveWishCarousel';
 import { LiveWishAchievedCard } from '../components/live/LiveWishAchievedCard';
+import {
+  LivePrivacyCountdown,
+  LivePrivacyLockButton,
+  LivePrivacyRequestStrip,
+  LivePrivacyRequestsSheet,
+  LivePrivacySetupSheet,
+  PRIVACY_DELAY_OPTIONS,
+} from '../components/live/privacy';
+import {
+  clearPrivateSchedule,
+  grantPrivateAccess,
+  listenMyPrivateGrant,
+  listenMyPrivateRequest,
+  listenPendingPrivateRequests,
+  listenPrivateSchedule,
+  markPrivateActivated,
+  newPrivateSessionId,
+  readPrivateSessionId,
+  requestPrivateAccess,
+  schedulePrivateLive,
+  setPrivateRequestStatus,
+  setPrivateSessionId,
+  type PrivateAccessRequest,
+} from '../lib/livePrivateAccessFirestore';
 import { LiveNewCoinGoalModal } from '../components/live/LiveNewCoinGoalModal';
 import { LiveChatUserIdentity } from '../components/live/LiveChatUserIdentity';
 import type { AchievedWish } from '../lib/liveWishAchieved';
@@ -325,18 +347,6 @@ function lockTotalCoins(lock: LockInfo | null | undefined): number {
   return Math.max(0, Number(lock.coins) || 0);
 }
 
-function lockGiftIdsOf(lock: LockInfo | null | undefined): string[] {
-  return lockRequirementsOf(lock).map((row) => row.giftId);
-}
-
-function lockGiftQtyOf(lock: LockInfo | null | undefined): Record<string, number> {
-  const qty: Record<string, number> = {};
-  for (const row of lockRequirementsOf(lock)) {
-    qty[row.giftId] = row.quantity;
-  }
-  return qty;
-}
-
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string; combo?: number };
 
 const REEL_SECONDS = 15;
@@ -561,6 +571,8 @@ export function LiveRoom() {
   const [isPrivate, setIsPrivate] = useState(Boolean(launch.isPrivate));
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  const [gateRequestBusy, setGateRequestBusy] = useState(false);
+  const [gateRequestNote, setGateRequestNote] = useState<string | null>(null);
   const [viewerPaused, setViewerPaused] = useState(false);
   const aspectRatioLockedRef = useRef<LiveAspectRatio>(
     launch.aspectRatio ? parseLiveAspectRatio(launch.aspectRatio) : DEFAULT_LIVE_ASPECT_RATIO,
@@ -922,11 +934,45 @@ export function LiveRoom() {
       }
       setGateLock(null);
       setViewerPaused(false);
+      if (profile?.firebaseUid) {
+        const sessionId =
+          (await readPrivateSessionId(username).catch(() => null)) || newPrivateSessionId();
+        await grantPrivateAccess(username, profile.firebaseUid, sessionId, 'unlock').catch(
+          () => undefined,
+        );
+      }
       await fetchToken();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo desbloquear');
     } finally {
       setUnlocking(false);
+    }
+  }
+
+  async function requestAccessFromGate() {
+    if (!username || !firebaseUid) return;
+    setGateRequestBusy(true);
+    setGateRequestNote(null);
+    try {
+      const sessionId =
+        (await readPrivateSessionId(username).catch(() => null)) || newPrivateSessionId();
+      const profile = useAuthStore.getState().profile;
+      const result = await requestPrivateAccess(username, {
+        uid: firebaseUid,
+        username: handle || firebaseUid,
+        displayName: profile?.displayName || handle || 'Liveboomer',
+        avatarUrl: profile?.avatarUrl || null,
+        sessionId,
+      });
+      if (!result.ok) {
+        setGateRequestNote(result.error);
+        return;
+      }
+      setGateRequestNote(result.duplicate ? 'Solicitud enviada' : 'Solicitud enviada al anfitrión');
+    } catch (err) {
+      setGateRequestNote(err instanceof Error ? err.message : 'No se pudo solicitar acceso');
+    } finally {
+      setGateRequestBusy(false);
     }
   }
   useEffect(() => {
@@ -1090,6 +1136,7 @@ export function LiveRoom() {
             Total: {total.toLocaleString('es-CO')} coins
           </p>
           {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
+          {gateRequestNote ? <p className="text-sm text-amber-200">{gateRequestNote}</p> : null}
           <button
             type="button"
             disabled={unlocking}
@@ -1097,6 +1144,14 @@ export function LiveRoom() {
             className="min-h-11 w-full rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 py-3 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
             {unlocking ? 'Desbloqueando…' : 'Enviar regalos del candado y entrar'}
+          </button>
+          <button
+            type="button"
+            disabled={gateRequestBusy || unlocking}
+            onClick={() => void requestAccessFromGate()}
+            className="min-h-11 w-full rounded-full border border-amber-400/40 bg-black/40 py-3 text-sm font-bold text-amber-100 disabled:opacity-60"
+          >
+            {gateRequestBusy ? 'Enviando…' : 'Solicitar acceso'}
           </button>
           <Link to="/" className="block min-h-11 py-2 text-xs text-cyan-400">
             Volver al inicio
@@ -1317,8 +1372,14 @@ function LiveGoalWishHud({
   onNewGoal,
   lock = null,
   lockOpen = false,
-  lockDraftIds,
-  lockDraftQty,
+  pendingRequests = [],
+  privateStartsAtMs = null,
+  nowMs = Date.now(),
+  onLockClick,
+  onRequestClick,
+  onOverflowClick,
+  onRequestAccess,
+  myRequestStatus = null,
 }: {
   username: string;
   goal: LiveCoinGoalInfo | null;
@@ -1330,37 +1391,32 @@ function LiveGoalWishHud({
   celebrating?: boolean;
   onNewGoal?: () => void;
   lock?: LockInfo | null;
-  /** true = meta de regalos del candado cumplida (candado abierto). */
   lockOpen?: boolean;
-  /** Borrador del host al elegir regalos del candado (preview en HUD). */
-  lockDraftIds?: string[];
-  lockDraftQty?: Record<string, number>;
+  pendingRequests?: PrivateAccessRequest[];
+  privateStartsAtMs?: number | null;
+  nowMs?: number;
+  onLockClick?: () => void;
+  onRequestClick?: (row: PrivateAccessRequest) => void;
+  onOverflowClick?: () => void;
+  onRequestAccess?: () => void;
+  myRequestStatus?: PrivateAccessRequest['status'] | null;
 }) {
-  const activeLockGifts = lockGiftIdsOf(lock);
-  const activeLockQty = lockGiftQtyOf(lock);
-  const draftIds = (lockDraftIds || []).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
-  const showDraft = Boolean(isHost && !activeLockGifts.length && draftIds.length > 0);
-  const lockGifts = activeLockGifts.length ? activeLockGifts : showDraft ? draftIds : [];
-  const lockQty = activeLockGifts.length
-    ? activeLockQty
-    : showDraft
-      ? Object.fromEntries(
-          draftIds.map((id) => [id, Math.min(99, Math.max(1, Math.floor(lockDraftQty?.[id] || 1)))]),
-        )
-      : {};
-  const lockCoins = activeLockGifts.length
-    ? lockTotalCoins(lock)
-    : lockGifts.reduce(
-        (sum, id) => sum + (findLiveGift(id)?.coins || 0) * (lockQty[id] || 1),
-        0,
-      );
-  if (!goal && wishlist.length === 0 && !achievedWish && lockGifts.length === 0) return null;
+  const privateActive = Boolean(lock);
   const handle = username.replace(/^@/, '');
   const statusText = celebrating
     ? ' · ¡Meta conseguida!'
     : goal?.reached
       ? ' · Meta cumplida ✓'
       : '';
+  const viewerLabel =
+    privateActive && lockOpen
+      ? 'Privado desbloqueado'
+      : privateActive && myRequestStatus === 'pending'
+        ? 'Solicitud pendiente'
+        : privateActive && myRequestStatus === 'rejected'
+          ? 'Solicitud rechazada'
+          : undefined;
+
   return (
     <div className="lb-live-viewer-hud__info">
       {goal ? (
@@ -1377,11 +1433,7 @@ function LiveGoalWishHud({
             {goal.top ? ` · Top: ${goal.top}` : ''}
           </p>
           {isHost && goal.reached && onNewGoal ? (
-            <button
-              type="button"
-              className="lb-live-viewer-goal__new"
-              onClick={onNewGoal}
-            >
+            <button type="button" className="lb-live-viewer-goal__new" onClick={onNewGoal}>
               <Plus size={11} />
               Nueva meta
             </button>
@@ -1390,43 +1442,40 @@ function LiveGoalWishHud({
       ) : (
         <span className="lb-live-viewer-hud__info-spacer" aria-hidden />
       )}
-      {wishlist.length > 0 || achievedWish || lockGifts.length > 0 ? (
-        <div className="lb-live-wishlist-stack">
-          {/* Deseos arriba; Candado debajo (zona del recuadro señalado). */}
-          {wishlist.length > 0 ? (
-            <div className="lb-live-wishlist">
-              <p className="lb-live-wishlist__title">
-                <Gift size={12} />
-                <span>Deseos @{handle}</span>
-              </p>
-              <div className="lb-live-wishlist__gifts">
-                <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
-              </div>
+      <div className="lb-live-wishlist-stack">
+        {wishlist.length > 0 ? (
+          <div className="lb-live-wishlist">
+            <p className="lb-live-wishlist__title">
+              <Gift size={12} />
+              <span>Deseos @{handle}</span>
+            </p>
+            <div className="lb-live-wishlist__gifts">
+              <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
             </div>
-          ) : null}
-          <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
-          {lockGifts.length > 0 ? (
-            <div className={`lb-live-candado${lockOpen ? ' is-open' : ' is-closed'}`}>
-              <p className="lb-live-candado__title">
-                {lockOpen ? <Unlock size={12} aria-hidden /> : <Lock size={12} aria-hidden />}
-                <span>
-                  {lockOpen ? 'Candado abierto' : 'Candado'} @{handle}
-                </span>
-              </p>
-              <div className="lb-live-candado__gifts">
-                <LiveWishCarousel giftIds={lockGifts} quantities={lockQty} />
-              </div>
-              <p className="lb-live-candado__hint">
-                {lockOpen
-                  ? 'Meta de regalos cumplida'
-                  : showDraft
-                    ? 'Elige y activa el candado'
-                    : `Requiere ${lockCoins.toLocaleString('es-CO')} coins`}
-              </p>
-            </div>
+          </div>
+        ) : null}
+        <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
+        <div className="lb-live-privacy-row">
+          <LivePrivacyLockButton
+            privateActive={privateActive}
+            unlocked={lockOpen}
+            interactive={Boolean(isHost || (privateActive && !lockOpen && onRequestAccess))}
+            label={viewerLabel}
+            onClick={() => {
+              if (isHost) onLockClick?.();
+              else if (privateActive && !lockOpen) onRequestAccess?.();
+            }}
+          />
+          {isHost && privateActive ? (
+            <LivePrivacyRequestStrip
+              requests={pendingRequests}
+              onSelect={onRequestClick}
+              onOverflow={onOverflowClick}
+            />
           ) : null}
         </div>
-      ) : null}
+        <LivePrivacyCountdown privateStartsAtMs={privateStartsAtMs} nowMs={nowMs} />
+      </div>
     </div>
   );
 }
@@ -1908,6 +1957,18 @@ function CreatorStage({
   const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
   const [lock, setLock] = useState<LockInfo | null>(null);
   const [lockUnlocked, setLockUnlocked] = useState(false);
+  const [privacyRequests, setPrivacyRequests] = useState<PrivateAccessRequest[]>([]);
+  const [privacyRequestsOpen, setPrivacyRequestsOpen] = useState(false);
+  const [privacyFocusUid, setPrivacyFocusUid] = useState<string | null>(null);
+  const [privacyBusyUid, setPrivacyBusyUid] = useState<string | null>(null);
+  const [privacyDelayId, setPrivacyDelayId] = useState<string>('now');
+  const [privacyCustomSec, setPrivacyCustomSec] = useState('60');
+  const [privateStartsAtMs, setPrivateStartsAtMs] = useState<number | null>(null);
+  const [privateSessionId, setPrivateSessionIdState] = useState<string | null>(null);
+  const [privacyNowMs, setPrivacyNowMs] = useState(() => Date.now());
+  const [myPrivacyRequest, setMyPrivacyRequest] = useState<PrivateAccessRequest | null>(null);
+  const privateActivateOnceRef = useRef<number | null>(null);
+  const pendingPrivacyReqsRef = useRef<Array<{ giftId: string; quantity: number }>>([]);
   const [remoteFrameLayout, setRemoteFrameLayout] = useState<LiveFrameLayout>(() =>
     defaultCameraFrameLayout(aspectRatio),
   );
@@ -2237,6 +2298,70 @@ function CreatorStage({
     }, 12_000);
     return () => window.clearInterval(timer);
   }, [isHost, username, summaryOpen, liveEnded]);
+
+  useEffect(() => {
+    return listenPrivateSchedule(username, (schedule) => {
+      setPrivateStartsAtMs(schedule.privateStartsAtMs);
+      setPrivateSessionIdState(schedule.privateSessionId);
+      pendingPrivacyReqsRef.current = schedule.privatePendingRequirements || [];
+      if (schedule.privateActivatedAtMs) {
+        privateActivateOnceRef.current = schedule.privateActivatedAtMs;
+      }
+    });
+  }, [username]);
+
+  useEffect(() => {
+    if (!privateStartsAtMs) return;
+    const tick = () => setPrivacyNowMs(Date.now());
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [privateStartsAtMs]);
+
+  useEffect(() => {
+    if (!isHost) return;
+    return listenPendingPrivateRequests(username, privateSessionId, setPrivacyRequests);
+  }, [isHost, username, privateSessionId]);
+
+  useEffect(() => {
+    if (isHost || !firebaseUid) return;
+    return listenMyPrivateRequest(username, firebaseUid, setMyPrivacyRequest);
+  }, [isHost, username, firebaseUid]);
+
+  useEffect(() => {
+    if (isHost || !firebaseUid || !privateSessionId) return;
+    return listenMyPrivateGrant(username, firebaseUid, (grant) => {
+      if (grant && grant.sessionId === privateSessionId) {
+        setLockUnlocked(true);
+        onViewerPausedRef.current?.(false, null);
+      }
+    });
+  }, [isHost, username, firebaseUid, privateSessionId]);
+
+  useEffect(() => {
+    if (!isHost || !privateStartsAtMs || lock) return;
+    if (Date.now() < privateStartsAtMs) return;
+    if (privateActivateOnceRef.current === privateStartsAtMs) return;
+    const pending = pendingPrivacyReqsRef.current || [];
+    const requirements: LockGiftRequirement[] = [];
+    for (const row of pending.slice(0, LIVE_LOCK_ACTIVE_MAX)) {
+      const gift = findLiveGift(row.giftId);
+      if (!gift) continue;
+      requirements.push({
+        giftId: gift.id,
+        giftName: gift.name,
+        coins: gift.coins,
+        emoji: gift.emoji || '🎁',
+        quantity: Math.min(99, Math.max(1, Math.floor(row.quantity || 1))),
+      });
+    }
+    if (!requirements.length) return;
+    privateActivateOnceRef.current = privateStartsAtMs;
+    void (async () => {
+      await setLiveLock(requirements);
+      await markPrivateActivated(username, privateStartsAtMs).catch(() => undefined);
+    })();
+  }, [isHost, privateStartsAtMs, lock, privacyNowMs, username]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2859,6 +2984,15 @@ function CreatorStage({
       setLockPicker(false);
       const nowPrivate = Boolean(result.isPrivate ?? result.locked);
       onPrivacyChange?.(nowPrivate);
+      if (next) {
+        const sessionId = privateSessionId || newPrivateSessionId();
+        setPrivateSessionIdState(sessionId);
+        await setPrivateSessionId(username, sessionId).catch(() => undefined);
+      } else {
+        await clearPrivateSchedule(username).catch(() => undefined);
+        setPrivateStartsAtMs(null);
+        setPrivacyRequests([]);
+      }
       await updateLiveRoomFeed(username, {
         isPrivate: nowPrivate,
         lockGiftId: next?.giftId ?? null,
@@ -2945,7 +3079,86 @@ function CreatorStage({
         quantity: Math.min(99, Math.max(1, Math.floor(lockDraftQty[giftId] || 1))),
       });
     }
-    await setLiveLock(requirements);
+    let delayMs = 0;
+    if (privacyDelayId === 'custom') {
+      delayMs = Math.min(3600, Math.max(0, Math.floor(Number(privacyCustomSec) || 0))) * 1000;
+    } else {
+      delayMs = PRIVACY_DELAY_OPTIONS.find((o) => o.id === privacyDelayId)?.ms ?? 0;
+    }
+    if (delayMs <= 0) {
+      await setLiveLock(requirements);
+      return;
+    }
+    const sessionId = newPrivateSessionId();
+    const startsAt = Date.now() + delayMs;
+    setPrivateSessionIdState(sessionId);
+    pendingPrivacyReqsRef.current = requirements.map((r) => ({
+      giftId: r.giftId,
+      quantity: r.quantity,
+    }));
+    privateActivateOnceRef.current = null;
+    await schedulePrivateLive(username, {
+      privateStartsAtMs: startsAt,
+      requirements: pendingPrivacyReqsRef.current,
+      sessionId,
+    });
+    setPrivateStartsAtMs(startsAt);
+    setLockPicker(false);
+    setInviteNote(`El LIVE pasará a privado en ${Math.round(delayMs / 1000)} s.`);
+    await publishRoomData(room, {
+      type: 'lock',
+      lock: null,
+    }).catch(() => undefined);
+  }
+
+  async function acceptPrivacyRequest(uid: string) {
+    if (!isHost || !privateSessionId) return;
+    setPrivacyBusyUid(uid);
+    try {
+      await api('/api/stream/grant-access', {
+        method: 'POST',
+        body: JSON.stringify({ roomName: username, viewerUid: uid, handle }),
+      });
+      await grantPrivateAccess(username, uid, privateSessionId, 'host');
+      await setPrivateRequestStatus(username, uid, 'approved');
+      setPrivacyFocusUid(null);
+    } catch (err) {
+      setInviteNote(err instanceof Error ? err.message : 'No se pudo aceptar');
+    } finally {
+      setPrivacyBusyUid(null);
+    }
+  }
+
+  async function rejectPrivacyRequest(uid: string) {
+    if (!isHost) return;
+    setPrivacyBusyUid(uid);
+    try {
+      await setPrivateRequestStatus(username, uid, 'rejected', {
+        retryAllowedAtMs: Date.now() + 60_000,
+      });
+      setPrivacyFocusUid(null);
+    } finally {
+      setPrivacyBusyUid(null);
+    }
+  }
+
+  async function viewerRequestPrivateAccess() {
+    if (!firebaseUid || !privateSessionId) {
+      setInviteNote('El privado aún no tiene sesión activa.');
+      return;
+    }
+    const result = await requestPrivateAccess(username, {
+      uid: firebaseUid,
+      username: handle || firebaseUid,
+      displayName: displayName || handle || 'Liveboomer',
+      avatarUrl: useAuthStore.getState().profile?.avatarUrl || null,
+      sessionId: privateSessionId,
+    });
+    if (!result.ok) {
+      setInviteNote(result.error);
+      return;
+    }
+    setInviteNote(result.duplicate ? 'Solicitud enviada' : 'Solicitud enviada al anfitrión');
   }
   const flipCamera = useCallback(async () => {
     if (!canPublish || flipping) return;
@@ -5009,9 +5222,26 @@ function CreatorStage({
               isHost
               celebrating={goalCelebrating}
               lock={lock}
-              lockOpen={!isHost && lockUnlocked}
-              lockDraftIds={lockPicker || lock ? lockDraftIds : undefined}
-              lockDraftQty={lockDraftQty}
+              lockOpen={false}
+              pendingRequests={privacyRequests}
+              privateStartsAtMs={privateStartsAtMs}
+              nowMs={privacyNowMs}
+              onLockClick={() => {
+                if (lock && privacyRequests.length > 0) {
+                  setPrivacyFocusUid(null);
+                  setPrivacyRequestsOpen(true);
+                  return;
+                }
+                openLockPicker();
+              }}
+              onRequestClick={(row) => {
+                setPrivacyFocusUid(row.uid);
+                setPrivacyRequestsOpen(true);
+              }}
+              onOverflowClick={() => {
+                setPrivacyFocusUid(null);
+                setPrivacyRequestsOpen(true);
+              }}
               onNewGoal={() => {
                 setNewCoinGoalError(null);
                 setNewCoinGoalOpen(true);
@@ -5088,6 +5318,14 @@ function CreatorStage({
               celebrating={goalCelebrating}
               lock={lock}
               lockOpen={lockUnlocked}
+              privateStartsAtMs={privateStartsAtMs}
+              nowMs={privacyNowMs}
+              myRequestStatus={
+                myPrivacyRequest && myPrivacyRequest.sessionId === privateSessionId
+                  ? myPrivacyRequest.status
+                  : null
+              }
+              onRequestAccess={() => void viewerRequestPrivateAccess()}
             />
           </div>
         )}
@@ -5184,107 +5422,35 @@ function CreatorStage({
           </div>
         </div>
       ) : null}
-      {lockPicker && isHost ? (
-        <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(52dvh,26rem)] overflow-y-auto rounded-2xl border border-amber-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-300">
-              Candado (máx. {LIVE_LOCK_ACTIVE_MAX} regalos)
-            </p>
-            <button type="button" onClick={() => setLockPicker(false)} className="text-zinc-400 hover:text-white">
-              <X size={14} />
-            </button>
-          </div>
-          <p className="mb-2 text-[10px] text-zinc-400">
-            Elige regalos y cantidades del candado (no es la lista de deseos). Quien los envíe entra
-            al LIVE privado; el resto verá que estás en privado.
-          </p>
-          <div className="space-y-1">
-            {sortedLiveGiftCatalog().map((gift) => {
-              const active = lockDraftIds.includes(gift.id);
-              const qty = active ? lockDraftQty[gift.id] || 1 : 0;
-              return (
-                <div
-                  key={gift.id}
-                  className={`rounded-lg px-2 py-1.5 ${
-                    active ? 'bg-amber-500/20 text-amber-100' : 'text-white'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleLockDraftGift(gift.id)}
-                    className="flex w-full min-w-0 items-center justify-between gap-2 text-left text-xs"
-                  >
-                    <span className="inline-flex min-w-0 items-center gap-2">
-                      <GiftIcon giftId={gift.id} size={16} />
-                      <span className="truncate">{gift.name}</span>
-                    </span>
-                    <span className="shrink-0 text-cyan-400">{gift.coins}</span>
-                  </button>
-                  {active ? (
-                    <div className="lb-live-wish-qty mt-1.5">
-                      <button
-                        type="button"
-                        aria-label="Menos"
-                        onClick={() => setLockDraftQuantity(gift.id, qty - 1)}
-                      >
-                        −
-                      </button>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        value={qty}
-                        aria-label={`Cantidad de ${gift.name}`}
-                        onChange={(event) => {
-                          const digits = event.target.value.replace(/\D/g, '').slice(0, 2);
-                          if (!digits) {
-                            setLockDraftQuantity(gift.id, 0);
-                            return;
-                          }
-                          setLockDraftQuantity(gift.id, Number(digits));
-                        }}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Más"
-                        onClick={() => setLockDraftQuantity(gift.id, qty + 1)}
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-3 space-y-2">
-            <button
-              type="button"
-              disabled={lockBusy || lockDraftIds.length === 0}
-              onClick={() => void applyLockDraft()}
-              className="min-h-11 w-full rounded-xl bg-gradient-to-r from-amber-400 to-fuchsia-500 py-2.5 text-xs font-bold text-zinc-950 disabled:opacity-50"
-            >
-              {lockBusy
-                ? 'Activando candado…'
-                : `Activar candado (${lockDraftIds.reduce(
-                    (sum, id) =>
-                      sum + (findLiveGift(id)?.coins || 0) * (lockDraftQty[id] || 1),
-                    0,
-                  ).toLocaleString('es-CO')} coins)`}
-            </button>
-            {lock ? (
-              <button
-                type="button"
-                disabled={lockBusy}
-                onClick={() => void setLiveLock(null)}
-                className="min-h-11 w-full rounded-lg border border-white/10 py-2 text-[11px] text-zinc-400"
-              >
-                Quitar candado y reabrir al público
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <LivePrivacySetupSheet
+        open={Boolean(lockPicker && isHost)}
+        busy={lockBusy}
+        draftIds={lockDraftIds}
+        draftQty={lockDraftQty}
+        delayId={privacyDelayId}
+        customSeconds={privacyCustomSec}
+        maxGifts={LIVE_LOCK_ACTIVE_MAX}
+        privateActive={Boolean(lock)}
+        onClose={() => setLockPicker(false)}
+        onToggleGift={toggleLockDraftGift}
+        onSetQty={setLockDraftQuantity}
+        onDelayId={setPrivacyDelayId}
+        onCustomSeconds={setPrivacyCustomSec}
+        onConfirm={() => void applyLockDraft()}
+        onClearPrivate={() => void setLiveLock(null)}
+      />
+      <LivePrivacyRequestsSheet
+        open={Boolean(isHost && privacyRequestsOpen)}
+        requests={privacyRequests}
+        busyUid={privacyBusyUid}
+        focusUid={privacyFocusUid}
+        onClose={() => {
+          setPrivacyRequestsOpen(false);
+          setPrivacyFocusUid(null);
+        }}
+        onAccept={(uid) => void acceptPrivacyRequest(uid)}
+        onReject={(uid) => void rejectPrivacyRequest(uid)}
+      />
       <SalaBoomModal
         open={isHost && salaBoomOpen}
         onClose={() => setSalaBoomOpen(false)}
