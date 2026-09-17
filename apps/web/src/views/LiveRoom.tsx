@@ -21,6 +21,8 @@ import {
 import {
   Eye,
   Gift,
+  Lock,
+  Unlock,
   Radio,
   Send,
   Share2,
@@ -321,6 +323,18 @@ function lockTotalCoins(lock: LockInfo | null | undefined): number {
     return reqs.reduce((sum, row) => sum + row.coins * row.quantity, 0);
   }
   return Math.max(0, Number(lock.coins) || 0);
+}
+
+function lockGiftIdsOf(lock: LockInfo | null | undefined): string[] {
+  return lockRequirementsOf(lock).map((row) => row.giftId);
+}
+
+function lockGiftQtyOf(lock: LockInfo | null | undefined): Record<string, number> {
+  const qty: Record<string, number> = {};
+  for (const row of lockRequirementsOf(lock)) {
+    qty[row.giftId] = row.quantity;
+  }
+  return qty;
 }
 
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string; combo?: number };
@@ -1301,6 +1315,8 @@ function LiveGoalWishHud({
   isHost = false,
   celebrating = false,
   onNewGoal,
+  lock = null,
+  lockOpen = false,
 }: {
   username: string;
   goal: LiveCoinGoalInfo | null;
@@ -1311,8 +1327,13 @@ function LiveGoalWishHud({
   isHost?: boolean;
   celebrating?: boolean;
   onNewGoal?: () => void;
+  lock?: LockInfo | null;
+  /** true = meta de regalos del candado cumplida (candado abierto). */
+  lockOpen?: boolean;
 }) {
-  if (!goal && wishlist.length === 0 && !achievedWish) return null;
+  const lockGifts = lockGiftIdsOf(lock);
+  const lockQty = lockGiftQtyOf(lock);
+  if (!goal && wishlist.length === 0 && !achievedWish && lockGifts.length === 0) return null;
   const handle = username.replace(/^@/, '');
   const statusText = celebrating
     ? ' · ¡Meta conseguida!'
@@ -1348,8 +1369,26 @@ function LiveGoalWishHud({
       ) : (
         <span className="lb-live-viewer-hud__info-spacer" aria-hidden />
       )}
-      {wishlist.length > 0 || achievedWish ? (
+      {wishlist.length > 0 || achievedWish || lockGifts.length > 0 ? (
         <div className="lb-live-wishlist-stack">
+          {lockGifts.length > 0 ? (
+            <div className={`lb-live-candado${lockOpen ? ' is-open' : ' is-closed'}`}>
+              <p className="lb-live-candado__title">
+                {lockOpen ? <Unlock size={12} aria-hidden /> : <Lock size={12} aria-hidden />}
+                <span>
+                  {lockOpen ? 'Candado abierto' : 'Candado'} @{handle}
+                </span>
+              </p>
+              <div className="lb-live-candado__gifts">
+                <LiveWishCarousel giftIds={lockGifts} quantities={lockQty} />
+              </div>
+              <p className="lb-live-candado__hint">
+                {lockOpen
+                  ? 'Meta de regalos cumplida'
+                  : `Requiere ${lockTotalCoins(lock).toLocaleString('es-CO')} coins`}
+              </p>
+            </div>
+          ) : null}
           {wishlist.length > 0 ? (
             <div className="lb-live-wishlist">
               <p className="lb-live-wishlist__title">
@@ -1844,6 +1883,7 @@ function CreatorStage({
   const gamingStatsPrevRef = useRef<{ bytes: number; ts: number } | null>(null);
   const pipInputTrackRef = useRef<MediaStreamTrack | null>(null);
   const [lock, setLock] = useState<LockInfo | null>(null);
+  const [lockUnlocked, setLockUnlocked] = useState(false);
   const [remoteFrameLayout, setRemoteFrameLayout] = useState<LiveFrameLayout>(() =>
     defaultCameraFrameLayout(aspectRatio),
   );
@@ -2144,13 +2184,21 @@ function CreatorStage({
   });
 
   useEffect(() => {
-    if (!isHost) return;
-    void api<{ lock: LockInfo | null }>(
+    if (!username) return;
+    void api<{
+      lock: LockInfo | null;
+      unlocked?: boolean;
+      isHost?: boolean;
+      locked?: boolean;
+    }>(
       `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
     )
-      .then((data) => setLock(data.lock))
+      .then((data) => {
+        setLock(data.lock);
+        setLockUnlocked(Boolean(data.isHost || data.unlocked || !data.lock));
+      })
       .catch(() => undefined);
-  }, [isHost, username]);
+  }, [isHost, username, handle]);
 
   // Pulso periódico: el feed cierra salas sin heartbeat.
   useEffect(() => {
@@ -2383,12 +2431,15 @@ function CreatorStage({
       // No mostrar quién entra/sale de la sala en pantalla.
       if (data.type === 'lock') {
         setLock(data.lock);
-        if (isSpectator) {
-          if (data.lock) {
-            onViewerPausedRef.current?.(true, data.lock);
-          } else {
-            onViewerPausedRef.current?.(false, null);
+        if (data.lock) {
+          // Nuevo candado cerrado hasta enviar los regalos requeridos.
+          if (!isHost) {
+            setLockUnlocked(false);
+            if (isSpectator) onViewerPausedRef.current?.(true, data.lock);
           }
+        } else {
+          setLockUnlocked(true);
+          if (isSpectator) onViewerPausedRef.current?.(false, null);
         }
       }
       if (data.type === 'live_ended' && !isHost) {
@@ -2780,6 +2831,7 @@ function CreatorStage({
       );
       const next = result.locked ? result.lock : null;
       setLock(next);
+      setLockUnlocked(!next);
       setLockPicker(false);
       const nowPrivate = Boolean(result.isPrivate ?? result.locked);
       onPrivacyChange?.(nowPrivate);
@@ -4932,6 +4984,8 @@ function CreatorStage({
               leaving={wishAchievedLeaving}
               isHost
               celebrating={goalCelebrating}
+              lock={lock}
+              lockOpen={!isHost && lockUnlocked}
               onNewGoal={() => {
                 setNewCoinGoalError(null);
                 setNewCoinGoalOpen(true);
@@ -5006,6 +5060,8 @@ function CreatorStage({
               achievedWish={achievedWish}
               leaving={wishAchievedLeaving}
               celebrating={goalCelebrating}
+              lock={lock}
+              lockOpen={lockUnlocked}
             />
           </div>
         )}
