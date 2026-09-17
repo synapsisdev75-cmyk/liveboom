@@ -1417,31 +1417,55 @@ function LiveGoalWishHud({
           ? 'Solicitud rechazada'
           : undefined;
 
+  const privacyControls = (
+    <div className="lb-live-privacy-row is-under-goal">
+      <LivePrivacyLockButton
+        privateActive={privateActive}
+        unlocked={lockOpen}
+        interactive={Boolean(isHost || (privateActive && !lockOpen && onRequestAccess))}
+        label={viewerLabel}
+        onClick={() => {
+          if (isHost) onLockClick?.();
+          else if (privateActive && !lockOpen) onRequestAccess?.();
+        }}
+      />
+      {isHost && privateActive ? (
+        <LivePrivacyRequestStrip
+          requests={pendingRequests}
+          onSelect={onRequestClick}
+          onOverflow={onOverflowClick}
+        />
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="lb-live-viewer-hud__info">
-      {goal ? (
-        <div className="lb-live-viewer-goal">
-          <p className="lb-live-viewer-goal__label">{goal.label}</p>
-          <div className="lb-live-viewer-goal__bar">
-            <div style={{ width: `${goal.pct}%` }} />
+      <div className="lb-live-viewer-goal-col">
+        {goal ? (
+          <div className="lb-live-viewer-goal">
+            <p className="lb-live-viewer-goal__label">{goal.label}</p>
+            <div className="lb-live-viewer-goal__bar">
+              <div style={{ width: `${goal.pct}%` }} />
+            </div>
+            <p className="lb-live-viewer-goal__meta">
+              {goal.earned.toLocaleString('es-CO')}
+              {goal.goal > 0
+                ? ` / ${goal.goal.toLocaleString('es-CO')} coins${statusText}`
+                : ' coins'}
+              {goal.top ? ` · Top: ${goal.top}` : ''}
+            </p>
+            {isHost && goal.reached && onNewGoal ? (
+              <button type="button" className="lb-live-viewer-goal__new" onClick={onNewGoal}>
+                <Plus size={11} />
+                Nueva meta
+              </button>
+            ) : null}
           </div>
-          <p className="lb-live-viewer-goal__meta">
-            {goal.earned.toLocaleString('es-CO')}
-            {goal.goal > 0
-              ? ` / ${goal.goal.toLocaleString('es-CO')} coins${statusText}`
-              : ' coins'}
-            {goal.top ? ` · Top: ${goal.top}` : ''}
-          </p>
-          {isHost && goal.reached && onNewGoal ? (
-            <button type="button" className="lb-live-viewer-goal__new" onClick={onNewGoal}>
-              <Plus size={11} />
-              Nueva meta
-            </button>
-          ) : null}
-        </div>
-      ) : (
-        <span className="lb-live-viewer-hud__info-spacer" aria-hidden />
-      )}
+        ) : null}
+        {privacyControls}
+        <LivePrivacyCountdown privateStartsAtMs={privateStartsAtMs} nowMs={nowMs} />
+      </div>
       <div className="lb-live-wishlist-stack">
         {wishlist.length > 0 ? (
           <div className="lb-live-wishlist">
@@ -1449,54 +1473,12 @@ function LiveGoalWishHud({
               <Gift size={12} />
               <span>Deseos @{handle}</span>
             </p>
-            <div className="lb-live-wishlist__gifts-row">
-              <div className="lb-live-wishlist__gifts">
-                <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
-              </div>
-              <div className="lb-live-privacy-row is-inline">
-                <LivePrivacyLockButton
-                  privateActive={privateActive}
-                  unlocked={lockOpen}
-                  interactive={Boolean(isHost || (privateActive && !lockOpen && onRequestAccess))}
-                  label={viewerLabel}
-                  onClick={() => {
-                    if (isHost) onLockClick?.();
-                    else if (privateActive && !lockOpen) onRequestAccess?.();
-                  }}
-                />
-                {isHost && privateActive ? (
-                  <LivePrivacyRequestStrip
-                    requests={pendingRequests}
-                    onSelect={onRequestClick}
-                    onOverflow={onOverflowClick}
-                  />
-                ) : null}
-              </div>
+            <div className="lb-live-wishlist__gifts">
+              <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
             </div>
           </div>
-        ) : (
-          <div className="lb-live-privacy-row">
-            <LivePrivacyLockButton
-              privateActive={privateActive}
-              unlocked={lockOpen}
-              interactive={Boolean(isHost || (privateActive && !lockOpen && onRequestAccess))}
-              label={viewerLabel}
-              onClick={() => {
-                if (isHost) onLockClick?.();
-                else if (privateActive && !lockOpen) onRequestAccess?.();
-              }}
-            />
-            {isHost && privateActive ? (
-              <LivePrivacyRequestStrip
-                requests={pendingRequests}
-                onSelect={onRequestClick}
-                onOverflow={onOverflowClick}
-              />
-            ) : null}
-          </div>
-        )}
+        ) : null}
         <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
-        <LivePrivacyCountdown privateStartsAtMs={privateStartsAtMs} nowMs={nowMs} />
       </div>
     </div>
   );
