@@ -1,7 +1,10 @@
-// Wompi sandbox — env local (.env) o empaquetado para Functions (.env.functions)
+// Env local (.env / .env.local) o empaquetado en Functions (.env.liveboom-app / .env.functions).
+// En Cloud Functions, `.env` y `.env.local` suelen estar en ignore; `.env.liveboom-app` sí se
+// empaqueta. override:false en esos archivos = no pisa vars ya inyectadas por Firebase CLI.
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
 require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
+require('dotenv').config({ path: path.join(__dirname, '.env.liveboom-app'), override: false });
 require('dotenv').config({ path: path.join(__dirname, '.env.functions'), override: false });
 require('dotenv').config({ path: path.join(__dirname, '../.env'), override: false });
 
