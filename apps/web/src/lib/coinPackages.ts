@@ -1,5 +1,5 @@
-/** Equivalente justo de retiro: 1 blast = $50 COP. */
-export const COIN_TO_COP = 50;
+/** Retiro del creador: 1 Blast ganado = $15 COP. No usar para precios de compra. */
+export const COIN_TO_COP = 15;
 export const MIN_WITHDRAW_COINS = 50;
 
 /** Precio final cliente (COP) para paquetes con precio fijo. */

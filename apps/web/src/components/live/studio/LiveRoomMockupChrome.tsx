@@ -6,6 +6,7 @@ import { UserAvatar } from '../../profile/UserAvatar';
 import { useT } from '../../../i18n';
 import { resolveUserAvatar } from '../../../lib/userAvatar';
 import { useAuthStore } from '../../../store/authStore';
+import { coinsToCop, formatCop } from '../../../lib/coinPackages';
 
 const LIVE_TAP_BOMB_SRC = '/reactions/boom-on.png';
 
@@ -161,9 +162,9 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
           </li>
           <li className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-zinc-400">
-              <Coins size={12} className="text-violet-400" /> Coins ganados
+              <Coins size={12} className="text-violet-400" /> Para retirar
             </span>
-            <span className="font-semibold text-amber-300">{earned.toLocaleString('es-CO')}</span>
+            <span className="font-semibold text-amber-300">{formatCop(coinsToCop(earned))}</span>
           </li>
         </ul>
       </section>
