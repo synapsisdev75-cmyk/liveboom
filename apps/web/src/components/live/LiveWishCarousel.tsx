@@ -10,10 +10,13 @@ type WishItem = {
 export function LiveWishCarousel({
   giftIds,
   quantities,
+  progress,
   compact = false,
 }: {
   giftIds: string[];
   quantities?: Record<string, number>;
+  /** Progreso global del candado: received/required (+ ✓ si completo). */
+  progress?: Record<string, { received: number; required: number }>;
   compact?: boolean;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -24,14 +27,24 @@ export function LiveWishCarousel({
   const wishes = useMemo<WishItem[]>(
     () =>
       giftIds.map((id) => {
+        const prog = progress?.[id];
+        const giftName = findLiveGift(id)?.name || id;
+        if (prog) {
+          const done = prog.received >= prog.required;
+          return {
+            id,
+            name: `${giftName} ${Math.min(prog.received, prog.required)}/${prog.required}${
+              done ? ' ✓' : ''
+            }`,
+          };
+        }
         const qty = Math.min(99, Math.max(1, Math.floor(Number(quantities?.[id]) || 1)));
-        const name = findLiveGift(id)?.name || id;
         return {
           id,
-          name: qty > 1 ? `${name} ×${qty}` : name,
+          name: qty > 1 ? `${giftName} ×${qty}` : giftName,
         };
       }),
-    [giftIds, quantities],
+    [giftIds, quantities, progress],
   );
 
   useLayoutEffect(() => {

@@ -6,6 +6,8 @@ type Props = {
   interactive?: boolean;
   /** Solo para accesibilidad; no se muestra en pantalla. */
   label?: string;
+  /** Pulso breve al completar requisitos (collecting → countdown). */
+  pulse?: boolean;
   onClick?: () => void;
 };
 
@@ -19,6 +21,7 @@ export function LivePrivacyLockButton({
   unlocked = false,
   interactive = false,
   label,
+  pulse = false,
   onClick,
 }: Props) {
   const open = !privateActive || unlocked;
@@ -36,7 +39,9 @@ export function LivePrivacyLockButton({
       onClick={onClick}
       className={`lb-live-privacy-lock${privateActive ? ' is-private' : ' is-public'}${
         open ? ' is-open' : ' is-closed'
-      }${unlocked ? ' is-unlocked' : ''}${interactive ? ' is-interactive' : ''}`}
+      }${unlocked ? ' is-unlocked' : ''}${interactive ? ' is-interactive' : ''}${
+        pulse ? ' is-pulse' : ''
+      }`}
       aria-label={aria}
       title={aria}
     >

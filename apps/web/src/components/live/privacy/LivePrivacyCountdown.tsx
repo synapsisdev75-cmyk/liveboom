@@ -1,19 +1,83 @@
 import { Lock } from 'lucide-react';
-import { formatCountdown } from '../../../lib/livePrivateAccessFirestore';
+import {
+  formatCountdown,
+  type PrivateGiftRequirementProgress,
+  type PrivateLivePhase,
+} from '../../../lib/livePrivateAccessFirestore';
+import { findLiveGift } from '../../../lib/liveboomGifts';
+import { GiftIcon } from '../FloatingGift';
 
 type Props = {
+  phase: PrivateLivePhase | null;
   privateStartsAtMs: number | null;
   nowMs: number;
+  requirements?: PrivateGiftRequirementProgress[] | null;
+  /** Viewer (no host): si participó en collecting. */
+  viewerQualified?: boolean;
+  isHost?: boolean;
 };
 
-/** Aviso de cuenta regresiva (hora absoluta → remaining). */
-export function LivePrivacyCountdown({ privateStartsAtMs, nowMs }: Props) {
-  if (!privateStartsAtMs || privateStartsAtMs <= nowMs) return null;
-  const remaining = privateStartsAtMs - nowMs;
-  return (
-    <p className="lb-live-privacy-countdown" role="status">
-      <Lock size={12} aria-hidden />
-      Este LIVE será privado en {formatCountdown(remaining)}
-    </p>
-  );
+/** Estado de recolección / countdown del LIVE privado (nunca timer antes del 100%). */
+export function LivePrivacyCountdown({
+  phase,
+  privateStartsAtMs,
+  nowMs,
+  requirements = null,
+  viewerQualified = false,
+  isHost = false,
+}: Props) {
+  if (phase === 'collecting') {
+    const incomplete = (requirements || []).filter(
+      (row) => row.receivedQuantity < row.requiredQuantity,
+    );
+    return (
+      <div className="lb-live-privacy-countdown is-collecting" role="status">
+        <p className="lb-live-privacy-countdown__title">
+          <Lock size={12} aria-hidden />
+          Preparando LIVE privado
+        </p>
+        {incomplete.length > 0 ? (
+          <ul className="lb-live-privacy-countdown__reqs">
+            {incomplete.map((row) => {
+              const gift = findLiveGift(row.giftId);
+              return (
+                <li key={row.giftId}>
+                  <GiftIcon giftId={row.giftId} size={14} />
+                  <span>
+                    {gift?.name || row.giftId} {row.receivedQuantity}/{row.requiredQuantity}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="lb-live-privacy-countdown__hint">Esperando completar requisitos</p>
+        )}
+      </div>
+    );
+  }
+
+  if (phase === 'countdown' && privateStartsAtMs && privateStartsAtMs > nowMs) {
+    const remaining = privateStartsAtMs - nowMs;
+    return (
+      <div className="lb-live-privacy-countdown is-countdown" role="status">
+        <p className="lb-live-privacy-countdown__title">
+          <Lock size={12} aria-hidden />
+          ✓ Requisitos completados
+        </p>
+        <p className="lb-live-privacy-countdown__timer">
+          Este LIVE será privado en {formatCountdown(remaining)}
+        </p>
+        {!isHost ? (
+          <p className="lb-live-privacy-countdown__hint">
+            {viewerQualified
+              ? '✓ Acceso asegurado'
+              : 'El acceso a este privado ya cerró'}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return null;
 }

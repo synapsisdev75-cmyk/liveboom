@@ -3,7 +3,7 @@ import { GiftIcon } from '../FloatingGift';
 import { findLiveGift, sortedLiveGiftCatalog } from '../../../lib/liveboomGifts';
 
 export const PRIVACY_DELAY_OPTIONS = [
-  { id: 'now', label: 'Ahora', ms: 0 },
+  { id: 'now', label: 'Al completar', ms: 0 },
   { id: '30s', label: '30 segundos', ms: 30_000 },
   { id: '1m', label: '1 minuto', ms: 60_000 },
   { id: '3m', label: '3 minutos', ms: 180_000 },
@@ -62,9 +62,10 @@ export function LivePrivacySetupSheet({
           </button>
         </div>
         <p className="lb-live-privacy-setup__hint">
-          Elige regalos y cantidades. Quien los envíe entra solo; también puedes aceptar solicitudes.
+          El LIVE sigue público mientras se reúnen los regalos en conjunto. El contador solo arranca al
+          100%. Quienes aporten un regalo válido quedan clasificados para el privado.
         </p>
-        <p className="lb-live-privacy-setup__section">1. Requisito de acceso (máx. {maxGifts})</p>
+        <p className="lb-live-privacy-setup__section">1. Regalos a reunir (máx. {maxGifts})</p>
         <div className="lb-live-privacy-setup__gifts">
           {sortedLiveGiftCatalog().map((gift) => {
             const active = draftIds.includes(gift.id);
@@ -110,7 +111,7 @@ export function LivePrivacySetupSheet({
           })}
         </div>
         <p className="lb-live-privacy-setup__section">
-          2. ¿En cuánto tiempo quieres pasar el LIVE a privado?
+          2. Aviso antes de pasar a privado (solo después del 100%)
         </p>
         <div className="lb-live-privacy-setup__delays">
           {PRIVACY_DELAY_OPTIONS.map((opt) => (
@@ -151,9 +152,7 @@ export function LivePrivacySetupSheet({
         >
           {busy
             ? 'Aplicando…'
-            : delayId === 'now' || (delayId === 'custom' && Number(customSeconds) <= 0)
-              ? `Activar candado (${total.toLocaleString('es-CO')} coins)`
-              : `Programar privado (${total.toLocaleString('es-CO')} coins)`}
+            : `Activar candado (${total.toLocaleString('es-CO')} coins)`}
         </button>
         {privateActive && onClearPrivate ? (
           <button

@@ -1,4 +1,4 @@
-/** Acceso a LIVE privado: solicitudes + grants (Firestore), vinculado a la sesión privada. */
+/** Acceso a LIVE privado: recolección global → countdown → private (Firestore). */
 
 import {
   collection,
@@ -6,6 +6,7 @@ import {
   getDoc,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -22,6 +23,14 @@ export type PrivateAccessRequestStatus =
   | 'cancelled'
   | 'expired';
 
+export type PrivateLivePhase = 'collecting' | 'countdown' | 'private' | 'ended';
+
+export type PrivateGiftRequirementProgress = {
+  giftId: string;
+  requiredQuantity: number;
+  receivedQuantity: number;
+};
+
 export type PrivateAccessRequest = {
   uid: string;
   username: string;
@@ -35,18 +44,21 @@ export type PrivateAccessRequest = {
 };
 
 export type PrivateLiveSchedule = {
+  privatePhase: PrivateLivePhase | null;
   privateStartsAtMs: number | null;
   privatePendingRequirements: Array<{
     giftId: string;
     quantity: number;
   }> | null;
+  privateRequirements: PrivateGiftRequirementProgress[] | null;
   privateSessionId: string | null;
   privateActivatedAtMs: number | null;
+  countdownDurationMs: number | null;
+  requirementsCompletedAtMs: number | null;
+  qualifiedViewerUids: string[];
 };
 
-export function canManagePrivateAccess(role: 'host' | 'moderator' | 'viewer'): boolean {
-  return role === 'host' || role === 'moderator';
-}
+const PRIVATE_GIFT_EVENT_MAX = 80;
 
 function roomRef(roomName: string) {
   return doc(db, 'liveRooms', roomKey(roomName));
@@ -60,6 +72,74 @@ function grantRef(roomName: string, uid: string) {
   return doc(db, 'liveRooms', roomKey(roomName), 'privateGrants', uid);
 }
 
+function parseRequirements(raw: unknown): PrivateGiftRequirementProgress[] | null {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const rows: PrivateGiftRequirementProgress[] = [];
+  for (const item of raw.slice(0, 5)) {
+    const giftId = typeof item?.giftId === 'string' ? item.giftId.trim() : '';
+    if (!giftId) continue;
+    const requiredQuantity = Math.min(
+      99,
+      Math.max(1, Math.floor(Number(item?.requiredQuantity ?? item?.quantity) || 1)),
+    );
+    const receivedQuantity = Math.min(
+      99,
+      Math.max(0, Math.floor(Number(item?.receivedQuantity) || 0)),
+    );
+    rows.push({ giftId, requiredQuantity, receivedQuantity });
+  }
+  return rows.length ? rows : null;
+}
+
+function requirementsComplete(rows: PrivateGiftRequirementProgress[]): boolean {
+  return rows.length > 0 && rows.every((row) => row.receivedQuantity >= row.requiredQuantity);
+}
+
+export function canManagePrivateAccess(role: 'host' | 'moderator' | 'viewer'): boolean {
+  return role === 'host' || role === 'moderator';
+}
+
+/** Activa fase collecting: LIVE sigue público; NO crea privateStartsAtMs. */
+export async function startPrivateCollecting(
+  roomName: string,
+  payload: {
+    sessionId: string;
+    requirements: Array<{ giftId: string; quantity: number }>;
+    countdownDurationMs: number;
+  },
+) {
+  const requirements: PrivateGiftRequirementProgress[] = payload.requirements
+    .slice(0, 5)
+    .map((row) => ({
+      giftId: String(row.giftId),
+      requiredQuantity: Math.min(99, Math.max(1, Math.floor(Number(row.quantity) || 1))),
+      receivedQuantity: 0,
+    }))
+    .filter((row) => row.giftId);
+
+  await setDoc(
+    roomRef(roomName),
+    {
+      privatePhase: 'collecting' satisfies PrivateLivePhase,
+      privateSessionId: payload.sessionId,
+      privateRequirements: requirements,
+      privatePendingRequirements: requirements.map((row) => ({
+        giftId: row.giftId,
+        quantity: row.requiredQuantity,
+      })),
+      countdownDurationMs: Math.max(0, Math.floor(Number(payload.countdownDurationMs) || 0)),
+      privateStartsAtMs: null,
+      requirementsCompletedAtMs: null,
+      qualifiedViewerUids: [],
+      privateGiftEvents: [],
+      privateActivatedAtMs: null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+/** @deprecated Prefer startPrivateCollecting — no iniciar timer al activar candado. */
 export async function schedulePrivateLive(
   roomName: string,
   payload: {
@@ -68,26 +148,26 @@ export async function schedulePrivateLive(
     sessionId: string;
   },
 ) {
-  await setDoc(
-    roomRef(roomName),
-    {
-      privateStartsAtMs: payload.privateStartsAtMs,
-      privatePendingRequirements: payload.requirements,
-      privateSessionId: payload.sessionId,
-      privateActivatedAtMs: null,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
+  await startPrivateCollecting(roomName, {
+    sessionId: payload.sessionId,
+    requirements: payload.requirements,
+    countdownDurationMs: Math.max(0, Math.floor(payload.privateStartsAtMs - Date.now())),
+  });
 }
 
 export async function clearPrivateSchedule(roomName: string) {
   await setDoc(
     roomRef(roomName),
     {
+      privatePhase: null,
       privateStartsAtMs: null,
       privatePendingRequirements: null,
+      privateRequirements: null,
       privateActivatedAtMs: null,
+      countdownDurationMs: null,
+      requirementsCompletedAtMs: null,
+      qualifiedViewerUids: [],
+      privateGiftEvents: [],
       updatedAt: serverTimestamp(),
     },
     { merge: true },
@@ -98,6 +178,7 @@ export async function markPrivateActivated(roomName: string, atMs = Date.now()) 
   await setDoc(
     roomRef(roomName),
     {
+      privatePhase: 'private' satisfies PrivateLivePhase,
       privateActivatedAtMs: atMs,
       privateStartsAtMs: null,
       privatePendingRequirements: null,
@@ -113,6 +194,7 @@ export async function setPrivateSessionId(roomName: string, sessionId: string) {
     {
       privateSessionId: sessionId,
       privateActivatedAtMs: Date.now(),
+      privatePhase: 'private' satisfies PrivateLivePhase,
       privateStartsAtMs: null,
       privatePendingRequirements: null,
       updatedAt: serverTimestamp(),
@@ -121,22 +203,143 @@ export async function setPrivateSessionId(roomName: string, sessionId: string) {
   );
 }
 
+/**
+ * Suma progreso global durante collecting (transacción atómica).
+ * Al 100% pasa UNA sola vez a countdown y fija privateStartsAtMs.
+ */
+export async function applyPrivateCollectingGift(
+  roomName: string,
+  payload: {
+    giftId: string;
+    units: number;
+    clientId: string;
+    viewerUid: string;
+  },
+): Promise<{
+  applied: boolean;
+  completed: boolean;
+  phase: PrivateLivePhase | null;
+} | null> {
+  const giftId = String(payload.giftId || '').trim();
+  const clientId = String(payload.clientId || '').trim();
+  const viewerUid = String(payload.viewerUid || '').trim();
+  const units = Math.max(1, Math.floor(Number(payload.units) || 1));
+  if (!giftId || !clientId) return null;
+
+  return runTransaction(db, async (tx) => {
+    const ref = roomRef(roomName);
+    const snap = await tx.get(ref);
+    const data = snap.data() || {};
+    const phase = (data.privatePhase as PrivateLivePhase | null) || null;
+    if (phase !== 'collecting') {
+      return { applied: false, completed: false, phase };
+    }
+
+    const eventIds = Array.isArray(data.privateGiftEvents)
+      ? data.privateGiftEvents.map((id: unknown) => String(id))
+      : [];
+    if (eventIds.includes(clientId)) {
+      return { applied: false, completed: false, phase };
+    }
+
+    const requirements = parseRequirements(data.privateRequirements);
+    if (!requirements?.length) {
+      return { applied: false, completed: false, phase };
+    }
+
+    const idx = requirements.findIndex((row) => row.giftId === giftId);
+    if (idx < 0) {
+      return { applied: false, completed: false, phase };
+    }
+
+    const row = requirements[idx]!;
+    if (row.receivedQuantity >= row.requiredQuantity) {
+      // Requisito cerrado: regalo normal, no suma ni clasifica.
+      return { applied: false, completed: false, phase };
+    }
+
+    const room = Math.min(units, row.requiredQuantity - row.receivedQuantity);
+    requirements[idx] = {
+      ...row,
+      receivedQuantity: row.receivedQuantity + room,
+    };
+
+    const qualified = Array.isArray(data.qualifiedViewerUids)
+      ? data.qualifiedViewerUids.map((uid: unknown) => String(uid)).filter(Boolean)
+      : [];
+    if (viewerUid && !qualified.includes(viewerUid)) {
+      qualified.push(viewerUid);
+    }
+
+    const nextEvents = [...eventIds, clientId].slice(-PRIVATE_GIFT_EVENT_MAX);
+    const complete = requirementsComplete(requirements);
+    const countdownDurationMs = Math.max(0, Math.floor(Number(data.countdownDurationMs) || 0));
+    const completedAtMs = complete ? Date.now() : null;
+    const nextPhase: PrivateLivePhase = complete ? 'countdown' : 'collecting';
+    const privateStartsAtMs =
+      complete && completedAtMs != null ? completedAtMs + countdownDurationMs : null;
+
+    tx.set(
+      ref,
+      {
+        privatePhase: nextPhase,
+        privateRequirements: requirements,
+        privatePendingRequirements: requirements.map((item) => ({
+          giftId: item.giftId,
+          quantity: item.requiredQuantity,
+        })),
+        qualifiedViewerUids: qualified,
+        privateGiftEvents: nextEvents,
+        requirementsCompletedAtMs: completedAtMs,
+        privateStartsAtMs,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    return { applied: true, completed: complete, phase: nextPhase };
+  });
+}
+
 export function listenPrivateSchedule(
   roomName: string,
   onData: (schedule: PrivateLiveSchedule) => void,
 ): Unsubscribe {
   return onSnapshot(roomRef(roomName), (snap) => {
     const data = snap.data() || {};
+    const privateRequirements = parseRequirements(data.privateRequirements);
+    const pendingFromLegacy = Array.isArray(data.privatePendingRequirements)
+      ? data.privatePendingRequirements
+          .map((row: { giftId?: string; quantity?: number }) => ({
+            giftId: String(row?.giftId || ''),
+            quantity: Math.min(99, Math.max(1, Math.floor(Number(row?.quantity) || 1))),
+          }))
+          .filter((row: { giftId: string }) => row.giftId)
+      : null;
     onData({
+      privatePhase: (data.privatePhase as PrivateLivePhase | null) || null,
       privateStartsAtMs:
         typeof data.privateStartsAtMs === 'number' ? data.privateStartsAtMs : null,
-      privatePendingRequirements: Array.isArray(data.privatePendingRequirements)
-        ? data.privatePendingRequirements
-        : null,
+      privatePendingRequirements: privateRequirements
+        ? privateRequirements.map((row) => ({
+            giftId: row.giftId,
+            quantity: row.requiredQuantity,
+          }))
+        : pendingFromLegacy,
+      privateRequirements,
       privateSessionId:
         typeof data.privateSessionId === 'string' ? data.privateSessionId : null,
       privateActivatedAtMs:
         typeof data.privateActivatedAtMs === 'number' ? data.privateActivatedAtMs : null,
+      countdownDurationMs:
+        typeof data.countdownDurationMs === 'number' ? data.countdownDurationMs : null,
+      requirementsCompletedAtMs:
+        typeof data.requirementsCompletedAtMs === 'number'
+          ? data.requirementsCompletedAtMs
+          : null,
+      qualifiedViewerUids: Array.isArray(data.qualifiedViewerUids)
+        ? data.qualifiedViewerUids.map((uid: unknown) => String(uid)).filter(Boolean)
+        : [],
     });
   });
 }
@@ -207,7 +410,7 @@ export async function grantPrivateAccess(
   roomName: string,
   uid: string,
   sessionId: string,
-  source: 'gift' | 'host' | 'unlock',
+  source: 'gift' | 'host' | 'unlock' | 'qualified',
 ) {
   const now = Date.now();
   await setDoc(
