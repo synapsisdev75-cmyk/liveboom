@@ -1468,7 +1468,6 @@ function LiveGoalWishHud({
   onRequestClick,
   onOverflowClick,
   onSealPrivate,
-  onSendAccessGift,
   reopenBusy = false,
 }: {
   username: string;
@@ -1494,7 +1493,6 @@ function LiveGoalWishHud({
   onRequestClick?: (row: PrivateAccessRequest) => void;
   onOverflowClick?: () => void;
   onSealPrivate?: () => void;
-  onSendAccessGift?: () => void;
   reopenBusy?: boolean;
 }) {
   const preparingPrivate = privatePhase === 'collecting' || privatePhase === 'countdown';
@@ -1588,16 +1586,6 @@ function LiveGoalWishHud({
             className="lb-live-go-private"
           >
             <span>{reopenBusy ? 'Pasando…' : 'Pasar a privado'}</span>
-          </button>
-        ) : null}
-        {!isHost && lockArmed && !sealed && onSendAccessGift ? (
-          <button
-            type="button"
-            disabled={reopenBusy}
-            onClick={onSendAccessGift}
-            className="lb-live-go-private"
-          >
-            <span>{reopenBusy ? 'Enviando…' : 'Enviar para entrar'}</span>
           </button>
         ) : null}
       </div>
@@ -2234,7 +2222,6 @@ function CreatorStage({
 
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
-  const [accessHoldBusy, setAccessHoldBusy] = useState(false);
   const [lockDraftIds, setLockDraftIds] = useState<string[]>([]);
   const [lockDraftQty, setLockDraftQty] = useState<Record<string, number>>({});
   const [viewersList, setViewersList] = useState<SalaInviteViewer[]>([]);
@@ -3380,53 +3367,6 @@ function CreatorStage({
       setInviteNote(err instanceof Error ? err.message : 'No se pudo pasar a privado');
     } finally {
       setLockBusy(false);
-    }
-  }
-
-  async function sendAccessHoldFromHud() {
-    if (isHost || accessHoldBusy) return;
-    const giftId = lockRequirementsOf(lock)[0]?.giftId;
-    const catalog = giftId ? findLiveGift(giftId) : null;
-    if (!catalog || !firebaseUid || !handle) return;
-    if (walletCoins < catalog.coins) {
-      setInviteNote('Saldo insuficiente. Recarga coins para continuar.');
-      return;
-    }
-    setAccessHoldBusy(true);
-    const previous = walletCoins;
-    const clientId = `hold-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    try {
-      const result = await api<{
-        pending?: boolean;
-        unlocked?: boolean;
-        duplicate?: boolean;
-        requestStatus?: string;
-        senderBalance?: number;
-      }>('/api/stream/unlock', {
-        method: 'POST',
-        body: JSON.stringify({
-          roomName: username,
-          handle,
-          giftId: catalog.id,
-          clientId,
-          currentBalance: previous,
-          username: handle,
-        }),
-      });
-      if (typeof result.senderBalance === 'number') {
-        setCoins(result.senderBalance);
-        void setFirestoreCoins(firebaseUid, result.senderBalance).catch(() => undefined);
-      }
-      setInviteNote(
-        result.unlocked || result.requestStatus === 'approved'
-          ? 'Acceso aprobado.'
-          : 'Regalo en reserva. El creador acepta o rechaza.',
-      );
-    } catch (err) {
-      setCoins(previous);
-      setInviteNote(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
-    } finally {
-      setAccessHoldBusy(false);
     }
   }
 
@@ -5623,8 +5563,6 @@ function CreatorStage({
               privatePhase={privatePhase}
               privateRequirements={privateRequirements}
               lockPulse={lockPulse}
-              onSendAccessGift={() => void sendAccessHoldFromHud()}
-              reopenBusy={accessHoldBusy}
             />
           </div>
         )}
