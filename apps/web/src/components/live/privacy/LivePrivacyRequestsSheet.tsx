@@ -10,6 +10,7 @@ type Props = {
   onClose: () => void;
   onAccept: (uid: string) => void;
   onReject: (uid: string) => void;
+  onAcceptAll?: () => void;
   focusUid?: string | null;
 };
 
@@ -28,9 +29,12 @@ export function LivePrivacyRequestsSheet({
   onClose,
   onAccept,
   onReject,
+  onAcceptAll,
   focusUid,
 }: Props) {
   if (!open) return null;
+  const busyAll = busyUid === '*';
+  const rowBusy = (uid: string) => busyAll || busyUid === uid;
   const ordered = focusUid
     ? [
         ...requests.filter((r) => r.uid === focusUid),
@@ -73,7 +77,7 @@ export function LivePrivacyRequestsSheet({
                 <div className="lb-live-privacy-sheet__actions">
                   <button
                     type="button"
-                    disabled={busyUid === row.uid}
+                    disabled={rowBusy(row.uid)}
                     className="lb-live-privacy-sheet__reject"
                     onClick={() => onReject(row.uid)}
                     aria-label="Rechazar"
@@ -82,7 +86,7 @@ export function LivePrivacyRequestsSheet({
                   </button>
                   <button
                     type="button"
-                    disabled={busyUid === row.uid}
+                    disabled={rowBusy(row.uid)}
                     className="lb-live-privacy-sheet__accept"
                     onClick={() => onAccept(row.uid)}
                     aria-label="Aceptar"
@@ -94,6 +98,16 @@ export function LivePrivacyRequestsSheet({
             ))
           )}
         </div>
+        {onAcceptAll && ordered.length > 0 ? (
+          <button
+            type="button"
+            className="lb-live-privacy-sheet__accept-all"
+            disabled={Boolean(busyUid)}
+            onClick={onAcceptAll}
+          >
+            {busyAll ? 'Aceptando…' : 'Aceptar a todos'}
+          </button>
+        ) : null}
       </div>
     </div>
   );

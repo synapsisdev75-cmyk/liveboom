@@ -871,9 +871,11 @@ router.post('/screen-token/:roomName', requireAuth, async (req, res) => {
       metadata,
     });
 
+    const liveKitUrl =
+      typeof lk.publicLiveKitUrl === 'function' ? lk.publicLiveKitUrl() : '';
     res.json({
       token,
-      serverUrl: process.env.LIVEKIT_URL,
+      serverUrl: liveKitUrl,
       roomName,
       identity,
       ownerUid,
@@ -987,9 +989,11 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     const owner = findByUsername(roomName);
     const hostUid = owner?.firebaseUid || (host ? uid : null);
 
+    const liveKitUrl =
+      typeof lk.publicLiveKitUrl === 'function' ? lk.publicLiveKitUrl() : '';
     res.json({
       token,
-      serverUrl: process.env.LIVEKIT_URL,
+      serverUrl: liveKitUrl,
       roomName,
       hostUid,
       canPublish,

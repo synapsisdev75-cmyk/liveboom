@@ -7,6 +7,7 @@ import {
   VideoQuality,
 } from 'livekit-client';
 import { api } from './api';
+import { normalizeLiveKitUrl } from './liveKitCallService';
 import { roomKey } from './roomKey';
 
 export type LiveCarouselNeighbor = {
@@ -129,6 +130,7 @@ export async function fetchLiveViewerToken(
       );
       const token: LiveSwitchToken = {
         ...data,
+        serverUrl: normalizeLiveKitUrl(data.serverUrl),
         roomName: data.roomName || key,
       };
       rememberLiveToken(username, token);

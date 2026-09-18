@@ -155,9 +155,10 @@ router.post('/token', requireAuth, async (req, res) => {
       room,
       canPublish: role === 'host',
     });
+    const liveKitUrl = typeof lk.publicLiveKitUrl === 'function' ? lk.publicLiveKitUrl() : '';
     res.json({
-      url: process.env.LIVEKIT_URL,
-      serverUrl: process.env.LIVEKIT_URL,
+      url: liveKitUrl,
+      serverUrl: liveKitUrl,
       token,
       room,
       roomName: room,

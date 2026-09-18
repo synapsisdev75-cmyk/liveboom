@@ -1,17 +1,22 @@
 // Env para local y Cloud Functions.
-// `.env` / `.env.local` están en ignore del deploy; `.env.liveboom-app` sí se empaqueta.
-// fillEnvFromFile rellena solo claves ausentes o vacías (no pisa secretos ya inyectados).
+// `.env` / `.env.local` están en ignore del deploy; `.env.liveboom-app` sí se empaqueta
+// y Firebase CLI lo inyecta al desplegar al proyecto liveboom-app.
+// LIVEKIT_* se pisa desde esos archivos para no dejar un proyecto/clave viejo en Cloud Run.
 const path = require('path');
 const fs = require('fs');
 const dotenv = require('dotenv');
 
-function fillEnvFromFile(filePath) {
+const LIVEKIT_ENV_KEYS = new Set(['LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET']);
+
+function fillEnvFromFile(filePath, options = {}) {
   try {
     if (!fs.existsSync(filePath)) return;
     const parsed = dotenv.parse(fs.readFileSync(filePath));
     for (const [key, value] of Object.entries(parsed)) {
+      if (value === undefined || String(value).trim() === '') continue;
       const cur = process.env[key];
-      if (cur === undefined || String(cur).trim() === '') {
+      const override = Boolean(options.overrideKeys && options.overrideKeys.has(key));
+      if (override || cur === undefined || String(cur).trim() === '') {
         process.env[key] = value;
       }
     }
@@ -22,9 +27,9 @@ function fillEnvFromFile(filePath) {
 
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: false });
 require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: false });
-fillEnvFromFile(path.join(__dirname, '.env.liveboom-app'));
-fillEnvFromFile(path.join(__dirname, '.env.functions'));
-fillEnvFromFile(path.join(__dirname, '../.env'));
+fillEnvFromFile(path.join(__dirname, '.env.liveboom-app'), { overrideKeys: LIVEKIT_ENV_KEYS });
+fillEnvFromFile(path.join(__dirname, '.env.functions'), { overrideKeys: LIVEKIT_ENV_KEYS });
+fillEnvFromFile(path.join(__dirname, '../.env'), { overrideKeys: LIVEKIT_ENV_KEYS });
 
 const http = require('http');
 const express = require('express');
@@ -46,9 +51,14 @@ app.use(express.json({ limit: '5mb' }));
 // Health primero: si una ruta falla al montar, esto igual puede responder en deploys previos.
 app.get('/api/health', async (_req, res) => {
   let livekitConfigured = false;
+  let livekitHost = '';
   try {
-    const { livekitEnabled } = require('./src/lib/livekit');
-    livekitConfigured = typeof livekitEnabled === 'function' && livekitEnabled();
+    const lk = require('./src/lib/livekit');
+    livekitConfigured = typeof lk.livekitEnabled === 'function' && lk.livekitEnabled();
+    const raw = typeof lk.publicLiveKitUrl === 'function' ? lk.publicLiveKitUrl() : '';
+    if (raw) {
+      livekitHost = new URL(raw.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:')).host;
+    }
   } catch {
     livekitConfigured = false;
   }
@@ -59,6 +69,7 @@ app.get('/api/health', async (_req, res) => {
     api: 'https://liveboomapp.com',
     auth: 'firebase-jwt-crypto',
     livekitConfigured,
+    livekitHost,
   });
 });
 

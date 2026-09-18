@@ -4906,6 +4906,26 @@ html[data-lb-theme='dark'] .lb-media-fab {
   color: #fff;
 }
 
+.lb-live-privacy-sheet__accept-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: #16a34a;
+  color: #fff;
+  font-size: clamp(0.78rem, 2.2vw, 0.88rem);
+  font-weight: 800;
+}
+
+.lb-live-privacy-sheet__accept-all:disabled {
+  opacity: 0.55;
+}
+
 .lb-live-privacy-sheet__empty,
 .lb-live-privacy-setup__hint {
   margin: 0 0 0.65rem;

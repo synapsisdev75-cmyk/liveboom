@@ -117,6 +117,7 @@ import {
   watchSpectatorLiveQuality,
   type LiveSwitchToken,
 } from '../lib/liveCarouselSwitch';
+import { normalizeLiveKitUrl } from '../lib/liveKitCallService';
 import { roomKey } from '../lib/roomKey';
 import { takeLiveCameraHandoff, discardLiveCameraHandoff } from '../lib/liveCameraHandoff';
 import { isFaceAnchoredGift } from '../lib/faceGiftAnchors';
@@ -373,8 +374,8 @@ function buildLiveKitRoomOptions(): RoomOptions {
 
 const LIVEKIT_CONNECT_OPTIONS: RoomConnectOptions = {
   autoSubscribe: true,
-  maxRetries: 1,
-  peerConnectionTimeout: 8_000,
+  maxRetries: 2,
+  peerConnectionTimeout: 15_000,
 };
 
 type LiveLaunchState = {
@@ -739,6 +740,7 @@ export function LiveRoom() {
       }
       throw err;
     }
+    data = { ...data, serverUrl: normalizeLiveKitUrl(data.serverUrl) };
     if (activeRoomRef.current !== targetRoom) return null;
     if (!data.canPublish && !data.isHost) {
       rememberLiveToken(username, {
@@ -797,6 +799,7 @@ export function LiveRoom() {
           roomName: data.roomName || canonicalRoom,
           hostUid: data.hostUid ?? null,
         };
+        next.serverUrl = normalizeLiveKitUrl(next.serverUrl);
         if (
           current &&
           current.token === next.token &&
@@ -1279,6 +1282,9 @@ export function LiveRoom() {
         serverUrl={session.serverUrl}
         connect={liveKitConnect && sessionMatchesRoom}
         connectOptions={LIVEKIT_CONNECT_OPTIONS}
+        onError={(err) => {
+          console.error('[LIVE] LiveKitRoom error', err);
+        }}
         video={false}
         audio={false}
         className={`relative flex h-full w-full min-h-0 ${
@@ -3449,6 +3455,36 @@ function CreatorStage({
     }
   }
 
+  async function acceptAllPrivacyRequests() {
+    if (!isHost) return;
+    const uids = hudPrivacyRequests.map((row) => row.uid).filter(Boolean);
+    if (uids.length === 0) return;
+    setPrivacyBusyUid('*');
+    let failed = 0;
+    try {
+      for (const uid of uids) {
+        try {
+          await api('/api/stream/grant-access', {
+            method: 'POST',
+            body: JSON.stringify({ roomName: username, viewerUid: uid, handle }),
+          });
+        } catch {
+          failed += 1;
+        }
+      }
+      setPrivacyFocusUid(null);
+      if (failed > 0) {
+        setInviteNote(
+          failed === uids.length
+            ? 'No se pudieron aceptar las solicitudes'
+            : `Se aceptaron ${uids.length - failed} de ${uids.length} solicitudes`,
+        );
+      }
+    } finally {
+      setPrivacyBusyUid(null);
+    }
+  }
+
   async function rejectPrivacyRequest(uid: string) {
     if (!isHost) return;
     setPrivacyBusyUid(uid);
@@ -4481,7 +4517,7 @@ function CreatorStage({
             identity: screenTok.identity,
           });
           await startNativeLiveKitScreenShare({
-            serverUrl: screenTok.serverUrl,
+            serverUrl: normalizeLiveKitUrl(screenTok.serverUrl),
             token: screenTok.token,
             // Solo indica si FGS debe capturar audio de juego (NO ScreenAudioCapturer nativo).
             deviceAudioEnabled: wizard.deviceAudioEnabled,
@@ -5763,6 +5799,7 @@ function CreatorStage({
         }}
         onAccept={(uid) => void acceptPrivacyRequest(uid)}
         onReject={(uid) => void rejectPrivacyRequest(uid)}
+        onAcceptAll={() => void acceptAllPrivacyRequests()}
       />
       <SalaBoomModal
         open={isHost && salaBoomOpen}
