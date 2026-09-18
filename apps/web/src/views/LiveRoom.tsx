@@ -1552,7 +1552,7 @@ function LiveGoalWishHud({
       ) : lockArmed ? (
         <p className="lb-live-privacy-lock-caption">Candado activo</p>
       ) : null}
-      {isHost && (Boolean(lock) || pendingRequests.length > 0) ? (
+      {isHost && sealed && pendingRequests.length > 0 ? (
         <LivePrivacyRequestStrip
           requests={pendingRequests}
           onSelect={onRequestClick}
@@ -5593,7 +5593,7 @@ function CreatorStage({
               }
               lockDraftQty={sessionClosed ? undefined : lockDraftQty}
               pendingLockReqs={hudPendingLockReqs}
-              pendingRequests={hudPrivacyRequests}
+              pendingRequests={hudPrivatePhase === 'private' ? hudPrivacyRequests : []}
               privatePhase={hudPrivatePhase}
               privateRequirements={hudPrivateRequirements}
               lockPulse={sessionClosed ? false : lockPulse}
@@ -5799,7 +5799,13 @@ function CreatorStage({
         onClearPrivate={() => void setLiveLock(null)}
       />
       <LivePrivacyRequestsSheet
-        open={Boolean(isHost && privacyRequestsOpen && !sessionClosed && hudPrivacyRequests.length > 0)}
+        open={Boolean(
+          isHost &&
+            privacyRequestsOpen &&
+            !sessionClosed &&
+            hudPrivatePhase === 'private' &&
+            hudPrivacyRequests.length > 0,
+        )}
         requests={hudPrivacyRequests}
         busyUid={privacyBusyUid}
         focusUid={privacyFocusUid}
