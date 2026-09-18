@@ -213,8 +213,8 @@ function GroupRailAvatar({ name, photoUrl }: { name: string; photoUrl?: string |
 
 function LiveRail({ host }: { host: string }) {
   return (
-    <aside className="hidden w-[min(22%,18rem)] min-w-[220px] shrink-0 flex-col border-l border-white/5 bg-zinc-950/80 backdrop-blur-xl lg:flex lg:min-w-[240px]">
-      <section className="border-b border-white/5 p-4 lg:p-5">
+    <aside className="lb-side-rail lb-live-rail hidden w-[min(22%,18rem)] min-w-[220px] shrink-0 flex-col border-l lg:flex lg:min-w-[240px]">
+      <section className="border-b border-[color:var(--lb-line)] p-4 lg:p-5">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-400 opacity-75" />

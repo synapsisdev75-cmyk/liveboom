@@ -631,6 +631,10 @@ html[data-lb-theme] canvas {
   color: var(--lb-text);
 }
 
+html[data-lb-theme='light'] .lb-side-rail {
+  background: var(--lb-surface);
+}
+
 .lb-nav-item:hover:not(.lb-nav-active) {
   border-color: var(--lb-accent-border);
   box-shadow: 0 0 10px var(--lb-accent-glow);
@@ -821,6 +825,85 @@ html[data-lb-theme='light'] main .lb-live-chat-float .lb-live-chat-input::placeh
 html[data-lb-theme='light'] .lb-live-stage .lb-live-chat-input::placeholder {
   color: var(--text-muted);
   -webkit-text-fill-color: var(--text-muted);
+}
+
+/* LIVE escritorio: panel de chat/regalos sigue el tema. En móvil el chat sigue transparente sobre el video. */
+@media (min-width: 1024px) {
+  html[data-lb-theme='light'] .lb-live-chat-float {
+    background: var(--lb-surface);
+    border-color: var(--lb-line);
+    color: var(--lb-text);
+    box-shadow: 0 8px 24px rgba(24, 24, 27, 0.06);
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-float .text-white,
+  html[data-lb-theme='light'] .lb-live-chat-float .lb-live-chat-msg__text,
+  html[data-lb-theme='light'] .lb-live-chat-float .lb-live-chat-identity__user {
+    color: var(--lb-text);
+    text-shadow: none;
+    filter: none;
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-float .text-zinc-200,
+  html[data-lb-theme='light'] .lb-live-chat-float .text-zinc-300,
+  html[data-lb-theme='light'] .lb-live-chat-float .text-zinc-400,
+  html[data-lb-theme='light'] .lb-live-chat-float .text-zinc-500,
+  html[data-lb-theme='light'] .lb-live-chat-float .lg\:text-zinc-500,
+  html[data-lb-theme='light'] .lb-live-chat-float .lb-live-chat-empty {
+    color: var(--lb-text-muted);
+    text-shadow: none;
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-float .lb-live-chat-msg:not(.is-gift) .lb-live-chat-msg__name::after {
+    color: var(--lb-text);
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-float .border-white\/10,
+  html[data-lb-theme='light'] .lb-live-chat-float [class*='border-white/10'] {
+    border-color: var(--lb-line);
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-float .bg-zinc-950\/95,
+  html[data-lb-theme='light'] .lb-live-chat-float .bg-zinc-900\/80,
+  html[data-lb-theme='light'] .lb-live-chat-float [class*='bg-zinc-950'] {
+    background-color: var(--lb-surface-2);
+    color: var(--lb-text);
+  }
+
+  html[data-lb-theme='dark'] .lb-live-chat-float {
+    background: color-mix(in srgb, var(--lb-surface) 94%, transparent);
+    border-color: var(--lb-line);
+    color: var(--lb-text);
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-comment-btn {
+    background: var(--lb-surface-2, var(--surface-input));
+    color: var(--lb-text);
+    box-shadow: inset 0 0 0 1px var(--lb-line);
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-float .gift-box-strip,
+  html[data-lb-theme='light'] .lb-live-chat-float .gift-box-item {
+    background: var(--lb-surface-2);
+    border-color: var(--lb-line);
+    color: var(--lb-text);
+  }
+
+  html[data-lb-theme='light'] .lb-live-chat-float .gift-box-strip .text-zinc-300,
+  html[data-lb-theme='light'] .lb-live-chat-float .gift-box-strip .text-zinc-400 {
+    color: var(--lb-text-muted);
+  }
+}
+
+.lb-live-chat-comment-btn {
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+html[data-lb-theme='light'] .lb-live-room {
+  background: var(--lb-bg);
+  color: var(--lb-text);
 }
 
 /* Explorar: el escenario del video (negro + blur) no cambia. Solo marco. */

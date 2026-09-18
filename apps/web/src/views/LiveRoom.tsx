@@ -1274,7 +1274,7 @@ export function LiveRoom() {
   const sessionMatchesRoom = session.roomName === canonicalRoom;
 
   return (
-    <div className="flex h-[100dvh] w-full overflow-hidden bg-zinc-950 p-0 sm:p-3">
+    <div className="lb-live-room flex h-[100dvh] w-full overflow-hidden bg-zinc-950 p-0 sm:p-3">
       <LiveKitRoom
         key={`${session.roomName}-${session.canPublish ? 'pub' : 'sub'}`}
         room={livekitRoom}
@@ -7299,7 +7299,7 @@ function ChatPanel({
 
   if (isSpectator && chatHidden) {
     return (
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex items-end justify-between gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:static lg:h-full lg:w-[30%] lg:min-w-[260px] lg:flex-col lg:justify-end lg:border lg:border-white/10 lg:rounded-2xl lg:bg-zinc-900/80 lg:p-3">
+      <div className="lb-live-chat-float lb-live-chat-float--collapsed pointer-events-none absolute inset-x-0 bottom-0 z-30 flex items-end justify-between gap-2 border-0 bg-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:static lg:h-full lg:w-[30%] lg:min-w-[260px] lg:flex-col lg:justify-end lg:rounded-2xl lg:border lg:p-3">
         {inviteBanner ? (
           <div className="pointer-events-auto mb-2 w-full rounded-lg bg-cyan-500/20 px-2 py-1.5 text-[11px] text-cyan-100 backdrop-blur lg:mb-0">
             <span className="mr-2">{inviteBanner}</span>
@@ -7329,7 +7329,7 @@ function ChatPanel({
               setChatHidden(false);
               window.setTimeout(() => inputRef.current?.focus(), 80);
             }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-black/65 px-3 py-2 text-xs font-semibold text-white backdrop-blur ring-1 ring-white/15"
+            className="lb-live-chat-comment-btn inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold backdrop-blur"
           >
             <MessageCircle size={14} /> {t('actions.commentLive')}
           </button>
@@ -7351,11 +7351,11 @@ function ChatPanel({
   return (
     <aside
       data-boom-ignore
-      className={`lb-live-chat-float z-20 flex min-h-0 min-w-0 flex-col overflow-visible border-white/10 lg:overflow-hidden lg:static lg:h-full lg:min-h-0 lg:max-h-full lg:w-[28%] lg:min-w-[260px] lg:max-w-[340px] lg:rounded-2xl lg:border lg:bg-zinc-950/90 lg:backdrop-blur-md ${
+      className={`lb-live-chat-float z-20 flex min-h-0 min-w-0 flex-col overflow-visible lg:overflow-hidden lg:static lg:h-full lg:min-h-0 lg:max-h-full lg:w-[28%] lg:min-w-[260px] lg:max-w-[340px] lg:rounded-2xl lg:border ${
         canPublish || uiRole === 'host' ? 'lb-live-chat-float--host' : ''
       } pointer-events-none absolute inset-x-0 bottom-0 border-0 bg-transparent lg:pointer-events-auto lg:relative lg:inset-auto`}
     >
-      <div className="pointer-events-auto hidden shrink-0 border-b border-white/10 px-3 py-2.5 lg:block">
+      <div className="pointer-events-auto hidden shrink-0 border-b px-3 py-2.5 lg:block">
         {uiRole === 'host' ? (
           <div className="flex items-center gap-4">
             <button

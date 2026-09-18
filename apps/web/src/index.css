@@ -893,6 +893,19 @@ video.lk-participant-media-video {
 }
 
 @media (min-width: 1024px) {
+  .lb-live-chat-float {
+    background: color-mix(in srgb, var(--lb-surface, #09090b) 96%, transparent);
+    border-color: var(--lb-line, rgba(255, 255, 255, 0.12));
+    color: var(--lb-text, #f4f4f5);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .lb-live-chat-float > .border-b,
+  .lb-live-chat-float__input {
+    border-color: var(--lb-line, rgba(255, 255, 255, 0.12));
+  }
+
   .lb-live-chat-msg__avatar {
     display: grid;
     width: 1.75rem;
