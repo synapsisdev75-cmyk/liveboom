@@ -5659,13 +5659,18 @@ function CreatorStage({
       {wishlistOpen && isHost && !sessionClosed ? (
         <div
           ref={wishlistPanelRef}
-          className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]"
+          className="lb-live-wishlist-picker pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-cyan-300">
+            <p className="lb-live-wishlist-picker__title">
               Lista de deseos (máx. {LIVE_WISH_ACTIVE_MAX})
             </p>
-            <button type="button" onClick={() => setWishlistOpen(false)} className="text-zinc-400 hover:text-white">
+            <button
+              type="button"
+              onClick={() => setWishlistOpen(false)}
+              className="lb-live-wishlist-picker__close"
+              aria-label="Cerrar lista de deseos"
+            >
               <X size={14} />
             </button>
           </div>
@@ -5676,9 +5681,7 @@ function CreatorStage({
               return (
                 <div
                   key={gift.id}
-                  className={`rounded-lg px-2 py-1.5 ${
-                    active ? 'bg-cyan-500/20 text-cyan-100' : 'text-white'
-                  }`}
+                  className={`lb-live-wishlist-picker__row${active ? ' is-on' : ''}`}
                 >
                   <button
                     type="button"
@@ -5689,7 +5692,7 @@ function CreatorStage({
                       <GiftIcon giftId={gift.id} size={16} />
                       <span className="truncate">{gift.name}</span>
                     </span>
-                    <span className="shrink-0 text-cyan-400">{gift.coins}</span>
+                    <span className="lb-live-wishlist-picker__coins">{gift.coins}</span>
                   </button>
                   {active ? (
                     <div className="lb-live-wish-qty mt-1.5">

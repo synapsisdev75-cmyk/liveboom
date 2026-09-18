@@ -1040,6 +1040,54 @@ html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-elapsed {
   padding: 0.2rem 0.5rem;
 }
 
+/* Lista de deseos: el escenario negro no debe congelar blanco/oscuro. */
+html[data-lb-theme] .lb-live-wishlist-picker,
+html[data-lb-theme] .lb-live-stage-section .lb-live-wishlist-picker,
+html[data-lb-theme] .bg-black .lb-live-wishlist-picker,
+html[data-lb-theme='light'] main .lb-live-wishlist-picker,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--bg-primary) 35%, transparent);
+}
+
+html[data-lb-theme] .lb-live-wishlist-picker,
+html[data-lb-theme] .lb-live-wishlist-picker__row,
+html[data-lb-theme] .lb-live-wishlist-picker__close,
+html[data-lb-theme] .lb-live-wishlist-picker .lb-live-wish-qty button,
+html[data-lb-theme] .lb-live-wishlist-picker .lb-live-wish-qty input,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker .lb-live-wish-qty button,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker .lb-live-wish-qty input {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+
+html[data-lb-theme] .lb-live-wishlist-picker__title,
+html[data-lb-theme] .lb-live-wishlist-picker__coins,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker__title,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker__coins {
+  color: var(--link-default);
+}
+
+html[data-lb-theme] .lb-live-wishlist-picker__row.is-on {
+  background: color-mix(in srgb, var(--accent-secondary) 16%, transparent);
+}
+
+html[data-lb-theme] .lb-live-wishlist-picker .lb-live-wish-qty button,
+html[data-lb-theme] .lb-live-wishlist-picker .lb-live-wish-qty input,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker .lb-live-wish-qty button,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-wishlist-picker .lb-live-wish-qty input {
+  background: var(--surface-secondary);
+  border-color: var(--border-default);
+}
+
+html[data-lb-theme] .lb-live-wishlist-picker .lb-live-wish-qty button {
+  border-color: color-mix(in srgb, var(--accent-secondary) 40%, var(--border-default));
+  background: color-mix(in srgb, var(--accent-secondary) 14%, var(--surface-secondary));
+}
+
 /* LIVE host dashboard chrome (left cards + bottom bar). Same tokens as .lb-live-chat-float.
    Video stage + overlays on video stay untouched. */
 html[data-lb-theme='light'] .lb-host-left .lb-host-dash-card,
