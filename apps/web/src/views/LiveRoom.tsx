@@ -1705,6 +1705,7 @@ function CreatorStage({
   const [wishReceived, setWishReceived] = useState<Record<string, number>>({});
   const [completedWishItems, setCompletedWishItems] = useState<LiveWishItem[]>([]);
   const [wishlistOpen, setWishlistOpen] = useState(false);
+  const wishlistPanelRef = useRef<HTMLDivElement>(null);
   const [wishSyncReady, setWishSyncReady] = useState(false);
   const wishItemsRef = useRef<LiveWishItem[]>([]);
   const { achievedWish, leaving: wishAchievedLeaving } = useLiveWishAchieved(
@@ -1783,6 +1784,23 @@ function CreatorStage({
   const sessionClosed = liveEnded || summaryOpen;
   const sessionClosedRef = useRef(sessionClosed);
   sessionClosedRef.current = sessionClosed;
+  useEffect(() => {
+    if (!wishlistOpen || !isHost || sessionClosed) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      const node = event.target as Node | null;
+      if (node && wishlistPanelRef.current?.contains(node)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setWishlistOpen(false);
+    };
+    const timer = window.setTimeout(() => {
+      document.addEventListener('pointerdown', closeOnOutside, true);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('pointerdown', closeOnOutside, true);
+    };
+  }, [wishlistOpen, isHost, sessionClosed]);
   const canSendLiveBoom = Boolean(firebaseUid) && !liveEnded && !isOwnLiveAccount;
   const seenBoomIds = useRef(new Set<string>());
   const liveBoomCountRef = useRef(0);
@@ -5651,7 +5669,10 @@ function CreatorStage({
         />
       ) : null}
       {wishlistOpen && isHost && !sessionClosed ? (
-        <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
+        <div
+          ref={wishlistPanelRef}
+          className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]"
+        >
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-cyan-300">
               Lista de deseos (máx. {LIVE_WISH_ACTIVE_MAX})
