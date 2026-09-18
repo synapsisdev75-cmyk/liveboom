@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import {
   listCoinPackages,
-  formatCop,
   packageCopLabel,
   type ResolvedCoinPackage,
 } from '../lib/coinPackages';
