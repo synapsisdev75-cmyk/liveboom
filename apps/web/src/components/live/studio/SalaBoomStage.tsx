@@ -217,11 +217,7 @@ function Tile({
           </p>
         </div>
       )}
-      {slot.isHost ? (
-        <span className="absolute left-1 top-1 rounded bg-fuchsia-500 px-1 py-px text-[8px] font-black uppercase text-white">
-          Host
-        </span>
-      ) : camOff ? (
+      {slot.isHost ? null : camOff ? (
         <span className="absolute left-1 top-1 rounded bg-amber-500/90 px-1 py-px text-[8px] font-black uppercase text-zinc-950">
           Audio
         </span>
@@ -239,7 +235,7 @@ function Tile({
           <AudioLines size={11} strokeWidth={2.5} />
         </span>
       ) : null}
-      {slot.label && camOn ? (
+      {slot.label && camOn && !slot.isHost ? (
         <p className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-1.5 pb-1 pt-4 text-[10px] font-semibold text-white">
           {slot.label}
         </p>
