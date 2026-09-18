@@ -242,12 +242,12 @@ export function LiveFrameEditor({
           />
         </div>
       ) : null}
-      <div className="pointer-events-auto absolute bottom-3 left-3 flex flex-wrap gap-2">
+      <div className="lb-live-frame-editor__toggle pointer-events-auto">
         {onToggleVisible && toggleLabel ? (
           <button
             type="button"
             onClick={onToggleVisible}
-            className="rounded-lg border border-white/25 bg-black/65 px-2.5 py-1.5 text-[10px] font-semibold text-white backdrop-blur"
+            className="lb-live-frame-editor__toggle-btn"
           >
             {visible ? toggleLabel.hide : toggleLabel.show}
           </button>

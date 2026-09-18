@@ -6213,6 +6213,49 @@ html[data-lb-theme='dark'] .lb-media-fab {
   animation: lb-live-boom-milestone 1.2s ease-out both;
 }
 
+/* Mostrar/Ocultar cámara: mismo sitio en 9:16 y 16:9 (centro inferior del video). */
+.lb-live-frame-editor__toggle {
+  position: absolute;
+  left: 50%;
+  bottom: max(0.85rem, env(safe-area-inset-bottom));
+  z-index: 27;
+  display: flex;
+  justify-content: center;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 767px) {
+  .lb-live-frame-editor__toggle {
+    bottom: max(5.25rem, calc(env(safe-area-inset-bottom) + 4.5rem));
+  }
+}
+
+@media (min-width: 768px) {
+  .lb-live-frame-editor__toggle {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+.lb-live-frame-editor__toggle-btn {
+  min-height: 2.75rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  touch-action: manipulation;
+}
+
+.lb-live-frame-editor__toggle-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #22d3ee);
+  outline-offset: 2px;
+}
+
 /* PiP de cámara en compartir pantalla → transición suave al volver a cámara completa */
 .lb-live-framed-pip {
   transition:
