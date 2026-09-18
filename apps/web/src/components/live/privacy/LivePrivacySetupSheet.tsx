@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { GiftIcon } from '../FloatingGift';
 import { findLiveGift, sortedLiveGiftCatalog } from '../../../lib/liveboomGifts';
+import { PrivacyLockArt } from './PrivacyLockArt';
 
 export const PRIVACY_DELAY_OPTIONS = [
   { id: 'now', label: 'Al completar', ms: 0 },
@@ -62,10 +63,20 @@ export function LivePrivacySetupSheet({
           </button>
         </div>
         <p className="lb-live-privacy-setup__hint">
-          Elige el regalo del privado. El candado queda abierto (azul) hasta completar esos regalos;
-          entonces se cierra (rojo) y corre el tiempo para ir a sala privada. Quien envíe el regalo
+          Elige el regalo del privado. El candado queda abierto (✓ verde) hasta completar esos regalos;
+          entonces se cierra (✗ rojo) y corre el tiempo para ir a sala privada. Quien envíe el regalo
           puede entrar siempre.
         </p>
+        <div className="lb-live-privacy-setup__legend" aria-hidden>
+          <span>
+            <PrivacyLockArt open className="lb-live-privacy-setup__art" />
+            Abierto · reuniendo
+          </span>
+          <span>
+            <PrivacyLockArt open={false} className="lb-live-privacy-setup__art" />
+            Cerrado · privado
+          </span>
+        </div>
         <p className="lb-live-privacy-setup__section">1. Regalos a reunir (máx. {maxGifts})</p>
         <div className="lb-live-privacy-setup__gifts">
           {sortedLiveGiftCatalog().map((gift) => {

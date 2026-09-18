@@ -1,6 +1,7 @@
 import { Camera, Mic } from 'lucide-react';
 import type { RefObject } from 'react';
 import { useState } from 'react';
+import { PrivacyLockArt } from '../components/live/privacy/PrivacyLockArt';
 import { LIVE_CATEGORIES } from '../lib/categories';
 import {
   liveAspectRatioLabel,
@@ -348,7 +349,10 @@ export function TransmitStudioBody(props: Props) {
               onClick={props.onOpenLock}
               className="flex min-h-11 w-full items-center justify-between rounded-lg border border-sky-400/35 bg-sky-500/10 px-3 py-2 text-left"
             >
-              <span className="text-xs font-semibold text-sky-200">Candado · LIVE privado</span>
+              <span className="lb-live-privacy-lock-label">
+                <PrivacyLockArt open className="lb-live-privacy-lock-label__art" />
+                <span className="text-xs font-semibold text-sky-200">Candado · LIVE privado</span>
+              </span>
               <span className="max-w-[55%] truncate text-[11px] text-zinc-300">
                 {props.lockSummary || 'Elegir regalos'}
               </span>
@@ -362,7 +366,10 @@ export function TransmitStudioBody(props: Props) {
           onClick={props.onOpenLock}
           className="flex min-h-11 w-full items-center justify-between rounded-xl border border-sky-400/40 bg-sky-500/10 px-3 py-2.5 text-left"
         >
-          <span className="text-xs font-bold text-sky-200">Candado · privado</span>
+          <span className="lb-live-privacy-lock-label">
+            <PrivacyLockArt open className="lb-live-privacy-lock-label__art" />
+            <span className="text-xs font-bold text-sky-200">Candado · privado</span>
+          </span>
           <span className="max-w-[58%] truncate text-[11px] text-zinc-300">
             {props.lockSummary || 'Elige el regalo para el privado'}
           </span>

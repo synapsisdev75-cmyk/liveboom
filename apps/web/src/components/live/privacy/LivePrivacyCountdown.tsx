@@ -1,4 +1,3 @@
-import { Lock, Unlock } from 'lucide-react';
 import {
   formatCountdown,
   type PrivateGiftRequirementProgress,
@@ -6,6 +5,7 @@ import {
 } from '../../../lib/livePrivateAccessFirestore';
 import { findLiveGift } from '../../../lib/liveboomGifts';
 import { GiftIcon } from '../FloatingGift';
+import { PrivacyLockArt } from './PrivacyLockArt';
 
 type Props = {
   phase: PrivateLivePhase | null;
@@ -29,7 +29,7 @@ export function LivePrivacyCountdown({
     return (
       <div className="lb-live-privacy-countdown is-collecting" role="status">
         <p className="lb-live-privacy-countdown__title">
-          <Unlock size={12} aria-hidden />
+          <PrivacyLockArt open className="lb-live-privacy-countdown__art" />
           Candado abierto · reuniendo regalos
         </p>
         {incomplete.length > 0 ? (
@@ -58,7 +58,7 @@ export function LivePrivacyCountdown({
     return (
       <div className="lb-live-privacy-countdown is-countdown" role="status">
         <p className="lb-live-privacy-countdown__title">
-          <Lock size={12} aria-hidden />
+          <PrivacyLockArt open={false} className="lb-live-privacy-countdown__art" />
           Candado cerrado · yendo a privado
         </p>
         <p className="lb-live-privacy-countdown__timer">

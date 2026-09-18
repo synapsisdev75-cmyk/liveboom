@@ -1,8 +1,8 @@
-import { Lock, Unlock } from 'lucide-react';
 import {
   privacyLockAppearance,
   type PrivateLivePhase,
 } from '../../../lib/livePrivateAccessFirestore';
+import { PrivacyLockArt } from './PrivacyLockArt';
 
 type Props = {
   privateActive: boolean;
@@ -17,7 +17,7 @@ type Props = {
 
 /**
  * Candado icon-only (debajo/al lado de Deseos).
- * Abierto azul mientras se reúnen los regalos; cerrado rojo al 100% y en privado.
+ * Abierto con ✓ mientras se reúnen los regalos; cerrado con ✗ al 100% y en privado.
  */
 export function LivePrivacyLockButton({
   privateActive,
@@ -47,9 +47,7 @@ export function LivePrivacyLockButton({
       aria-label={aria}
       title={aria}
     >
-      <span className="lb-live-privacy-lock__icon" aria-hidden>
-        {open ? <Unlock size={18} /> : <Lock size={18} />}
-      </span>
+      <PrivacyLockArt open={open} />
     </button>
   );
 }
