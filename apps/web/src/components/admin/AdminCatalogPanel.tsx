@@ -195,6 +195,36 @@ export function AdminCatalogPanel() {
     setPacks((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
 
+  function addGift() {
+    const base = `regalo_${Date.now().toString(36)}`;
+    const id = base.replace(/[^a-z0-9_]/g, '_').slice(0, 40);
+    const next: EditableGift = {
+      id,
+      name: 'Nuevo regalo',
+      emoji: '🎁',
+      coins: 10,
+      level: 1,
+      animation: '',
+      enabled: true,
+      placements: [...ALL_GIFT_PLACEMENTS],
+      face: null,
+    };
+    setGifts((prev) => [...prev, next]);
+    setSelectedGiftId(id);
+    setMessage('Regalo agregado en borrador. Publica para guardar.');
+  }
+
+  function removeGift(id: string) {
+    if (gifts.length <= 1) {
+      setMessage('Debe quedar al menos un regalo en el catálogo.');
+      return;
+    }
+    const next = gifts.filter((g) => g.id !== id);
+    setGifts(next);
+    if (selectedGiftId === id) setSelectedGiftId(next[0]?.id || '');
+    setMessage('Regalo quitado del borrador. Publica para aplicar.');
+  }
+
   function togglePlacement(id: string, placement: GiftPlacement) {
     const row = gifts.find((g) => g.id === id);
     if (!row) return;
@@ -324,6 +354,13 @@ export function AdminCatalogPanel() {
               placeholder="Buscar regalo…"
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
             />
+            <button
+              type="button"
+              onClick={addGift}
+              className="w-full rounded-xl border border-dashed border-fuchsia-400/40 bg-fuchsia-500/10 px-3 py-2 text-sm font-semibold text-fuchsia-100 hover:bg-fuchsia-500/20"
+            >
+              + Agregar regalo
+            </button>
             {filteredGifts.map((row) => (
               <button
                 key={row.id}
@@ -357,6 +394,13 @@ export function AdminCatalogPanel() {
                 />
                 Activo
               </label>
+              <button
+                type="button"
+                onClick={() => removeGift(gift.id)}
+                className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/20"
+              >
+                Borrar
+              </button>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

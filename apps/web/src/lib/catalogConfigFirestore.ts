@@ -282,6 +282,20 @@ export async function saveCoinPackagesConfig(config: CoinPackagesDoc, updatedBy:
   );
 }
 
+function catalogAssetContentType(file: File, ext: string): string {
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  const map: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    webm: 'video/webm',
+    mp4: 'video/mp4',
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
 export async function uploadCatalogAsset(
   folder: 'gifts' | 'blast',
   id: string,
@@ -290,6 +304,6 @@ export async function uploadCatalogAsset(
   const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
   const path = `config/${folder}/${id}-${Date.now()}.${ext}`;
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file, { contentType: file.type || 'application/octet-stream' });
+  await uploadBytes(storageRef, file, { contentType: catalogAssetContentType(file, ext) });
   return getDownloadURL(storageRef);
 }
