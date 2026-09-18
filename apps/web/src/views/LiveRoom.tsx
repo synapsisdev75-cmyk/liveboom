@@ -711,16 +711,34 @@ export function LiveRoom() {
     // Tras aceptar Sala Boom NO reutilizar token de espectador (causa pantalla negra).
     if (forceFresh) forgetLiveToken(username);
     const cached = !isOwnRoom && !forceFresh ? peekCachedLiveToken(username) : null;
-    const data =
-      cached ||
-      (await api<{
-        token: string;
-        serverUrl: string;
-        canPublish: boolean;
-        isHost?: boolean;
-        roomName?: string;
-        hostUid?: string | null;
-      }>(`/api/stream/token/${encodeURIComponent(username)}?handle=${tokenHandle}`));
+    let data: {
+      token: string;
+      serverUrl: string;
+      canPublish: boolean;
+      isHost?: boolean;
+      roomName?: string;
+      hostUid?: string | null;
+    };
+    try {
+      data =
+        cached ||
+        (await api<{
+          token: string;
+          serverUrl: string;
+          canPublish: boolean;
+          isHost?: boolean;
+          roomName?: string;
+          hostUid?: string | null;
+        }>(`/api/stream/token/${encodeURIComponent(username)}?handle=${tokenHandle}`));
+    } catch (err) {
+      const code = err instanceof ApiError ? String(err.data?.code || '') : '';
+      if (code === 'VIEWER_KICKED' || code === 'LIVE_BANNED') {
+        forgetLiveToken(username);
+        navigate('/', { replace: true });
+        return null;
+      }
+      throw err;
+    }
     if (activeRoomRef.current !== targetRoom) return null;
     if (!data.canPublish && !data.isHost) {
       rememberLiveToken(username, {

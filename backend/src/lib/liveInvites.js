@@ -162,7 +162,10 @@ async function persistClear(roomName) {
   if (!room) return;
   try {
     const db = getAdminDb();
-    await db.collection('liveRooms').doc(room).set({ guestInvites: [], guestBanned: [] }, { merge: true });
+    await db
+      .collection('liveRooms')
+      .doc(room)
+      .set({ guestInvites: [], guestBanned: [], viewerKicked: [] }, { merge: true });
     await persistClearPending(room);
     await persistClearMembers(room);
   } catch (error) {

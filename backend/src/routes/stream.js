@@ -11,6 +11,7 @@ const { getProfile, findByUsername, saveProfile } = require('../lib/profileMemor
 const { getBalance } = require('../lib/walletMemory');
 const { getAdminDb, firestoreConfigured } = require('../lib/firestoreAdmin');
 const livePrivate = require('../lib/livePrivateSession');
+const viewerKick = require('../lib/liveViewerKick');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -172,6 +173,7 @@ router.post('/live/start', requireAuth, (req, res) => {
   invites.clearInvites(username);
   invites.clearBans(username);
   invites.clearPendingInvites(username);
+  viewerKick.clearKicks(username);
   void invites.persistClear(username);
   const entry = upsertLive({
     username,
@@ -201,6 +203,7 @@ router.post('/live/stop', requireAuth, async (req, res) => {
   invites.clearInvites(username);
   invites.clearBans(username);
   invites.clearPendingInvites(username);
+  viewerKick.clearKicks(username);
   void invites.persistClear(username);
   liveLocks.clearLock(username);
   try {
@@ -477,10 +480,9 @@ router.post('/invite/kick', requireAuth, async (req, res) => {
 router.post('/viewers/kick', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
-  const guestHandle =
-    typeof req.body?.guestHandle === 'string' ? normalize(req.body.guestHandle) : '';
-  const guestUid = typeof req.body?.guestUid === 'string' ? String(req.body.guestUid).trim() : '';
-  if (!roomName || (!guestHandle && !guestUid)) {
+  const viewerUid = String(req.body?.viewerUid || req.body?.guestUid || '').trim();
+  const viewerHandle = normalize(req.body?.viewerHandle || req.body?.guestHandle || '');
+  if (!roomName || (!viewerUid && !viewerHandle)) {
     res.status(400).json({ error: 'roomName y el espectador son obligatorios' });
     return;
   }
@@ -488,43 +490,38 @@ router.post('/viewers/kick', requireAuth, async (req, res) => {
     res.status(403).json({ error: 'Solo el anfitrión puede expulsar espectadores' });
     return;
   }
-  const guestProfile = guestUid
-    ? getProfile(guestUid)
-    : guestHandle
-      ? findByUsername(guestHandle)
+  const viewerProfile = viewerUid
+    ? getProfile(viewerUid)
+    : viewerHandle
+      ? findByUsername(viewerHandle)
       : null;
-  const targetUid = guestUid || guestProfile?.firebaseUid || '';
-  if (targetUid && targetUid === req.user.uid) {
-    res.status(400).json({ error: 'No puedes expulsarte a ti mismo' });
+  const targetUid = viewerUid || viewerProfile?.firebaseUid || '';
+  if (!targetUid || targetUid === req.user.uid) {
+    res.status(400).json({ error: 'No puedes expulsar a este usuario' });
     return;
   }
-  const banKeys = [
-    guestHandle,
-    guestUid,
-    guestProfile?.firebaseUid,
-    guestProfile?.username,
-    guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
+  const kickKeys = [
+    targetUid,
+    viewerUid,
+    viewerHandle,
+    viewerProfile?.firebaseUid,
+    viewerProfile?.username,
+    viewerProfile?.email ? String(viewerProfile.email).split('@')[0] : null,
   ].filter(Boolean);
 
-  await invites.endGuestParticipation(roomName, targetUid, banKeys);
-  for (const key of banKeys) {
-    invites.addBan(roomName, key);
-    invites.removeInvite(roomName, key);
+  for (const key of kickKeys) {
+    viewerKick.addKick(roomName, key);
   }
-  await Promise.all(banKeys.map((key) => invites.persistBanAdd(roomName, key)));
+  await Promise.all(kickKeys.map((key) => viewerKick.persistKickAdd(roomName, key)));
+  await viewerKick.removeViewerPresence(roomName, targetUid);
+
   const lk = livekit();
-  if (typeof lk.removeLivekitParticipant === 'function' && targetUid) {
-    await lk.removeLivekitParticipant(roomName, targetUid);
-  }
-  if (targetUid) {
-    try {
-      await getAdminDb().collection('liveRooms').doc(roomName).collection('viewers').doc(targetUid).delete();
-    } catch (error) {
-      console.warn('[viewers/kick] presence', error.message);
-    }
+  const removeLivekitParticipant = lk.removeLivekitParticipant || lk.default?.removeLivekitParticipant;
+  if (typeof removeLivekitParticipant === 'function') {
+    await removeLivekitParticipant(roomName, targetUid).catch(() => undefined);
   }
 
-  res.json({ ok: true, room: roomName, kicked: targetUid || guestHandle });
+  res.json({ ok: true, room: roomName, kicked: targetUid });
 });
 
 /** Candado: arma el regalo (LIVE sigue público) o sella el privado. */
@@ -920,10 +917,10 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     const guest = await canGuestPublishAsync(req.user, roomName);
     const isDirectCall = /^dm[_-]/.test(roomName);
 
-    if (!host && !isDirectCall && (await invites.isBanned(roomName, identitiesFromToken(req.user)))) {
+    if (!host && !isDirectCall && (await viewerKick.isKicked(roomName, identitiesFromToken(req.user)))) {
       res.status(403).json({
-        error: 'Fuiste expulsado de este LIVE y no puedes volver a entrar',
-        code: 'LIVE_BANNED',
+        error: 'Fuiste expulsado de este LIVE',
+        code: 'VIEWER_KICKED',
       });
       return;
     }
