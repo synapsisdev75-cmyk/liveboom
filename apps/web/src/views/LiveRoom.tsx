@@ -312,6 +312,7 @@ type LockInfo = {
 };
 
 const LIVE_LOCK_ACTIVE_MAX = 1;
+const LIVE_STATUS_NOTE_MS = 20_000;
 
 function lockRequirementsOf(lock: LockInfo | null | undefined): LockGiftRequirement[] {
   if (!lock) return [];
@@ -2303,6 +2304,35 @@ function CreatorStage({
     facing,
     onFacingChange: setFacing,
   });
+  const liveStatusNote =
+    inviteNote ||
+    reelNote ||
+    hostDeepAr.note ||
+    (hostDeepAr.activeFilter ? `Filtro AR activo: ${hostDeepAr.activeFilter}` : null);
+  const inviteNoteRef = useRef(inviteNote);
+  inviteNoteRef.current = inviteNote;
+  const skipLiveStatusFallbackRef = useRef(false);
+  const [liveStatusNoteVisible, setLiveStatusNoteVisible] = useState(false);
+  useEffect(() => {
+    if (!liveStatusNote) {
+      skipLiveStatusFallbackRef.current = false;
+      setLiveStatusNoteVisible(false);
+      return;
+    }
+    if (skipLiveStatusFallbackRef.current) {
+      skipLiveStatusFallbackRef.current = false;
+      setLiveStatusNoteVisible(false);
+      return;
+    }
+    setLiveStatusNoteVisible(true);
+    const shown = liveStatusNote;
+    const timer = window.setTimeout(() => {
+      if (inviteNoteRef.current === shown) skipLiveStatusFallbackRef.current = true;
+      setLiveStatusNoteVisible(false);
+      setInviteNote((cur) => (cur === shown ? null : cur));
+    }, LIVE_STATUS_NOTE_MS);
+    return () => window.clearTimeout(timer);
+  }, [liveStatusNote]);
   const acceptedBattleRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -5837,12 +5867,9 @@ function CreatorStage({
           setBatallaOpen(false);
         }}
       />
-      {(inviteNote || reelNote || hostDeepAr.note || hostDeepAr.activeFilter) && isHost ? (
+      {liveStatusNote && liveStatusNoteVisible && isHost ? (
         <p className="pointer-events-none absolute left-3 right-3 top-[8.5rem] z-10 text-[11px] text-cyan-200 max-lg:top-[calc(max(0.75rem,env(safe-area-inset-top))+6.5rem)] sm:left-4 sm:max-w-md">
-          {inviteNote ||
-            reelNote ||
-            hostDeepAr.note ||
-            (hostDeepAr.activeFilter ? `Filtro AR activo: ${hostDeepAr.activeFilter}` : null)}
+          {liveStatusNote}
         </p>
       ) : null}
       {withdrawOpen ? (
