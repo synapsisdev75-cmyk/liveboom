@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { GiftIcon } from '../FloatingGift';
+import { LiveHostFrameBackdrop } from '../LiveHostFrameBackdrop';
 import { PrivacyLockArt } from './PrivacyLockArt';
 import { findLiveGift } from '../../../lib/liveboomGifts';
 
@@ -17,6 +18,9 @@ type Props = {
   sending?: boolean;
   rejectCount?: number;
   error?: string | null;
+  hostUid?: string | null;
+  hostUsername?: string | null;
+  hostAvatarUrl?: string | null;
   onRequest: () => void;
 };
 
@@ -26,6 +30,9 @@ export function LivePrivateWaitingGate({
   sending = false,
   rejectCount = 0,
   error = null,
+  hostUid = null,
+  hostUsername = null,
+  hostAvatarUrl = null,
   onRequest,
 }: Props) {
   const catalog = gift ? findLiveGift(gift.giftId) : null;
@@ -36,6 +43,12 @@ export function LivePrivateWaitingGate({
 
   return (
     <div className="lb-live-private-gate">
+      <LiveHostFrameBackdrop
+        uid={hostUid}
+        username={hostUsername}
+        avatarUrl={hostAvatarUrl}
+        className="lb-live-host-frame-backdrop--gate"
+      />
       <div className="lb-live-private-gate__card">
         <PrivacyLockArt appearance="sealed" className="lb-live-private-gate__lock" />
         <p className="lb-live-private-gate__title">LIVE privado</p>

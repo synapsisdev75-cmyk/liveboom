@@ -1,4 +1,4 @@
-import { Eye, Radio } from 'lucide-react';
+import { Eye, Lock, Radio } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { UserAvatar } from '../profile/UserAvatar';
 import { categoryLabel } from '../../lib/categories';
@@ -31,12 +31,20 @@ export function TopLiveCard({ stream }: Props) {
           username={stream.username}
           avatarUrl={stream.avatarUrl}
           displayName={name}
+          uid={stream.uid}
+          isPrivate={stream.isPrivate}
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/30" />
         <span className="live-dot absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-white shadow-md">
           <Radio size={10} aria-hidden />
           En directo
         </span>
+        {stream.isPrivate ? (
+          <span className="absolute left-2 top-9 inline-flex items-center gap-1 rounded-md bg-black/70 px-2 py-1 text-[10px] font-semibold text-amber-200">
+            <Lock size={10} aria-hidden />
+            Privado
+          </span>
+        ) : null}
         <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold tabular-nums text-cyan-200">
           <Eye size={11} aria-hidden />
           {formatCount(stream.viewers || 0)}

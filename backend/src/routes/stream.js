@@ -141,14 +141,11 @@ router.get('/live', async (req, res) => {
       lockGiftId: item.lockGiftId ?? prev?.lockGiftId ?? null,
     });
   }
-  const includePrivate = req.query.includePrivate === '1';
   const category =
     typeof req.query.category === 'string' ? normalize(req.query.category) : '';
   let streams = Array.from(byName.values()).filter((item) => {
     // Llamadas privadas 1:1 nunca aparecen como LIVE.
     if (/^dm[_-]/i.test(String(item.username || ''))) return false;
-    if (includePrivate) return true;
-    if (item.isPrivate) return false;
     return true;
   });
   if (category) {

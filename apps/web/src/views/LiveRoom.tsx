@@ -1240,6 +1240,8 @@ export function LiveRoom() {
         sending={Boolean(gateSendingGiftId)}
         rejectCount={gateRejectCount}
         error={gateGiftError}
+        hostUid={session?.hostUid}
+        hostUsername={username}
         onRequest={() => {
           if (accessGift) void sendGateLockGift(accessGift.giftId);
         }}

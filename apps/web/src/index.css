@@ -4415,23 +4415,68 @@ html[data-lb-theme='dark'] .lb-media-fab {
 }
 
 .lb-live-private-gate {
+  position: relative;
   display: grid;
   place-items: center;
   width: 100%;
   min-height: 100dvh;
   height: 100dvh;
+  overflow: hidden;
   padding: 1rem;
   background: #09090b;
   text-align: center;
 }
 
+.lb-live-host-frame-backdrop {
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.lb-live-host-frame-backdrop--gate {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.lb-live-host-frame-backdrop--gate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(9, 9, 11, 0.46);
+}
+
+.lb-live-host-frame-backdrop--gate .lb-live-host-frame-backdrop__frame {
+  width: min(78vmin, 28rem) !important;
+  height: min(78vmin, 28rem) !important;
+  filter: blur(16px) brightness(0.58) saturate(1.08);
+  transform: scale(1.2);
+}
+
+.lb-live-host-frame-backdrop--card {
+  position: absolute;
+  inset: 0;
+  background: #09090b;
+}
+
+.lb-live-host-frame-backdrop--card .lb-live-host-frame-backdrop__frame {
+  width: min(78%, 12rem) !important;
+  height: min(78%, 12rem) !important;
+  filter: blur(8px) brightness(0.62) saturate(1.05);
+  transform: scale(1.12);
+}
+
 .lb-live-private-gate__card {
+  position: relative;
+  z-index: 1;
   width: min(100%, 22rem);
   padding: 1.25rem 1.1rem 1rem;
   border-radius: 1.4rem;
   border: 1px solid rgba(251, 191, 36, 0.28);
-  background: #18181b;
+  background: rgba(24, 24, 27, 0.86);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
 }
 
 .lb-live-private-gate__lock {

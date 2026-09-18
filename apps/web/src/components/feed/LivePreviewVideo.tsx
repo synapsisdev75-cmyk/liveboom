@@ -2,11 +2,14 @@ import { Room, RoomEvent, Track } from 'livekit-client';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
+import { LiveHostFrameBackdrop } from '../live/LiveHostFrameBackdrop';
 
 type Props = {
   username: string;
   avatarUrl: string | null;
   displayName: string;
+  uid?: string | null;
+  isPrivate?: boolean;
   className?: string;
 };
 
@@ -14,8 +17,16 @@ type Props = {
  * Preview de directo en Directos Top (solo visual).
  * Conecta LiveKit para mostrar transmisión en vivo sin registrar espectador:
  * el contador real solo sube en /stream vía useLivePresence.
+ * LIVE privado: no intenta entrar; muestra foto + marco difuminados.
  */
-export function LivePreviewVideo({ username, avatarUrl, displayName, className = '' }: Props) {
+export function LivePreviewVideo({
+  username,
+  avatarUrl,
+  displayName,
+  uid = null,
+  isPrivate = false,
+  className = '',
+}: Props) {
   const profile = useAuthStore((s) => s.profile);
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -24,7 +35,7 @@ export function LivePreviewVideo({ username, avatarUrl, displayName, className =
   const [hasVideo, setHasVideo] = useState(false);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || isPrivate) return;
 
     const host = wrapRef.current;
     if (!host) return;
@@ -96,9 +107,22 @@ export function LivePreviewVideo({ username, avatarUrl, displayName, className =
       io.disconnect();
       disconnect();
     };
-  }, [username, profile?.firebaseUid, profile?.handle]);
+  }, [username, profile?.firebaseUid, profile?.handle, isPrivate]);
 
   const initial = displayName.slice(0, 1).toUpperCase();
+
+  if (isPrivate) {
+    return (
+      <div ref={wrapRef} className={`relative h-full w-full overflow-hidden ${className}`}>
+        <LiveHostFrameBackdrop
+          uid={uid}
+          username={username}
+          avatarUrl={avatarUrl}
+          className="lb-live-host-frame-backdrop--card"
+        />
+      </div>
+    );
+  }
 
   return (
     <div ref={wrapRef} className={`relative h-full w-full overflow-hidden ${className}`}>

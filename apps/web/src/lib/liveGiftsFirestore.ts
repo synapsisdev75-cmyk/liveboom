@@ -504,7 +504,6 @@ export function listenActiveLiveRooms(
       const data = item.data();
       const username = String(data.username || item.id || '').trim();
       if (!username) continue;
-      if (data.isPrivate) continue;
       if (!isLiveHeartbeatFresh(data, now)) continue;
       const startedAtMs = Number(data.startedAtMs || Date.now());
       streams.push({
@@ -515,7 +514,7 @@ export function listenActiveLiveRooms(
         title: String(data.title || `Live de ${data.displayName || username}`),
         startedAt: new Date(startedAtMs).toISOString(),
         viewers: Math.max(0, Number(data.viewers || 0)),
-        isPrivate: false,
+        isPrivate: Boolean(data.isPrivate),
         category: String(data.category || 'otro'),
       });
     }
