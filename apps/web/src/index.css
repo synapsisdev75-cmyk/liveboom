@@ -4487,11 +4487,16 @@ html[data-lb-theme='dark'] .lb-media-fab {
   opacity: 0.6;
 }
 
-.lb-live-private-gate__ok {
+.lb-live-private-gate__ok,
+.lb-live-private-gate__notice {
   margin: 0 0 0.5rem;
   color: #6ee7b7;
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.lb-live-private-gate__notice.is-no {
+  color: #fda4af;
 }
 
 .lb-live-private-gate__error {
@@ -14295,7 +14300,7 @@ a.lb-entity:active,
 
 .lb-recon3d-iconbtn {
   min-width: 2.75rem;
-  min-height: 2.75rem;
+    min-height: 2.75rem;
   border: 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
@@ -14729,7 +14734,7 @@ a.lb-entity:active,
   z-index: 3;
   display: grid;
   place-items: center;
-  min-width: 2.75rem;
+    min-width: 2.75rem;
   min-height: 2.75rem;
   transform: translate(-50%, -50%);
   border: 1px solid rgba(34, 211, 238, 0.45);

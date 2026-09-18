@@ -49,6 +49,7 @@ import {
   LivePrivacyRequestsSheet,
   LivePrivacySetupSheet,
   LivePrivateWaitingGate,
+  PRIVATE_GATE_MAX_REJECTS,
 } from '../components/live/privacy';
 import {
   clearPrivateSchedule,
@@ -534,6 +535,7 @@ function useViewerCount(roomName: string) {
 
 export function LiveRoom() {
   const t = useT();
+  const navigate = useNavigate();
   const { username } = useParams();
   const location = useLocation();
   const launch = (location.state as LiveLaunchState | null) || {};
@@ -572,6 +574,8 @@ export function LiveRoom() {
   const [gateRequestStatus, setGateRequestStatus] = useState<
     'outside' | 'pending' | 'approved' | 'rejected'
   >('outside');
+  const [gateRejectCount, setGateRejectCount] = useState(0);
+  const prevGateReqRef = useRef<'outside' | 'pending' | 'approved' | 'rejected'>('outside');
   const gateClaimOnceRef = useRef<string | null>(null);
   const privacyLaunchAppliedRef = useRef(false);
   const setCoins = useAuthStore((state) => state.setCoins);
@@ -962,17 +966,22 @@ export function LiveRoom() {
       window.setTimeout(() => setGateUnlockFlash(false), 1200);
       await fetchToken();
       return true;
-    } catch (err) {
+    } catch {
       gateClaimOnceRef.current = null;
-      setGateGiftError(err instanceof Error ? err.message : 'No se pudo entrar al privado');
+      setGateUnlockFlash(false);
+      setGateRequestStatus((cur) => (cur === 'approved' ? 'outside' : cur));
       return false;
     }
   }
 
   async function sendGateLockGift(giftId: string) {
     if (!username || !firebaseUid || !profile || gateSendingGiftId) return;
-    if (gateRequestStatus === 'pending') {
-      setGateGiftError('Solicitud pendiente');
+    if (gateRequestStatus === 'pending' || gateRequestStatus === 'approved') {
+      setGateGiftError(gateRequestStatus === 'pending' ? 'Solicitud pendiente' : null);
+      return;
+    }
+    if (gateRejectCount >= PRIVATE_GATE_MAX_REJECTS) {
+      navigate('/', { replace: true });
       return;
     }
     const catalog = findLiveGift(giftId);
@@ -1035,22 +1044,47 @@ export function LiveRoom() {
     return listenMyPrivateRequest(username, firebaseUid, (row) => {
       if (!row) {
         setGateRequestStatus('outside');
+        prevGateReqRef.current = 'outside';
         return;
       }
-      if (row.status === 'pending') setGateRequestStatus('pending');
-      if (row.status === 'rejected') setGateRequestStatus('rejected');
+      if (gateSessionId && row.sessionId && row.sessionId !== gateSessionId) return;
+      if (row.status === 'pending') {
+        setGateRequestStatus('pending');
+        setGateGiftError(null);
+        prevGateReqRef.current = 'pending';
+        return;
+      }
+      if (row.status === 'rejected') {
+        setGateRequestStatus('rejected');
+        if (prevGateReqRef.current !== 'rejected') {
+          setGateRejectCount((n) => n + 1);
+        }
+        prevGateReqRef.current = 'rejected';
+        return;
+      }
       if (row.status === 'approved') {
         setGateRequestStatus('approved');
+        prevGateReqRef.current = 'approved';
         void claimPrivateAccessFromGrant(row.sessionId);
       }
     });
-  }, [gateLock, username, firebaseUid]);
+  }, [gateLock, username, firebaseUid, gateSessionId]);
+
+  useEffect(() => {
+    if (gateRejectCount < PRIVATE_GATE_MAX_REJECTS || gateRequestStatus !== 'rejected') return;
+    const timer = window.setTimeout(() => navigate('/', { replace: true }), 1400);
+    return () => window.clearTimeout(timer);
+  }, [gateRejectCount, gateRequestStatus, navigate]);
 
   useEffect(() => {
     if (gateLock) return;
     gateClaimOnceRef.current = null;
     setGateGiftError(null);
     setGateSendingGiftId(null);
+    setGateUnlockFlash(false);
+    setGateRequestStatus('outside');
+    setGateRejectCount(0);
+    prevGateReqRef.current = 'outside';
   }, [gateLock]);
 
   useEffect(() => {
@@ -1185,10 +1219,10 @@ export function LiveRoom() {
             ? { giftId: accessGift.giftId, giftName: accessGift.giftName }
             : null
         }
-        status={gateUnlockFlash ? 'approved' : gateRequestStatus}
+        status={gateRequestStatus}
         sending={Boolean(gateSendingGiftId)}
-        flashApproved={gateUnlockFlash}
-        error={gateGiftError || error}
+        rejectCount={gateRejectCount}
+        error={gateGiftError}
         onRequest={() => {
           if (accessGift) void sendGateLockGift(accessGift.giftId);
         }}
