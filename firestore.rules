@@ -42,22 +42,45 @@ service cloud.firestore {
 
     match /config/levels {
       allow read: if true;
-      allow write: if isUnlockedSuperAdmin();
+      allow create, update: if isUnlockedSuperAdmin();
+      allow delete: if false;
     }
 
+    // Catálogo de regalos: público de lectura; solo Super Admin con bóveda puede
+    // publicar. Nunca borrar el documento ni vaciar la lista de regalos.
     match /config/giftsCatalog {
       allow read: if true;
-      allow write: if isUnlockedSuperAdmin();
+      allow create, update: if isUnlockedSuperAdmin()
+        && request.resource.data.gifts is list
+        && request.resource.data.gifts.size() > 0
+        && request.resource.data.version is number
+        && request.resource.data.version >= 1
+        && (
+          !exists(/databases/$(database)/documents/config/giftsCatalog)
+          || request.resource.data.version >= resource.data.get('version', 1)
+        );
+      allow delete: if false;
     }
 
+    // Paquetes Blast: misma protección anti-borrado / anti-vacío.
     match /config/coinPackages {
       allow read: if true;
-      allow write: if isUnlockedSuperAdmin();
+      allow create, update: if isUnlockedSuperAdmin()
+        && request.resource.data.packages is list
+        && request.resource.data.packages.size() > 0
+        && request.resource.data.version is number
+        && request.resource.data.version >= 1
+        && (
+          !exists(/databases/$(database)/documents/config/coinPackages)
+          || request.resource.data.version >= resource.data.get('version', 1)
+        );
+      allow delete: if false;
     }
 
     match /config/communityHeader {
       allow read: if true;
-      allow write: if isUnlockedSuperAdmin();
+      allow create, update: if isUnlockedSuperAdmin();
+      allow delete: if false;
     }
 
     match /config/superAdminSecurity {
