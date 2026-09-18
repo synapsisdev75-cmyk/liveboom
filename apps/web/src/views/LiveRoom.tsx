@@ -43,6 +43,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-route
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { LiveWishCarousel } from '../components/live/LiveWishCarousel';
 import { LiveWishAchievedCard } from '../components/live/LiveWishAchievedCard';
+import { LiveViewerListRow } from '../components/live/LiveViewerListRow';
 import {
   LivePrivacyLockButton,
   LivePrivacyRequestStrip,
@@ -137,6 +138,7 @@ import {
   listenLiveRoomViewerCount,
   listenLiveViewers,
   refreshLiveViewerCount,
+  unregisterLiveViewer,
   listenLiveRoomStatus,
   archiveLiveActivity,
   notifyNetworkImLive,
@@ -493,7 +495,8 @@ type RoomPayload =
   | { type: 'boom'; id: string; nx: number; ny: number; uid?: string }
   | { type: 'pip_sync'; nx: number; ny: number; nw?: number; visible: boolean }
   | { type: 'sala_layout'; layout: SalaBoomLayout; pin?: string | null }
-  | { type: 'sala_control'; action: SalaCameraAction; identity: string };
+  | { type: 'sala_control'; action: SalaCameraAction; identity: string }
+  | { type: 'live_kick'; identity: string };
 
 function publishFrameSync(
   room: ReturnType<typeof useRoomContext>,
@@ -1692,6 +1695,7 @@ function CreatorStage({
   const [endLiveError, setEndLiveError] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [viewersOpen, setViewersOpen] = useState(false);
+  const [kickBusyId, setKickBusyId] = useState<string | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
   const [liveNeighbors, setLiveNeighbors] = useState<SuggestedLive[]>([]);
   const liveNeighborsRef = useRef<SuggestedLive[]>([]);
@@ -2832,6 +2836,11 @@ function CreatorStage({
         void exitLiveToHomeRef.current();
         return;
       }
+      if (data.type === 'live_kick' && !isHost && data.identity === firebaseUid) {
+        forgetLiveToken(username);
+        void exitLiveToHomeRef.current();
+        return;
+      }
       if (data.type === 'boom') {
         if (!(hostUid && data.uid && data.uid === hostUid)) {
           showBoomAt(data.nx, data.ny, data.id);
@@ -3203,6 +3212,37 @@ function CreatorStage({
       window.clearInterval(timer);
     };
   }, [isHost, username, firebaseUid]);
+
+  useEffect(() => {
+    if (!viewersOpen) return;
+    prefetchLiveChatAuthorProfiles(viewersList.map((person) => person.identity));
+  }, [viewersOpen, viewersList]);
+
+  async function kickLiveViewer(person: SalaInviteViewer) {
+    if (!isHost || !person.identity || kickBusyId) return;
+    setKickBusyId(person.identity);
+    try {
+      await api('/api/stream/viewers/kick', {
+        method: 'POST',
+        body: JSON.stringify({
+          roomName: username,
+          guestUid: person.identity,
+          guestHandle: person.username,
+          handle,
+        }),
+      });
+      void publishRoomData(room, { type: 'live_kick', identity: person.identity }).catch(
+        () => undefined,
+      );
+      void unregisterLiveViewer(username, person.identity).catch(() => undefined);
+      setViewersList((current) => current.filter((row) => row.identity !== person.identity));
+      setInviteNote(`Expulsaste a @${person.username || person.name}`);
+    } catch (err) {
+      setInviteNote(err instanceof Error ? err.message : 'No se pudo expulsar');
+    } finally {
+      setKickBusyId(null);
+    }
+  }
 
   async function setLiveLock(requirements: LockGiftRequirement[] | null) {
     if (!isHost) return;
@@ -5958,30 +5998,30 @@ function CreatorStage({
         </div>
       ) : null}
       {viewersOpen ? (
-        <div className="pointer-events-auto absolute left-2 right-2 top-[4.8rem] z-30 max-h-[min(48dvh,22rem)] overflow-hidden rounded-2xl border border-white/15 bg-zinc-950/95 p-3 shadow-xl sm:left-auto sm:right-4 sm:w-[min(100%,16rem)]">
+        <div className="pointer-events-auto absolute left-2 right-2 top-[4.8rem] z-30 max-h-[min(48dvh,22rem)] overflow-hidden rounded-2xl border border-white/15 bg-zinc-950/95 p-3 shadow-xl sm:left-auto sm:right-4 sm:w-[min(100%,18.5rem)]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-cyan-300">
               <Users size={12} />
               Espectadores
             </p>
-            <button type="button" onClick={() => setViewersOpen(false)} className="text-zinc-400 hover:text-white">
+            <button type="button" onClick={() => setViewersOpen(false)} className="grid h-11 w-11 place-items-center text-zinc-400 hover:text-white">
               <X size={14} />
             </button>
           </div>
-          <ul className="max-h-[40dvh] space-y-1.5 overflow-y-auto">
+          <ul className="max-h-[40dvh] space-y-1 overflow-y-auto">
             {viewersList.length === 0 ? (
               <li className="text-xs text-zinc-500">Nadie en la sala aún.</li>
             ) : (
               viewersList.map((person) => (
-                <li
+                <LiveViewerListRow
                   key={person.identity}
-                  className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 text-xs text-white"
-                >
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-200">
-                    {(person.name || person.identity).slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="truncate">@{person.username || person.name || person.identity}</span>
-                </li>
+                  uid={person.identity}
+                  username={person.username || person.name || person.identity}
+                  displayName={person.name}
+                  canKick={isHost}
+                  kicking={kickBusyId === person.identity}
+                  onKick={() => void kickLiveViewer(person)}
+                />
               ))
             )}
           </ul>

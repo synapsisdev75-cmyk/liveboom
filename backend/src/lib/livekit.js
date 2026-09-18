@@ -166,6 +166,18 @@ async function listActiveLiveRooms() {
   }
 }
 
+async function removeLivekitParticipant(roomName, identity) {
+  const svc = roomService();
+  const room = String(roomName || '').trim();
+  const id = String(identity || '').trim();
+  if (!svc || !room || !id) return;
+  try {
+    await svc.removeParticipant(room, id);
+  } catch (error) {
+    console.warn('[livekit] removeParticipant:', error.message);
+  }
+}
+
 module.exports = {
   livekitEnabled,
   livekitMissing,
@@ -176,6 +188,7 @@ module.exports = {
   ownerUidFromScreenIdentity,
   ensureCallRoom,
   listActiveLiveRooms,
+  removeLivekitParticipant,
   livekitHttpHost,
   publicLiveKitUrl,
   normalizeLiveKitUrl,

@@ -474,6 +474,59 @@ router.post('/invite/kick', requireAuth, async (req, res) => {
   res.json({ ok: true, room: roomName, banned: invites.listBans(roomName) });
 });
 
+router.post('/viewers/kick', requireAuth, async (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const guestHandle =
+    typeof req.body?.guestHandle === 'string' ? normalize(req.body.guestHandle) : '';
+  const guestUid = typeof req.body?.guestUid === 'string' ? String(req.body.guestUid).trim() : '';
+  if (!roomName || (!guestHandle && !guestUid)) {
+    res.status(400).json({ error: 'roomName y el espectador son obligatorios' });
+    return;
+  }
+  if (!isRoomHost(req.user, roomName, req.body?.handle)) {
+    res.status(403).json({ error: 'Solo el anfitrión puede expulsar espectadores' });
+    return;
+  }
+  const guestProfile = guestUid
+    ? getProfile(guestUid)
+    : guestHandle
+      ? findByUsername(guestHandle)
+      : null;
+  const targetUid = guestUid || guestProfile?.firebaseUid || '';
+  if (targetUid && targetUid === req.user.uid) {
+    res.status(400).json({ error: 'No puedes expulsarte a ti mismo' });
+    return;
+  }
+  const banKeys = [
+    guestHandle,
+    guestUid,
+    guestProfile?.firebaseUid,
+    guestProfile?.username,
+    guestProfile?.email ? String(guestProfile.email).split('@')[0] : null,
+  ].filter(Boolean);
+
+  await invites.endGuestParticipation(roomName, targetUid, banKeys);
+  for (const key of banKeys) {
+    invites.addBan(roomName, key);
+    invites.removeInvite(roomName, key);
+  }
+  await Promise.all(banKeys.map((key) => invites.persistBanAdd(roomName, key)));
+  const lk = livekit();
+  if (typeof lk.removeLivekitParticipant === 'function' && targetUid) {
+    await lk.removeLivekitParticipant(roomName, targetUid);
+  }
+  if (targetUid) {
+    try {
+      await getAdminDb().collection('liveRooms').doc(roomName).collection('viewers').doc(targetUid).delete();
+    } catch (error) {
+      console.warn('[viewers/kick] presence', error.message);
+    }
+  }
+
+  res.json({ ok: true, room: roomName, kicked: targetUid || guestHandle });
+});
+
 /** Candado: arma el regalo (LIVE sigue público) o sella el privado. */
 router.post('/lock', requireAuth, async (req, res) => {
   const roomName =
@@ -866,6 +919,14 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     const host = isRoomHost(req.user, roomName, claimedHandle);
     const guest = await canGuestPublishAsync(req.user, roomName);
     const isDirectCall = /^dm[_-]/.test(roomName);
+
+    if (!host && !isDirectCall && (await invites.isBanned(roomName, identitiesFromToken(req.user)))) {
+      res.status(403).json({
+        error: 'Fuiste expulsado de este LIVE y no puedes volver a entrar',
+        code: 'LIVE_BANNED',
+      });
+      return;
+    }
 
     if (isDirectCall) {
       const { bearerFromReq, canCallUser, isActiveCall, loadChatCall, otherUidFromChatId } = require('../lib/canCallUser');

@@ -2,6 +2,7 @@ import { frameConfigForXp } from '../../lib/levelFrameConfig';
 import { levelFromXp } from '../../lib/userLevels';
 
 const SIZE_CLASS = {
+  xs: 'h-11 w-11',
   sm: 'h-14 w-14',
   md: 'h-[104px] w-[104px]',
   lg: 'h-[136px] w-[136px]',
