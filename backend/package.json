@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "test": "node --test src/lib/walletEngine.test.js",
+    "test": "node --test src/lib/walletEngine.test.js src/lib/moneyDecimal.test.js src/lib/payoutConversion.test.js src/lib/blastPurchase.test.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {

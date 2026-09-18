@@ -30,6 +30,12 @@ router.post(
   bind(() => require('../controllers/paymentsController'), 'completeWidget'),
 );
 
+router.post(
+  '/reconcile',
+  requireAuth,
+  bind(() => require('../controllers/paymentsController'), 'reconcilePayment'),
+);
+
 router.get(
   '/withdrawals',
   requireAuth,

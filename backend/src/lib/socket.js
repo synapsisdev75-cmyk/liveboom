@@ -57,6 +57,9 @@ function initSocket(httpServer) {
   });
 
   io.on('connection', (socket) => {
+    const uid = String(socket.data.user?.uid || '').trim();
+    if (uid) socket.join(`user:${uid}`);
+
     socket.on('join_room', (roomName) => {
       const room = normalizeRoom(roomName);
       if (!room) return;
@@ -97,4 +100,10 @@ function emitGiftReceived(roomName, payload) {
   io?.to(`room:${room}`).emit('gift_received', payload);
 }
 
-module.exports = { initSocket, getIO, emitGiftReceived };
+function emitWalletUpdated(uid, payload) {
+  const id = String(uid || '').trim();
+  if (!id) return;
+  io?.to(`user:${id}`).emit('wallet_updated', payload || {});
+}
+
+module.exports = { initSocket, getIO, emitGiftReceived, emitWalletUpdated };

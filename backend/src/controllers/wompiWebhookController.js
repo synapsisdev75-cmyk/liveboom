@@ -1,46 +1,28 @@
-const { prisma } = require('../lib/prisma');
 const { verifyWompiChecksum, cleanWompiSecret } = require('../lib/wompi');
-const {
-  firestoreConfigured,
-  completePaymentOrder,
-  completePaymentOrderByLinkId,
-} = require('../lib/firestoreAdmin');
+const { prisma } = require('../lib/prisma');
+const { firestoreConfigured } = require('../lib/firestoreAdmin');
+const { settleWompiTransaction } = require('../lib/blastPurchaseService');
+const { evaluateWompiSettlement } = require('../lib/blastPurchase');
 
-function mapWompiStatus(status) {
-  if (status === 'APPROVED') return 'completed';
-  if (status === 'DECLINED' || status === 'VOIDED' || status === 'ERROR') return 'declined';
-  return 'pending';
-}
-
-/**
- * Acredita coins una sola vez aunque Wompi reenvíe el webhook (Prisma).
- */
-async function creditApprovedOrder(order, wompiTxnId) {
-  return prisma.$transaction(async (tx) => {
-    const claimed = await tx.transaction.updateMany({
-      where: {
-        id: order.id,
-        status: 'pending',
-      },
-      data: {
-        status: 'completed',
-        wompiTxnId,
-      },
-    });
-
-    if (claimed.count !== 1) {
-      return { duplicate: true };
-    }
-
-    const user = await tx.user.update({
-      where: { id: order.userId },
-      data: {
-        coinsBalance: { increment: order.amount },
-      },
-    });
-
-    return { duplicate: false, coinsBalance: user.coinsBalance };
+async function creditApprovedPrisma(order, wompiTxnId) {
+  const user = await prisma.user.findUnique({ where: { id: order.userId } });
+  const uid = user?.firebaseUid || user?.id;
+  if (!uid) return { duplicate: true };
+  const wallet = require('../lib/walletService');
+  const result = await wallet.creditPurchased({
+    userId: uid,
+    amount: order.amount,
+    idempotencyKey: `RECHARGE:${order.reference}`,
+    referenceType: 'blast_purchase',
+    referenceId: order.reference,
+    metadata: { wompiTransactionId: wompiTxnId, packageId: order.packageId || null },
   });
+  if (result?.duplicate) return { duplicate: true, coinsBalance: result.summary?.coinsBalance };
+  await prisma.transaction.updateMany({
+    where: { id: order.id, status: 'pending' },
+    data: { status: 'completed', wompiTxnId },
+  });
+  return { duplicate: Boolean(result?.duplicate), coinsBalance: result?.summary?.coinsBalance };
 }
 
 async function handleWompiWebhook(req, res) {
@@ -69,107 +51,75 @@ async function handleWompiWebhook(req, res) {
       return;
     }
 
-    const reference = txn.reference;
-    if (!reference) {
-      res.status(200).json({ ok: true, unmatched: true });
-      return;
-    }
-
-    if (txn.status === 'APPROVED') {
-      const paidAmount = Number(txn.amount_in_cents);
-      const paymentLinkId = txn.payment_link_id ? String(txn.payment_link_id) : '';
-
-      if (firestoreConfigured()) {
-        let result = null;
-        if (reference) {
-          result = await completePaymentOrder(reference, null, {
-            amountInCop: paidAmount,
-            wompiTxnId: txn.id,
-          });
-        }
-        if (!result?.ok && paymentLinkId) {
-          result = await completePaymentOrderByLinkId(paymentLinkId, {
-            amountInCop: paidAmount,
-            wompiTxnId: txn.id,
-          });
-        }
-        if (result?.ok) {
-          if (result.uid) {
-            const { setBalances } = require('../lib/walletMemory');
-            setBalances(result.uid, {
-              purchasedBlastBalance: result.purchasedBlastBalance,
-              earnedBlastBalance: result.earnedBlastBalance,
-              coinsBalance: result.coinsBalance,
-            });
-          }
-          res.status(200).json({ ok: true, duplicate: result.duplicate, source: 'firestore' });
-          return;
-        }
-        if (result?.error === 'amount_mismatch') {
-          console.error('[webhooks/wompi] monto distinto (firestore)', {
-            reference,
-            paymentLinkId,
-            received: paidAmount,
-          });
-          res.status(400).json({ error: 'El monto del evento no coincide con la orden' });
-          return;
-        }
-      }
-
-      if (prisma) {
-        const order = await prisma.transaction.findUnique({
-          where: { reference },
-        });
-
-        if (!order) {
-          res.status(200).json({ ok: true, unmatched: true });
-          return;
-        }
-
-        if (order.status === 'completed') {
-          res.status(200).json({ ok: true, duplicate: true });
-          return;
-        }
-
-        if (paidAmount !== order.amountInCop) {
-          console.error('[webhooks/wompi] monto distinto al de la orden', {
-            reference,
-            expected: order.amountInCop,
-            received: paidAmount,
-          });
-          res.status(400).json({ error: 'El monto del evento no coincide con la orden' });
-          return;
-        }
-
-        const result = await creditApprovedOrder(order, txn.id);
-        res.status(200).json({ ok: true, duplicate: result.duplicate, source: 'prisma' });
+    if (firestoreConfigured()) {
+      const result = await settleWompiTransaction(txn, { source: 'webhook' });
+      if (result?.error === 'AMOUNT_MISMATCH' || result?.error === 'CURRENCY_MISMATCH' || result?.error === 'REFERENCE_MISMATCH') {
+        console.error('[webhooks/wompi] validación', result.error, txn.reference);
+        res.status(400).json({ error: 'El evento no coincide con la orden interna' });
         return;
       }
-
-      res.status(200).json({ ok: true, unmatched: true });
+      if (result?.error === 'INVALID_EVENT') {
+        res.status(400).json({ error: 'Evento inválido' });
+        return;
+      }
+      res.status(200).json({
+        ok: true,
+        duplicate: Boolean(result?.duplicate),
+        pending: Boolean(result?.pending),
+        source: 'firestore',
+        status: result?.decision?.code || result?.error || null,
+      });
       return;
     }
 
     if (prisma) {
-      const order = await prisma.transaction.findUnique({
-        where: { reference },
+      const reference = String(txn.reference || '').trim();
+      if (!reference) {
+        res.status(200).json({ ok: true, unmatched: true });
+        return;
+      }
+      const order = await prisma.transaction.findUnique({ where: { reference } });
+      if (!order) {
+        res.status(200).json({ ok: true, unmatched: true });
+        return;
+      }
+      const decision = evaluateWompiSettlement({
+        order: {
+          id: order.reference,
+          reference: order.reference,
+          wompiReference: order.reference,
+          uid: order.userId,
+          packageId: order.packageId,
+          coins: order.amount,
+          amountInCop: order.amountInCop,
+          status: order.status === 'completed' ? 'CREDITED' : 'PENDING',
+        },
+        txn,
       });
-      if (order && order.status === 'pending') {
+      if (decision.action === 'duplicate') {
+        res.status(200).json({ ok: true, duplicate: true, source: 'prisma' });
+        return;
+      }
+      if (decision.action === 'credit') {
+        const result = await creditApprovedPrisma(order, txn.id);
+        res.status(200).json({ ok: true, duplicate: result.duplicate, source: 'prisma' });
+        return;
+      }
+      if (decision.action === 'mark' && order.status === 'pending') {
         await prisma.transaction.updateMany({
           where: { id: order.id, status: 'pending' },
-          data: {
-            status: mapWompiStatus(txn.status),
-            wompiTxnId: txn.id,
-          },
+          data: { status: String(decision.purchaseStatus || txn.status).toLowerCase(), wompiTxnId: txn.id },
         });
       }
+      res.status(200).json({ ok: true, status: txn.status, source: 'prisma' });
+      return;
     }
 
-    res.status(200).json({ ok: true, status: txn.status });
+    res.status(200).json({ ok: true, unmatched: true });
   } catch (error) {
     console.error('[webhooks/wompi]', error);
     res.status(500).json({ error: 'No se pudo procesar el webhook' });
   }
 }
 
-module.exports = { handleWompiWebhook, creditApprovedOrder };
+module.exports = { handleWompiWebhook };

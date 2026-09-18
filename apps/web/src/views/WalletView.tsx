@@ -29,6 +29,8 @@ import { processGiftInbox } from '../lib/giftsFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
+import { formatMoneyExact } from '../lib/moneyDisplay';
+import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 import { useCatalogConfigStore } from '../store/catalogConfigStore';
 import { useT } from '../i18n';
@@ -71,6 +73,7 @@ export function WalletView() {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'recharge' | 'earning' | 'spend' | 'withdrawal'>('all');
   const [ledger, setLedger] = useState<WalletLedgerRow[]>([]);
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
+  const [rechargeNote, setRechargeNote] = useState<string | null>(null);
   const packsRef = useRef<HTMLDivElement>(null);
 
   async function refreshWallet() {
@@ -104,6 +107,44 @@ export function WalletView() {
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
+    const purchasedNow = fallback.purchasedBlastBalance;
+    const earnedNow = fallback.earnedBlastBalance;
+    setWalletSummary((prev) => {
+      if (!prev) return prev;
+      if (prev.purchasedBalance === purchasedNow && prev.earnedAvailable === earnedNow) return prev;
+      return {
+        ...prev,
+        purchasedBalance: purchasedNow,
+        earnedAvailable: earnedNow,
+        earnedTotal: earnedNow + (prev.earnedReserved || 0),
+        totalAvailable: purchasedNow + earnedNow,
+        withdrawableBalance: earnedNow,
+        coinsBalance: purchasedNow + earnedNow,
+      };
+    });
+  }, [profile?.purchasedBlastBalance, profile?.earnedBlastBalance, profile?.coinsBalance]);
+
+  useEffect(() => {
+    if (!profile?.firebaseUid) return;
+    let cancelled = false;
+    void getSocket()
+      .then((socket) => {
+        const onWallet = () => {
+          if (!cancelled) void refreshWallet();
+        };
+        socket.on('wallet_updated', onWallet);
+        socket.on('disconnect', () => undefined);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      void getSocket()
+        .then((socket) => socket.off('wallet_updated'))
+        .catch(() => undefined);
+    };
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const transactionId = params.get('id');
     if (!transactionId || !profile) return;
@@ -116,28 +157,38 @@ export function WalletView() {
           coins?: number;
           purchasedBlastBalance?: number;
           earnedBlastBalance?: number;
+          pending?: boolean;
+          message?: string;
         }>('/api/payments/complete-redirect', {
           method: 'POST',
           body: JSON.stringify({ transactionId }),
         });
         if (cancelled) return;
-        const store = useAuthStore.getState();
-        if (
-          paid.purchasedBlastBalance != null ||
-          paid.earnedBlastBalance != null
-        ) {
-          store.setBlastBalances({
-            purchasedBlastBalance: Number(paid.purchasedBlastBalance) || 0,
-            earnedBlastBalance: Number(paid.earnedBlastBalance) || 0,
-            coinsBalance: Number(paid.coinsBalance) || 0,
-          });
+        if (paid.pending) {
+          setRechargeNote(
+            'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
+          );
         } else {
-          const fromApi = Number(paid.coinsBalance);
-          if (Number.isFinite(fromApi)) {
-            store.setCoins(fromApi);
+          const store = useAuthStore.getState();
+          if (
+            paid.purchasedBlastBalance != null ||
+            paid.earnedBlastBalance != null
+          ) {
+            store.setBlastBalances({
+              purchasedBlastBalance: Number(paid.purchasedBlastBalance) || 0,
+              earnedBlastBalance: Number(paid.earnedBlastBalance) || 0,
+              coinsBalance: Number(paid.coinsBalance) || 0,
+            });
           }
+          const added = Number(paid.coins) || 0;
+          setRechargeNote(
+            paid.message ||
+              `¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.${
+                added ? ` BLAST comprados +${added.toLocaleString('es-CO')}` : ''
+              }`,
+          );
         }
-        await store.syncProfile();
+        await useAuthStore.getState().syncProfile();
         await refreshWallet();
       } catch {
         /* webhook puede acreditar después */
@@ -199,6 +250,7 @@ export function WalletView() {
   const purchased = walletSummary?.purchasedBalance ?? fallback.purchasedBlastBalance;
   const earned = walletSummary?.earnedAvailable ?? fallback.earnedBlastBalance;
   const balance = walletSummary?.totalAvailable ?? fallback.totalBlastBalance;
+  const withdrawableMoney = walletSummary?.withdrawableAmount || null;
 
   function openBuy(packageId?: string) {
     setInitialPack(packageId);
@@ -294,6 +346,14 @@ export function WalletView() {
                   <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Recargas + ganados</p>
                 </div>
               </div>
+              {withdrawableMoney ? (
+                <p className="mt-3 text-sm font-semibold text-emerald-300">
+                  Disponible para retirar {formatMoneyExact(withdrawableMoney, walletSummary?.currency || 'COP')}
+                </p>
+              ) : null}
+              {rechargeNote ? (
+                <p className="mt-3 text-sm font-semibold text-emerald-300">{rechargeNote}</p>
+              ) : null}
               <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
                 <button
                   type="button"

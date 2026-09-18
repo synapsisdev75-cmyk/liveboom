@@ -1,8 +1,5 @@
-/** Retiro del creador: 1 Blast ganado = $15 COP. No usar para precios de compra. */
-export const COIN_TO_COP = 15;
-export const MIN_WITHDRAW_COINS = 50;
+/** Precios de paquetes BLAST (compra). La tasa de retiro del creador vive solo en el backend. */
 
-/** Precio final cliente (COP) para paquetes con precio fijo. */
 const FIXED_PACK_PRICE_COP: Record<number, number> = {
   125: 7_990,
   150: 8_990,
@@ -67,14 +64,6 @@ export function listCoinPackages(): ResolvedCoinPackage[] {
 
 export function getCoinPackage(id: string): ResolvedCoinPackage | null {
   return listCoinPackages().find((p) => p.id === id) ?? null;
-}
-
-export function coinsToCop(coins: number) {
-  return Math.max(0, Math.floor(Number(coins) || 0)) * COIN_TO_COP;
-}
-
-export function formatCop(amount: number) {
-  return `$${amount.toLocaleString('es-CO')} COP`;
 }
 
 export function packageCopLabel(amountInCents: number) {

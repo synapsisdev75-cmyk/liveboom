@@ -1,23 +1,54 @@
 const express = require('express');
 const { asFn } = require('../lib/asFn');
 const wallet = require('../lib/walletService');
-const { MIN_WITHDRAW_COINS, coinsToCop, COIN_TO_COP } = require('../lib/coinPackages');
+const { publicWalletSummary, quoteWithdrawal, publicWithdrawalRecord, hasLeakedRate } = require('../lib/payoutConversion');
+const { normalizeWithdrawalStatus } = require('../lib/walletEngine');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
+
+function sendPublic(res, payload) {
+  if (hasLeakedRate(payload)) {
+    const { coinToCop, blastRate, creatorRate, internalRate, platformMargin, conversionFactor, ...safe } =
+      payload;
+    res.json(safe);
+    return;
+  }
+  res.json(payload);
+}
 
 router.get('/summary', requireAuth, async (req, res) => {
   try {
     const uid = req.user?.uid;
     const summary = await wallet.getSummary(uid);
-    res.json({
-      ...summary,
-      minWithdrawCoins: MIN_WITHDRAW_COINS,
-      coinToCop: COIN_TO_COP,
-    });
+    sendPublic(res, publicWalletSummary(summary));
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'No se pudo leer la billetera',
+    });
+  }
+});
+
+router.get('/payout-quote', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const summary = await wallet.getSummary(uid);
+    const blast = Math.floor(Number(req.query.blast ?? req.query.coins) || 0);
+    const quote = quoteWithdrawal(blast, summary.withdrawableBalance);
+    if (!quote.ok) {
+      res.status(400).json({
+        error:
+          quote.code === 'PURCHASED_NOT_WITHDRAWABLE'
+            ? 'Solo puedes retirar BLAST ganados.'
+            : 'Monto inválido',
+        ...quote,
+      });
+      return;
+    }
+    sendPublic(res, quote);
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo cotizar el retiro',
     });
   }
 });
@@ -31,6 +62,25 @@ router.get('/transactions', requireAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'No se pudo leer el historial',
+    });
+  }
+});
+
+router.get('/withdrawals', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const rows = await wallet.listWithdrawals(uid);
+    sendPublic(res, {
+      withdrawals: rows.map((row) =>
+        publicWithdrawalRecord({
+          ...row,
+          status: normalizeWithdrawalStatus(row.status),
+        }),
+      ),
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo listar retiros',
     });
   }
 });
@@ -49,7 +99,7 @@ router.post('/withdrawals/:id/confirm', requireAuth, async (req, res) => {
     }
     const result = await wallet.confirmWithdrawal({
       userId: withdrawal.userId,
-      amount: withdrawal.coins,
+      amount: withdrawal.earnedBlastAmount || withdrawal.coins,
       withdrawalId: withdrawal.id,
       actorEmail: email,
     });
@@ -57,7 +107,7 @@ router.post('/withdrawals/:id/confirm', requireAuth, async (req, res) => {
       res.status(400).json({ error: result.code || 'No se pudo confirmar' });
       return;
     }
-    res.json({ ok: true, summary: result.summary });
+    sendPublic(res, { ok: true, summary: publicWalletSummary(result.summary) });
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'No se pudo confirmar el retiro',
@@ -76,7 +126,7 @@ router.post('/withdrawals/:id/reject', requireAuth, async (req, res) => {
     const email = req.user?.email;
     const result = await wallet.rejectWithdrawal({
       userId: withdrawal.userId,
-      amount: withdrawal.coins,
+      amount: withdrawal.earnedBlastAmount || withdrawal.coins,
       withdrawalId: withdrawal.id,
       actorEmail: email,
       actorUid: uid,
@@ -86,7 +136,7 @@ router.post('/withdrawals/:id/reject', requireAuth, async (req, res) => {
       res.status(status).json({ error: result.code || 'No se pudo rechazar' });
       return;
     }
-    res.json({ ok: true, summary: result.summary });
+    sendPublic(res, { ok: true, summary: publicWalletSummary(result.summary) });
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'No se pudo rechazar el retiro',
@@ -98,14 +148,10 @@ router.get('/:firebaseUid', async (req, res) => {
   try {
     const uid = String(req.params.firebaseUid || '').trim();
     const summary = await wallet.getSummary(uid);
-    res.json({
+    sendPublic(res, {
       firebaseUid: uid,
       coins: summary.coinsBalance,
-      coinsBalance: summary.coinsBalance,
-      ...summary,
-      minWithdrawCoins: MIN_WITHDRAW_COINS,
-      coinToCop: COIN_TO_COP,
-      withdrawableCop: coinsToCop(summary.withdrawableBalance),
+      ...publicWalletSummary(summary),
     });
   } catch (error) {
     res.status(500).json({

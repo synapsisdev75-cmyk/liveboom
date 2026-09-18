@@ -4,7 +4,6 @@ import { ChevronRight, Coins, Gift, Info, Radio, Video } from 'lucide-react';
 import { apiPublic } from '../../lib/api';
 import { listenLiveActivity, type LiveActivityEntry } from '../../lib/liveGiftsFirestore';
 import { LIVEBOOM_REACTION_ASSETS } from '../../lib/liveBoomReactionAssets';
-import { coinsToCop, formatCop } from '../../lib/coinPackages';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 
@@ -103,7 +102,7 @@ export function ActivityHistory({
           <li key={live.id || `${live.username}-${live.startedAt}`} className="text-xs text-zinc-400">
             <p className="font-semibold text-zinc-200">{live.title}</p>
             <p>
-              {formatDuration(live.durationMs)} · {formatCop(coinsToCop(live.coinsEarned || 0))}
+              {formatDuration(live.durationMs)} · {(live.coinsEarned || 0).toLocaleString('es-CO')} BLAST
             </p>
             {live.topGifters && live.topGifters.length > 0 ? (
               <p className="truncate text-[10px] text-cyan-400">
@@ -233,7 +232,7 @@ export function ActivityHistory({
               </span>
               <span className="lb-activity-metric">
                 <Coins size={14} className="text-amber-300" />
-                <strong>{formatCop(coinsToCop(totalBlasts))}</strong>
+                <strong>{totalBlasts.toLocaleString('es-CO')} BLAST</strong>
                 <em>Para retirar</em>
               </span>
             </span>

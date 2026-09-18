@@ -37,10 +37,6 @@ export function normalizeBlastBalances(data: Record<string, unknown> | null | un
     purchased = Math.max(0, coins - earned);
   } else if (hasPurchased && !hasEarned) {
     earned = Math.max(0, coins - purchased);
-  } else if (purchased + earned === 0 && coins > 0) {
-    // Campos duales en 0 pero hay total: no borrar el saldo; asignar a comprados.
-    purchased = coins;
-    earned = 0;
   }
 
   const total = purchased + earned;

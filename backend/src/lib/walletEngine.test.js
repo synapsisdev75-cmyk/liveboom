@@ -136,6 +136,17 @@ describe('walletEngine', () => {
     assert.equal(s.earnedAvailable, 500);
   });
 
+  it('campos duales en 0 no se restauran desde coinsBalance', () => {
+    const b = normalizeBlastBalances({
+      coinsBalance: 7000,
+      purchasedBlastBalance: 0,
+      earnedBlastBalance: 0,
+    });
+    assert.equal(b.purchasedBlastBalance, 0);
+    assert.equal(b.earnedBlastBalance, 0);
+    assert.equal(b.coinsBalance, 0);
+  });
+
   it('legado coinsBalance sin origen se clasifica como comprado', () => {
     const b = normalizeBlastBalances({ coinsBalance: 7000 });
     const s = toSummary(b);
@@ -159,5 +170,17 @@ describe('walletEngine', () => {
     assert.equal(b.duplicate, true);
     assert.equal(a.summary.purchasedBalance, 5000);
     assert.equal(b.summary.purchasedBalance, 5000);
+  });
+
+  it('doble transacción de gasto no deja negativo', () => {
+    const start = normalizeBlastBalances({
+      purchasedBlastBalance: 100,
+      earnedBlastBalance: 0,
+    });
+    const first = applySpend(start, 100, { allowEarned: true, strict: true });
+    const second = applySpend(first.balances, 100, { allowEarned: true, strict: true });
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, false);
+    assert.equal(toSummary(second.balances).purchasedBalance, 0);
   });
 });

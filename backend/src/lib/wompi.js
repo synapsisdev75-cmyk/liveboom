@@ -8,6 +8,12 @@ function createWompiReference(prefix = 'lb') {
   return `${head}_${tail}`.slice(0, 36);
 }
 
+/** Referencia interna de recarga BLAST (nunca dicta el monto; solo identifica la orden). */
+function createBlastPurchaseReference() {
+  const tail = randomUUID().replace(/-/g, '').slice(0, 24).toUpperCase();
+  return `LB-BLAST-${tail}`.slice(0, 36);
+}
+
 function sha256Hex(value) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -239,6 +245,7 @@ module.exports = {
   verifyWompiChecksum,
   createWidgetIntegritySignature,
   createWompiReference,
+  createBlastPurchaseReference,
   cleanWompiSecret,
   assertIntegrityPair,
   createPaymentLink,

@@ -8,8 +8,10 @@ export type WalletSummary = {
   totalAvailable: number;
   withdrawableBalance: number;
   coinsBalance: number;
-  minWithdrawCoins?: number;
-  coinToCop?: number;
+  withdrawableAmount?: string;
+  currency?: string;
+  minWithdrawBlast?: number;
+  minWithdrawAmount?: string;
 };
 
 export type WalletLedgerRow = {
@@ -24,8 +26,31 @@ export type WalletLedgerRow = {
   metadata?: Record<string, unknown> | null;
 };
 
+export type PayoutQuote = {
+  ok: boolean;
+  earnedBlastAmount: number;
+  moneyAmountExact: string;
+  currency: string;
+};
+
+export type PublicWithdrawal = {
+  withdrawalId: string | null;
+  userId: string | null;
+  earnedBlastAmount: number;
+  moneyAmountExact: string;
+  currency: string;
+  status: string;
+  requestedAt?: string | null;
+  processedAt?: string | null;
+  paymentReference?: string | null;
+};
+
 export async function fetchWalletSummary() {
   return api<WalletSummary>('/api/wallet/summary');
+}
+
+export async function fetchPayoutQuote(blast: number) {
+  return api<PayoutQuote>(`/api/wallet/payout-quote?blast=${encodeURIComponent(String(blast))}`);
 }
 
 export async function fetchWalletTransactions(filter = 'all') {
@@ -33,6 +58,11 @@ export async function fetchWalletTransactions(filter = 'all') {
     `/api/wallet/transactions?filter=${encodeURIComponent(filter)}`,
   );
   return data.transactions || [];
+}
+
+export async function fetchWalletWithdrawals() {
+  const data = await api<{ withdrawals: PublicWithdrawal[] }>('/api/wallet/withdrawals');
+  return data.withdrawals || [];
 }
 
 export function ledgerLabel(row: WalletLedgerRow) {

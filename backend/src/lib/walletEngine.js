@@ -43,6 +43,26 @@ const FILTER_GROUP = {
   ADJUSTMENT: 'adjustment',
 };
 
+const WITHDRAWAL_STATUS = {
+  REQUESTED: 'REQUESTED',
+  PROCESSING: 'PROCESSING',
+  PAID: 'PAID',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+};
+
+function normalizeWithdrawalStatus(status) {
+  const s = String(status || '').trim().toUpperCase();
+  if (s === 'PENDING' || s === 'REQUESTED') return WITHDRAWAL_STATUS.REQUESTED;
+  if (s === 'PROCESSING' || s === 'IN_PROCESS' || s === 'EN PROCESO') {
+    return WITHDRAWAL_STATUS.PROCESSING;
+  }
+  if (s === 'PAID' || s === 'COMPLETED' || s === 'COMPLETE') return WITHDRAWAL_STATUS.PAID;
+  if (s === 'REJECTED') return WITHDRAWAL_STATUS.REJECTED;
+  if (s === 'CANCELLED' || s === 'CANCELED') return WITHDRAWAL_STATUS.CANCELLED;
+  return WITHDRAWAL_STATUS.REQUESTED;
+}
+
 function filterGroupForType(type) {
   const t = String(type || '');
   if (t === TX.RECHARGE) return FILTER_GROUP.RECHARGE;
@@ -75,9 +95,6 @@ function normalizeBlastBalances(data) {
     purchased = Math.max(0, coins - earned);
   } else if (hasPurchased && !hasEarned) {
     earned = Math.max(0, coins - purchased);
-  } else if (purchased + earned === 0 && coins > 0) {
-    purchased = coins;
-    earned = 0;
   }
 
   const spendable = purchased + earned;
@@ -343,6 +360,8 @@ module.exports = {
   BUCKET,
   DIRECTION,
   FILTER_GROUP,
+  WITHDRAWAL_STATUS,
+  normalizeWithdrawalStatus,
   floorNonNeg,
   filterGroupForType,
   normalizeBlastBalances,

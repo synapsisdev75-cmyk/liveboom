@@ -113,6 +113,12 @@ async function runMutation(uid, idempotencyKey, mutator) {
   if (out?.ok && out.balances) {
     syncMemory(userId, out.balances);
     void syncPrismaCoins(userId, out.summary.coinsBalance);
+    try {
+      const { emitWalletUpdated } = require('./socket');
+      emitWalletUpdated(userId, out.summary);
+    } catch {
+      /* realtime opcional */
+    }
   }
   return out;
 }
@@ -403,17 +409,28 @@ async function requestWithdrawal({
   if (!coins) return { ok: false, code: 'INVALID_AMOUNT' };
   const uid = String(userId || '').trim();
   const withdrawalId = String(payout?.id || payout?.reference || idempotencyKey || '').trim();
+  const { blastToMoneyExact, INTERNAL_CREATOR_RATE_EXACT } = require('./payoutConversion');
+  const moneyAmountExact = payout?.moneyAmountExact || blastToMoneyExact(coins);
 
   const result = await runMutation(uid, idempotencyKey, ({ tx, db, current }) => {
     const moved = engine.applyRequestWithdrawal(current, coins);
     if (!moved.ok) return moved;
     if (tx && db && withdrawalId) {
+      const requestedAt = new Date().toISOString();
       const wd = {
         id: withdrawalId,
+        withdrawalId,
         userId: uid,
         coins,
-        status: 'pending',
+        earnedBlastAmount: coins,
+        moneyAmountExact,
+        currency: 'COP',
+        status: engine.WITHDRAWAL_STATUS.REQUESTED,
+        paymentReference: withdrawalId,
+        requestedAt,
+        processedAt: null,
         payout: payout || null,
+        internalRate: INTERNAL_CREATOR_RATE_EXACT,
         createdAtMs: Date.now(),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -426,7 +443,7 @@ async function requestWithdrawal({
     return {
       ok: true,
       balances: moved.balances,
-      extra: { withdrawalId, coins },
+      extra: { withdrawalId, coins, moneyAmountExact, currency: 'COP' },
       ledger: [
         {
           userId: uid,
@@ -437,7 +454,12 @@ async function requestWithdrawal({
           idempotencyKey,
           referenceType: 'withdrawal',
           referenceId: withdrawalId || null,
-          metadata: payout || null,
+          metadata: {
+            earnedBlastAmount: coins,
+            moneyAmountExact,
+            currency: 'COP',
+            status: engine.WITHDRAWAL_STATUS.REQUESTED,
+          },
         },
       ],
     };
@@ -446,11 +468,15 @@ async function requestWithdrawal({
   if (result?.ok) {
     walletMemory.addWithdrawal(uid, {
       id: withdrawalId,
+      withdrawalId,
       reference: withdrawalId,
       coins,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      ...(payout || {}),
+      earnedBlastAmount: coins,
+      moneyAmountExact,
+      currency: 'COP',
+      status: engine.WITHDRAWAL_STATUS.REQUESTED,
+      requestedAt: new Date().toISOString(),
+      paymentReference: withdrawalId,
     });
   }
   return result;
@@ -471,12 +497,20 @@ async function confirmWithdrawal({ userId, amount, withdrawalId, idempotencyKey,
       if (tx && db && withdrawalId) {
         tx.set(
           db.collection('wallet_withdrawals').doc(String(withdrawalId)),
-          { status: 'paid', updatedAt: FieldValue.serverTimestamp() },
+          {
+            status: engine.WITHDRAWAL_STATUS.PAID,
+            processedAt: new Date().toISOString(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
           { merge: true },
         );
         tx.set(
           db.collection('users').doc(uid).collection('walletWithdrawals').doc(String(withdrawalId)),
-          { status: 'paid', updatedAt: FieldValue.serverTimestamp() },
+          {
+            status: engine.WITHDRAWAL_STATUS.PAID,
+            processedAt: new Date().toISOString(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
           { merge: true },
         );
       }
@@ -512,16 +546,24 @@ async function rejectWithdrawal({ userId, amount, withdrawalId, idempotencyKey, 
     const moved = engine.applyRejectWithdrawal(current, coins);
     if (!moved.ok) return moved;
     if (tx && db && withdrawalId) {
-      tx.set(
-        db.collection('wallet_withdrawals').doc(String(withdrawalId)),
-        { status: 'rejected', updatedAt: FieldValue.serverTimestamp() },
-        { merge: true },
-      );
-      tx.set(
-        db.collection('users').doc(uid).collection('walletWithdrawals').doc(String(withdrawalId)),
-        { status: 'rejected', updatedAt: FieldValue.serverTimestamp() },
-        { merge: true },
-      );
+        tx.set(
+          db.collection('wallet_withdrawals').doc(String(withdrawalId)),
+          {
+            status: engine.WITHDRAWAL_STATUS.REJECTED,
+            processedAt: new Date().toISOString(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        tx.set(
+          db.collection('users').doc(uid).collection('walletWithdrawals').doc(String(withdrawalId)),
+          {
+            status: engine.WITHDRAWAL_STATUS.REJECTED,
+            processedAt: new Date().toISOString(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
     }
     return {
       ok: true,
@@ -582,6 +624,7 @@ async function getTransactions(userId, { filter, limit } = {}) {
 
 async function listWithdrawals(userId) {
   const uid = String(userId || '').trim();
+  const { publicWithdrawalRecord } = require('./payoutConversion');
   if (firestoreConfigured()) {
     try {
       const db = getAdminDb();
@@ -593,13 +636,24 @@ async function listWithdrawals(userId) {
         .limit(40)
         .get();
       if (!snap.empty) {
-        return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        return snap.docs.map((d) => {
+          const raw = { id: d.id, ...d.data() };
+          return publicWithdrawalRecord({
+            ...raw,
+            status: engine.normalizeWithdrawalStatus(raw.status),
+          });
+        });
       }
     } catch (error) {
       console.warn('[wallet] listWithdrawals:', error.message);
     }
   }
-  return walletMemory.listWithdrawals(uid);
+  return walletMemory.listWithdrawals(uid).map((row) =>
+    publicWithdrawalRecord({
+      ...row,
+      status: engine.normalizeWithdrawalStatus(row.status),
+    }),
+  );
 }
 
 async function readWithdrawal(withdrawalId) {

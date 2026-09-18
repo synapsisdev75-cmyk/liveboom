@@ -86,29 +86,54 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
       try {
         openWompiWidget(order, (result) => {
           const status = result.transaction?.status;
+          const txnId = String(result.transaction?.id || '').trim();
           if (status === 'APPROVED') {
-            void api<{ coinsBalance: number; coins?: number }>('/api/payments/complete-widget', {
-              method: 'POST',
-              body: JSON.stringify({ reference: order.reference }),
-            })
-              .then((paid) => {
-                applyTopup(paid);
-                void syncProfile();
+            if (txnId) {
+              void api<{
+                coinsBalance?: number;
+                coins?: number;
+                purchasedBlastBalance?: number;
+                pending?: boolean;
+                message?: string;
+              }>('/api/payments/reconcile', {
+                method: 'POST',
+                body: JSON.stringify({ transactionId: txnId }),
               })
-              .catch(() => {
-                void syncProfile();
-              });
-            setNote('Pago aprobado. Tu blast ya está en la billetera.');
+                .then((paid) => {
+                  if (paid.pending) {
+                    setNote(
+                      'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
+                    );
+                    return;
+                  }
+                  applyTopup(paid);
+                  void syncProfile();
+                  setNote(
+                    `¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.${
+                      paid.coins ? ` BLAST comprados +${Number(paid.coins).toLocaleString('es-CO')}` : ''
+                    }`,
+                  );
+                })
+                .catch(() => {
+                  setNote('Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.');
+                  void syncProfile();
+                });
+            } else {
+              setNote('Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.');
+              void syncProfile();
+            }
             return;
           }
           if (status === 'PENDING') {
-            setNote('Pago en proceso. Wompi confirmará la recarga en breve.');
+            setNote('Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.');
+            return;
+          }
+          if (status === 'DECLINED') {
+            setNote('El pago no fue aprobado. No se realizó ninguna recarga.');
             return;
           }
           if (status) {
-            setNote(
-              `El pago quedó en estado ${status}. Si ves "firma inválida", revisa las llaves Wompi en Firebase.`,
-            );
+            setNote('El pago no fue aprobado. No se realizó ninguna recarga.');
           }
         });
       } catch (widgetError) {
@@ -212,7 +237,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
           {note ? (
             <p
               className={`mb-4 text-sm ${
-                note.includes('aprobado') || note.includes('acreditada') ? 'text-emerald-400' : 'text-fuchsia-400'
+                note.includes('exitosa') || note.includes('confirmando') ? 'text-emerald-400' : 'text-fuchsia-400'
               }`}
             >
               {note}

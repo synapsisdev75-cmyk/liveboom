@@ -133,8 +133,13 @@ function rememberOrder(order) {
     hours: Number(order.hours) || 0,
     amountInCop: Number(order.amountInCop) || 0,
     regionId: order.regionId || '',
+    status: order.status || 'PENDING',
   });
   flush();
+}
+
+function getOrder(reference) {
+  return pendingOrders.get(reference) || null;
 }
 
 function takeOrder(reference, uid) {
@@ -174,6 +179,7 @@ module.exports = {
   debit,
   debitSplit,
   rememberOrder,
+  getOrder,
   takeOrder,
   listWithdrawals,
   addWithdrawal,

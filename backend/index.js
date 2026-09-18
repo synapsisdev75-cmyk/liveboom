@@ -171,3 +171,22 @@ try {
 } catch (error) {
   console.warn('[liveboom] firebase-functions no disponible (solo dev local):', error.message);
 }
+
+try {
+  const { onSchedule } = require('firebase-functions/v2/scheduler');
+  module.exports.reconcileBlastPurchases = onSchedule(
+    {
+      region: 'us-central1',
+      schedule: 'every 5 minutes',
+      memory: '256MiB',
+      timeoutSeconds: 120,
+    },
+    async () => {
+      const { reconcileStalePending } = require('./src/lib/blastPurchaseService');
+      const stats = await reconcileStalePending(25);
+      console.log('[liveboom] reconcile compras', stats);
+    },
+  );
+} catch (error) {
+  console.warn('[liveboom] scheduler functions no disponible:', error.message);
+}
