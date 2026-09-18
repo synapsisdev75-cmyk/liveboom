@@ -1,4 +1,4 @@
-export const PRIVACY_LOCK_IDLE_SRC = '/live/privacy-lock-idle.png';
+export const PRIVACY_LOCK_IDLE_SRC = '/live/privacy-lock-idle-v2.png';
 export const PRIVACY_LOCK_OPEN_SRC = '/live/privacy-lock-open.png';
 export const PRIVACY_LOCK_CLOSED_SRC = '/live/privacy-lock-closed.png';
 
