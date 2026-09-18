@@ -200,26 +200,84 @@ export function listenCoinPackagesConfig(
   });
 }
 
+function stripUndefinedDeep<T>(value: T): T {
+  if (value === undefined) return value;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefinedDeep(item)) as T;
+  }
+  // No tocar Timestamp / FieldValue / Date.
+  const proto = Object.prototype.toString.call(value);
+  if (proto !== '[object Object]') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry === undefined) continue;
+    out[key] = stripUndefinedDeep(entry);
+  }
+  return out as T;
+}
+
+/** Serializa un regalo sin campos `undefined` (Firestore los rechaza). */
+export function serializeEditableGift(gift: EditableGift): Record<string, unknown> {
+  const normalized =
+    normalizeGift(gift as unknown as Record<string, unknown>) || gift;
+  return {
+    id: normalized.id,
+    name: normalized.name,
+    emoji: normalized.emoji,
+    image: normalized.image ? String(normalized.image) : null,
+    video: normalized.video ? String(normalized.video) : null,
+    coins: normalized.coins,
+    level: normalized.level,
+    animation: normalized.animation || '',
+    liveOnly: Boolean(normalized.liveOnly),
+    deeparFilter: normalized.deeparFilter || null,
+    enabled: normalized.enabled !== false,
+    placements: normalized.placements.length ? normalized.placements : ['live'],
+    face: normalized.face
+      ? {
+          emoji: normalized.face.emoji,
+          anchor: normalized.face.anchor,
+          scale: Number(normalized.face.scale) || 1,
+          offsetY: Number(normalized.face.offsetY) || 0,
+        }
+      : null,
+  };
+}
+
 export async function saveGiftsCatalog(config: GiftsCatalogDoc, updatedBy: string) {
+  const gifts = (config.gifts || []).map((gift) => serializeEditableGift(gift));
   await setDoc(
     doc(db, GIFTS_PATH),
-    {
-      ...config,
-      updatedBy,
+    stripUndefinedDeep({
+      version: Math.max(1, Math.floor(Number(config.version) || 1)),
+      gifts,
+      updatedBy: updatedBy || 'admin',
       updatedAt: serverTimestamp(),
-    },
+    }),
     { merge: true },
   );
 }
 
 export async function saveCoinPackagesConfig(config: CoinPackagesDoc, updatedBy: string) {
+  const packages = (config.packages || []).map((pack) => ({
+    id: String(pack.id),
+    name: String(pack.name || pack.id),
+    coins: Math.max(1, Math.floor(Number(pack.coins) || 1)),
+    amountInCop: Math.max(100, Math.floor(Number(pack.amountInCop) || 100)),
+    popular: Boolean(pack.popular),
+    bestValue: Boolean(pack.bestValue),
+    artUrl: String(pack.artUrl || ''),
+    enabled: pack.enabled !== false,
+  }));
   await setDoc(
     doc(db, PACKS_PATH),
-    {
-      ...config,
-      updatedBy,
+    stripUndefinedDeep({
+      version: Math.max(1, Math.floor(Number(config.version) || 1)),
+      packages,
+      updatedBy: updatedBy || 'admin',
       updatedAt: serverTimestamp(),
-    },
+    }),
     { merge: true },
   );
 }

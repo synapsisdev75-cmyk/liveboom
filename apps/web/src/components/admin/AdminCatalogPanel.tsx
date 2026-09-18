@@ -451,7 +451,10 @@ export function AdminCatalogPanel() {
                   URL imagen (opcional)
                   <input
                     value={gift.image || ''}
-                    onChange={(e) => patchGift(gift.id, { image: e.target.value || undefined })}
+                    onChange={(e) => {
+                      const value = e.target.value.trim();
+                      patchGift(gift.id, { image: value || undefined });
+                    }}
                     placeholder="/gifts/besito.png o https://…"
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
                   />
@@ -471,7 +474,10 @@ export function AdminCatalogPanel() {
                   URL animación (opcional)
                   <input
                     value={gift.video || ''}
-                    onChange={(e) => patchGift(gift.id, { video: e.target.value || undefined })}
+                    onChange={(e) => {
+                      const value = e.target.value.trim();
+                      patchGift(gift.id, { video: value || undefined });
+                    }}
                     placeholder="https://…webm"
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
                   />
