@@ -100,7 +100,6 @@ import {
 import { ensureNativeLiveAvPermissions } from '../lib/nativeLiveMedia';
 import { followUser, isFollowing, unfollowUser } from '../lib/socialFirestore';
 import { CoinModal } from '../components/wallet/CoinModal';
-import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, apiPublic, ApiError } from '../lib/api';
 import {
   bumpLiveSwitchGen,
@@ -171,7 +170,6 @@ import {
   seedLiveChatAuthorProfile,
 } from '../hooks/useLiveChatAuthorProfile';
 import { parseSalaBoomLayout, type SalaBoomLayout, type SalaCameraAction } from '../lib/salaBoomLayout';
-import { downloadReelBlob, savePendingReel } from '../lib/pendingReelStore';
 import { addFirestoreCoins, addLevelXp, fetchLevelXp, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
 import { shareContent } from '../lib/shareContent';
 import { listFollowers, listFriends } from '../lib/socialFirestore';
@@ -345,7 +343,6 @@ function lockGiftIdsOf(lock: LockInfo | null | undefined): string[] {
 
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string; combo?: number };
 
-const REEL_SECONDS = 15;
 const LIVE_MIRROR_KEY = 'liveboom.liveMirror.v1';
 
 function loadLiveMirrorPref(): boolean | null {
@@ -2054,7 +2051,6 @@ function CreatorStage({
 
   const [inviteHandle, setInviteHandle] = useState('');
   const [inviteNote, setInviteNote] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
   const [reelNote, setReelNote] = useState<string | null>(null);
   const [screenSharing, setScreenSharing] = useState(false);
   const [screenShareWizardOpen, setScreenShareWizardOpen] = useState(false);
@@ -2302,7 +2298,6 @@ function CreatorStage({
   const [newCoinGoalError, setNewCoinGoalError] = useState<string | null>(null);
   const [goalCelebrating, setGoalCelebrating] = useState(false);
   const celebratedGoalRef = useRef<string | null>(null);
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedLive[]>([]);
   const [recentGifts, setRecentGifts] = useState<RecentLiveGiftRow[]>([]);
   const [giftsCount, setGiftsCount] = useState(0);
@@ -2322,7 +2317,6 @@ function CreatorStage({
   });
   const hadHostCamera = useRef(false);
   const cameraTrackRef = useRef<LocalVideoTrack | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
 
   const localTracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }]);
   const localCamera = localTracks.find((track) => track.participant.isLocal);
@@ -4892,65 +4886,6 @@ function CreatorStage({
     }
   }
 
-  async function recordReel() {
-    if (recording || !isHost) return;
-    const track = (rawCameraTrackRef.current ?? cameraTrackRef.current)?.mediaStreamTrack;
-    if (!track) {
-      setReelNote('Espera a que la cámara esté lista');
-      return;
-    }
-    setRecording(true);
-    setReelNote(`Grabando reel (${REEL_SECONDS}s)…`);
-    try {
-      const stream = new MediaStream([track]);
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-        ? 'video/webm;codecs=vp9'
-        : 'video/webm';
-      const recorder = new MediaRecorder(stream, { mimeType });
-      const chunks: BlobPart[] = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) chunks.push(event.data);
-      };
-      recorderRef.current = recorder;
-      recorder.start(1000);
-      await new Promise<void>((resolve) => {
-        window.setTimeout(() => {
-          recorder.stop();
-          resolve();
-        }, REEL_SECONDS * 1000);
-      });
-      await new Promise<void>((resolve) => {
-        recorder.onstop = () => resolve();
-      });
-      const blob = new Blob(chunks, { type: mimeType });
-      const title = `Reel · ${new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
-      downloadReelBlob(blob, `liveboom-reel-${Date.now()}.webm`);
-      await savePendingReel({ title, blob, roomUsername: username }).catch(() => undefined);
-
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('No se pudo leer el video'));
-        reader.readAsDataURL(blob);
-      });
-      await api('/api/stream/reels', {
-        method: 'POST',
-        body: JSON.stringify({
-          username,
-          dataUrl,
-          title,
-          shared: false,
-        }),
-      }).catch(() => undefined);
-      setReelNote('Reel guardado en el móvil y listo para publicar.');
-    } catch (err) {
-      setReelNote(err instanceof Error ? err.message : 'No se pudo grabar el reel');
-    } finally {
-      setRecording(false);
-      recorderRef.current = null;
-    }
-  }
-
   const toggleMirror = useCallback(() => {
     setMirrorMode((current) => !current);
   }, []);
@@ -5181,8 +5116,6 @@ function CreatorStage({
                 onLock={() => {
                   openLockPicker();
                 }}
-                onReel={verticalHost ? undefined : () => void recordReel()}
-                onWithdraw={verticalHost ? undefined : () => setWithdrawOpen(true)}
               />
             </div>
           ) : null}
@@ -5981,12 +5914,6 @@ function CreatorStage({
         <p className="pointer-events-none absolute left-3 right-3 top-[8.5rem] z-10 text-[11px] text-cyan-200 max-lg:top-[calc(max(0.75rem,env(safe-area-inset-top))+6.5rem)] sm:left-4 sm:max-w-md">
           {liveStatusNote}
         </p>
-      ) : null}
-      {withdrawOpen ? (
-        <WithdrawModal
-          initialCoins={liveStats?.coinsEarned || 0}
-          onClose={() => setWithdrawOpen(false)}
-        />
       ) : null}
       {canPublish && !isHost ? (
         <div

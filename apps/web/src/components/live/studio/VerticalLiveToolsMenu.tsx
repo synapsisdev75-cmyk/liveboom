@@ -1,8 +1,6 @@
 import {
   Camera,
   CameraOff,
-  Clapperboard,
-  Coins,
   FlipHorizontal,
   Gift,
   Lock,
@@ -27,9 +25,7 @@ export type VerticalLiveToolId =
   | 'mirror'
   | 'notify'
   | 'wishlist'
-  | 'lock'
-  | 'reel'
-  | 'withdraw';
+  | 'lock';
 
 type Props = {
   micOn: boolean;
@@ -54,8 +50,6 @@ type Props = {
   onNotify: () => void;
   onWishlist: () => void;
   onLock: () => void;
-  onReel?: () => void;
-  onWithdraw?: () => void;
 };
 
 const TOOLS: {
@@ -73,18 +67,6 @@ const TOOLS: {
   { id: 'wishlist', label: 'Deseos', tone: 'cyan' },
   { id: 'lock', label: 'Candado', tone: 'gold' },
 ];
-
-const REEL_TOOL: { id: VerticalLiveToolId; label: string; tone: string } = {
-  id: 'reel',
-  label: 'Reel',
-  tone: 'rose',
-};
-
-const WITHDRAW_TOOL: { id: VerticalLiveToolId; label: string; tone: string } = {
-  id: 'withdraw',
-  label: 'Retirar',
-  tone: 'cyan',
-};
 
 const TOGGLE_IDS = new Set<VerticalLiveToolId>(['mic', 'camera', 'mirror', 'screen', 'lock']);
 const KEEP_OPEN_IDS = new Set<VerticalLiveToolId>(['camera', 'mirror', 'screen']);
@@ -119,10 +101,6 @@ function ToolIcon({
       return <Gift size={ICON_SIZE} />;
     case 'lock':
       return <Lock size={ICON_SIZE} />;
-    case 'reel':
-      return <Clapperboard size={ICON_SIZE} />;
-    case 'withdraw':
-      return <Coins size={ICON_SIZE} />;
     default:
       return <Swords size={ICON_SIZE} />;
   }
@@ -148,8 +126,6 @@ export function VerticalLiveToolsMenu({
   onNotify,
   onWishlist,
   onLock,
-  onReel,
-  onWithdraw,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -213,12 +189,6 @@ export function VerticalLiveToolsMenu({
       case 'lock':
         onLock();
         break;
-      case 'reel':
-        onReel?.();
-        break;
-      case 'withdraw':
-        onWithdraw?.();
-        break;
       default:
         break;
     }
@@ -253,8 +223,6 @@ export function VerticalLiveToolsMenu({
       if (tool.id === 'camera') return !hideCamera;
       return true;
     }),
-    ...(onReel ? [REEL_TOOL] : []),
-    ...(onWithdraw ? [WITHDRAW_TOOL] : []),
   ];
 
   return (
