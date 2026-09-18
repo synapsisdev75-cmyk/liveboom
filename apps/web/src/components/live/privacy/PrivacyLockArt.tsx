@@ -1,11 +1,11 @@
-export const PRIVACY_LOCK_IDLE_SRC = '/live/privacy-lock-idle-v2.png';
-export const PRIVACY_LOCK_OPEN_SRC = '/live/privacy-lock-open.png';
-export const PRIVACY_LOCK_CLOSED_SRC = '/live/privacy-lock-closed.png';
+export const PRIVACY_LOCK_IDLE_SRC = '/live/privacy-lock-off-v3.png';
+export const PRIVACY_LOCK_OPEN_SRC = '/live/privacy-lock-open-v3.png';
+export const PRIVACY_LOCK_CLOSED_SRC = '/live/privacy-lock-closed-v3.png';
 
 type Appearance = 'public' | 'collecting' | 'sealed';
 
 type Props = {
-  /** true = público / armado; false = privado cerrado 3D. Ignorado si hay appearance. */
+  /** true = desactivado; false = privado. Ignorado si hay appearance. */
   open?: boolean;
   appearance?: Appearance;
   className?: string;
@@ -22,7 +22,7 @@ function srcFor(kind: Appearance): string {
   return PRIVACY_LOCK_IDLE_SRC;
 }
 
-/** Contorno en público; 3D abierto al armar; 3D cerrado en privado. */
+/** Desactivado / abierto / privado según la fase del candado. */
 export function PrivacyLockArt({
   open,
   appearance,
@@ -34,7 +34,7 @@ export function PrivacyLockArt({
       src={srcFor(kind)}
       alt=""
       draggable={false}
-      className={`${className}${kind === 'public' ? ' is-idle' : ''}`}
+      className={className}
     />
   );
 }
