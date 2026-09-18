@@ -1,6 +1,7 @@
 import { Check, ChevronDown, X } from 'lucide-react';
 import { UserAvatar } from '../../profile/UserAvatar';
 import type { PrivateAccessRequest } from '../../../lib/livePrivateAccessFirestore';
+import { findLiveGift } from '../../../lib/liveboomGifts';
 
 type Props = {
   open: boolean;
@@ -64,7 +65,9 @@ export function LivePrivacyRequestsSheet({
                 />
                 <div className="lb-live-privacy-sheet__meta">
                   <p className="lb-live-privacy-sheet__name">{row.displayName}</p>
-                  <p className="lb-live-privacy-sheet__sub">Quiere entrar al LIVE privado</p>
+                  <p className="lb-live-privacy-sheet__sub">
+                    Envió {row.giftId ? findLiveGift(row.giftId)?.name || row.giftId : 'el regalo'} para entrar
+                  </p>
                 </div>
                 <span className="lb-live-privacy-sheet__time">{relativeTime(row.createdAtMs)}</span>
                 <div className="lb-live-privacy-sheet__actions">

@@ -18,7 +18,6 @@ import { stashLiveCameraHandoff } from '../lib/liveCameraHandoff';
 import { warmLiveGoLiveChunks } from '../lib/routePrefetch';
 import {
   LivePrivacySetupSheet,
-  PRIVACY_DELAY_OPTIONS,
 } from '../components/live/privacy';
 import { findLiveGift } from '../lib/liveboomGifts';
 
@@ -83,9 +82,6 @@ export function TransmitView() {
   const [followersOnly, setFollowersOnly] = useState(false);
   const [lockSetupOpen, setLockSetupOpen] = useState(false);
   const [lockDraftIds, setLockDraftIds] = useState<string[]>([]);
-  const [lockDraftQty, setLockDraftQty] = useState<Record<string, number>>({});
-  const [privacyDelayId, setPrivacyDelayId] = useState('30s');
-  const [privacyCustomSec, setPrivacyCustomSec] = useState('60');
   const [saveProfile, setSaveProfile] = useState(true);
   const [studioFormat, setStudioFormat] = useState<LiveStudioFormat>(savedPrefs.orientation);
   const [broadcastMode, setBroadcastMode] = useState<BroadcastMode>(
@@ -141,15 +137,10 @@ export function TransmitView() {
   );
 
   const lockSummary = useMemo(() => {
-    if (!lockDraftIds.length) return '';
-    return lockDraftIds
-      .map((id) => {
-        const gift = findLiveGift(id);
-        const qty = Math.min(99, Math.max(1, Math.floor(lockDraftQty[id] || 1)));
-        return `${gift?.name || id}${qty > 1 ? ` ×${qty}` : ''}`;
-      })
-      .join(', ');
-  }, [lockDraftIds, lockDraftQty]);
+    const id = lockDraftIds[0];
+    if (!id) return '';
+    return findLiveGift(id)?.name || id;
+  }, [lockDraftIds]);
 
   const attachPreview = useCallback((stream: MediaStream) => {
     streamRef.current = stream;
@@ -320,48 +311,7 @@ export function TransmitView() {
   const displayTitle = title.trim() || `Live de ${profile.displayName || profile.handle}`;
 
   function toggleLockDraftGift(giftId: string) {
-    const selected = lockDraftIds.includes(giftId);
-    if (selected) {
-      setLockDraftIds((current) => current.filter((id) => id !== giftId));
-      setLockDraftQty((current) => {
-        const next = { ...current };
-        delete next[giftId];
-        return next;
-      });
-      return;
-    }
-    if (lockDraftIds.length >= 5) return;
-    setLockDraftIds((current) => [...current, giftId]);
-    setLockDraftQty((current) => ({ ...current, [giftId]: 1 }));
-  }
-
-  function setLockDraftQuantity(giftId: string, value: number) {
-    const qty = Math.min(99, Math.max(0, Math.floor(Number(value) || 0)));
-    const selected = lockDraftIds.includes(giftId);
-    if (qty <= 0) {
-      if (!selected) return;
-      setLockDraftIds((current) => current.filter((id) => id !== giftId));
-      setLockDraftQty((current) => {
-        const next = { ...current };
-        delete next[giftId];
-        return next;
-      });
-      return;
-    }
-    if (!selected) {
-      if (lockDraftIds.length >= 5) return;
-      setLockDraftIds((current) => [...current, giftId]);
-      setLockDraftQty((current) => ({ ...current, [giftId]: qty }));
-      return;
-    }
-    setLockDraftQty((current) => ({ ...current, [giftId]: qty }));
-  }
-
-  function privacyCountdownMs(): number {
-    if (privacyDelayId === 'custom') {
-      return Math.min(3600, Math.max(0, Math.floor(Number(privacyCustomSec) || 0))) * 1000;
-    }
-    return PRIVACY_DELAY_OPTIONS.find((o) => o.id === privacyDelayId)?.ms ?? 0;
+    setLockDraftIds((current) => (current[0] === giftId ? [] : [giftId]));
   }
 
   function setAllRules(value: boolean) {
@@ -446,13 +396,9 @@ export function TransmitView() {
         gamingSpace: Boolean(gamingInbound.gamingSpace),
         gamingShareTarget: gamingInbound.gamingShareTarget || 'full_display',
         gamingDeviceAudioOn: gamingInbound.gamingDeviceAudioOn !== false,
-        privacyLock: lockDraftIds.length
+        privacyLock: lockDraftIds[0]
           ? {
-              requirements: lockDraftIds.slice(0, 5).map((giftId) => ({
-                giftId,
-                quantity: Math.min(99, Math.max(1, Math.floor(lockDraftQty[giftId] || 1))),
-              })),
-              countdownDurationMs: privacyCountdownMs(),
+              requirements: [{ giftId: lockDraftIds[0], quantity: 1 }],
             }
           : undefined,
       },
@@ -523,19 +469,12 @@ export function TransmitView() {
     <LivePrivacySetupSheet
       open={lockSetupOpen}
       draftIds={lockDraftIds}
-      draftQty={lockDraftQty}
-      delayId={privacyDelayId}
-      customSeconds={privacyCustomSec}
       privateActive={lockDraftIds.length > 0}
       onClose={() => setLockSetupOpen(false)}
       onToggleGift={toggleLockDraftGift}
-      onSetQty={setLockDraftQuantity}
-      onDelayId={setPrivacyDelayId}
-      onCustomSeconds={setPrivacyCustomSec}
       onConfirm={() => setLockSetupOpen(false)}
       onClearPrivate={() => {
         setLockDraftIds([]);
-        setLockDraftQty({});
         setLockSetupOpen(false);
       }}
     />

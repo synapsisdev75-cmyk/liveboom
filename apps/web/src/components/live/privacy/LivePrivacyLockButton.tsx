@@ -17,7 +17,7 @@ type Props = {
 
 /**
  * Candado icon-only (debajo/al lado de Deseos).
- * Abierto con ✓ mientras se reúnen los regalos; cerrado con ✗ al 100% y en privado.
+ * Abierto en público; cerrado con ✗ en LIVE privado.
  */
 export function LivePrivacyLockButton({
   privateActive,
@@ -31,10 +31,8 @@ export function LivePrivacyLockButton({
   const open = appearance !== 'sealed';
   const aria =
     label ||
-    (appearance === 'collecting'
-      ? 'Candado abierto: reuniendo regalos para el privado'
-      : appearance === 'sealed'
-        ? 'Candado cerrado: LIVE privado'
+    (appearance === 'sealed'
+        ? 'LIVE privado'
         : 'LIVE público');
   return (
     <button

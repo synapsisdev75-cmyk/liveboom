@@ -47,6 +47,7 @@ export type PrivateAccessRequest = {
   avatarUrl: string | null;
   status: PrivateAccessRequestStatus;
   sessionId: string;
+  giftId?: string;
   createdAtMs: number;
   updatedAtMs: number;
   retryAllowedAtMs?: number | null;
@@ -108,15 +109,14 @@ export function canManagePrivateAccess(role: 'host' | 'moderator' | 'viewer'): b
   return role === 'host' || role === 'moderator';
 }
 
-/** HUD del candado: abierto azul en recolección; cerrado rojo al 100% / privado. */
+/** HUD del candado: cerrado mientras el LIVE está privado. */
 export type PrivacyLockAppearance = 'public' | 'collecting' | 'sealed';
 
 export function privacyLockAppearance(
   phase: PrivateLivePhase | null,
   lockActive: boolean,
 ): PrivacyLockAppearance {
-  if (phase === 'collecting') return 'collecting';
-  if (phase === 'countdown' || phase === 'private' || lockActive) return 'sealed';
+  if (phase === 'private' || lockActive) return 'sealed';
   return 'public';
 }
 
@@ -732,6 +732,7 @@ export function listenPendingPrivateRequests(
           avatarUrl: data.avatarUrl ? String(data.avatarUrl) : null,
           status: 'pending',
           sessionId: String(data.sessionId || ''),
+          giftId: data.giftId ? String(data.giftId) : undefined,
           createdAtMs: Number(data.createdAtMs || 0),
           updatedAtMs: Number(data.updatedAtMs || 0),
           retryAllowedAtMs:

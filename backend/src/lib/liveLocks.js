@@ -27,7 +27,7 @@ function buildLockEntry(requirementsInput) {
   const list = (Array.isArray(requirementsInput) ? requirementsInput : [requirementsInput])
     .map(normalizeRequirement)
     .filter(Boolean)
-    .slice(0, 5);
+    .slice(0, 1);
   if (!list.length) return null;
   const totalCoins = list.reduce((sum, row) => sum + row.coins * row.quantity, 0);
   const primary = list[0];
@@ -72,6 +72,33 @@ function setLock(room, lock) {
     locks.delete(key);
     return null;
   }
+  if (lock.privateSessionId) {
+    entry.privateSessionId = String(lock.privateSessionId);
+  }
+  locks.set(key, entry);
+  return entry;
+}
+
+/** Restaura el candado desde Firestore sin borrar grants en memoria. */
+function restoreLock(room, lock) {
+  const key = roomKey(room);
+  if (!key || !lock) return null;
+  const requirements = Array.isArray(lock.requirements)
+    ? lock.requirements
+    : lock.giftId
+      ? [
+          {
+            giftId: lock.giftId,
+            giftName: lock.giftName,
+            coins: lock.coins,
+            emoji: lock.emoji,
+            quantity: 1,
+          },
+        ]
+      : [];
+  const entry = buildLockEntry(requirements);
+  if (!entry) return getLock(room);
+  if (lock.privateSessionId) entry.privateSessionId = String(lock.privateSessionId);
   locks.set(key, entry);
   return entry;
 }
@@ -110,6 +137,7 @@ function canEnterLockedLive(room, uid, isHost) {
 
 module.exports = {
   setLock,
+  restoreLock,
   getLock,
   clearLock,
   isUnlocked,

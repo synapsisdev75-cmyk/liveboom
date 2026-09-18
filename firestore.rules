@@ -727,6 +727,15 @@ service cloud.firestore {
         allow delete: if signedIn()
           && request.auth.uid == get(/databases/$(database)/documents/liveRooms/$(roomName)).data.hostUid;
       }
+
+      match /privateHolds/{holdId} {
+        allow read: if signedIn()
+          && (
+            request.auth.uid == resource.data.viewerUid
+            || request.auth.uid == get(/databases/$(database)/documents/liveRooms/$(roomName)).data.hostUid
+          );
+        allow create, update, delete: if false;
+      }
     }
 
     match /liveBattles/{battleId} {

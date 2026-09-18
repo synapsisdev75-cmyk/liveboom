@@ -8,9 +8,9 @@ const liveHistory = require('../lib/liveHistory');
 const liveSession = require('../lib/liveSession');
 const social = require('../lib/socialMemory');
 const { getProfile, findByUsername, saveProfile } = require('../lib/profileMemory');
-const { findGift } = require('../lib/gifts');
-const { debit, credit, getBalance, setBalance } = require('../lib/walletMemory');
+const { getBalance } = require('../lib/walletMemory');
 const { getAdminDb, firestoreConfigured } = require('../lib/firestoreAdmin');
+const livePrivate = require('../lib/livePrivateSession');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -194,11 +194,12 @@ router.post('/live/start', requireAuth, (req, res) => {
   res.status(201).json(entry);
 });
 
-router.post('/live/stop', requireAuth, (req, res) => {
+router.post('/live/stop', requireAuth, async (req, res) => {
   const username =
     typeof req.body?.username === 'string' && req.body.username.trim()
       ? normalize(req.body.username)
       : normalize(req.user.email ? req.user.email.split('@')[0] : req.user.uid);
+  await livePrivate.stopSession(username, { reason: 'live_stop' }).catch(() => undefined);
   removeLive(username);
   invites.clearInvites(username);
   invites.clearBans(username);
@@ -477,11 +478,10 @@ router.post('/invite/kick', requireAuth, async (req, res) => {
 });
 
 /** Candado en vivo: el host elige regalos (+ cantidades) que desbloquean la entrada. */
-router.post('/lock', requireAuth, (req, res) => {
+router.post('/lock', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
   const giftId = typeof req.body?.giftId === 'string' ? req.body.giftId.trim() : '';
-  const quantity = Math.min(99, Math.max(1, Math.floor(Number(req.body?.quantity) || 1)));
   const clear = Boolean(req.body?.clear);
   const rawReqs = Array.isArray(req.body?.requirements) ? req.body.requirements : null;
   if (!roomName) {
@@ -493,70 +493,64 @@ router.post('/lock', requireAuth, (req, res) => {
     return;
   }
   if (clear || (!giftId && !(rawReqs && rawReqs.length))) {
-    liveLocks.clearLock(roomName);
+    await livePrivate.stopSession(roomName, { reason: 'host_clear' });
     if (typeof upsertLive === 'function') {
-      // Reabre transmisión pública en el feed.
       upsertLive({ username: roomName, isPrivate: false, lockGiftId: null });
     }
     res.json({ ok: true, locked: false, isPrivate: false, lock: null });
     return;
   }
 
-  const resolved = [];
-  const source = rawReqs && rawReqs.length
-    ? rawReqs
-    : [{ giftId, quantity }];
-  for (const row of source.slice(0, 5)) {
-    const id = typeof row?.giftId === 'string' ? row.giftId.trim() : '';
-    if (!id) continue;
-    const gift = findGift(id);
-    if (!gift) {
-      res.status(400).json({ error: `Regalo de candado inválido: ${id}` });
-      return;
-    }
-    const qty = Math.min(99, Math.max(1, Math.floor(Number(row?.quantity) || 1)));
-    resolved.push({
-      giftId: gift.id,
-      giftName: gift.name,
-      coins: gift.coins,
-      emoji: gift.emoji,
-      quantity: qty,
-    });
-  }
-  if (!resolved.length) {
-    res.status(400).json({ error: 'Selecciona al menos un regalo para el privado' });
+  const chosenId =
+    giftId ||
+    (typeof rawReqs?.[0]?.giftId === 'string' ? rawReqs[0].giftId.trim() : '');
+  const started = await livePrivate.startSession(roomName, {
+    hostUid: req.user.uid,
+    giftId: chosenId,
+  });
+  if (!started.ok) {
+    res.status(started.status || 400).json({ error: started.error || 'No se pudo activar el privado' });
     return;
   }
-
-  const lock = liveLocks.setLock(roomName, { requirements: resolved });
   if (typeof upsertLive === 'function') {
-    // Cierra la transmisión pública: desaparece del feed; solo entran con regalo.
     upsertLive({
       username: roomName,
       isPrivate: true,
-      lockGiftId: lock.giftId,
-      lockGiftName: lock.giftName,
-      lockCoins: lock.coins,
-      lockEmoji: lock.emoji,
+      lockGiftId: started.lock?.giftId || chosenId,
+      lockGiftName: started.lock?.giftName,
+      lockCoins: started.lock?.coins,
+      lockEmoji: started.lock?.emoji,
     });
   }
-  res.json({ ok: true, locked: true, isPrivate: true, lock });
+  res.json({
+    ok: true,
+    locked: true,
+    isPrivate: true,
+    lock: started.lock,
+    privateSessionId: started.privateSessionId,
+  });
 });
 
 router.get('/lock/:roomName', requireAuth, async (req, res) => {
   const roomName = normalize(req.params.roomName);
   const claimed = typeof req.query.handle === 'string' ? req.query.handle : undefined;
-  const lock = liveLocks.getLock(roomName);
+  const lock = await livePrivate.hydrateLock(roomName);
   const host = isRoomHost(req.user, roomName, claimed);
-  let unlocked = host || liveLocks.isUnlocked(roomName, req.user.uid);
+  const access = host
+    ? { requestStatus: 'approved', privateSessionId: lock?.privateSessionId || null }
+    : await livePrivate.readViewerAccess(roomName, req.user.uid);
+  const unlocked = host || access.requestStatus === 'approved' || liveLocks.isUnlocked(roomName, req.user.uid);
   if (!unlocked && lock) {
-    unlocked = await syncDurablePrivateUnlock(roomName, req.user.uid);
+    await syncDurablePrivateUnlock(roomName, req.user.uid);
   }
   res.json({
     locked: Boolean(lock),
     lock,
-    unlocked,
+    unlocked: host || liveLocks.isUnlocked(roomName, req.user.uid) || unlocked,
     isHost: host,
+    privateSessionId: access.privateSessionId || lock?.privateSessionId || null,
+    requestStatus: host ? 'approved' : access.requestStatus,
+    coinsBalance: getBalance(req.user.uid),
   });
 });
 
@@ -584,7 +578,7 @@ router.post('/claim-access', requireAuth, async (req, res) => {
   res.json({ ok: true, unlocked: true });
 });
 
-/** Espectador envía los regalos del candado para poder entrar. */
+/** Viewer reserva el regalo de acceso (HOLD). No acredita al host ni desbloquea. */
 router.post('/unlock', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
@@ -592,98 +586,49 @@ router.post('/unlock', requireAuth, async (req, res) => {
     res.status(400).json({ error: 'roomName es obligatorio' });
     return;
   }
-  if (isRoomHost(req.user, roomName)) {
-    res.json({ ok: true, unlocked: true, host: true });
+  if (isRoomHost(req.user, roomName, req.body?.handle)) {
+    res.json({ ok: true, unlocked: true, host: true, requestStatus: 'approved' });
     return;
   }
+  await livePrivate.hydrateLock(roomName);
   const lock = liveLocks.getLock(roomName);
   if (!lock) {
-    res.json({ ok: true, unlocked: true, locked: false });
+    res.json({ ok: true, unlocked: true, locked: false, requestStatus: 'approved' });
     return;
   }
-  if (liveLocks.isUnlocked(roomName, req.user.uid)) {
-    res.json({ ok: true, unlocked: true, lock });
-    return;
-  }
-
-  const requirements = Array.isArray(lock.requirements) && lock.requirements.length
-    ? lock.requirements
-    : [
-        {
-          giftId: lock.giftId,
-          giftName: lock.giftName,
-          coins: lock.coins,
-          emoji: lock.emoji,
-          quantity: lock.quantity || 1,
-        },
-      ];
-
-  const giftsPaid = [];
-  let totalCoins = 0;
-  for (const row of requirements) {
-    const gift = findGift(row.giftId);
-    if (!gift) {
-      res.status(400).json({ error: 'Regalo de candado no disponible' });
-      return;
-    }
-    const qty = Math.min(99, Math.max(1, Math.floor(Number(row.quantity) || 1)));
-    const lineCoins = gift.coins * qty;
-    totalCoins += lineCoins;
-    giftsPaid.push({
-      id: gift.id,
-      name: gift.name,
-      emoji: gift.emoji,
-      coins: gift.coins,
-      quantity: qty,
-      lineCoins,
-    });
-  }
-
-  const floorFromClient = Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0));
-  if (floorFromClient > getBalance(req.user.uid)) {
-    setBalance(req.user.uid, floorFromClient);
-  }
-  const next = debit(req.user.uid, totalCoins);
-  if (next == null) {
-    res.status(402).json({
-      error: 'Saldo insuficiente',
-      requiredCoins: totalCoins,
-      balance: getBalance(req.user.uid),
+  const giftId =
+    (typeof req.body?.giftId === 'string' && req.body.giftId.trim()) || lock.giftId;
+  const requested = await livePrivate.requestAccess(roomName, {
+    viewerUid: req.user.uid,
+    viewerName: req.user.name || req.user.email || 'Liveboomer',
+    viewerUsername: req.body?.username,
+    viewerAvatarUrl: req.user.picture || null,
+    giftId,
+    clientId: typeof req.body?.clientId === 'string' ? req.body.clientId : '',
+    currentBalance: req.body?.currentBalance,
+  });
+  if (!requested.ok) {
+    res.status(requested.status || 400).json({
+      error: requested.error,
+      requiredCoins: requested.requiredCoins,
+      balance: requested.balance,
       lock,
     });
     return;
   }
-  const host = findByUsername(roomName);
-  if (host?.firebaseUid && host.firebaseUid !== req.user.uid) {
-    credit(host.firebaseUid, totalCoins);
-  }
-  liveLocks.markUnlocked(roomName, req.user.uid);
-  // Suma el regalo de entrada a la recaudación de la sala.
-  try {
-    liveSession.addGift(roomName, {
-      uid: req.user.uid,
-      name: req.user.name || req.user.email || 'Liveboomer',
-      coins: totalCoins,
-    });
-  } catch {
-    // optional
-  }
-  const primary = giftsPaid[0];
   res.json({
     ok: true,
-    unlocked: true,
+    unlocked: Boolean(requested.unlocked),
+    pending: Boolean(requested.pending),
+    duplicate: Boolean(requested.duplicate),
+    requestStatus: requested.requestStatus,
+    senderBalance: requested.senderBalance,
     lock,
-    senderBalance: next,
-    gift: primary
-      ? { id: primary.id, name: primary.name, emoji: primary.emoji, coins: totalCoins }
-      : undefined,
-    gifts: giftsPaid,
-    totalCoins,
   });
 });
 
-/** Host otorga acceso al LIVE privado sin cobrar regalo (solicitud aceptada). */
-router.post('/grant-access', requireAuth, (req, res) => {
+/** Host acepta: captura el HOLD y otorga acceso. */
+router.post('/grant-access', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
   const viewerUid =
@@ -696,8 +641,44 @@ router.post('/grant-access', requireAuth, (req, res) => {
     res.status(403).json({ error: 'Solo el anfitrión puede aceptar solicitudes' });
     return;
   }
-  liveLocks.markUnlocked(roomName, viewerUid);
-  res.json({ ok: true, unlocked: true, viewerUid });
+  const result = await livePrivate.approveRequest(roomName, {
+    actorUid: req.user.uid,
+    viewerUid,
+  });
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error });
+    return;
+  }
+  res.json({ ok: true, unlocked: true, viewerUid, duplicate: Boolean(result.duplicate) });
+});
+
+router.post('/reject-access', requireAuth, async (req, res) => {
+  const roomName =
+    typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
+  const viewerUid =
+    typeof req.body?.viewerUid === 'string' ? String(req.body.viewerUid).trim() : '';
+  if (!roomName || !viewerUid) {
+    res.status(400).json({ error: 'roomName y viewerUid son obligatorios' });
+    return;
+  }
+  if (!isRoomHost(req.user, roomName, req.body?.handle)) {
+    res.status(403).json({ error: 'Solo el anfitrión puede rechazar solicitudes' });
+    return;
+  }
+  const result = await livePrivate.rejectRequest(roomName, {
+    actorUid: req.user.uid,
+    viewerUid,
+  });
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error });
+    return;
+  }
+  res.json({
+    ok: true,
+    requestStatus: 'rejected',
+    viewerUid,
+    duplicate: Boolean(result.duplicate),
+  });
 });
 
 router.get('/reels', (_req, res) => {
@@ -879,6 +860,13 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
       }
     }
 
+    await livePrivate.hydrateLock(roomName);
+    if (!host && !isDirectCall && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
+      const granted = await syncDurablePrivateUnlock(roomName, req.user.uid);
+      if (granted) {
+        /* grant durable: sigue a emitir token */
+      }
+    }
     if (!host && !isDirectCall && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
       const lock = liveLocks.getLock(roomName);
       res.status(402).json({

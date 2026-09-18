@@ -44,27 +44,18 @@ import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { LiveWishCarousel } from '../components/live/LiveWishCarousel';
 import { LiveWishAchievedCard } from '../components/live/LiveWishAchievedCard';
 import {
-  LivePrivacyCountdown,
   LivePrivacyLockButton,
   LivePrivacyRequestStrip,
   LivePrivacyRequestsSheet,
   LivePrivacySetupSheet,
-  PRIVACY_DELAY_OPTIONS,
+  LivePrivateWaitingGate,
 } from '../components/live/privacy';
 import {
-  applyPrivateCollectingGift,
-  applyPrivateViewerGiftProgress,
   clearPrivateSchedule,
-  grantPrivateAccess,
   listenMyPrivateGrant,
+  listenMyPrivateRequest,
   listenPendingPrivateRequests,
   listenPrivateSchedule,
-  listenPrivateViewerProgress,
-  markPrivateActivated,
-  mergeViewerRequirementProgress,
-  newPrivateSessionId,
-  startPrivateCollecting,
-  setPrivateRequestStatus,
   type PrivateAccessRequest,
   type PrivateGiftRequirementProgress,
   type PrivateLivePhase,
@@ -314,10 +305,11 @@ type LockInfo = {
   coins: number;
   emoji: string;
   quantity?: number;
+  privateSessionId?: string;
   requirements?: LockGiftRequirement[];
 };
 
-const LIVE_LOCK_ACTIVE_MAX = 5;
+const LIVE_LOCK_ACTIVE_MAX = 1;
 
 function lockRequirementsOf(lock: LockInfo | null | undefined): LockGiftRequirement[] {
   if (!lock) return [];
@@ -343,14 +335,6 @@ function lockRequirementsOf(lock: LockInfo | null | undefined): LockGiftRequirem
 
 function lockGiftIdsOf(lock: LockInfo | null | undefined): string[] {
   return lockRequirementsOf(lock).map((row) => row.giftId);
-}
-
-function lockGiftQtyOf(lock: LockInfo | null | undefined): Record<string, number> {
-  const qty: Record<string, number> = {};
-  for (const row of lockRequirementsOf(lock)) {
-    qty[row.giftId] = row.quantity;
-  }
-  return qty;
 }
 
 type FloatingGiftItem = { id: string; giftId: string; left: number; senderName?: string; combo?: number };
@@ -581,13 +565,12 @@ export function LiveRoom() {
   const [isPrivate, setIsPrivate] = useState(Boolean(launch.isPrivate));
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
   const [gateSessionId, setGateSessionId] = useState<string | null>(null);
-  const [gateRequirements, setGateRequirements] = useState<PrivateGiftRequirementProgress[] | null>(
-    null,
-  );
-  const [gateProgress, setGateProgress] = useState<Record<string, number>>({});
   const [gateSendingGiftId, setGateSendingGiftId] = useState<string | null>(null);
   const [gateUnlockFlash, setGateUnlockFlash] = useState(false);
   const [gateGiftError, setGateGiftError] = useState<string | null>(null);
+  const [gateRequestStatus, setGateRequestStatus] = useState<
+    'outside' | 'pending' | 'approved' | 'rejected'
+  >('outside');
   const gateClaimOnceRef = useRef<string | null>(null);
   const privacyLaunchAppliedRef = useRef(false);
   const setCoins = useAuthStore((state) => state.setCoins);
@@ -873,14 +856,24 @@ export function LiveRoom() {
         unlocked: boolean;
         isHost: boolean;
         lock: LockInfo | null;
+        requestStatus?: 'outside' | 'pending' | 'approved' | 'rejected';
+        coinsBalance?: number;
       }>(
         `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle)}`,
       )
         .then((lockState) => {
           if (cancelled) return;
-          if (!lockState.locked || lockState.unlocked || lockState.isHost) {
-            setGateLock(null);
-            void fetchToken();
+          if (typeof lockState.coinsBalance === 'number') {
+            setCoins(lockState.coinsBalance);
+          }
+          if (lockState.requestStatus === 'pending' || lockState.requestStatus === 'rejected') {
+            setGateRequestStatus(lockState.requestStatus);
+          }
+          if (lockState.requestStatus === 'approved' || !lockState.locked || lockState.unlocked || lockState.isHost) {
+            if (lockState.requestStatus === 'approved' || lockState.unlocked || lockState.isHost || !lockState.locked) {
+              setGateLock(null);
+              void fetchToken();
+            }
           }
         })
         .catch(() => undefined);
@@ -971,13 +964,15 @@ export function LiveRoom() {
     }
   }
 
-  async function sendGateLockGift(giftId: string, multiplier: 1 | 2 | 4 | 8 = 1) {
+  async function sendGateLockGift(giftId: string) {
     if (!username || !firebaseUid || !profile || gateSendingGiftId) return;
+    if (gateRequestStatus === 'pending') {
+      setGateGiftError('Solicitud pendiente');
+      return;
+    }
     const catalog = findLiveGift(giftId);
     if (!catalog) return;
-    const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
-    const totalCoins = catalog.coins * mult;
-    if (coinsBalance < totalCoins) {
+    if (coinsBalance < catalog.coins) {
       setGateGiftError('Saldo insuficiente. Recarga coins para continuar.');
       return;
     }
@@ -986,50 +981,34 @@ export function LiveRoom() {
     const clientId = `gate-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const previous = coinsBalance;
     try {
-      const result = await sendLiveboomGift({
-        giftId: catalog.id,
-        senderUid: firebaseUid,
-        senderName: profile.displayName || profile.handle || 'Liveboomer',
-        senderBalance: previous,
-        recipientUsername: username,
-        clientId,
-        roomName: username,
-        multiplier: mult,
+      const result = await api<{
+        pending?: boolean;
+        unlocked?: boolean;
+        duplicate?: boolean;
+        requestStatus?: 'outside' | 'pending' | 'approved' | 'rejected';
+        senderBalance?: number;
+      }>('/api/stream/unlock', {
+        method: 'POST',
+        body: JSON.stringify({
+          roomName: username,
+          handle,
+          giftId: catalog.id,
+          clientId,
+          currentBalance: previous,
+          username: profile.handle,
+        }),
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(firebaseUid, result.senderBalance).catch(() => undefined);
-      void publishLiveGift(username, {
-        clientId,
-        giftId: catalog.id,
-        giftName: catalog.name,
-        emoji: catalog.emoji,
-        senderName: profile.displayName || profile.handle || 'Liveboomer',
-        senderUid: firebaseUid,
-        coins: totalCoins,
-        multiplier: mult,
-      }).catch(() => undefined);
-
-      void applyPrivateCollectingGift(username, {
-        giftId: catalog.id,
-        units: liveWishGiftUnits(mult),
-        clientId,
-        viewerUid: firebaseUid,
-      }).catch(() => undefined);
-
-      const progressResult = await applyPrivateViewerGiftProgress(username, {
-        giftId: catalog.id,
-        units: liveWishGiftUnits(mult),
-        clientId,
-        viewerUid: firebaseUid,
-      });
-      if (progressResult?.progress) {
-        setGateProgress(progressResult.progress);
+      if (typeof result.senderBalance === 'number') {
+        setCoins(result.senderBalance);
+        void setFirestoreCoins(firebaseUid, result.senderBalance).catch(() => undefined);
       }
-      if (progressResult?.requirements) {
-        setGateRequirements(progressResult.requirements);
-      }
-      if (progressResult?.accessGranted) {
+      if (result.unlocked || result.requestStatus === 'approved') {
         await claimPrivateAccessFromGrant(gateSessionId);
+        return;
+      }
+      setGateRequestStatus(result.requestStatus || 'pending');
+      if (result.duplicate && result.requestStatus === 'pending') {
+        setGateGiftError('Solicitud pendiente');
       }
     } catch (err) {
       setCoins(previous);
@@ -1043,29 +1022,24 @@ export function LiveRoom() {
     if (!gateLock || !username) return;
     return listenPrivateSchedule(username, (schedule) => {
       setGateSessionId(schedule.privateSessionId);
-      if (schedule.privateRequirements?.length) {
-        setGateRequirements(schedule.privateRequirements);
-      } else if (schedule.privatePendingRequirements?.length) {
-        setGateRequirements(
-          schedule.privatePendingRequirements.map((row) => ({
-            giftId: row.giftId,
-            requiredQuantity: row.quantity,
-            receivedQuantity: 0,
-          })),
-        );
-      }
     });
   }, [gateLock, username]);
 
   useEffect(() => {
-    if (!gateLock || !username || !firebaseUid || !gateSessionId) return;
-    return listenPrivateViewerProgress(username, firebaseUid, gateSessionId, (state) => {
-      setGateProgress(state?.progress || {});
-      if (state?.accessGranted) {
-        void claimPrivateAccessFromGrant(gateSessionId);
+    if (!gateLock || !username || !firebaseUid) return;
+    return listenMyPrivateRequest(username, firebaseUid, (row) => {
+      if (!row) {
+        setGateRequestStatus('outside');
+        return;
+      }
+      if (row.status === 'pending') setGateRequestStatus('pending');
+      if (row.status === 'rejected') setGateRequestStatus('rejected');
+      if (row.status === 'approved') {
+        setGateRequestStatus('approved');
+        void claimPrivateAccessFromGrant(row.sessionId);
       }
     });
-  }, [gateLock, username, firebaseUid, gateSessionId]);
+  }, [gateLock, username, firebaseUid]);
 
   useEffect(() => {
     if (gateLock) return;
@@ -1154,19 +1128,12 @@ export function LiveRoom() {
 
   useEffect(() => {
     if (!isOwnRoom || !liveStarted || !username) return;
-    const reqs = (launch.privacyLock?.requirements || [])
-      .map((row) => ({
-        giftId: String(row.giftId || '').trim(),
-        quantity: Math.min(99, Math.max(1, Math.floor(Number(row.quantity) || 1))),
-      }))
-      .filter((row) => row.giftId)
-      .slice(0, LIVE_LOCK_ACTIVE_MAX);
-    if (!reqs.length || privacyLaunchAppliedRef.current) return;
+    const giftId = String(launch.privacyLock?.requirements?.[0]?.giftId || '').trim();
+    if (!giftId || privacyLaunchAppliedRef.current) return;
     privacyLaunchAppliedRef.current = true;
-    void startPrivateCollecting(username, {
-      sessionId: newPrivateSessionId(),
-      requirements: reqs,
-      countdownDurationMs: Math.max(0, Math.floor(Number(launch.privacyLock?.countdownDurationMs) || 0)),
+    void api('/api/stream/lock', {
+      method: 'POST',
+      body: JSON.stringify({ roomName: username, handle, giftId }),
     }).catch(() => undefined);
   }, [isOwnRoom, liveStarted, username, launch.privacyLock]);
 
@@ -1205,94 +1172,22 @@ export function LiveRoom() {
     );
   }
   if (gateLock) {
-    const fallbackReqs = lockRequirementsOf(gateLock).map((row) => ({
-      giftId: row.giftId,
-      requiredQuantity: row.quantity,
-      receivedQuantity: 0,
-      giftName: row.giftName,
-      emoji: row.emoji,
-    }));
-    const merged = mergeViewerRequirementProgress(
-      gateRequirements?.length
-        ? gateRequirements
-        : fallbackReqs.map((row) => ({
-            giftId: row.giftId,
-            requiredQuantity: row.requiredQuantity,
-            receivedQuantity: 0,
-          })),
-      gateProgress,
-    );
-    const rows = merged.map((row) => {
-      const fallback = fallbackReqs.find((item) => item.giftId === row.giftId);
-      const gift = findLiveGift(row.giftId);
-      return {
-        ...row,
-        giftName: gift?.name || fallback?.giftName || row.giftId,
-        emoji: gift?.emoji || fallback?.emoji || '🎁',
-      };
-    });
+    const accessGift = lockRequirementsOf(gateLock)[0] || null;
     return (
-      <div className="grid h-[100dvh] place-items-center bg-zinc-950 px-4 text-center">
-        <div className="w-full max-w-sm space-y-4 rounded-3xl border border-amber-400/30 bg-zinc-900 p-5 shadow-2xl">
-          <p className="text-4xl" aria-hidden>
-            🔒
-          </p>
-          <p className="text-lg font-bold text-white">El creador está en sala privada</p>
-          <p className="text-sm text-zinc-300">
-            Si deseas entrar, envía el regalo solicitado. Esa opción no se cierra.
-          </p>
-          <div className="max-h-[45dvh] space-y-2 overflow-y-auto text-left">
-            {rows.map((row) => {
-              const done = row.receivedQuantity >= row.requiredQuantity;
-              const missing = Math.max(0, row.requiredQuantity - row.receivedQuantity);
-              return (
-                <div
-                  key={row.giftId}
-                  className="rounded-xl border border-amber-400/20 bg-black/35 px-3 py-2.5"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex min-w-0 items-center gap-2 text-sm text-white">
-                      <GiftIcon giftId={row.giftId} size={22} />
-                      <span className="truncate">
-                        {row.giftName}{' '}
-                        <span className={done ? 'text-emerald-300' : 'text-amber-200'}>
-                          {row.receivedQuantity}/{row.requiredQuantity}
-                          {done ? ' ✓' : ''}
-                        </span>
-                      </span>
-                    </span>
-                    {!done ? (
-                      <button
-                        type="button"
-                        disabled={Boolean(gateSendingGiftId)}
-                        onClick={() => void sendGateLockGift(row.giftId, 1)}
-                        className="min-h-11 shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-fuchsia-500 px-3 py-2 text-[11px] font-bold text-zinc-950 disabled:opacity-60"
-                      >
-                        {gateSendingGiftId === row.giftId
-                          ? 'Enviando…'
-                          : `Enviar ${row.giftName}`}
-                      </button>
-                    ) : null}
-                  </div>
-                  {!done ? (
-                    <p className="mt-1 text-[11px] text-zinc-400">
-                      Falta {missing} {row.giftName}
-                    </p>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-          {gateGiftError ? <p className="text-sm text-fuchsia-400">{gateGiftError}</p> : null}
-          {error ? <p className="text-sm text-fuchsia-400">{error}</p> : null}
-          {gateUnlockFlash ? (
-            <p className="text-sm font-semibold text-emerald-300">✓ Privado desbloqueado</p>
-          ) : null}
-          <Link to="/" className="block min-h-11 py-2 text-xs text-cyan-400">
-            Volver al inicio
-          </Link>
-        </div>
-      </div>
+      <LivePrivateWaitingGate
+        gift={
+          accessGift
+            ? { giftId: accessGift.giftId, giftName: accessGift.giftName }
+            : null
+        }
+        status={gateUnlockFlash ? 'approved' : gateRequestStatus}
+        sending={Boolean(gateSendingGiftId)}
+        flashApproved={gateUnlockFlash}
+        error={gateGiftError || error}
+        onRequest={() => {
+          if (accessGift) void sendGateLockGift(accessGift.giftId);
+        }}
+      />
     );
   }
   if (error) {
@@ -1507,13 +1402,10 @@ function LiveGoalWishHud({
   onNewGoal,
   lock = null,
   lockDraftIds,
-  lockDraftQty,
   pendingLockReqs = [],
   pendingRequests = [],
   privatePhase = null,
   privateRequirements = null,
-  privateStartsAtMs = null,
-  nowMs = Date.now(),
   lockPulse = false,
   onLockClick,
   onRequestClick,
@@ -1554,17 +1446,11 @@ function LiveGoalWishHud({
     : goal?.reached
       ? ' · Meta cumplida ✓'
       : '';
-  const viewerLabel =
-    privatePhase === 'collecting'
-      ? 'Candado abierto: envía el regalo para el privado'
-      : privatePhase === 'countdown'
-        ? 'Candado cerrado: el LIVE pasará a privado'
-        : lock
-          ? 'El creador está en sala privada'
-          : undefined;
+  const viewerLabel = lock
+    ? 'LIVE privado'
+    : undefined;
 
   const activeLockGifts = lockGiftIdsOf(lock);
-  const activeLockQty = lockGiftQtyOf(lock);
   const draftIds = (lockDraftIds || []).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
   const showDraft = Boolean(isHost && !activeLockGifts.length && draftIds.length > 0);
   const pendingIds = pendingLockReqs.map((row) => row.giftId).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
@@ -1579,58 +1465,27 @@ function LiveGoalWishHud({
         : showPending
           ? pendingIds
           : [];
-  const requestedGiftQty = activeLockGifts.length
-    ? activeLockQty
-    : showDraft
-      ? Object.fromEntries(
-          draftIds.map((id) => [id, Math.min(99, Math.max(1, Math.floor(lockDraftQty?.[id] || 1)))]),
-        )
-      : showPending
-        ? Object.fromEntries(
-            pendingLockReqs.map((row) => [
-              row.giftId,
-              Math.min(99, Math.max(1, Math.floor(row.quantity || 1))),
-            ]),
-          )
-        : {};
-  const giftProgress =
-    privateRequirements && privateRequirements.length
-      ? Object.fromEntries(
-          privateRequirements.map((row) => [
-            row.giftId,
-            { received: row.receivedQuantity, required: row.requiredQuantity },
-          ]),
-        )
-      : undefined;
-
-  const legendLockVisible =
-    privatePhase === 'collecting' ||
-    (privatePhase === 'countdown' && Boolean(privateStartsAtMs) && privateStartsAtMs > nowMs);
-
   const privacyControls = (
     <div className="lb-live-privacy-row is-under-goal">
-      {legendLockVisible ? null : (
-        <LivePrivacyLockButton
-          privateActive={privateActive}
-          phase={privatePhase || (lock ? 'private' : null)}
-          interactive={Boolean(isHost)}
-          label={viewerLabel}
-          pulse={lockPulse}
-          onClick={() => {
-            if (isHost) onLockClick?.();
-          }}
-        />
-      )}
+      <LivePrivacyLockButton
+        privateActive={privateActive}
+        phase={privatePhase || (lock ? 'private' : null)}
+        interactive={Boolean(isHost)}
+        label={viewerLabel}
+        pulse={lockPulse}
+        onClick={() => {
+          if (isHost) onLockClick?.();
+        }}
+      />
       {requestedGiftIds.length > 0 ? (
-        <div className="lb-live-candado-gifts" aria-label="Regalos solicitados del candado">
-          <LiveWishCarousel
-            giftIds={requestedGiftIds}
-            quantities={requestedGiftQty}
-            progress={giftProgress}
-          />
+        <div className="lb-live-candado-gifts" aria-label="Regalo de acceso del candado">
+          <LiveWishCarousel giftIds={requestedGiftIds.slice(0, 1)} />
         </div>
       ) : null}
-      {isHost && Boolean(lock) ? (
+      {lock ? (
+        <p className="lb-live-privacy-lock-caption">LIVE privado</p>
+      ) : null}
+      {isHost && (Boolean(lock) || pendingRequests.length > 0) ? (
         <LivePrivacyRequestStrip
           requests={pendingRequests}
           onSelect={onRequestClick}
@@ -1665,18 +1520,6 @@ function LiveGoalWishHud({
           </div>
         ) : null}
         {privacyControls}
-        <LivePrivacyCountdown
-          phase={privatePhase}
-          privateStartsAtMs={privateStartsAtMs}
-          nowMs={nowMs}
-          requirements={privateRequirements}
-          isHost={isHost}
-          interactive={Boolean(isHost)}
-          pulse={lockPulse}
-          onLockClick={() => {
-            if (isHost) onLockClick?.();
-          }}
-        />
         {isHost && privateActive && onReopenPublic ? (
           <button
             type="button"
@@ -2188,16 +2031,13 @@ function CreatorStage({
   const [privacyRequestsOpen, setPrivacyRequestsOpen] = useState(false);
   const [privacyFocusUid, setPrivacyFocusUid] = useState<string | null>(null);
   const [privacyBusyUid, setPrivacyBusyUid] = useState<string | null>(null);
-  const [privacyDelayId, setPrivacyDelayId] = useState<string>('5m');
-  const [privacyCustomSec, setPrivacyCustomSec] = useState('60');
-  const [privateStartsAtMs, setPrivateStartsAtMs] = useState<number | null>(null);
+  const [, setPrivateStartsAtMs] = useState<number | null>(null);
   const [privateSessionId, setPrivateSessionIdState] = useState<string | null>(null);
   const [privatePhase, setPrivatePhase] = useState<PrivateLivePhase | null>(null);
   const [privateRequirements, setPrivateRequirements] = useState<
     PrivateGiftRequirementProgress[] | null
   >(null);
   const [lockPulse, setLockPulse] = useState(false);
-  const [privacyNowMs, setPrivacyNowMs] = useState(() => Date.now());
   const [pendingLockReqs, setPendingLockReqs] = useState<Array<{ giftId: string; quantity: number }>>(
     [],
   );
@@ -2605,14 +2445,6 @@ function CreatorStage({
   }, [username]);
 
   useEffect(() => {
-    if (privatePhase !== 'countdown' && !privateStartsAtMs) return;
-    const tick = () => setPrivacyNowMs(Date.now());
-    tick();
-    const timer = window.setInterval(tick, 250);
-    return () => window.clearInterval(timer);
-  }, [privatePhase, privateStartsAtMs]);
-
-  useEffect(() => {
     if (!isHost) return;
     return listenPendingPrivateRequests(username, privateSessionId, setPrivacyRequests);
   }, [isHost, username, privateSessionId]);
@@ -2630,49 +2462,6 @@ function CreatorStage({
       }
     });
   }, [isHost, username, firebaseUid, privateSessionId, handle]);
-
-  useEffect(() => {
-    if (isHost || !firebaseUid || !privateSessionId) return;
-    if (privatePhase !== 'collecting' && privatePhase !== 'countdown' && privatePhase !== 'private') {
-      return;
-    }
-    return listenPrivateViewerProgress(username, firebaseUid, privateSessionId, (state) => {
-      if (state?.accessGranted) {
-        setLockUnlocked(true);
-        onViewerPausedRef.current?.(false, null);
-        void api('/api/stream/claim-access', {
-          method: 'POST',
-          body: JSON.stringify({ roomName: username, handle }),
-        }).catch(() => undefined);
-      }
-    });
-  }, [isHost, username, firebaseUid, privateSessionId, privatePhase, handle]);
-
-  useEffect(() => {
-    if (!isHost || !privateStartsAtMs || lock) return;
-    if (privatePhase !== 'countdown') return;
-    if (Date.now() < privateStartsAtMs) return;
-    if (privateActivateOnceRef.current === privateStartsAtMs) return;
-    const pending = pendingPrivacyReqsRef.current || [];
-    const requirements: LockGiftRequirement[] = [];
-    for (const row of pending.slice(0, LIVE_LOCK_ACTIVE_MAX)) {
-      const gift = findLiveGift(row.giftId);
-      if (!gift) continue;
-      requirements.push({
-        giftId: gift.id,
-        giftName: gift.name,
-        coins: gift.coins,
-        emoji: gift.emoji || '🎁',
-        quantity: Math.min(99, Math.max(1, Math.floor(row.quantity || 1))),
-      });
-    }
-    if (!requirements.length) return;
-    privateActivateOnceRef.current = privateStartsAtMs;
-    void (async () => {
-      await setLiveLock(requirements);
-      await markPrivateActivated(username, privateStartsAtMs).catch(() => undefined);
-    })();
-  }, [isHost, privateStartsAtMs, privatePhase, lock, privacyNowMs, username]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2800,7 +2589,7 @@ function CreatorStage({
       id: string,
       senderName?: string,
       multiplier?: number,
-      senderUid?: string,
+      _senderUid?: string,
     ) => {
       if (!giftId || !id) return;
       const catalogGift = findLiveGift(giftId);
@@ -2815,28 +2604,6 @@ function CreatorStage({
         combo = Math.max(combo, giftComboRef.current.count + (explicit > 1 ? explicit : 1));
       }
       giftComboRef.current = { key: comboKey, count: combo, at: now };
-      if (
-        privatePhaseRef.current === 'collecting' ||
-        privatePhaseRef.current === 'countdown' ||
-        privatePhaseRef.current === 'private'
-      ) {
-        if (senderUid) {
-          void applyPrivateViewerGiftProgress(username, {
-            giftId,
-            units: liveWishGiftUnits(multiplier),
-            clientId: id,
-            viewerUid: senderUid,
-          }).catch(() => undefined);
-        }
-      }
-      if (privatePhaseRef.current === 'collecting' && senderUid) {
-        void applyPrivateCollectingGift(username, {
-          giftId,
-          units: liveWishGiftUnits(multiplier),
-          clientId: id,
-          viewerUid: senderUid,
-        }).catch(() => undefined);
-      }
       if (isHost) {
         void applyLiveWishGiftProgress(
           username,
@@ -3347,8 +3114,9 @@ function CreatorStage({
       const nowPrivate = Boolean(result.isPrivate ?? result.locked);
       onPrivacyChange?.(nowPrivate);
       if (next) {
-        const sessionId = privateSessionId || newPrivateSessionId();
-        setPrivateSessionIdState(sessionId);
+        if (next.privateSessionId) setPrivateSessionIdState(next.privateSessionId);
+        setPrivatePhase('private');
+        privatePhaseRef.current = 'private';
       } else {
         await clearPrivateSchedule(username).catch(() => undefined);
         setPrivateStartsAtMs(null);
@@ -3364,7 +3132,7 @@ function CreatorStage({
       await publishRoomData(room, { type: 'lock', lock: next });
       setInviteNote(
         next
-          ? 'Sala privada activa. Quien envíe el regalo solicitado puede entrar siempre.'
+          ? 'LIVE privado activo. Quien envíe el regalo solicita entrar; tú aceptas o rechazas.'
           : 'Candado quitado. Live reabierto al público.',
       );
     } catch (err) {
@@ -3386,112 +3154,47 @@ function CreatorStage({
   }
 
   function toggleLockDraftGift(giftId: string) {
-    const selected = lockDraftIds.includes(giftId);
+    const selected = lockDraftIds[0] === giftId;
     if (selected) {
-      setLockDraftIds((current) => current.filter((id) => id !== giftId));
-      setLockDraftQty((current) => {
-        const next = { ...current };
-        delete next[giftId];
-        return next;
-      });
+      setLockDraftIds([]);
+      setLockDraftQty({});
       return;
     }
-    if (lockDraftIds.length >= LIVE_LOCK_ACTIVE_MAX) return;
-    setLockDraftIds((current) => [...current, giftId]);
-    setLockDraftQty((current) => ({ ...current, [giftId]: 1 }));
-  }
-
-  function setLockDraftQuantity(giftId: string, value: number) {
-    const qty = Math.min(99, Math.max(0, Math.floor(Number(value) || 0)));
-    const selected = lockDraftIds.includes(giftId);
-    if (qty <= 0) {
-      if (!selected) return;
-      setLockDraftIds((current) => current.filter((id) => id !== giftId));
-      setLockDraftQty((current) => {
-        const next = { ...current };
-        delete next[giftId];
-        return next;
-      });
-      return;
-    }
-    if (!selected) {
-      if (lockDraftIds.length >= LIVE_LOCK_ACTIVE_MAX) return;
-      setLockDraftIds((current) => [...current, giftId]);
-      setLockDraftQty((current) => ({ ...current, [giftId]: qty }));
-      return;
-    }
-    setLockDraftQty((current) => ({ ...current, [giftId]: qty }));
+    setLockDraftIds([giftId]);
+    setLockDraftQty({ [giftId]: 1 });
   }
 
   async function applyLockDraft() {
-    if (!lockDraftIds.length) {
-      setInviteNote('Elige al menos un regalo (y cantidad) para el candado.');
+    if (lock) {
+      setInviteNote('Quita el candado actual para elegir un regalo nuevo.');
       return;
     }
-    const requirements: LockGiftRequirement[] = [];
-    for (const giftId of lockDraftIds.slice(0, LIVE_LOCK_ACTIVE_MAX)) {
-      const gift = findLiveGift(giftId);
-      if (!gift) continue;
-      requirements.push({
+    const giftId = lockDraftIds[0];
+    if (!giftId) {
+      setInviteNote('Elige el regalo para entrar al privado.');
+      return;
+    }
+    const gift = findLiveGift(giftId);
+    if (!gift) return;
+    await setLiveLock([
+      {
         giftId: gift.id,
         giftName: gift.name,
         coins: gift.coins,
         emoji: gift.emoji || '🎁',
-        quantity: Math.min(99, Math.max(1, Math.floor(lockDraftQty[giftId] || 1))),
-      });
-    }
-    let delayMs = 0;
-    if (privacyDelayId === 'custom') {
-      delayMs = Math.min(3600, Math.max(0, Math.floor(Number(privacyCustomSec) || 0))) * 1000;
-    } else {
-      delayMs = PRIVACY_DELAY_OPTIONS.find((o) => o.id === privacyDelayId)?.ms ?? 0;
-    }
-    const sessionId = newPrivateSessionId();
-    setPrivateSessionIdState(sessionId);
-    pendingPrivacyReqsRef.current = requirements.map((r) => ({
-      giftId: r.giftId,
-      quantity: r.quantity,
-    }));
-    privateActivateOnceRef.current = null;
-    privatePhaseRef.current = 'collecting';
-    setPrivatePhase('collecting');
-    setPrivateRequirements(
-      requirements.map((r) => ({
-        giftId: r.giftId,
-        requiredQuantity: r.quantity,
-        receivedQuantity: 0,
-      })),
-    );
-    qualifiedViewerUidsRef.current = [];
-    setPrivateStartsAtMs(null);
-    setPendingLockReqs(pendingPrivacyReqsRef.current);
-    await startPrivateCollecting(username, {
-      sessionId,
-      requirements: pendingPrivacyReqsRef.current,
-      countdownDurationMs: delayMs,
-    });
-    setLockPicker(false);
-    setInviteNote(
-      delayMs > 0
-        ? 'Candado en recolección: el LIVE sigue público. El contador arranca al completar el 100%.'
-        : 'Candado en recolección: al completar el 100% el LIVE pasará a privado de inmediato.',
-    );
-    await publishRoomData(room, {
-      type: 'lock',
-      lock: null,
-    }).catch(() => undefined);
+        quantity: 1,
+      },
+    ]);
   }
 
   async function acceptPrivacyRequest(uid: string) {
-    if (!isHost || !privateSessionId) return;
+    if (!isHost) return;
     setPrivacyBusyUid(uid);
     try {
       await api('/api/stream/grant-access', {
         method: 'POST',
         body: JSON.stringify({ roomName: username, viewerUid: uid, handle }),
       });
-      await grantPrivateAccess(username, uid, privateSessionId, 'host');
-      await setPrivateRequestStatus(username, uid, 'approved');
       setPrivacyFocusUid(null);
     } catch (err) {
       setInviteNote(err instanceof Error ? err.message : 'No se pudo aceptar');
@@ -3504,12 +3207,18 @@ function CreatorStage({
     if (!isHost) return;
     setPrivacyBusyUid(uid);
     try {
-      await setPrivateRequestStatus(username, uid, 'rejected');
+      await api('/api/stream/reject-access', {
+        method: 'POST',
+        body: JSON.stringify({ roomName: username, viewerUid: uid, handle }),
+      });
       setPrivacyFocusUid(null);
+    } catch (err) {
+      setInviteNote(err instanceof Error ? err.message : 'No se pudo rechazar');
     } finally {
       setPrivacyBusyUid(null);
     }
   }
+
   const flipCamera = useCallback(async () => {
     if (!canPublish || flipping) return;
     setFlipping(true);
@@ -5578,8 +5287,6 @@ function CreatorStage({
               pendingRequests={privacyRequests}
               privatePhase={privatePhase}
               privateRequirements={privateRequirements}
-              privateStartsAtMs={privateStartsAtMs}
-              nowMs={privacyNowMs}
               lockPulse={lockPulse}
               onLockClick={() => {
                 openLockPicker();
@@ -5672,8 +5379,6 @@ function CreatorStage({
               pendingLockReqs={pendingLockReqs}
               privatePhase={privatePhase}
               privateRequirements={privateRequirements}
-              privateStartsAtMs={privateStartsAtMs}
-              nowMs={privacyNowMs}
               lockPulse={lockPulse}
             />
           </div>
@@ -5775,16 +5480,9 @@ function CreatorStage({
         open={Boolean(lockPicker && isHost)}
         busy={lockBusy}
         draftIds={lockDraftIds}
-        draftQty={lockDraftQty}
-        delayId={privacyDelayId}
-        customSeconds={privacyCustomSec}
-        maxGifts={LIVE_LOCK_ACTIVE_MAX}
-        privateActive={Boolean(lock) || privatePhase === 'collecting' || privatePhase === 'countdown'}
+        privateActive={Boolean(lock)}
         onClose={() => setLockPicker(false)}
         onToggleGift={toggleLockDraftGift}
-        onSetQty={setLockDraftQuantity}
-        onDelayId={setPrivacyDelayId}
-        onCustomSeconds={setPrivacyCustomSec}
         onConfirm={() => void applyLockDraft()}
         onClearPrivate={() => void setLiveLock(null)}
       />
