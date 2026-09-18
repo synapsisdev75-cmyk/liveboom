@@ -1777,6 +1777,9 @@ function CreatorStage({
   const hostSessionEndedRef = useRef(false);
   const endedBackendOkRef = useRef(false);
   const endedAtMsRef = useRef(0);
+  const sessionClosed = liveEnded || summaryOpen;
+  const sessionClosedRef = useRef(sessionClosed);
+  sessionClosedRef.current = sessionClosed;
   const canSendLiveBoom = Boolean(firebaseUid) && !liveEnded && !isOwnLiveAccount;
   const seenBoomIds = useRef(new Set<string>());
   const liveBoomCountRef = useRef(0);
@@ -2097,6 +2100,15 @@ function CreatorStage({
   const [pendingLockReqs, setPendingLockReqs] = useState<Array<{ giftId: string; quantity: number }>>(
     [],
   );
+  const hudWishlist = sessionClosed ? [] : wishlist;
+  const hudWishQty = sessionClosed ? {} : wishQty;
+  const hudWishReceived = sessionClosed ? {} : wishReceived;
+  const hudLock = sessionClosed ? null : lock;
+  const hudPrivacyRequests = sessionClosed ? [] : privacyRequests;
+  const hudPrivatePhase = sessionClosed ? null : privatePhase;
+  const hudPendingLockReqs = sessionClosed ? [] : pendingLockReqs;
+  const hudPrivateRequirements = sessionClosed ? null : privateRequirements;
+  const hudAchievedWish = sessionClosed ? null : achievedWish;
   const privateActivateOnceRef = useRef<number | null>(null);
   const pendingPrivacyReqsRef = useRef<Array<{ giftId: string; quantity: number }>>([]);
   const privatePhaseRef = useRef<PrivateLivePhase | null>(null);
@@ -2228,6 +2240,32 @@ function CreatorStage({
   const [lockBusy, setLockBusy] = useState(false);
   const [lockDraftIds, setLockDraftIds] = useState<string[]>([]);
   const [lockDraftQty, setLockDraftQty] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!sessionClosed) return;
+    wishItemsRef.current = [];
+    pendingPrivacyReqsRef.current = [];
+    privatePhaseRef.current = null;
+    qualifiedViewerUidsRef.current = [];
+    prevPrivatePhaseRef.current = null;
+    setWishlist([]);
+    setWishQty({});
+    setWishReceived({});
+    setCompletedWishItems([]);
+    setWishlistOpen(false);
+    setLock(null);
+    setLockUnlocked(false);
+    setPrivacyRequests([]);
+    setPrivacyRequestsOpen(false);
+    setPendingLockReqs([]);
+    setPrivatePhase(null);
+    setPrivateRequirements(null);
+    setPrivateSessionIdState(null);
+    setPrivateStartsAtMs(null);
+    setLockPulse(false);
+    setLockPicker(false);
+    setLockDraftIds([]);
+    setLockDraftQty({});
+  }, [sessionClosed]);
   const [viewersList, setViewersList] = useState<SalaInviteViewer[]>([]);
   const [liveStats, setLiveStats] = useState<LiveSessionStats | null>(
     goalCoins || goalLabel
@@ -2442,6 +2480,7 @@ function CreatorStage({
       `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
     )
       .then((data) => {
+        if (sessionClosedRef.current) return;
         setLock(data.lock);
         setLockUnlocked(Boolean(data.isHost || data.unlocked || !data.isPrivate));
       })
@@ -2466,6 +2505,7 @@ function CreatorStage({
         `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
       )
         .then((data) => {
+          if (sessionClosedRef.current) return;
           setLock(data.lock);
           const unlocked = Boolean(data.isHost || data.unlocked || !data.isPrivate);
           setLockUnlocked(unlocked);
@@ -2510,6 +2550,18 @@ function CreatorStage({
 
   useEffect(() => {
     return listenPrivateSchedule(username, (schedule) => {
+      if (sessionClosedRef.current) {
+        setPrivateStartsAtMs(null);
+        setPrivateSessionIdState(null);
+        setPrivatePhase(null);
+        privatePhaseRef.current = null;
+        setPrivateRequirements(null);
+        qualifiedViewerUidsRef.current = [];
+        pendingPrivacyReqsRef.current = [];
+        setPendingLockReqs([]);
+        prevPrivatePhaseRef.current = null;
+        return;
+      }
       setPrivateStartsAtMs(schedule.privateStartsAtMs);
       setPrivateSessionIdState(schedule.privateSessionId);
       setPrivatePhase(schedule.privatePhase);
@@ -2562,7 +2614,7 @@ function CreatorStage({
       `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
     )
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || sessionClosedRef.current) return;
         setLock(data.lock);
         const unlocked = Boolean(data.isHost || data.unlocked || !data.isPrivate);
         setLockUnlocked(unlocked);
@@ -2802,6 +2854,7 @@ function CreatorStage({
       }
       // No mostrar quién entra/sale de la sala en pantalla.
       if (data.type === 'lock') {
+        if (sessionClosedRef.current) return;
         setLock(data.lock);
         const sealed = Boolean(data.lock?.sealed);
         if (data.lock) {
@@ -3504,6 +3557,15 @@ function CreatorStage({
   useEffect(() => {
     setWishSyncReady(false);
     return listenLiveWishlist(username, (ids, items, completed) => {
+      if (sessionClosedRef.current) {
+        wishItemsRef.current = [];
+        setWishlist([]);
+        setWishQty({});
+        setWishReceived({});
+        setCompletedWishItems([]);
+        setWishSyncReady(true);
+        return;
+      }
       wishItemsRef.current = items;
       setWishlist(ids);
       const next: Record<string, number> = {};
@@ -5022,8 +5084,8 @@ function CreatorStage({
                 screenSharing={screenSharing}
                 mirrorOn={mirrorMode}
                 notifyBusy={notifyBusy}
-                wishlistCount={wishlist.length}
-                lockActive={Boolean(lock)}
+                wishlistCount={sessionClosed ? 0 : wishlist.length}
+                lockActive={Boolean(hudLock)}
                 hideScreenShare={
                   !canUseClassicScreenShare() && !showScreenShareComingSoonButton()
                 }
@@ -5472,21 +5534,23 @@ function CreatorStage({
             <LiveGoalWishHud
               username={username}
               goal={liveGoal}
-              wishlist={wishlist}
-              wishQty={wishQty}
-              wishReceived={wishReceived}
-              achievedWish={achievedWish}
+              wishlist={hudWishlist}
+              wishQty={hudWishQty}
+              wishReceived={hudWishReceived}
+              achievedWish={hudAchievedWish}
               leaving={wishAchievedLeaving}
-              isHost
+              isHost={!sessionClosed}
               celebrating={goalCelebrating}
-              lock={lock}
-              lockDraftIds={lockPicker || lock || privatePhase ? lockDraftIds : undefined}
-              lockDraftQty={lockDraftQty}
-              pendingLockReqs={pendingLockReqs}
-              pendingRequests={privacyRequests}
-              privatePhase={privatePhase}
-              privateRequirements={privateRequirements}
-              lockPulse={lockPulse}
+              lock={hudLock}
+              lockDraftIds={
+                sessionClosed ? undefined : lockPicker || lock || privatePhase ? lockDraftIds : undefined
+              }
+              lockDraftQty={sessionClosed ? undefined : lockDraftQty}
+              pendingLockReqs={hudPendingLockReqs}
+              pendingRequests={hudPrivacyRequests}
+              privatePhase={hudPrivatePhase}
+              privateRequirements={hudPrivateRequirements}
+              lockPulse={sessionClosed ? false : lockPulse}
               onLockClick={() => {
                 openLockPicker();
               }}
@@ -5569,17 +5633,17 @@ function CreatorStage({
             <LiveGoalWishHud
               username={username}
               goal={liveGoal}
-              wishlist={wishlist}
-              wishQty={wishQty}
-              wishReceived={wishReceived}
-              achievedWish={achievedWish}
+              wishlist={hudWishlist}
+              wishQty={hudWishQty}
+              wishReceived={hudWishReceived}
+              achievedWish={hudAchievedWish}
               leaving={wishAchievedLeaving}
               celebrating={goalCelebrating}
-              lock={lock}
-              pendingLockReqs={pendingLockReqs}
-              privatePhase={privatePhase}
-              privateRequirements={privateRequirements}
-              lockPulse={lockPulse}
+              lock={hudLock}
+              pendingLockReqs={hudPendingLockReqs}
+              privatePhase={hudPrivatePhase}
+              privateRequirements={hudPrivateRequirements}
+              lockPulse={sessionClosed ? false : lockPulse}
             />
           </div>
         )}
@@ -5605,7 +5669,7 @@ function CreatorStage({
           onCreate={(target) => void createNextCoinGoal(target)}
         />
       ) : null}
-      {wishlistOpen && isHost ? (
+      {wishlistOpen && isHost && !sessionClosed ? (
         <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-cyan-300">
@@ -5677,7 +5741,7 @@ function CreatorStage({
         </div>
       ) : null}
       <LivePrivacySetupSheet
-        open={Boolean(lockPicker && isHost)}
+        open={Boolean(lockPicker && isHost && !sessionClosed)}
         busy={lockBusy}
         draftIds={lockDraftIds}
         lockArmed={Boolean(lock) && privatePhase !== 'private'}
@@ -5689,8 +5753,8 @@ function CreatorStage({
         onClearPrivate={() => void setLiveLock(null)}
       />
       <LivePrivacyRequestsSheet
-        open={Boolean(isHost && privacyRequestsOpen)}
-        requests={privacyRequests}
+        open={Boolean(isHost && privacyRequestsOpen && !sessionClosed)}
+        requests={hudPrivacyRequests}
         busyUid={privacyBusyUid}
         focusUid={privacyFocusUid}
         onClose={() => {

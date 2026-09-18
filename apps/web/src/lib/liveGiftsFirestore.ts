@@ -165,6 +165,34 @@ function upsertCoinGoalHistory(history: LiveCoinGoalCycle[], goal: LiveCoinGoalC
   return [...map.values()].slice(-COIN_GOAL_HISTORY_MAX);
 }
 
+const EMPTY_LIVE_WISH_PRIVATE = {
+  wishlist: [],
+  wishlistItems: [],
+  wishlistCompleted: [],
+  wishlistGiftEvents: [],
+  privatePhase: null,
+  privateSessionId: null,
+  privateSessionStatus: null,
+  lockGiftId: null,
+  requiredGiftId: null,
+  privateStartsAtMs: null,
+  privatePendingRequirements: null,
+  privateRequirements: null,
+  privateActivatedAtMs: null,
+  countdownDurationMs: null,
+  requirementsCompletedAtMs: null,
+  qualifiedViewerUids: [],
+  privateGiftEvents: [],
+};
+
+async function deleteLiveRoomHostDocs(roomName: string, subcollection: string) {
+  const snap = await getDocs(collection(db, 'liveRooms', roomKey(roomName), subcollection));
+  if (snap.empty) return;
+  const batch = writeBatch(db);
+  for (const item of snap.docs) batch.delete(item.ref);
+  await batch.commit().catch(() => undefined);
+}
+
 /** Marca la sala como en vivo (nueva transmisión). */
 export async function markLiveRoomActive(
   roomName: string,
@@ -185,6 +213,7 @@ export async function markLiveRoomActive(
   const coinGoal = target > 0 ? createActiveCoinGoal(target, 0) : null;
   const roomRef = doc(db, 'liveRooms', username);
   let startedAtMs = Date.now();
+  let continuing = false;
   try {
     const snap = await getDoc(roomRef);
     if (snap.exists()) {
@@ -194,6 +223,7 @@ export async function markLiveRoomActive(
       const endedAtMs = Number(data.endedAtMs) || 0;
       if (status === 'live' && !endedAtMs && existing > 0) {
         startedAtMs = existing;
+        continuing = true;
       }
     }
   } catch {
@@ -211,7 +241,6 @@ export async function markLiveRoomActive(
       category: meta?.category || 'otro',
       isPrivate: Boolean(meta?.isPrivate),
       aspectRatio: meta?.aspectRatio === '16:9' ? '16:9' : '9:16',
-      lockGiftId: null,
       viewers: 0,
       startedAtMs,
       heartbeatAtMs: Date.now(),
@@ -230,10 +259,17 @@ export async function markLiveRoomActive(
       coinGoal,
       coinGoalHistory: [],
       coinGoalGifters: {},
+      ...(continuing ? {} : EMPTY_LIVE_WISH_PRIVATE),
       updatedAt: serverTimestamp(),
     },
     { merge: true },
   );
+  if (!continuing) {
+    await Promise.all([
+      deleteLiveRoomHostDocs(username, 'privateRequests'),
+      deleteLiveRoomHostDocs(username, 'privateGrants'),
+    ]).catch(() => undefined);
+  }
 }
 
 export type LiveEndStats = {
@@ -253,31 +289,45 @@ export async function markLiveRoomEnded(roomName: string, stats?: LiveEndStats) 
   const alreadyEnded =
     String(data?.status || '') === 'ended' || Number(data?.endedAtMs || 0) > 0;
   await clearLiveViewers(roomName).catch(() => undefined);
-  if (alreadyEnded) return;
   const now = Date.now();
   await setDoc(
     ref,
     {
+      ...EMPTY_LIVE_WISH_PRIVATE,
+      privateSessionStatus: 'ended',
       status: 'ended',
-      endedAt: new Date(now).toISOString(),
-      endedAtMs: now,
-      heartbeatAtMs: 0,
       isPrivate: false,
-      lockGiftId: null,
-      guestInvites: [],
-      guestBanned: [],
-      ...(typeof stats?.durationMs === 'number' ? { durationMs: Math.max(0, Math.floor(stats.durationMs)) } : {}),
-      ...(typeof stats?.viewers === 'number' ? { viewers: Math.max(0, Math.floor(stats.viewers)) } : {}),
-      ...(typeof stats?.coinsEarned === 'number'
-        ? { coinsEarned: Math.max(0, Math.floor(stats.coinsEarned)) }
-        : {}),
-      ...(typeof stats?.giftsCount === 'number' ? { giftsCount: Math.max(0, Math.floor(stats.giftsCount)) } : {}),
-      ...(typeof stats?.likes === 'number' ? { liveBoomCount: Math.max(0, Math.floor(stats.likes)) } : {}),
-      ...(typeof stats?.goalCoins === 'number' ? { goalCoins: Math.max(0, Math.floor(stats.goalCoins)) } : {}),
+      ...(alreadyEnded
+        ? {}
+        : {
+            endedAt: new Date(now).toISOString(),
+            endedAtMs: now,
+            heartbeatAtMs: 0,
+            guestInvites: [],
+            guestBanned: [],
+            ...(typeof stats?.durationMs === 'number'
+              ? { durationMs: Math.max(0, Math.floor(stats.durationMs)) }
+              : {}),
+            ...(typeof stats?.viewers === 'number' ? { viewers: Math.max(0, Math.floor(stats.viewers)) } : {}),
+            ...(typeof stats?.coinsEarned === 'number'
+              ? { coinsEarned: Math.max(0, Math.floor(stats.coinsEarned)) }
+              : {}),
+            ...(typeof stats?.giftsCount === 'number'
+              ? { giftsCount: Math.max(0, Math.floor(stats.giftsCount)) }
+              : {}),
+            ...(typeof stats?.likes === 'number' ? { liveBoomCount: Math.max(0, Math.floor(stats.likes)) } : {}),
+            ...(typeof stats?.goalCoins === 'number'
+              ? { goalCoins: Math.max(0, Math.floor(stats.goalCoins)) }
+              : {}),
+          }),
       updatedAt: serverTimestamp(),
     },
     { merge: true },
   );
+  await Promise.all([
+    deleteLiveRoomHostDocs(roomName, 'privateRequests'),
+    deleteLiveRoomHostDocs(roomName, 'privateGrants'),
+  ]).catch(() => undefined);
 }
 
 /** Pulso del host: el feed solo muestra salas con heartbeat reciente. */
@@ -1485,12 +1535,22 @@ export async function applyLiveWishGiftProgress(
   });
 }
 
+function liveRoomDocEnded(data: DocumentData | undefined): boolean {
+  if (!data) return true;
+  return String(data.status || '') === 'ended' || Number(data.endedAtMs || 0) > 0;
+}
+
 export function listenLiveWishlist(
   roomName: string,
   onChange: (giftIds: string[], items: LiveWishItem[], completed: LiveWishItem[]) => void,
 ): Unsubscribe {
   return onSnapshot(doc(db, 'liveRooms', roomKey(roomName)), (snap) => {
-    const parsed = parseWishlistState(snap.data());
+    const data = snap.data();
+    if (!snap.exists() || liveRoomDocEnded(data)) {
+      onChange([], [], []);
+      return;
+    }
+    const parsed = parseWishlistState(data);
     onChange(parsed.giftIds, parsed.items, parsed.completed);
   });
 }

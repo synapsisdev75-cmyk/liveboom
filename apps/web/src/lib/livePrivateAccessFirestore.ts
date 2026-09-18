@@ -611,12 +611,28 @@ export async function hasPrivateGrant(
   );
 }
 
+const IDLE_PRIVATE_SCHEDULE: PrivateLiveSchedule = {
+  privatePhase: null,
+  privateStartsAtMs: null,
+  privatePendingRequirements: null,
+  privateRequirements: null,
+  privateSessionId: null,
+  privateActivatedAtMs: null,
+  countdownDurationMs: null,
+  requirementsCompletedAtMs: null,
+  qualifiedViewerUids: [],
+};
+
 export function listenPrivateSchedule(
   roomName: string,
   onData: (schedule: PrivateLiveSchedule) => void,
 ): Unsubscribe {
   return onSnapshot(roomRef(roomName), (snap) => {
     const data = snap.data() || {};
+    if (String(data.status || '') === 'ended' || Number(data.endedAtMs || 0) > 0) {
+      onData(IDLE_PRIVATE_SCHEDULE);
+      return;
+    }
     const privateRequirements = parseRequirements(data.privateRequirements);
     const pendingFromLegacy = Array.isArray(data.privatePendingRequirements)
       ? data.privatePendingRequirements
@@ -717,6 +733,10 @@ export function listenPendingPrivateRequests(
   sessionId: string | null,
   onData: (rows: PrivateAccessRequest[]) => void,
 ): Unsubscribe {
+  if (!sessionId) {
+    onData([]);
+    return () => undefined;
+  }
   const col = collection(db, 'liveRooms', roomKey(roomName), 'privateRequests');
   const q = query(col, where('status', '==', 'pending'));
   return onSnapshot(
@@ -725,7 +745,7 @@ export function listenPendingPrivateRequests(
       const rows: PrivateAccessRequest[] = [];
       for (const item of snap.docs) {
         const data = item.data();
-        if (sessionId && String(data.sessionId || '') !== sessionId) continue;
+        if (String(data.sessionId || '') !== sessionId) continue;
         rows.push({
           uid: String(data.uid || item.id),
           username: String(data.username || ''),

@@ -79,13 +79,17 @@ function sessionIsSealed(room) {
 
 async function hydrateLock(roomName) {
   const existing = liveLocks.getLock(roomName);
-  if (existing && existing.sealed) return existing;
   if (!firestoreConfigured()) return existing || null;
   try {
     const db = getAdminDb();
     const snap = await roomRef(db, roomName).get();
     if (!snap.exists) return existing || null;
     const data = snap.data() || {};
+    if (String(data.status || '') === 'ended' || Number(data.endedAtMs || 0) > 0) {
+      liveLocks.clearLock(roomName);
+      return null;
+    }
+    if (existing && existing.sealed) return existing;
     const giftId = String(data.requiredGiftId || data.lockGiftId || '');
     const sessionId = String(data.privateSessionId || '');
     if (!sessionIsOpen(data) || !giftId || !sessionId) return existing || null;
@@ -705,23 +709,63 @@ async function stopSession(roomName, { reason } = {}) {
     sessionId = String(data.privateSessionId || sessionId || '');
     const wasActive = sessionIsOpen(data) || Boolean(prev);
     if (wasActive && sessionId) {
-      await roomRef(db, roomName).set(
-        {
-          privateSessionStatus: 'ended',
-          privatePhase: null,
-          isPrivate: false,
-          lockGiftId: null,
-          privateStartsAtMs: null,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
       await refundPendingForSession(roomName, sessionId);
     }
+    await resetLiveRoomSessionArtifacts(roomName, {
+      includeWishlist: reason === 'live_stop',
+    });
   }
   liveLocks.clearLock(roomName);
   if (sessionId) logPrivate('session-stop', { room: roomKey(roomName), reason: reason || 'stop' });
   return { ok: true, isPrivate: false, lock: null };
+}
+
+async function deleteRoomSubcollection(rRef, name) {
+  const db = rRef.firestore;
+  for (;;) {
+    const snap = await rRef.collection(name).limit(400).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+  }
+}
+
+async function resetLiveRoomSessionArtifacts(roomName, { includeWishlist } = {}) {
+  if (!firestoreConfigured()) return;
+  const db = getAdminDb();
+  const rRef = roomRef(db, roomName);
+  await rRef.set(
+    {
+      ...(includeWishlist
+        ? {
+            wishlist: [],
+            wishlistItems: [],
+            wishlistCompleted: [],
+            wishlistGiftEvents: [],
+          }
+        : {}),
+      privatePhase: null,
+      privateSessionId: null,
+      privateSessionStatus: 'ended',
+      isPrivate: false,
+      lockGiftId: null,
+      requiredGiftId: null,
+      privateStartsAtMs: null,
+      privatePendingRequirements: null,
+      privateRequirements: null,
+      privateActivatedAtMs: null,
+      countdownDurationMs: null,
+      requirementsCompletedAtMs: null,
+      qualifiedViewerUids: [],
+      privateGiftEvents: [],
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await deleteRoomSubcollection(rRef, 'privateRequests');
+  await deleteRoomSubcollection(rRef, 'privateGrants');
+  await deleteRoomSubcollection(rRef, 'privateHolds');
 }
 
 module.exports = {
