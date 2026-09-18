@@ -906,6 +906,87 @@ html[data-lb-theme='light'] .lb-live-room {
   color: var(--lb-text);
 }
 
+/* LIVE host dashboard chrome (left cards + bottom bar). Same tokens as .lb-live-chat-float.
+   Video stage + overlays on video stay untouched. */
+html[data-lb-theme='light'] .lb-host-left .lb-host-dash-card,
+html[data-lb-theme='light'] .lb-host-footer {
+  background: var(--lb-surface);
+  border-color: var(--lb-line);
+  color: var(--lb-text);
+  box-shadow: 0 8px 24px rgba(24, 24, 27, 0.06);
+}
+
+html[data-lb-theme='light'] .lb-host-left .text-white,
+html[data-lb-theme='light'] .lb-host-footer .text-white {
+  color: var(--lb-text);
+  text-shadow: none;
+  filter: none;
+}
+
+html[data-lb-theme='light'] .lb-host-left .text-zinc-200,
+html[data-lb-theme='light'] .lb-host-footer .text-zinc-200,
+html[data-lb-theme='light'] .lb-host-footer .text-zinc-300 {
+  color: var(--lb-text);
+  text-shadow: none;
+}
+
+html[data-lb-theme='light'] .lb-host-left .text-zinc-300,
+html[data-lb-theme='light'] .lb-host-left .text-zinc-400,
+html[data-lb-theme='light'] .lb-host-left .text-zinc-500,
+html[data-lb-theme='light'] .lb-host-footer .text-zinc-400,
+html[data-lb-theme='light'] .lb-host-footer .text-zinc-500 {
+  color: var(--lb-text-muted);
+  text-shadow: none;
+}
+
+html[data-lb-theme='light'] .lb-host-left .border-white\/10,
+html[data-lb-theme='light'] .lb-host-left [class*='border-white/10'],
+html[data-lb-theme='light'] .lb-host-footer,
+html[data-lb-theme='light'] .lb-host-footer [class*='border-white/10'] {
+  border-color: var(--lb-line);
+}
+
+html[data-lb-theme='light'] .lb-host-left [class*='bg-zinc-950'],
+html[data-lb-theme='light'] .lb-host-footer[class*='bg-zinc-950'] {
+  background-color: var(--lb-surface);
+  color: var(--lb-text);
+}
+
+html[data-lb-theme='light'] .lb-host-left .bg-white\/10,
+html[data-lb-theme='light'] .lb-host-left [class*='bg-white/10'],
+html[data-lb-theme='light'] .lb-host-footer .bg-white\/5,
+html[data-lb-theme='light'] .lb-host-footer [class*='bg-white/5'] {
+  background-color: var(--lb-surface-2);
+}
+
+html[data-lb-theme='light'] .lb-host-left .text-violet-100,
+html[data-lb-theme='light'] .lb-host-left .text-violet-200,
+html[data-lb-theme='light'] .lb-host-left .text-violet-300,
+html[data-lb-theme='light'] .lb-host-left .hover\:text-violet-200:hover,
+html[data-lb-theme='light'] .lb-host-footer .text-violet-200,
+html[data-lb-theme='light'] .lb-host-footer .text-violet-300 {
+  color: var(--link-default);
+}
+
+html[data-lb-theme='light'] .lb-host-left .bg-violet-500\/20,
+html[data-lb-theme='light'] .lb-host-left [class*='bg-violet-500/20'] {
+  background-color: var(--accent-soft);
+  color: var(--link-default);
+}
+
+html[data-lb-theme='light'] .lb-host-left .lb-host-dash-cop,
+html[data-lb-theme='light'] .lb-host-left .text-amber-300,
+html[data-lb-theme='light'] .lb-host-footer .text-amber-300 {
+  color: var(--warning);
+}
+
+html[data-lb-theme='dark'] .lb-host-left .lb-host-dash-card,
+html[data-lb-theme='dark'] .lb-host-footer {
+  background: color-mix(in srgb, var(--lb-surface) 94%, transparent);
+  border-color: var(--lb-line);
+  color: var(--lb-text);
+}
+
 /* Explorar: el escenario del video (negro + blur) no cambia. Solo marco. */
 html[data-lb-theme='light'] .lb-explore-view .lb-immersive-media-box {
   box-shadow: 0 0 0 1px var(--border-default);

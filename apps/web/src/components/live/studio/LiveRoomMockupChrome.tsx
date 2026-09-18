@@ -133,7 +133,7 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
 
   return (
     <aside className="lb-host-left hidden min-h-0 w-[min(100%,240px)] shrink-0 flex-col gap-3 overflow-y-auto lg:flex">
-      <section className="rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
+      <section className="lb-host-dash-card rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
         <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Resumen del live</p>
         <ul className="mt-2 space-y-2 text-xs text-zinc-200">
           <li className="flex items-center justify-between gap-2">
@@ -164,12 +164,12 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
             <span className="inline-flex items-center gap-1.5 text-zinc-400">
               <Coins size={12} className="text-violet-400" /> Para retirar
             </span>
-            <span className="font-semibold text-amber-300">{formatCop(coinsToCop(earned))}</span>
+            <span className="lb-host-dash-cop font-semibold text-amber-300">{formatCop(coinsToCop(earned))}</span>
           </li>
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
+      <section className="lb-host-dash-card rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Meta de regalos</p>
           <span className="text-[11px] font-bold tabular-nums text-violet-300">
@@ -207,7 +207,7 @@ export function HostLiveLeftRail({ stats, recentGifts, nowMs: _nowMs, onOpenWish
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
+      <section className="lb-host-dash-card rounded-2xl border border-white/10 bg-zinc-950/80 p-3">
         <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Regalos recientes</p>
         <ul className="mt-2 space-y-2">
           {recentGifts.length === 0 ? (
