@@ -1016,6 +1016,30 @@ html[data-lb-theme='light'] .lb-live-room {
   color: var(--lb-text);
 }
 
+/* Reloj EN VIVO: el escenario negro fuerza texto blanco; este recuento sí sigue el tema. */
+.lb-live-elapsed {
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+html[data-lb-theme] .lb-live-stage-hud .lb-live-elapsed,
+html[data-lb-theme] .lb-live-stage-section .lb-live-elapsed,
+html[data-lb-theme='light'] main .lb-live-stage-hud .lb-live-elapsed,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-elapsed {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+
+html[data-lb-theme='light'] .lb-live-stage-hud .lb-live-elapsed,
+html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-elapsed {
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+  border-radius: 0.4rem;
+  padding: 0.2rem 0.5rem;
+}
+
 /* LIVE host dashboard chrome (left cards + bottom bar). Same tokens as .lb-live-chat-float.
    Video stage + overlays on video stay untouched. */
 html[data-lb-theme='light'] .lb-host-left .lb-host-dash-card,

@@ -5465,7 +5465,7 @@ function CreatorStage({
               <span className="live-dot inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-bold text-white">
                 <Radio size={11} /> EN VIVO
               </span>
-              <span className="hidden tabular-nums text-xs font-semibold text-zinc-200 sm:inline">
+              <span className="lb-live-elapsed hidden sm:inline">
                 {formatLiveElapsed(liveStats?.startedAt, endedAtMsRef.current || undefined)}
               </span>
               <button
