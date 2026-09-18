@@ -1750,7 +1750,158 @@ html[data-lb-theme='light'] .from-cyan-500.to-fuchsia-500.text-white {
 html[data-lb-theme='light'] .lb-sidebar [class*='#00E5FF'],
 html[data-lb-theme='light'] .lb-sidebar-wallet__amount,
 html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__amount {
-  color: #0891b2;
+  color: var(--lb-accent-secondary);
+}
+
+/* Sidebar Transmitir + mini-billetera: sigue html[data-lb-theme], no isla oscura */
+html[data-lb-theme='light'] .lb-sidebar-dock,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-dock {
+  border-color: var(--lb-line);
+  background: var(--lb-surface);
+  color: var(--lb-text);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 4%, transparent),
+    0 8px 20px rgba(24, 24, 27, 0.06);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-dock::before,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-dock::before {
+  opacity: 0.28;
+}
+
+html[data-lb-theme='light'] .lb-sidebar-cta,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-cta {
+  border-color: color-mix(in srgb, var(--lb-accent-secondary) 42%, var(--lb-line));
+  background: color-mix(in srgb, var(--lb-accent-secondary) 12%, var(--lb-surface));
+  color: var(--lb-accent-text);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 6%, transparent),
+    0 4px 12px color-mix(in srgb, var(--lb-accent-secondary) 12%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-cta::before,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-cta::before {
+  opacity: 0.16;
+}
+
+html[data-lb-theme='light'] .lb-sidebar-cta::after,
+html[data-lb-theme='light'] .lb-sidebar-wallet__recharge::after,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-cta::after,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__recharge::after {
+  opacity: 0;
+}
+
+html[data-lb-theme='light'] .lb-sidebar-cta:hover,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-cta:hover {
+  border-color: color-mix(in srgb, var(--lb-accent-secondary) 62%, var(--lb-line));
+  background: color-mix(in srgb, var(--lb-accent-secondary) 18%, var(--lb-surface));
+  color: var(--lb-accent-text);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-cta.is-active,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-cta.is-active {
+  border-color: var(--lb-accent-secondary);
+  color: var(--lb-accent-text);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-cta__icon,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-cta__icon {
+  color: var(--lb-accent-text);
+  filter: none;
+}
+
+html[data-lb-theme='light'] .lb-sidebar-wallet,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet {
+  border-color: var(--lb-line);
+  background: var(--lb-surface-2);
+  color: var(--lb-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lb-text) 5%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-wallet__title,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__title {
+  color: var(--lb-text-muted);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-wallet__unit,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__unit {
+  color: var(--lb-text);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-wallet__recharge,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__recharge {
+  border-color: color-mix(in srgb, var(--lb-accent-primary) 40%, var(--lb-line));
+  background: color-mix(in srgb, var(--lb-accent-primary) 12%, var(--lb-surface));
+  color: var(--lb-accent-primary);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lb-text) 5%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-wallet__recharge:hover,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__recharge:hover {
+  border-color: color-mix(in srgb, var(--lb-accent-primary) 58%, var(--lb-line));
+  background: color-mix(in srgb, var(--lb-accent-primary) 18%, var(--lb-surface));
+  color: var(--lb-accent-primary);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-wallet__withdraw,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__withdraw {
+  border-color: color-mix(in srgb, var(--success) 48%, var(--lb-line));
+  background: color-mix(in srgb, var(--success) 8%, var(--lb-surface));
+  color: var(--success);
+}
+
+html[data-lb-theme='light'] .lb-sidebar-wallet__withdraw:hover,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__withdraw:hover {
+  background: color-mix(in srgb, var(--success) 14%, var(--lb-surface));
+}
+
+html[data-lb-theme='light'] .lb-sidebar-rail-coins {
+  border-color: color-mix(in srgb, var(--lb-accent-secondary) 38%, var(--lb-line));
+  background: color-mix(in srgb, var(--lb-accent-secondary) 12%, var(--lb-surface));
+  color: var(--lb-accent-text);
+}
+
+html[data-lb-theme='dark'] .lb-sidebar-dock,
+html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-dock {
+  border-color: var(--lb-line);
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--lb-accent-secondary) 10%, transparent) 0%,
+      var(--lb-surface) 48%,
+      color-mix(in srgb, var(--lb-accent-primary) 8%, var(--lb-surface)) 100%
+    );
+  color: var(--lb-text);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 8%, transparent),
+    0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+html[data-lb-theme='dark'] .lb-sidebar-dock::before,
+html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-dock::before {
+  opacity: 0.55;
+}
+
+html[data-lb-theme='dark'] .lb-sidebar-cta,
+html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-cta {
+  color: var(--lb-text);
+}
+
+html[data-lb-theme='dark'] .lb-sidebar-wallet,
+html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-wallet {
+  border-color: var(--lb-line);
+  background: color-mix(in srgb, var(--lb-surface-2) 88%, var(--lb-surface));
+  color: var(--lb-text);
+}
+
+html[data-lb-theme='dark'] .lb-sidebar-wallet__recharge,
+html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-wallet__recharge {
+  color: var(--lb-text);
+}
+
+html[data-lb-theme='dark'] .lb-sidebar-wallet__withdraw,
+html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-wallet__withdraw {
+  color: var(--success);
 }
 
 /* —— Publicaciones + comentarios: contraste por superficie —— */

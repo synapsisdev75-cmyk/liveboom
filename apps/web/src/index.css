@@ -1917,18 +1917,21 @@ html:has(.lb-auth-page) #root {
   isolation: isolate;
   overflow: visible;
   border-radius: 1.15rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--lb-line, rgba(255, 255, 255, 0.12));
   background:
-    linear-gradient(165deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 42%, rgba(18, 12, 36, 0.4) 100%),
-    rgba(10, 12, 22, 0.42);
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--lb-accent-secondary) 12%, transparent) 0%,
+      color-mix(in srgb, var(--lb-surface) 92%, transparent) 46%,
+      color-mix(in srgb, var(--lb-accent-primary) 10%, var(--lb-surface)) 100%
+    );
   padding: 0.7rem 0.65rem 0.75rem;
-  backdrop-filter: blur(22px) saturate(1.4);
-  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  color: var(--lb-text, #f4f4f5);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    -8px -10px 28px rgba(0, 200, 255, 0.14),
-    10px 14px 32px rgba(168, 85, 247, 0.22),
-    0 12px 28px rgba(0, 0, 0, 0.28);
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 10%, transparent),
+    0 8px 22px color-mix(in srgb, var(--lb-bg, #0a0a0b) 35%, transparent);
 }
 
 .lb-sidebar-dock::before {
@@ -1939,9 +1942,17 @@ html:has(.lb-auth-page) #root {
   z-index: 0;
   border-radius: inherit;
   background:
-    radial-gradient(ellipse 70% 55% at 15% 0%, rgba(0, 210, 255, 0.18), transparent 70%),
-    radial-gradient(ellipse 65% 50% at 90% 100%, rgba(192, 38, 211, 0.22), transparent 72%);
-  opacity: 0.95;
+    radial-gradient(
+      ellipse 70% 55% at 15% 0%,
+      color-mix(in srgb, var(--lb-accent-secondary) 16%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 65% 50% at 90% 100%,
+      color-mix(in srgb, var(--lb-accent-primary) 14%, transparent),
+      transparent 72%
+    );
+  opacity: 0.7;
 }
 
 .lb-sidebar-dock > * {
@@ -1958,32 +1969,33 @@ html:has(.lb-auth-page) #root {
   position: relative;
   display: flex;
   width: 100%;
-  min-height: 2.45rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
   isolation: isolate;
   overflow: visible;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid color-mix(in srgb, var(--lb-accent-secondary) 48%, var(--lb-line));
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.04) 42%, rgba(0, 180, 255, 0.12) 100%),
-    rgba(12, 18, 32, 0.55);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lb-accent-secondary) 26%, var(--lb-surface)) 0%,
+      color-mix(in srgb, var(--lb-surface) 88%, var(--lb-accent-secondary)) 100%
+    );
   padding: 0.4rem 0.75rem;
-  font-size: 0.8125rem;
+  font-size: clamp(0.78rem, 0.72rem + 0.2vw, 0.84rem);
   font-weight: 800;
   line-height: 1;
-  color: #fff;
-  text-shadow: 0 1px 8px rgba(0, 210, 255, 0.35);
-  backdrop-filter: blur(18px) saturate(1.35);
-  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  color: var(--lb-text, #f4f4f5);
+  text-shadow: none;
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.42),
-    inset 0 -1px 0 rgba(0, 180, 255, 0.2),
-    0 0 0 1px rgba(0, 210, 255, 0.12),
-    0 10px 22px rgba(0, 170, 255, 0.38),
-    0 18px 40px rgba(120, 40, 255, 0.22);
-  transition: filter 0.15s ease, box-shadow 0.2s ease, transform 0.15s ease, border-color 0.15s ease;
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 12%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--lb-accent-secondary) 16%, transparent),
+    0 8px 18px color-mix(in srgb, var(--lb-accent-secondary) 18%, transparent);
+  transition: background-color 0.15s ease, box-shadow 0.2s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 
 .lb-sidebar-cta::before {
@@ -2014,36 +2026,44 @@ html:has(.lb-auth-page) #root {
   z-index: -1;
   height: 70%;
   border-radius: 999px;
-  background: radial-gradient(ellipse at center, rgba(0, 220, 255, 0.75) 0%, rgba(0, 140, 255, 0.2) 55%, transparent 75%);
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--lb-accent-secondary) 42%, transparent) 0%,
+    color-mix(in srgb, var(--lb-accent-secondary) 12%, transparent) 55%,
+    transparent 75%
+  );
   filter: blur(10px);
+  opacity: 0.55;
 }
 
 .lb-sidebar-cta:hover {
-  filter: brightness(1.08);
-  border-color: rgba(120, 240, 255, 0.55);
+  border-color: color-mix(in srgb, var(--lb-accent-secondary) 68%, var(--lb-line));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lb-accent-secondary) 34%, var(--lb-surface)) 0%,
+      color-mix(in srgb, var(--lb-surface) 82%, var(--lb-accent-secondary)) 100%
+    );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -1px 0 rgba(0, 180, 255, 0.28),
-    0 0 0 1px rgba(0, 220, 255, 0.22),
-    0 12px 28px rgba(0, 190, 255, 0.48),
-    0 20px 44px rgba(160, 60, 255, 0.28);
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 14%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--lb-accent-secondary) 24%, transparent),
+    0 10px 22px color-mix(in srgb, var(--lb-accent-secondary) 24%, transparent);
 }
 
 .lb-sidebar-cta.is-active {
-  border-color: rgba(103, 232, 249, 0.65);
+  border-color: color-mix(in srgb, var(--lb-accent-text) 70%, var(--lb-line));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 0 0 2px color-mix(in srgb, #67e8f9 55%, transparent),
-    0 12px 28px rgba(0, 190, 255, 0.45),
-    0 18px 40px rgba(168, 85, 247, 0.28);
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 14%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--lb-accent-text) 40%, transparent),
+    0 10px 22px color-mix(in srgb, var(--lb-accent-secondary) 22%, transparent);
 }
 
 .lb-sidebar-cta__icon {
   position: relative;
   z-index: 1;
   flex-shrink: 0;
-  color: #e8fbff;
-  filter: drop-shadow(0 0 6px rgba(0, 220, 255, 0.55));
+  color: var(--lb-accent-text, #67e8f9);
+  filter: drop-shadow(0 0 6px var(--lb-accent-glow, transparent));
 }
 
 .lb-sidebar-wallet {
@@ -2051,16 +2071,21 @@ html:has(.lb-auth-page) #root {
   min-width: 0;
   overflow: visible;
   border-radius: 0.95rem;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--lb-line, rgba(255, 255, 255, 0.12));
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)),
-    rgba(12, 14, 24, 0.45);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lb-text) 6%, transparent),
+      transparent
+    ),
+    color-mix(in srgb, var(--lb-surface-2) 82%, var(--lb-surface));
   padding: 0.55rem 0.7rem 0.6rem;
-  backdrop-filter: blur(14px) saturate(1.25);
-  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  color: var(--lb-text, #f4f4f5);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 8px 20px rgba(0, 0, 0, 0.22);
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 8%, transparent),
+    0 6px 16px color-mix(in srgb, var(--lb-bg, #0a0a0b) 22%, transparent);
 }
 
 .lb-sidebar-wallet__title {
@@ -2069,7 +2094,7 @@ html:has(.lb-auth-page) #root {
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-muted, #a1a1aa);
+  color: var(--lb-text-muted, var(--text-muted, #a1a1aa));
 }
 
 .lb-sidebar-wallet__balance {
@@ -2085,27 +2110,27 @@ html:has(.lb-auth-page) #root {
   font-size: clamp(1.15rem, 0.95rem + 0.9vw, 1.45rem);
   font-weight: 900;
   letter-spacing: -0.03em;
-  color: #00e5ff;
+  color: var(--lb-accent-secondary, #22d3ee);
 }
 
 .lb-sidebar-wallet__unit {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-primary, #fff);
+  color: var(--lb-text, var(--text-primary, #fff));
 }
 
 .lb-sidebar-wallet__recharge,
 .lb-sidebar-wallet__withdraw {
   display: flex;
   width: 100%;
-  min-height: 2.15rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: clamp(0.72rem, 0.68rem + 0.18vw, 0.78rem);
   font-weight: 700;
   line-height: 1;
-  transition: filter 0.15s ease, background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .lb-sidebar-wallet__recharge {
@@ -2113,17 +2138,19 @@ html:has(.lb-auth-page) #root {
   isolation: isolate;
   overflow: visible;
   margin-top: 0.45rem;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid color-mix(in srgb, var(--lb-accent-primary) 48%, var(--lb-line));
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(168, 85, 247, 0.22) 100%),
-    rgba(24, 12, 40, 0.55);
-  color: #fff;
-  backdrop-filter: blur(14px) saturate(1.25);
-  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lb-accent-primary) 24%, var(--lb-surface)) 0%,
+      color-mix(in srgb, var(--lb-surface) 86%, var(--lb-accent-primary)) 100%
+    );
+  color: var(--lb-text, #f4f4f5);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 8px 20px rgba(168, 85, 247, 0.35),
-    0 14px 32px rgba(236, 72, 153, 0.2);
+    inset 0 1px 0 color-mix(in srgb, var(--lb-text) 10%, transparent),
+    0 8px 18px color-mix(in srgb, var(--lb-accent-primary) 18%, transparent);
 }
 
 .lb-sidebar-wallet__recharge::after {
@@ -2136,26 +2163,38 @@ html:has(.lb-auth-page) #root {
   z-index: -1;
   height: 70%;
   border-radius: 999px;
-  background: radial-gradient(ellipse at center, rgba(236, 72, 153, 0.7) 0%, rgba(168, 85, 247, 0.25) 55%, transparent 75%);
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--lb-accent-primary) 40%, transparent) 0%,
+    color-mix(in srgb, var(--lb-accent-primary) 14%, transparent) 55%,
+    transparent 75%
+  );
   filter: blur(10px);
+  opacity: 0.5;
 }
 
 .lb-sidebar-wallet__recharge:hover {
-  filter: brightness(1.08);
+  border-color: color-mix(in srgb, var(--lb-accent-primary) 68%, var(--lb-line));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lb-accent-primary) 32%, var(--lb-surface)) 0%,
+      color-mix(in srgb, var(--lb-surface) 80%, var(--lb-accent-primary)) 100%
+    );
 }
 
 .lb-sidebar-wallet__withdraw {
   margin-top: 0.32rem;
-  border: 1.5px solid color-mix(in srgb, #10b981 70%, rgba(255, 255, 255, 0.35));
-  background: color-mix(in srgb, #10b981 8%, rgba(255, 255, 255, 0.04));
-  color: #34d399;
+  border: 1.5px solid color-mix(in srgb, var(--success, #34d399) 55%, var(--lb-line));
+  background: color-mix(in srgb, var(--success, #34d399) 10%, var(--lb-surface));
+  color: var(--success, #34d399);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lb-text) 8%, transparent);
 }
 
 .lb-sidebar-wallet__withdraw:hover {
-  background: rgba(16, 185, 129, 0.1);
+  background: color-mix(in srgb, var(--success, #34d399) 16%, var(--lb-surface));
 }
 
 /* Mensajes (escritorio): rail de iconos + transición suave encoger/recoger */
@@ -2204,10 +2243,10 @@ html:has(.lb-auth-page) #root {
   }
 
   .lb-sidebar-cta--rail {
-    width: 2.35rem;
-    min-width: 2.35rem;
-    height: 2.35rem;
-    min-height: 2.35rem;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    height: 2.75rem;
+    min-height: 2.75rem;
     margin-inline: auto;
     padding: 0;
     border-radius: 999px;
@@ -2221,13 +2260,13 @@ html:has(.lb-auth-page) #root {
   .lb-sidebar-rail-coins {
     display: grid;
     place-items: center;
-    width: 2.35rem;
-    height: 2.35rem;
+    width: 2.75rem;
+    height: 2.75rem;
     margin-inline: auto;
     border-radius: 999px;
-    border: 1px solid rgba(34, 211, 238, 0.35);
-    background: rgba(8, 145, 178, 0.18);
-    color: #22d3ee;
+    border: 1px solid color-mix(in srgb, var(--lb-accent-secondary) 40%, var(--lb-line));
+    background: color-mix(in srgb, var(--lb-accent-secondary) 16%, var(--lb-surface));
+    color: var(--lb-accent-text, var(--lb-accent-secondary));
   }
 
   .lb-sidebar-rail-coins__n {
@@ -2290,19 +2329,16 @@ html:has(.lb-auth-page) #root {
 }
 
 @media (pointer: coarse) {
-  .lb-sidebar-cta {
-    min-height: 2.75rem;
-  }
-
+  .lb-sidebar-cta,
   .lb-sidebar-wallet__recharge,
   .lb-sidebar-wallet__withdraw {
-    min-height: 2.5rem;
+    min-height: 2.75rem;
   }
 }
 
 @media (max-height: 760px) {
   .lb-sidebar-cta {
-    min-height: 2.25rem;
+    min-height: 2.5rem;
     padding-block: 0.32rem;
   }
 
@@ -2316,7 +2352,7 @@ html:has(.lb-auth-page) #root {
 
   .lb-sidebar-wallet__recharge,
   .lb-sidebar-wallet__withdraw {
-    min-height: 2rem;
+    min-height: 2.5rem;
   }
 }
 
@@ -2804,11 +2840,15 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 
   .lb-sidebar-dock {
-    background: #15161e;
+    background: var(--lb-surface, #15161e);
   }
 
   .lb-sidebar-cta {
-    background: linear-gradient(90deg, #0891b2, #7c3aed);
+    background: color-mix(in srgb, var(--lb-accent-secondary) 28%, var(--lb-surface));
+  }
+
+  .lb-sidebar-wallet__recharge {
+    background: color-mix(in srgb, var(--lb-accent-primary) 26%, var(--lb-surface));
   }
 }
 
