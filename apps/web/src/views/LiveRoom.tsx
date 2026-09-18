@@ -569,7 +569,6 @@ export function LiveRoom() {
   const [gateLock, setGateLock] = useState<LockInfo | null>(null);
   const [gateSessionId, setGateSessionId] = useState<string | null>(null);
   const [gateSendingGiftId, setGateSendingGiftId] = useState<string | null>(null);
-  const [gateUnlockFlash, setGateUnlockFlash] = useState(false);
   const [gateGiftError, setGateGiftError] = useState<string | null>(null);
   const [gateRequestStatus, setGateRequestStatus] = useState<
     'outside' | 'pending' | 'approved' | 'rejected'
@@ -962,13 +961,10 @@ export function LiveRoom() {
       });
       setGateLock(null);
       setViewerPaused(false);
-      setGateUnlockFlash(true);
-      window.setTimeout(() => setGateUnlockFlash(false), 1200);
       await fetchToken();
       return true;
     } catch {
       gateClaimOnceRef.current = null;
-      setGateUnlockFlash(false);
       setGateRequestStatus((cur) => (cur === 'approved' ? 'outside' : cur));
       return false;
     }
@@ -1081,7 +1077,6 @@ export function LiveRoom() {
     gateClaimOnceRef.current = null;
     setGateGiftError(null);
     setGateSendingGiftId(null);
-    setGateUnlockFlash(false);
     setGateRequestStatus('outside');
     setGateRejectCount(0);
     prevGateReqRef.current = 'outside';
