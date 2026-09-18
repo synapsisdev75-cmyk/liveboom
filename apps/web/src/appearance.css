@@ -895,6 +895,116 @@ html[data-lb-theme='light'] .lb-live-stage .lb-live-chat-input::placeholder {
   }
 }
 
+.gift-box-strip {
+  background: var(--lb-surface);
+  color: var(--lb-text);
+  border-color: var(--lb-line);
+}
+
+.gift-box-strip__title,
+.gift-box-strip__hint {
+  color: var(--lb-text-muted);
+}
+
+.gift-box-strip__coins,
+.gift-box-item__coins {
+  color: #fbbf24;
+}
+
+.gift-box-strip__close {
+  color: var(--lb-text-muted);
+}
+
+.gift-box-strip__close:hover {
+  background: color-mix(in srgb, var(--lb-text) 8%, transparent);
+  color: var(--lb-text);
+}
+
+.gift-box-strip__error,
+.lb-gift-confirm__error {
+  color: #e879f9;
+}
+
+.gift-box-item {
+  background: var(--lb-surface-2);
+  border-color: var(--lb-line);
+  color: var(--lb-text);
+}
+
+.gift-box-item.is-busy {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--lb-accent-secondary) 60%, transparent);
+}
+
+.gift-box-item__name {
+  color: var(--lb-text-muted);
+}
+
+.lb-gift-confirm {
+  background: color-mix(in srgb, var(--lb-accent-primary) 14%, var(--lb-surface));
+  border: 1px solid color-mix(in srgb, var(--lb-accent-primary) 28%, var(--lb-line));
+  color: var(--lb-text);
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.lb-gift-confirm__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--lb-text);
+}
+
+.lb-gift-confirm__cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.15rem;
+  font-size: 11px;
+  color: #fbbf24;
+}
+
+.lb-gift-confirm__cost-hint {
+  margin-left: 0.25rem;
+  color: var(--lb-text-muted);
+}
+
+.lb-gift-confirm__label {
+  margin-top: 0.5rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lb-text-muted);
+}
+
+.lb-gift-confirm__mult {
+  border: 1px solid var(--lb-line);
+  background: var(--lb-surface-2);
+  color: var(--lb-text);
+}
+
+.lb-gift-confirm__mult.is-on {
+  border-color: var(--lb-accent-secondary);
+  background: color-mix(in srgb, var(--lb-accent-secondary) 22%, var(--lb-surface));
+  color: var(--lb-accent-text);
+}
+
+.lb-gift-confirm__mult.is-off {
+  color: var(--lb-text-muted);
+  opacity: 0.7;
+}
+
+.lb-gift-confirm__cancel {
+  border: 1px solid var(--lb-line);
+  background: transparent;
+  color: var(--lb-text);
+}
+
+.lb-gift-confirm__send,
+.lb-gift-confirm__recharge {
+  background: linear-gradient(90deg, var(--lb-accent-primary), var(--lb-accent-secondary));
+  color: var(--text-on-accent, #18181b);
+}
+
 .lb-live-chat-comment-btn {
   background: rgba(0, 0, 0, 0.65);
   color: #fff;

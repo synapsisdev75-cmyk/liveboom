@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { sendLiveboomGift } from '../../lib/giftsFirestore';
-import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
+import { addLevelXp } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { FloatingGift } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
+import type { GiftMultiplier } from '../live/GiftSendConfirm';
 import { CoinModal } from '../wallet/CoinModal';
 import { useT } from '../../i18n';
 
@@ -76,16 +77,18 @@ export function ReelGiftControls({
     setFloats((current) => [...current.slice(-2), { id, giftId, left, senderName }]);
   }
 
-  async function sendGift(giftId: string) {
+  async function sendGift(giftId: string, multiplier: GiftMultiplier = 1) {
     if (sendingGift || isSelf) return;
     const catalog = findLiveGift(giftId);
     if (!catalog || !profile) {
       setGiftError('Inicia sesión para enviar regalos');
       return;
     }
-    if (coins < catalog.coins) {
+    const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
+    const totalCoins = catalog.coins * mult;
+    if (coins < totalCoins) {
       setGiftError('No tienes Coins suficientes');
-      setRechargeNeeded(catalog.coins);
+      setRechargeNeeded(totalCoins);
       return;
     }
 
@@ -105,10 +108,10 @@ export function ReelGiftControls({
         recipientUid: authorUid,
         clientId,
         postId,
+        multiplier: mult,
       });
       setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
-      void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
+      void addLevelXp(profile.firebaseUid, totalCoins).catch(() => undefined);
       pushFloat(catalog.id, senderName);
       setOpenGifts(false);
     } catch (error) {
@@ -186,7 +189,7 @@ export function ReelGiftControls({
             onRecharge={() => setRechargeOpen(true)}
             compact
             floating
-            onSelect={(id) => void sendGift(id)}
+            onSelect={(id, multiplier) => void sendGift(id, multiplier ?? 1)}
             onClose={closeGifts}
           />
         </GiftCatalogLayer>

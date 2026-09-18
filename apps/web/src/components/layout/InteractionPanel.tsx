@@ -39,21 +39,23 @@ export function InteractionPanel() {
     socket.emit('chat:send', { streamId: stream.id, text, sourceLang: getLocale() });
   }
 
-  async function sendGift(giftId: string) {
+  async function sendGift(giftId: string, multiplier: 1 | 2 | 4 | 8 = 1) {
     if (!stream) return;
     const gift = giftCatalog.find((item) => item.id === giftId);
     if (!gift) return;
-    if (coins < gift.coins) {
+    const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
+    const total = gift.coins * mult;
+    if (coins < total) {
       setToast('Saldo insuficiente. Recarga coins para continuar.');
       window.setTimeout(() => setToast(null), 2600);
       return;
     }
-    setCoins(coins - gift.coins);
+    setCoins(coins - total);
     useUiStore.getState().toggleGifts();
     try {
       const result = await api<{ coins: number }>(`/api/streams/${stream.id}/gifts`, {
         method: 'POST',
-        body: JSON.stringify({ giftId: gift.id }),
+        body: JSON.stringify({ giftId: gift.id, multiplier: mult }),
       });
       setCoins(result.coins);
     } catch (error) {
@@ -125,7 +127,7 @@ export function InteractionPanel() {
                 coins={coins}
                 compact
                 floating
-                onSelect={(id) => void sendGift(id)}
+                onSelect={(id, multiplier) => void sendGift(id, multiplier ?? 1)}
                 onClose={toggleGifts}
               />
             </GiftCatalogLayer>

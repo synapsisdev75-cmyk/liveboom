@@ -59,7 +59,7 @@ import {
   validateCoinsBalance,
 } from '../../lib/giftsFirestore';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
-import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
+import { addLevelXp } from '../../lib/profileFirestore';
 import { FloatingGift, GiftVisual } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
@@ -1424,17 +1424,19 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     ]);
   }
 
-  async function sendGiftMessage(giftId: string) {
+  async function sendGiftMessage(giftId: string, multiplier: 1 | 2 | 4 | 8 = 1) {
     if (sendingGift || !profile || !activeFriend) return;
     const catalog = findLiveGift(giftId);
     if (!catalog) {
       setGiftError('Regalo no válido');
       return;
     }
+    const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
+    const totalCoins = catalog.coins * mult;
     const coins = profile.coinsBalance ?? 0;
-    if (!validateCoinsBalance(coins, catalog.coins)) {
+    if (!validateCoinsBalance(coins, totalCoins)) {
       setGiftError('No tienes Coins suficientes');
-      setRechargeNeeded(catalog.coins);
+      setRechargeNeeded(totalCoins);
       return;
     }
     setGiftError(null);
@@ -1451,11 +1453,11 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         recipientUid: activeFriend.uid,
         clientId: `chat-${chatId || activeFriend.uid}-${Date.now()}`,
         roomName: `chat:${activeFriend.username}`,
+        multiplier: mult,
       });
       setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
-      void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
-      await send(`🎁 ${catalog.name}`, { giftId: catalog.id });
+      void addLevelXp(profile.firebaseUid, totalCoins).catch(() => undefined);
+      await send(mult > 1 ? `🎁 ${catalog.name} x${mult}` : `🎁 ${catalog.name}`, { giftId: catalog.id });
       animateGiftInChat(catalog.id, senderName);
       setGiftsOpen(false);
     } catch (err) {
@@ -2904,7 +2906,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             }}
             compact
             floating
-            onSelect={(id) => void sendGiftMessage(id)}
+            onSelect={(id, multiplier) => void sendGiftMessage(id, multiplier ?? 1)}
             onClose={() => setGiftsOpen(false)}
           />
         </GiftCatalogLayer>

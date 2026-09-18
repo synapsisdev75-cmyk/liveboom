@@ -99,7 +99,7 @@ import {
 } from '../lib/liveMediaDevices';
 import { ensureNativeLiveAvPermissions } from '../lib/nativeLiveMedia';
 import { followUser, isFollowing, unfollowUser } from '../lib/socialFirestore';
-import { CoinModal, RechargeButton } from '../components/wallet/CoinModal';
+import { CoinModal } from '../components/wallet/CoinModal';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { api, apiPublic, ApiError } from '../lib/api';
 import {
@@ -6843,7 +6843,6 @@ function ChatPanel({
   const [openGifts, setOpenGifts] = useState(false);
   const [sideTab, setSideTab] = useState<'chat' | 'gifts'>('chat');
   const [pendingGiftId, setPendingGiftId] = useState<string | null>(null);
-  const [giftMultiplier, setGiftMultiplier] = useState<1 | 2 | 4 | 8>(1);
   const [giftError, setGiftError] = useState<string | null>(null);
   const [sendingGift, setSendingGift] = useState<string | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
@@ -7152,7 +7151,7 @@ function ChatPanel({
       setGiftError('Saldo insuficiente. Recarga coins para continuar.');
       setRechargeNeeded(totalCoins);
       setOpenGifts(true);
-      setPendingGiftId(null);
+      setPendingGiftId(giftId);
       return;
     }
 
@@ -7162,7 +7161,6 @@ function ChatPanel({
       setSendingGift(giftId);
       setPendingGiftId(null);
       setOpenGifts(false);
-      setGiftMultiplier(1);
       const previousCoins = coins;
       const clientId = `hold-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       try {
@@ -7185,7 +7183,6 @@ function ChatPanel({
         });
         if (typeof result.senderBalance === 'number') {
           setCoins(result.senderBalance);
-          void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
         }
         if (result.unlocked || result.requestStatus === 'approved') {
           setGiftError(null);
@@ -7209,9 +7206,6 @@ function ChatPanel({
     setGiftError(null);
     setRechargeNeeded(null);
     setSendingGift(giftId);
-    setPendingGiftId(null);
-    setOpenGifts(false);
-    setGiftMultiplier(1);
     const previousCoins = coins;
     const clientId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const senderName = profile.displayName || profile.handle || 'Liveboomer';
@@ -7228,7 +7222,8 @@ function ChatPanel({
         multiplier: mult,
       });
       setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      setPendingGiftId(null);
+      setOpenGifts(false);
       void addLevelXp(profile.firebaseUid, totalCoins)
         .then((xp) => {
           levelXpRef.current = xp;
@@ -7528,89 +7523,7 @@ function ChatPanel({
         ) : null}
       </div>
       <div className="lb-live-chat-float__input pointer-events-auto relative shrink-0 space-y-0 px-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1.5 sm:px-3 lg:border-t lg:border-white/10 lg:bg-transparent lg:p-3">
-        {openGifts && pendingGiftId ? (
-          <div className="mb-2 rounded-xl border border-cyan-400/25 bg-zinc-950/95 p-2.5 backdrop-blur sm:p-3">
-            {(() => {
-              const gift = findLiveGift(pendingGiftId);
-              if (!gift) return null;
-              const total = gift.coins * giftMultiplier;
-              const canAfford = coins >= total;
-              return (
-                <>
-                  <div className="flex items-center gap-2.5 sm:gap-3">
-                    <GiftIcon giftId={gift.id} size={40} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-white">
-                        ¿Enviar {gift.name}?
-                      </p>
-                      <p className="text-[11px] text-amber-300">
-                        {total.toLocaleString('es-CO')} coins
-                        {giftMultiplier > 1 ? (
-                          <span className="ml-1 text-zinc-400">
-                            ({gift.coins.toLocaleString('es-CO')} ×{giftMultiplier})
-                          </span>
-                        ) : null}
-                      </p>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                    Multiplicador
-                  </p>
-                  <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-                    {([1, 2, 4, 8] as const).map((m) => {
-                      const cost = gift.coins * m;
-                      const ok = coins >= cost;
-                      const active = giftMultiplier === m;
-                      return (
-                      <button
-                          key={m}
-                        type="button"
-                          onClick={() => setGiftMultiplier(m)}
-                          className={`min-h-10 rounded-lg border text-xs font-bold transition active:scale-95 ${
-                            active
-                              ? 'border-cyan-400 bg-cyan-400/20 text-cyan-200'
-                              : ok
-                                ? 'border-white/15 bg-white/5 text-zinc-200'
-                                : 'border-white/10 bg-zinc-900/80 text-zinc-500'
-                          }`}
-                        >
-                          x{m}
-                      </button>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-2.5 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPendingGiftId(null);
-                        setGiftMultiplier(1);
-                      }}
-                      className="min-h-11 flex-1 rounded-lg border border-white/15 px-3 text-sm font-semibold text-zinc-200"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(sendingGift) || !canAfford}
-                      onClick={() => void sendGift(gift.id, giftMultiplier)}
-                      className="min-h-11 flex-[1.4] rounded-lg bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-3 text-sm font-bold text-zinc-950 disabled:opacity-60"
-                    >
-                      {sendingGift ? '…' : `Enviar x${giftMultiplier}`}
-                    </button>
-                </div>
-                  {giftError ? (
-                    <p className="mt-2 text-center text-xs text-fuchsia-400">{giftError}</p>
-                  ) : null}
-                  {rechargeNeeded != null && coins < rechargeNeeded ? (
-                    <RechargeButton onClick={() => setRechargeOpen(true)} className="mt-2 w-full text-sm" />
-                  ) : null}
-                </>
-              );
-            })()}
-          </div>
-        ) : null}
-        {openGifts && !pendingGiftId ? (
+        {openGifts ? (
           <div className="-mx-3 mb-2">
             <GiftBoxStrip
               gifts={giftCatalog}
@@ -7619,16 +7532,16 @@ function ChatPanel({
               error={giftError}
               rechargeNeeded={rechargeNeeded}
               onRecharge={() => setRechargeOpen(true)}
-              onSelect={(id) => {
+              preselectGiftId={pendingGiftId}
+              onCancelConfirm={() => setPendingGiftId(null)}
+              onSelect={(id, multiplier) => {
                 setGiftError(null);
                 setRechargeNeeded(null);
-                setGiftMultiplier(1);
-                setPendingGiftId(id);
+                void sendGift(id, multiplier ?? 1);
               }}
               onClose={() => {
                 setOpenGifts(false);
                 setPendingGiftId(null);
-                setGiftMultiplier(1);
                 setGiftError(null);
                 setRechargeNeeded(null);
               }}
@@ -7650,7 +7563,6 @@ function ChatPanel({
                   type="button"
                   onClick={() => {
                     setGiftError(null);
-                    setGiftMultiplier(1);
                     setPendingGiftId(gift.id);
                     setOpenGifts(true);
                     setSideTab('gifts');

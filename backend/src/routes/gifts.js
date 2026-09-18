@@ -99,13 +99,23 @@ function earningTypeFromBody(body) {
   return 'EARNING_GIFT';
 }
 
+function lookupRoomName(roomName) {
+  const raw = String(roomName || '').trim();
+  if (/^chat:/i.test(raw)) return raw.slice(5).trim();
+  return raw;
+}
+
 router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const giftId = req.body?.giftId;
-  const roomName = typeof req.body?.roomName === 'string' ? req.body.roomName.trim() : '';
+  const roomName = lookupRoomName(
+    typeof req.body?.roomName === 'string' ? req.body.roomName.trim() : '',
+  );
   const gift = findGift(giftId);
   const rawMult = Math.floor(Number(req.body?.multiplier) || 1);
   const multiplier = [1, 2, 4, 8].includes(rawMult) ? rawMult : 1;
   const totalCoins = gift ? gift.coins * multiplier : 0;
+  const requestedRecipient =
+    typeof req.body?.recipientUid === 'string' ? req.body.recipientUid.trim() : '';
 
   if (!gift || !roomName) {
     res.status(400).json({ error: 'giftId y roomName son obligatorios' });
@@ -133,7 +143,14 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   };
 
   try {
-    const recipientUid = await resolveRecipientUid(roomName, senderUid);
+    if (requestedRecipient && requestedRecipient === senderUid) {
+      res.status(400).json({ error: 'No puedes enviarte un regalo a ti mismo' });
+      return;
+    }
+    const recipientUid =
+      requestedRecipient && requestedRecipient !== senderUid
+        ? requestedRecipient
+        : await resolveRecipientUid(roomName, senderUid);
     if (recipientUid === senderUid) {
       res.status(400).json({ error: 'No puedes enviarte un regalo a ti mismo' });
       return;
