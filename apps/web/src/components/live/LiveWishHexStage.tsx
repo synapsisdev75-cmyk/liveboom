@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo } from 'react';
 import { LIVE_WISH_ACTIVE_MAX } from '../../lib/liveGiftsFirestore';
 import { GiftIcon } from './FloatingGift';
 
@@ -10,6 +10,22 @@ type HexWish = {
   received: number;
   tone: (typeof HEX_TONES)[number];
 };
+
+function HexCard({ item }: { item: HexWish }) {
+  return (
+    <article className="lb-live-wish-hex__hex" data-tone={item.tone}>
+      <span className="lb-live-wish-hex__glow" aria-hidden />
+      <div className="lb-live-wish-hex__face">
+        <span className="lb-live-wish-hex__art">
+          <GiftIcon giftId={item.id} size={28} />
+        </span>
+        <span className="lb-live-wish-hex__qty">
+          {item.received}/{item.target}
+        </span>
+      </div>
+    </article>
+  );
+}
 
 export function LiveWishHexStage({
   giftIds,
@@ -41,34 +57,31 @@ export function LiveWishHexStage({
   if (items.length === 0) return null;
 
   const n = items.length;
+  const running = n >= 1;
+  const duration = Math.max(10, Math.min(32, 8 + n * 4.2));
+  const group = (hidden: boolean, copy: string) => (
+    <div className="lb-live-wish-hex__group" aria-hidden={hidden || undefined}>
+      {items.map((item, index) => (
+        <div key={`${copy}-${item.id}-${index}`} className="lb-live-wish-hex__slot">
+          <HexCard item={item} />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div
-      className={`lb-live-wish-hex${n === 1 ? ' is-single' : ''}`}
+      className={`lb-live-wish-hex${running ? ' is-run' : ' is-single'}`}
       data-n={n}
       aria-label={`${n} deseos activos`}
     >
       <div className="lb-live-wish-hex__scene">
-        <div className="lb-live-wish-hex__ring">
-          {items.map((item, index) => (
-            <div
-              key={`${item.id}-${index}`}
-              className="lb-live-wish-hex__slot"
-              style={{ '--i': index } as CSSProperties}
-            >
-              <article className="lb-live-wish-hex__hex" data-tone={item.tone}>
-                <span className="lb-live-wish-hex__glow" aria-hidden />
-                <div className="lb-live-wish-hex__face">
-                  <span className="lb-live-wish-hex__art">
-                    <GiftIcon giftId={item.id} size={28} />
-                  </span>
-                  <span className="lb-live-wish-hex__qty">
-                    {item.received}/{item.target}
-                  </span>
-                </div>
-              </article>
-            </div>
-          ))}
+        <div
+          className="lb-live-wish-hex__track"
+          style={running ? { animationDuration: `${duration}s` } : undefined}
+        >
+          {group(false, 'a')}
+          {running ? group(true, 'b') : null}
         </div>
       </div>
     </div>

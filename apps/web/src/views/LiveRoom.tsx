@@ -5520,8 +5520,8 @@ function CreatorStage({
         data-boom-ignore
         className={
           isHost
-            ? `pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/70 to-transparent px-3 pb-6 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 ${verticalHost ? '' : 'lg:pb-10'}`
-            : 'lb-live-viewer-overlay pointer-events-none absolute inset-x-0 top-0 z-10'
+            ? `lb-live-stage-hud pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/70 to-transparent px-3 pb-6 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4${aspectRatio === '9:16' ? ' is-letterbox' : ''}${verticalHost ? '' : ' lg:pb-10'}`
+            : `lb-live-viewer-overlay lb-live-stage-hud pointer-events-none absolute inset-x-0 top-0 z-10${aspectRatio === '9:16' ? ' is-letterbox' : ''}`
         }
       >
         {isHost ? (
