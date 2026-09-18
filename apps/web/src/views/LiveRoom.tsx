@@ -2120,6 +2120,7 @@ function CreatorStage({
   const privatePhaseRef = useRef<PrivateLivePhase | null>(null);
   const qualifiedViewerUidsRef = useRef<string[]>([]);
   const prevPrivatePhaseRef = useRef<PrivateLivePhase | null>(null);
+  const prevPrivacyRequestCountRef = useRef(0);
   const [remoteFrameLayout, setRemoteFrameLayout] = useState<LiveFrameLayout>(() =>
     defaultCameraFrameLayout(aspectRatio),
   );
@@ -2272,6 +2273,15 @@ function CreatorStage({
     setLockDraftIds([]);
     setLockDraftQty({});
   }, [sessionClosed]);
+  useEffect(() => {
+    const count = hudPrivacyRequests.length;
+    const prev = prevPrivacyRequestCountRef.current;
+    prevPrivacyRequestCountRef.current = count;
+    if (privacyRequestsOpen && prev > 0 && count === 0) {
+      setPrivacyRequestsOpen(false);
+      setPrivacyFocusUid(null);
+    }
+  }, [hudPrivacyRequests.length, privacyRequestsOpen]);
   const [viewersList, setViewersList] = useState<SalaInviteViewer[]>([]);
   const [liveStats, setLiveStats] = useState<LiveSessionStats | null>(
     goalCoins || goalLabel
@@ -5789,7 +5799,7 @@ function CreatorStage({
         onClearPrivate={() => void setLiveLock(null)}
       />
       <LivePrivacyRequestsSheet
-        open={Boolean(isHost && privacyRequestsOpen && !sessionClosed)}
+        open={Boolean(isHost && privacyRequestsOpen && !sessionClosed && hudPrivacyRequests.length > 0)}
         requests={hudPrivacyRequests}
         busyUid={privacyBusyUid}
         focusUid={privacyFocusUid}

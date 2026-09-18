@@ -32,7 +32,7 @@ export function LivePrivacyRequestsSheet({
   onAcceptAll,
   focusUid,
 }: Props) {
-  if (!open) return null;
+  if (!open || requests.length === 0) return null;
   const busyAll = busyUid === '*';
   const rowBusy = (uid: string) => busyAll || busyUid === uid;
   const ordered = focusUid
@@ -55,50 +55,46 @@ export function LivePrivacyRequestsSheet({
           </button>
         </div>
         <div className="lb-live-privacy-sheet__list">
-          {ordered.length === 0 ? (
-            <p className="lb-live-privacy-sheet__empty">No hay solicitudes pendientes.</p>
-          ) : (
-            ordered.map((row) => (
-              <div key={row.uid} className="lb-live-privacy-sheet__row">
-                <UserAvatar
-                  uid={row.uid}
-                  src={row.avatarUrl}
-                  username={row.username}
-                  displayName={row.displayName}
-                  size={40}
-                />
-                <div className="lb-live-privacy-sheet__meta">
-                  <p className="lb-live-privacy-sheet__name">{row.displayName}</p>
-                  <p className="lb-live-privacy-sheet__sub">
-                    Envió {row.giftId ? findLiveGift(row.giftId)?.name || row.giftId : 'el regalo'} para entrar
-                  </p>
-                </div>
-                <span className="lb-live-privacy-sheet__time">{relativeTime(row.createdAtMs)}</span>
-                <div className="lb-live-privacy-sheet__actions">
-                  <button
-                    type="button"
-                    disabled={rowBusy(row.uid)}
-                    className="lb-live-privacy-sheet__reject"
-                    onClick={() => onReject(row.uid)}
-                    aria-label="Rechazar"
-                  >
-                    <X size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={rowBusy(row.uid)}
-                    className="lb-live-privacy-sheet__accept"
-                    onClick={() => onAccept(row.uid)}
-                    aria-label="Aceptar"
-                  >
-                    <Check size={16} />
-                  </button>
-                </div>
+          {ordered.map((row) => (
+            <div key={row.uid} className="lb-live-privacy-sheet__row">
+              <UserAvatar
+                uid={row.uid}
+                src={row.avatarUrl}
+                username={row.username}
+                displayName={row.displayName}
+                size={40}
+              />
+              <div className="lb-live-privacy-sheet__meta">
+                <p className="lb-live-privacy-sheet__name">{row.displayName}</p>
+                <p className="lb-live-privacy-sheet__sub">
+                  Envió {row.giftId ? findLiveGift(row.giftId)?.name || row.giftId : 'el regalo'} para entrar
+                </p>
               </div>
-            ))
-          )}
+              <span className="lb-live-privacy-sheet__time">{relativeTime(row.createdAtMs)}</span>
+              <div className="lb-live-privacy-sheet__actions">
+                <button
+                  type="button"
+                  disabled={rowBusy(row.uid)}
+                  className="lb-live-privacy-sheet__reject"
+                  onClick={() => onReject(row.uid)}
+                  aria-label="Rechazar"
+                >
+                  <X size={16} />
+                </button>
+                <button
+                  type="button"
+                  disabled={rowBusy(row.uid)}
+                  className="lb-live-privacy-sheet__accept"
+                  onClick={() => onAccept(row.uid)}
+                  aria-label="Aceptar"
+                >
+                  <Check size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
-        {onAcceptAll && ordered.length > 0 ? (
+        {onAcceptAll ? (
           <button
             type="button"
             className="lb-live-privacy-sheet__accept-all"
