@@ -1,5 +1,4 @@
 import { useMemo, type CSSProperties } from 'react';
-import { findLiveGift } from '../../lib/liveboomGifts';
 import { LIVE_WISH_ACTIVE_MAX } from '../../lib/liveGiftsFirestore';
 import { GiftIcon } from './FloatingGift';
 
@@ -7,10 +6,8 @@ const HEX_TONES = ['cyan', 'gold', 'magenta', 'violet', 'lime'] as const;
 
 type HexWish = {
   id: string;
-  name: string;
-  coins: number;
   target: number;
-  remaining: number;
+  received: number;
   tone: (typeof HEX_TONES)[number];
 };
 
@@ -26,18 +23,14 @@ export function LiveWishHexStage({
   const items = useMemo<HexWish[]>(
     () =>
       giftIds.slice(0, LIVE_WISH_ACTIVE_MAX).flatMap((id, index) => {
-        const gift = findLiveGift(id);
         const target = Math.min(99, Math.max(1, Math.floor(Number(quantities?.[id]) || 1)));
         const got = Math.max(0, Math.floor(Number(received?.[id]) || 0));
-        const remaining = Math.max(0, target - got);
-        if (remaining <= 0) return [];
+        if (got >= target) return [];
         return [
           {
             id,
-            name: gift?.name || id,
-            coins: gift?.coins ?? 0,
             target,
-            remaining,
+            received: got,
             tone: HEX_TONES[index % HEX_TONES.length] ?? 'cyan',
           },
         ];
@@ -66,14 +59,12 @@ export function LiveWishHexStage({
               <article className="lb-live-wish-hex__hex" data-tone={item.tone}>
                 <span className="lb-live-wish-hex__glow" aria-hidden />
                 <div className="lb-live-wish-hex__face">
-                  <span className="lb-live-wish-hex__qty">
-                    {item.target}/{item.remaining}
-                  </span>
                   <span className="lb-live-wish-hex__art">
-                    <GiftIcon giftId={item.id} size={22} />
+                    <GiftIcon giftId={item.id} size={28} />
                   </span>
-                  <p className="lb-live-wish-hex__name">{item.name}</p>
-                  <p className="lb-live-wish-hex__coins">{item.coins} coin</p>
+                  <span className="lb-live-wish-hex__qty">
+                    {item.received}/{item.target}
+                  </span>
                 </div>
               </article>
             </div>

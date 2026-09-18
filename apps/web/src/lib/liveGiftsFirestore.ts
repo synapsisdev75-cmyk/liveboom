@@ -1248,7 +1248,7 @@ export type LiveWishItem = {
   completedAt?: number;
 };
 
-export const LIVE_WISH_ACTIVE_MAX = 5;
+export const LIVE_WISH_ACTIVE_MAX = 10;
 const WISH_QTY_MAX = 99;
 const WISH_HISTORY_MAX = 40;
 const WISH_EVENT_MAX = 80;

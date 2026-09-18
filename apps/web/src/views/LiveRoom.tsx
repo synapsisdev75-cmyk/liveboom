@@ -5609,7 +5609,7 @@ function CreatorStage({
         <div className="pointer-events-auto absolute left-2 right-2 top-[calc(max(0.75rem,env(safe-area-inset-top))+5.5rem)] z-40 max-h-[min(48dvh,22rem)] overflow-y-auto rounded-2xl border border-cyan-400/30 bg-zinc-950/95 p-3 shadow-xl sm:left-4 sm:right-auto sm:top-[4.8rem] sm:w-[min(100%,18rem)]">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-cyan-300">
-              Lista de deseos (máx. 5)
+              Lista de deseos (máx. {LIVE_WISH_ACTIVE_MAX})
             </p>
             <button type="button" onClick={() => setWishlistOpen(false)} className="text-zinc-400 hover:text-white">
               <X size={14} />
