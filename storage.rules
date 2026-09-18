@@ -250,16 +250,25 @@ service firebase.storage {
     }
 
     // Catálogo Super Admin — regalos / Blast (AdminCatalogPanel)
-    // No exige igualdad exacta de email (sesión guarda lower-case; token a veces no).
-    function isSuperAdminStorage() {
+    // Owner: sin depender de firestore.get (si falla el bridge Storage→Firestore, bloqueaba todo).
+    function isOwnerStorage() {
       return signedIn()
-        && request.auth.token.email is string
         && (
-          request.auth.token.email == 'synapsisdev75@gmail.com'
+          request.auth.uid == 'OcfxoCApNAUtso0hZ3VID5kzOVd2'
           || (
-            firestore.exists(/databases/(default)/documents/config/superAdmins)
-            && request.auth.token.email in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
+            request.auth.token.email is string
+            && request.auth.token.email == 'synapsisdev75@gmail.com'
           )
+        );
+    }
+
+    function isSuperAdminStorage() {
+      return isOwnerStorage()
+        || (
+          signedIn()
+          && request.auth.token.email is string
+          && firestore.exists(/databases/(default)/documents/config/superAdmins)
+          && request.auth.token.email in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
         );
     }
 
@@ -269,56 +278,43 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/adminSessions/$(request.auth.uid)).data.expiresAt > request.time;
     }
 
-    function isUnlockedCatalogAdmin() {
-      return isSuperAdminStorage() && hasValidAdminSessionStorage();
+    function canWriteGiftCatalog() {
+      return isOwnerStorage()
+        || (isSuperAdminStorage() && hasValidAdminSessionStorage());
     }
 
-    // Windows a menudo sube PNG/WebP como application/octet-stream.
-    function isGiftCatalogMedia() {
-      return request.resource.size < 25 * 1024 * 1024
-        && (
-          request.resource.contentType.matches('image/.*')
-          || request.resource.contentType.matches('video/.*')
-          || (
-            request.resource.contentType == 'application/octet-stream'
-            && (
-              request.resource.name.matches('.*\\.png$')
-              || request.resource.name.matches('.*\\.jpe?g$')
-              || request.resource.name.matches('.*\\.webp$')
-              || request.resource.name.matches('.*\\.gif$')
-              || request.resource.name.matches('.*\\.webm$')
-              || request.resource.name.matches('.*\\.mp4$')
-            )
-          )
-        );
+    function isGiftCatalogFileName(fileName) {
+      return fileName.matches('.*\\.png$')
+        || fileName.matches('.*\\.jpg$')
+        || fileName.matches('.*\\.jpeg$')
+        || fileName.matches('.*\\.webp$')
+        || fileName.matches('.*\\.gif$')
+        || fileName.matches('.*\\.webm$')
+        || fileName.matches('.*\\.mp4$');
     }
 
-    function isBlastCatalogMedia() {
-      return request.resource.size < 15 * 1024 * 1024
-        && (
-          request.resource.contentType.matches('image/.*')
-          || (
-            request.resource.contentType == 'application/octet-stream'
-            && (
-              request.resource.name.matches('.*\\.png$')
-              || request.resource.name.matches('.*\\.jpe?g$')
-              || request.resource.name.matches('.*\\.webp$')
-              || request.resource.name.matches('.*\\.gif$')
-            )
-          )
-        );
+    function isBlastCatalogFileName(fileName) {
+      return fileName.matches('.*\\.png$')
+        || fileName.matches('.*\\.jpg$')
+        || fileName.matches('.*\\.jpeg$')
+        || fileName.matches('.*\\.webp$')
+        || fileName.matches('.*\\.gif$');
     }
 
     match /config/gifts/{fileName} {
       allow read: if true;
-      allow create, update: if isUnlockedCatalogAdmin() && isGiftCatalogMedia();
-      allow delete: if isUnlockedCatalogAdmin();
+      allow create, update: if canWriteGiftCatalog()
+        && request.resource.size < 25 * 1024 * 1024
+        && isGiftCatalogFileName(fileName);
+      allow delete: if canWriteGiftCatalog();
     }
 
     match /config/blast/{fileName} {
       allow read: if true;
-      allow create, update: if isUnlockedCatalogAdmin() && isBlastCatalogMedia();
-      allow delete: if isUnlockedCatalogAdmin();
+      allow create, update: if canWriteGiftCatalog()
+        && request.resource.size < 15 * 1024 * 1024
+        && isBlastCatalogFileName(fileName);
+      allow delete: if canWriteGiftCatalog();
     }
 
     // Pedidos UI — capturas. Solo el UID dueño de la carpeta puede subir.
