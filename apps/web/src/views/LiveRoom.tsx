@@ -1603,18 +1603,24 @@ function LiveGoalWishHud({
         )
       : undefined;
 
+  const legendLockVisible =
+    privatePhase === 'collecting' ||
+    (privatePhase === 'countdown' && Boolean(privateStartsAtMs) && privateStartsAtMs > nowMs);
+
   const privacyControls = (
     <div className="lb-live-privacy-row is-under-goal">
-      <LivePrivacyLockButton
-        privateActive={privateActive}
-        phase={privatePhase || (lock ? 'private' : null)}
-        interactive={Boolean(isHost)}
-        label={viewerLabel}
-        pulse={lockPulse}
-        onClick={() => {
-          if (isHost) onLockClick?.();
-        }}
-      />
+      {legendLockVisible ? null : (
+        <LivePrivacyLockButton
+          privateActive={privateActive}
+          phase={privatePhase || (lock ? 'private' : null)}
+          interactive={Boolean(isHost)}
+          label={viewerLabel}
+          pulse={lockPulse}
+          onClick={() => {
+            if (isHost) onLockClick?.();
+          }}
+        />
+      )}
       {requestedGiftIds.length > 0 ? (
         <div className="lb-live-candado-gifts" aria-label="Regalos solicitados del candado">
           <LiveWishCarousel
@@ -1665,6 +1671,11 @@ function LiveGoalWishHud({
           nowMs={nowMs}
           requirements={privateRequirements}
           isHost={isHost}
+          interactive={Boolean(isHost)}
+          pulse={lockPulse}
+          onLockClick={() => {
+            if (isHost) onLockClick?.();
+          }}
         />
         {isHost && privateActive && onReopenPublic ? (
           <button

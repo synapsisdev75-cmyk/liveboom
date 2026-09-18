@@ -13,7 +13,38 @@ type Props = {
   nowMs: number;
   requirements?: PrivateGiftRequirementProgress[] | null;
   isHost?: boolean;
+  interactive?: boolean;
+  pulse?: boolean;
+  onLockClick?: () => void;
 };
+
+function CountdownLock({
+  open,
+  interactive,
+  pulse,
+  label,
+  onLockClick,
+}: {
+  open: boolean;
+  interactive?: boolean;
+  pulse?: boolean;
+  label: string;
+  onLockClick?: () => void;
+}) {
+  const art = <PrivacyLockArt open={open} className="lb-live-privacy-countdown__art" />;
+  if (!interactive) return art;
+  return (
+    <button
+      type="button"
+      className={`lb-live-privacy-countdown__lock${pulse ? ' is-pulse' : ''}`}
+      onClick={onLockClick}
+      aria-label={label}
+      title={label}
+    >
+      {art}
+    </button>
+  );
+}
 
 /** Estado de recolección / countdown (timer solo tras 100% global). */
 export function LivePrivacyCountdown({
@@ -21,6 +52,9 @@ export function LivePrivacyCountdown({
   privateStartsAtMs,
   nowMs,
   requirements = null,
+  interactive = false,
+  pulse = false,
+  onLockClick,
 }: Props) {
   if (phase === 'collecting') {
     const incomplete = (requirements || []).filter(
@@ -29,7 +63,13 @@ export function LivePrivacyCountdown({
     return (
       <div className="lb-live-privacy-countdown is-collecting" role="status">
         <p className="lb-live-privacy-countdown__title">
-          <PrivacyLockArt open className="lb-live-privacy-countdown__art" />
+          <CountdownLock
+            open
+            interactive={interactive}
+            pulse={pulse}
+            label="Candado abierto: reuniendo regalos para el privado"
+            onLockClick={onLockClick}
+          />
           Candado abierto · reuniendo regalos
         </p>
         {incomplete.length > 0 ? (
@@ -58,7 +98,13 @@ export function LivePrivacyCountdown({
     return (
       <div className="lb-live-privacy-countdown is-countdown" role="status">
         <p className="lb-live-privacy-countdown__title">
-          <PrivacyLockArt open={false} className="lb-live-privacy-countdown__art" />
+          <CountdownLock
+            open={false}
+            interactive={interactive}
+            pulse={pulse}
+            label="Candado cerrado: el LIVE pasará a privado"
+            onLockClick={onLockClick}
+          />
           Candado cerrado · yendo a privado
         </p>
         <p className="lb-live-privacy-countdown__timer">
