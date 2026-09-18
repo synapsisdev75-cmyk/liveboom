@@ -5313,38 +5313,26 @@ function CreatorStage({
               />
             ) : null}
             {isHost && screenSharing && !(gamingSpaceActive && isNativeAndroidApp()) ? (
-              <div className="pointer-events-auto absolute inset-x-2 top-[max(3.75rem,calc(var(--lb-safe-top)+3.1rem))] z-[45] flex items-center justify-between gap-2 rounded-2xl border border-emerald-400/40 bg-emerald-950/90 px-3 py-2 text-white shadow-lg backdrop-blur-md sm:inset-x-auto sm:left-3 sm:right-auto sm:min-w-[16rem]">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-black uppercase tracking-wide text-emerald-200">
-                    Transmitiendo pantalla
-                  </p>
-                  <p className="truncate text-[10px] text-emerald-100/80">
-                    {isNativeAndroidApp()
-                      ? 'Espectadores ven tu pantalla · chat flotante fuera de LiveBoom'
-                      : 'Los espectadores ven tu pantalla · cámara en PiP'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-1.5">
-                  {isNativeAndroidApp() ? (
-                    <button
-                      type="button"
-                      onClick={() => setShareControlsOpen(true)}
-                      className="rounded-full bg-violet-500 px-3 py-2 text-[11px] font-bold text-white"
-                    >
-                      Controles
-                    </button>
-                  ) : null}
+              <div className="lb-live-share-stop pointer-events-auto">
+                {isNativeAndroidApp() ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (isNativeAndroidApp()) setShareStopConfirmOpen(true);
-                      else void toggleScreenCapture();
-                    }}
-                    className="rounded-full bg-red-500 px-3 py-2 text-[11px] font-bold text-white"
+                    onClick={() => setShareControlsOpen(true)}
+                    className="lb-live-share-stop__extra"
                   >
-                    Dejar de compartir
+                    Controles
                   </button>
-                </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isNativeAndroidApp()) setShareStopConfirmOpen(true);
+                    else void toggleScreenCapture();
+                  }}
+                  className="lb-live-share-stop__btn"
+                >
+                  Dejar de compartir
+                </button>
               </div>
             ) : null}
             {isHost && screenSharing && !isNativeAndroidApp() ? (
