@@ -13,8 +13,9 @@ import {
   Plus,
   Swords,
   Users,
+  X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { VsBattleIcon } from './VsBattleIcon';
 
 export type VerticalLiveToolId =
@@ -67,8 +68,8 @@ const TOOLS: {
   { id: 'screen', label: 'Pantalla', tone: 'cyan' },
   { id: 'mic', label: 'Micrófono', tone: 'emerald' },
   { id: 'camera', label: 'Cámara', tone: 'amber' },
-  { id: 'mirror', label: 'Espejo', tone: 'violet' },
-  { id: 'notify', label: 'Avisar', tone: 'fuchsia' },
+  { id: 'mirror', label: 'Espejo', tone: 'lavender' },
+  { id: 'notify', label: 'Avisar', tone: 'rose' },
   { id: 'wishlist', label: 'Deseos', tone: 'cyan' },
   { id: 'lock', label: 'Candado', tone: 'gold' },
 ];
@@ -85,6 +86,11 @@ const WITHDRAW_TOOL: { id: VerticalLiveToolId; label: string; tone: string } = {
   tone: 'cyan',
 };
 
+const TOGGLE_IDS = new Set<VerticalLiveToolId>(['mic', 'camera', 'mirror', 'screen', 'lock']);
+const KEEP_OPEN_IDS = new Set<VerticalLiveToolId>(['camera', 'mirror', 'screen']);
+const ICON_SIZE = 22;
+const TAP_GUARD_MS = 220;
+
 function ToolIcon({
   id,
   micOn,
@@ -94,32 +100,31 @@ function ToolIcon({
   micOn: boolean;
   cameraOn: boolean;
 }) {
-  const size = 18;
   switch (id) {
     case 'invite':
-      return <Users size={size} />;
+      return <Users size={ICON_SIZE} />;
     case 'vs':
-      return <VsBattleIcon size={size} />;
+      return <VsBattleIcon size={ICON_SIZE} />;
     case 'screen':
-      return <MonitorUp size={size} />;
+      return <MonitorUp size={ICON_SIZE} />;
     case 'mic':
-      return micOn ? <Mic size={size} /> : <MicOff size={size} />;
+      return micOn ? <Mic size={ICON_SIZE} /> : <MicOff size={ICON_SIZE} />;
     case 'camera':
-      return cameraOn ? <Camera size={size} /> : <CameraOff size={size} />;
+      return cameraOn ? <Camera size={ICON_SIZE} /> : <CameraOff size={ICON_SIZE} />;
     case 'mirror':
-      return <FlipHorizontal size={size} />;
+      return <FlipHorizontal size={ICON_SIZE} />;
     case 'notify':
-      return <Megaphone size={size} />;
+      return <Megaphone size={ICON_SIZE} />;
     case 'wishlist':
-      return <Gift size={size} />;
+      return <Gift size={ICON_SIZE} />;
     case 'lock':
-      return <Lock size={size} />;
+      return <Lock size={ICON_SIZE} />;
     case 'reel':
-      return <Clapperboard size={size} />;
+      return <Clapperboard size={ICON_SIZE} />;
     case 'withdraw':
-      return <Coins size={size} />;
+      return <Coins size={ICON_SIZE} />;
     default:
-      return <Swords size={size} />;
+      return <Swords size={ICON_SIZE} />;
   }
 }
 
@@ -148,6 +153,8 @@ export function VerticalLiveToolsMenu({
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const lastTapRef = useRef(0);
+  const panelId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -157,7 +164,10 @@ export function VerticalLiveToolsMenu({
       setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const modal = document.querySelector('[aria-modal="true"], dialog[open]');
+      if (modal && !rootRef.current?.contains(modal)) return;
+      setOpen(false);
     };
     document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
@@ -166,6 +176,13 @@ export function VerticalLiveToolsMenu({
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  function withSingleTap(fn: () => void) {
+    const now = performance.now();
+    if (now - lastTapRef.current < TAP_GUARD_MS) return;
+    lastTapRef.current = now;
+    fn();
+  }
 
   function run(id: VerticalLiveToolId) {
     switch (id) {
@@ -205,12 +222,12 @@ export function VerticalLiveToolsMenu({
       default:
         break;
     }
-    if (id !== 'camera' && id !== 'mirror' && id !== 'screen') setOpen(false);
+    if (!KEEP_OPEN_IDS.has(id)) setOpen(false);
   }
 
-  function toolActive(id: VerticalLiveToolId) {
-    if (id === 'mic') return !micOn;
-    if (id === 'camera') return !cameraOn;
+  function toolOn(id: VerticalLiveToolId) {
+    if (id === 'mic') return micOn;
+    if (id === 'camera') return cameraOn;
     if (id === 'screen') return screenSharing;
     if (id === 'mirror') return mirrorOn;
     if (id === 'notify') return notifyBusy;
@@ -242,39 +259,56 @@ export function VerticalLiveToolsMenu({
 
   return (
     <div ref={rootRef} className={`lb-live-vtools${open ? ' is-open' : ''}`}>
-      {open ? (
-        <div className="lb-live-vtools-panel" role="menu" aria-label="Herramientas del live">
-          <div className="lb-live-vtools-grid">
-            {tools.map((tool) => {
-              const active = toolActive(tool.id);
-              const disabled = tool.id === 'notify' && notifyBusy;
-              return (
-                <button
-                  key={tool.id}
-                  type="button"
-                  role="menuitem"
-                  disabled={disabled}
-                  onClick={() => run(tool.id)}
-                  className={`lb-live-vtools-item is-${tool.tone}${active ? ' is-on' : ''}`}
-                >
-                  <span className="lb-live-vtools-icon">
-                    <ToolIcon id={tool.id} micOn={micOn} cameraOn={cameraOn} />
-                  </span>
-                  <span>{toolLabel(tool.id, tool.label)}</span>
-                </button>
-              );
-            })}
-          </div>
+      <div
+        id={panelId}
+        className="lb-live-vtools-panel"
+        role="group"
+        aria-label="Herramientas del live"
+        aria-hidden={!open}
+        inert={!open}
+      >
+        <div className="lb-live-vtools-grid">
+          {tools.map((tool) => {
+            const active = toolOn(tool.id);
+            const disabled = tool.id === 'notify' && notifyBusy;
+            const isToggle = TOGGLE_IDS.has(tool.id);
+            return (
+              <button
+                key={tool.id}
+                type="button"
+                disabled={disabled}
+                tabIndex={open ? 0 : -1}
+                aria-pressed={isToggle ? active : undefined}
+                aria-busy={tool.id === 'notify' && notifyBusy ? true : undefined}
+                onClick={() => withSingleTap(() => run(tool.id))}
+                className={`lb-live-vtools-item is-${tool.tone}${active ? ' is-on' : ''}${
+                  isToggle && !active ? ' is-off' : ''
+                }${tool.id === 'lock' ? ' is-lock' : ''}`}
+              >
+                <span className="lb-live-vtools-icon" aria-hidden>
+                  <ToolIcon id={tool.id} micOn={micOn} cameraOn={cameraOn} />
+                </span>
+                <span className="lb-live-vtools-label">{toolLabel(tool.id, tool.label)}</span>
+              </button>
+            );
+          })}
         </div>
-      ) : null}
+      </div>
       <button
         type="button"
         className="lb-live-vtools-fab"
         aria-label={open ? 'Cerrar herramientas' : 'Abrir herramientas'}
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        aria-controls={panelId}
+        aria-haspopup="true"
+        onClick={() => withSingleTap(() => setOpen((v) => !v))}
       >
-        <Plus size={22} strokeWidth={2.4} />
+        <span className="lb-live-vtools-fab-glyph is-plus" aria-hidden>
+          <Plus size={22} strokeWidth={2.5} />
+        </span>
+        <span className="lb-live-vtools-fab-glyph is-close" aria-hidden>
+          <X size={22} strokeWidth={2.5} />
+        </span>
       </button>
     </div>
   );
