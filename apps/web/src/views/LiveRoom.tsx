@@ -41,6 +41,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { LiveWishCarousel } from '../components/live/LiveWishCarousel';
+import { LiveWishHexStage } from '../components/live/LiveWishHexStage';
 import { LiveWishAchievedCard } from '../components/live/LiveWishAchievedCard';
 import { LiveViewerListRow } from '../components/live/LiveViewerListRow';
 import {
@@ -1448,7 +1449,6 @@ type LiveCoinGoalInfo = {
 };
 
 function LiveGoalWishHud({
-  username,
   goal,
   wishlist,
   wishQty,
@@ -1501,7 +1501,6 @@ function LiveGoalWishHud({
   const sealed = privatePhase === 'private';
   const lockArmed = Boolean(lock) || preparingPrivate;
   const privateActive = lockArmed;
-  const handle = username.replace(/^@/, '');
   const statusText = celebrating
     ? ' · ¡Meta conseguida!'
     : goal?.reached
@@ -1605,13 +1604,7 @@ function LiveGoalWishHud({
       <div className="lb-live-wishlist-stack">
         {wishlist.length > 0 ? (
           <div className="lb-live-wishlist">
-            <p className="lb-live-wishlist__title">
-              <Gift size={12} />
-              <span>Deseos @{handle}</span>
-            </p>
-            <div className="lb-live-wishlist__gifts">
-              <LiveWishCarousel giftIds={wishlist} quantities={wishQty} />
-            </div>
+            <LiveWishHexStage giftIds={wishlist} quantities={wishQty} />
           </div>
         ) : null}
         <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
