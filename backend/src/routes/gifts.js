@@ -4,7 +4,7 @@ const { asFn } = require('../lib/asFn');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { findGift } = require('../lib/gifts');
 const { emitGiftReceived } = require('../lib/socket');
-const { getBalance, setBalance, debit, credit } = require('../lib/walletMemory');
+const { getBalance, getBalances, setBalances, debitSplit, creditEarned } = require('../lib/walletMemory');
 const { findByUsername } = require('../lib/profileMemory');
 const liveChat = require('../lib/liveChat');
 
@@ -14,12 +14,16 @@ const requireDbUser = asFn(require('../middleware/requireDbUser'));
 
 /** Alinea el wallet en memoria con el saldo que ya ve el usuario (tras recargas). */
 function syncSenderFloor(senderUid, floorFromClient = 0) {
-  const floor = Math.max(
-    getBalance(senderUid),
-    Math.max(0, Math.floor(Number(floorFromClient) || 0)),
-  );
-  if (floor > getBalance(senderUid)) {
-    setBalance(senderUid, floor);
+  const cur = getBalances(senderUid);
+  const floor = Math.max(cur.coinsBalance, Math.max(0, Math.floor(Number(floorFromClient) || 0)));
+  if (floor > cur.coinsBalance) {
+    // Solo sube comprados para no borrar ganados existentes.
+    setBalances(senderUid, {
+      purchasedBlastBalance: cur.purchasedBlastBalance + (floor - cur.coinsBalance),
+      earnedBlastBalance: cur.earnedBlastBalance,
+      earnedBlastSpent: cur.earnedBlastSpent,
+      earnedBlastWithdrawn: cur.earnedBlastWithdrawn,
+    });
   }
   return getBalance(senderUid);
 }
@@ -67,15 +71,19 @@ function memorySend(senderUid, roomName, gift, payload, floorFromClient = 0, tot
   }
   const cost = Math.max(gift.coins, Math.floor(Number(totalCoins) || gift.coins));
   syncSenderFloor(senderUid, floorFromClient);
-  const next = debit(senderUid, cost);
-  if (next == null) return { error: 'Saldo insuficiente' };
+  const spent = debitSplit(senderUid, cost, true);
+  if (!spent.ok) return { error: 'Saldo insuficiente' };
   if (host?.firebaseUid && host.firebaseUid !== senderUid) {
-    credit(host.firebaseUid, cost);
+    // Receptor: siempre ganados (retirable). Nunca como recarga.
+    creditEarned(host.firebaseUid, cost);
   }
   announceGift(roomName, { ...payload, coins: cost });
   return {
-    senderBalance: next,
+    senderBalance: spent.balances.coinsBalance,
+    purchasedBlastBalance: spent.balances.purchasedBlastBalance,
+    earnedBlastBalance: spent.balances.earnedBlastBalance,
     creatorBalance: host ? getBalance(host.firebaseUid) : 0,
+    creatorEarnedBlastBalance: host ? getBalances(host.firebaseUid).earnedBlastBalance : 0,
   };
 }
 
@@ -211,20 +219,33 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       6000,
     );
 
-    // Mantén wallet en memoria alineada con Prisma.
+    // Mantén wallet en memoria alineada con Prisma (sin borrar ganados).
     if (result.sender?.coinsBalance != null) {
-      setBalance(senderUid, result.sender.coinsBalance);
+      const prev = getBalances(senderUid);
+      const total = Math.max(0, Math.floor(Number(result.sender.coinsBalance) || 0));
+      const earned = Math.min(prev.earnedBlastBalance, total);
+      setBalances(senderUid, {
+        purchasedBlastBalance: Math.max(0, total - earned),
+        earnedBlastBalance: earned,
+        earnedBlastSpent: prev.earnedBlastSpent,
+        earnedBlastWithdrawn: prev.earnedBlastWithdrawn,
+      });
     }
     if (creator.firebaseUid && result.creator?.coinsBalance != null) {
-      setBalance(creator.firebaseUid, result.creator.coinsBalance);
+      creditEarned(creator.firebaseUid, totalCoins);
     }
 
     announceGift(roomName, payload);
+    const senderBal = getBalances(senderUid);
+    const creatorBal = creator.firebaseUid ? getBalances(creator.firebaseUid) : null;
     res.json({
       ok: true,
       gift: payload,
-      senderBalance: result.sender.coinsBalance,
-      creatorBalance: result.creator.coinsBalance,
+      senderBalance: senderBal.coinsBalance,
+      purchasedBlastBalance: senderBal.purchasedBlastBalance,
+      earnedBlastBalance: senderBal.earnedBlastBalance,
+      creatorBalance: creatorBal?.coinsBalance ?? result.creator.coinsBalance,
+      creatorEarnedBlastBalance: creatorBal?.earnedBlastBalance ?? 0,
     });
   } catch (error) {
     if (error.code === 'INSUFFICIENT_COINS' || error.message === 'INSUFFICIENT_COINS') {

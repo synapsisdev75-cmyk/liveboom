@@ -174,7 +174,7 @@ import { downloadReelBlob, savePendingReel } from '../lib/pendingReelStore';
 import { addFirestoreCoins, addLevelXp, fetchLevelXp, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
 import { shareContent } from '../lib/shareContent';
 import { listFollowers, listFriends } from '../lib/socialFirestore';
-import { sendLiveboomGift } from '../lib/giftsFirestore';
+import { processGiftInbox, sendLiveboomGift } from '../lib/giftsFirestore';
 import {
   frameAspectRatio,
   LiveScreenComposer,
@@ -3686,6 +3686,11 @@ function CreatorStage({
       if (!gift.coins || creditedGifts.current.has(gift.id)) return;
       if (gift.senderUid && gift.senderUid === firebaseUid) return;
       creditedGifts.current.add(gift.id);
+      void processGiftInbox(firebaseUid)
+        .then((credited) => {
+          if (credited > 0) return useAuthStore.getState().syncProfile();
+        })
+        .catch(() => undefined);
       setLiveStats((current) => {
         const base =
           current ||
@@ -7173,9 +7178,18 @@ function ChatPanel({
         clientId,
         roomName,
         multiplier: mult,
+        contentType: 'live',
       });
       setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      if (result.purchasedBlastBalance != null || result.earnedBlastBalance != null) {
+        useAuthStore.getState().setBlastBalances({
+          purchasedBlastBalance: Number(result.purchasedBlastBalance) || 0,
+          earnedBlastBalance: Number(result.earnedBlastBalance) || 0,
+          coinsBalance: result.senderBalance,
+        });
+      } else {
+        void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      }
       void addLevelXp(profile.firebaseUid, totalCoins)
         .then((xp) => {
           levelXpRef.current = xp;

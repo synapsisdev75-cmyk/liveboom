@@ -14,11 +14,17 @@ import {
   listCoinPackages,
   formatCop,
   packageCopLabel,
+  coinsToCop,
   type ResolvedCoinPackage,
 } from '../lib/coinPackages';
 import { api } from '../lib/api';
 import { normalizeBlastBalances } from '../lib/blastBalances';
 import { processGiftInbox } from '../lib/giftsFirestore';
+import {
+  formatWithdrawalWhen,
+  listenMyWithdrawals,
+  type WithdrawalRequest,
+} from '../lib/withdrawalsFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
@@ -31,8 +37,10 @@ type WithdrawalRow = {
   coins: number;
   amountCop: number;
   status: string;
+  fullName?: string;
   payoutMethod?: string;
   createdAt: string;
+  createdAtMs?: number;
 };
 
 const GRADIENT = 'bg-[linear-gradient(to_right,#EC4899,#06B6D4)]';
@@ -69,7 +77,7 @@ export function WalletView() {
   const [openTopup, setOpenTopup] = useState(false);
   const [initialPack, setInitialPack] = useState<string | undefined>();
   const [openWithdraw, setOpenWithdraw] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(true);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
   const packsRef = useRef<HTMLDivElement>(null);
 
@@ -78,12 +86,42 @@ export function WalletView() {
       const data = await api<{ withdrawals: WithdrawalRow[] }>('/api/payments/withdrawals');
       setWithdrawals(data.withdrawals || []);
     } catch {
-      setWithdrawals([]);
+      /* Firestore listener cubre el historial */
     }
   }
 
   useEffect(() => {
     if (profile) void refreshWithdrawals();
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    const uid = profile?.firebaseUid;
+    if (!uid) {
+      setWithdrawals([]);
+      return;
+    }
+    return listenMyWithdrawals(uid, (rows: WithdrawalRequest[]) => {
+      setWithdrawals((prev) => {
+        const byId = new Map(prev.map((r) => [r.id, r]));
+        for (const row of rows) {
+          byId.set(row.id, {
+            id: row.id,
+            coins: row.coins,
+            amountCop: row.amountCop,
+            status: row.status,
+            fullName: row.fullName,
+            payoutMethod: row.payoutMethod,
+            createdAt: row.createdAt || new Date(row.createdAtMs || Date.now()).toISOString(),
+            createdAtMs: row.createdAtMs,
+          });
+        }
+        return [...byId.values()].sort(
+          (a, b) =>
+            Number(b.createdAtMs || Date.parse(b.createdAt) || 0) -
+            Number(a.createdAtMs || Date.parse(a.createdAt) || 0),
+        );
+      });
+    });
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
@@ -211,8 +249,8 @@ export function WalletView() {
           className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#14151c] px-3 py-2 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white sm:px-3.5"
         >
           <History size={14} />
-          <span className="sm:hidden">Historial</span>
-          <span className="hidden sm:inline">Historial de transacciones</span>
+          <span className="sm:hidden">Retiros</span>
+          <span className="hidden sm:inline">Solicitudes de retiro</span>
         </button>
       </header>
 
@@ -410,30 +448,54 @@ export function WalletView() {
 
           {showHistory ? (
             <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
-              <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-200">Solicitudes de retiro</h2>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Solo blast ganados · disponible {earned.toLocaleString('es-CO')} (
+                    {formatCop(coinsToCop(earned))})
+                  </p>
+                </div>
+              </div>
               {withdrawals.length === 0 ? (
                 <p className="mt-3 text-sm text-zinc-500">
-                  Aún no hay retiros. Las recargas aparecen en tu saldo al instante.
+                  Aún no hay solicitudes. Cuando retires verás aquí fecha, hora, nombre y blast.
                 </p>
               ) : (
                 <ul className="mt-3 space-y-2">
-                  {withdrawals.slice(0, 12).map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2.5 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium text-white">
-                          −{item.coins.toLocaleString('es-CO')} blast → {formatCop(item.amountCop)}
-                        </p>
-                        <p className="text-xs text-zinc-500">
-                          {new Date(item.createdAt).toLocaleString('es-CO')} ·{' '}
-                          {item.payoutMethod || '—'} ·{' '}
-                          {item.status === 'pending' ? 'Pendiente de pago' : item.status}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
+                  {withdrawals.slice(0, 20).map((item) => {
+                    const when = formatWithdrawalWhen(item.createdAt, item.createdAtMs);
+                    const name = item.fullName || profile?.displayName || profile?.handle || '—';
+                    return (
+                      <li
+                        key={item.id}
+                        className="rounded-xl bg-black/30 px-3 py-2.5 text-sm"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-white">{name}</p>
+                            <p className="mt-0.5 text-emerald-300">
+                              −{item.coins.toLocaleString('es-CO')} blast →{' '}
+                              {formatCop(item.amountCop)}
+                            </p>
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {when.date} · {when.time}
+                              {item.payoutMethod ? ` · ${item.payoutMethod}` : ''}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-white/5 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                            {item.status === 'pending'
+                              ? 'Pendiente'
+                              : item.status === 'paid'
+                                ? 'Pagado'
+                                : item.status === 'rejected'
+                                  ? 'Rechazado'
+                                  : item.status}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>

@@ -25,11 +25,15 @@ export type SendGiftInput = {
   clientId: string;
   postId?: string;
   roomName?: string;
+  /** Contexto: post / boom_clip / flashboom / live / battle / chat */
+  contentType?: string;
   multiplier?: 1 | 2 | 4 | 8;
 };
 
 export type SendGiftResult = {
   senderBalance: number;
+  purchasedBlastBalance?: number;
+  earnedBlastBalance?: number;
   usedFallback: boolean;
 };
 
@@ -48,8 +52,14 @@ async function resolveRecipientUid(
   return user.firebaseUid;
 }
 
+type DebitResult = {
+  coinsBalance: number;
+  purchasedBlastBalance: number;
+  earnedBlastBalance: number;
+};
+
 /** Debita Blast del remitente: primero comprados, luego ganados. */
-async function debitSenderCoins(senderUid: string, amount: number): Promise<number> {
+async function debitSenderCoins(senderUid: string, amount: number): Promise<DebitResult> {
   const coins = Math.max(1, Math.floor(Number(amount) || 0));
   return runTransaction(db, async (tx) => {
     const ref = doc(db, 'users', senderUid);
@@ -79,12 +89,20 @@ async function debitSenderCoins(senderUid: string, amount: number): Promise<numb
       },
       { merge: true },
     );
-    return next.coinsBalance;
+    return {
+      coinsBalance: next.coinsBalance,
+      purchasedBlastBalance: next.purchasedBlastBalance,
+      earnedBlastBalance: next.earnedBlastBalance,
+    };
   });
 }
 
-/** Acredita Blast al receptor como ganados (regalos / llamadas). */
-async function creditRecipientEarned(
+/**
+ * Encola crédito de blast ganados para el receptor.
+ * Las reglas de Firestore solo permiten crear giftInbox con processed=false;
+ * el receptor (o processGiftInbox) acredita earnedBlastBalance.
+ */
+async function enqueueGiftInbox(
   recipientUid: string,
   amount: number,
   meta: {
@@ -95,40 +113,22 @@ async function creditRecipientEarned(
     emoji?: string;
     clientId?: string;
     postId?: string | null;
-    source: 'gift' | 'live_gift' | 'call_billing';
+    contentType?: string | null;
+    roomName?: string | null;
+    source: 'gift' | 'live_gift' | 'call_billing' | 'battle_gift';
   },
-): Promise<number> {
+): Promise<void> {
   const coins = Math.max(0, Math.floor(Number(amount) || 0));
-  if (!coins) return 0;
-  return runTransaction(db, async (tx) => {
-    const userRef = doc(db, 'users', recipientUid);
-    const userSnap = await tx.get(userRef);
-    const bal = normalizeBlastBalances(
-      userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : {},
-    );
-    const next = normalizeBlastBalances({
-      purchasedBlastBalance: bal.purchasedBlastBalance,
-      earnedBlastBalance: bal.earnedBlastBalance + coins,
-      earnedBlastSpent: bal.earnedBlastSpent,
-      earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
-    });
-    const inboxRef = meta.clientId
-      ? doc(db, 'users', recipientUid, 'giftInbox', String(meta.clientId).slice(0, 80))
-      : doc(collection(db, 'users', recipientUid, 'giftInbox'));
-    const existingInbox = meta.clientId ? await tx.get(inboxRef) : null;
-    if (existingInbox?.exists() && existingInbox.data()?.processed) {
-      return bal.earnedBlastBalance;
-    }
-    tx.set(
-      userRef,
-      {
-        coinsBalance: next.coinsBalance,
-        purchasedBlastBalance: next.purchasedBlastBalance,
-        earnedBlastBalance: next.earnedBlastBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+  if (!coins) return;
+
+  const inboxId = meta.clientId
+    ? String(meta.clientId).slice(0, 80)
+    : `gift-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const inboxRef = doc(db, 'users', recipientUid, 'giftInbox', inboxId);
+
+  await runTransaction(db, async (tx) => {
+    const existing = await tx.get(inboxRef);
+    if (existing.exists()) return;
     tx.set(inboxRef, {
       senderUid: meta.senderUid,
       senderName: meta.senderName || null,
@@ -138,14 +138,14 @@ async function creditRecipientEarned(
       emoji: meta.emoji || null,
       coins,
       postId: meta.postId ?? null,
-      clientId: meta.clientId || null,
+      contentType: meta.contentType || null,
+      roomName: meta.roomName || null,
+      clientId: meta.clientId || inboxId,
       source: meta.source,
-      processed: true,
-      processedAtMs: Date.now(),
+      processed: false,
       createdAt: serverTimestamp(),
       createdAtMs: Date.now(),
     });
-    return next.earnedBlastBalance;
   });
 }
 
@@ -202,6 +202,15 @@ export async function processGiftInbox(uid: string): Promise<number> {
   return credited;
 }
 
+function resolveGiftSource(
+  input: SendGiftInput,
+): 'gift' | 'live_gift' | 'battle_gift' {
+  const ct = String(input.contentType || '').toLowerCase();
+  if (ct === 'battle' || ct.includes('battle')) return 'battle_gift';
+  if (input.roomName) return 'live_gift';
+  return 'gift';
+}
+
 async function sendGiftViaFirestore(
   input: SendGiftInput,
   catalog: NonNullable<ReturnType<typeof findLiveGift>>,
@@ -216,19 +225,24 @@ async function sendGiftViaFirestore(
   }
 
   const mult = input.multiplier ?? 1;
+  const source = resolveGiftSource(input);
   const isLive = Boolean(input.roomName);
 
+  const debit = await debitSenderCoins(input.senderUid, totalCoins);
+  await enqueueGiftInbox(recipientUid, totalCoins, {
+    senderUid: input.senderUid,
+    senderName: input.senderName,
+    giftId: catalog.id,
+    giftName: catalog.name,
+    emoji: catalog.emoji,
+    clientId: input.clientId,
+    postId: input.postId || null,
+    contentType: input.contentType || (isLive ? 'live' : 'post'),
+    roomName: input.roomName || null,
+    source,
+  });
+
   if (isLive && input.roomName) {
-    const senderBalance = await debitSenderCoins(input.senderUid, totalCoins);
-    await creditRecipientEarned(recipientUid, totalCoins, {
-      senderUid: input.senderUid,
-      senderName: input.senderName,
-      giftId: catalog.id,
-      giftName: catalog.name,
-      emoji: catalog.emoji,
-      clientId: input.clientId,
-      source: 'live_gift',
-    });
     await publishLiveGift(input.roomName, {
       clientId: input.clientId,
       giftId: catalog.id,
@@ -239,81 +253,14 @@ async function sendGiftViaFirestore(
       coins: totalCoins,
       multiplier: mult,
     });
-    return { senderBalance, usedFallback: true };
   }
 
-  const senderBalance = await runTransaction(db, async (tx) => {
-    const senderRef = doc(db, 'users', input.senderUid);
-    const recipientRef = doc(db, 'users', recipientUid);
-    const [senderSnap, recipientSnap] = await Promise.all([tx.get(senderRef), tx.get(recipientRef)]);
-    const bal = normalizeBlastBalances(
-      senderSnap.exists() ? (senderSnap.data() as Record<string, unknown>) : {},
-    );
-    if (bal.coinsBalance < totalCoins) {
-      throw new Error('Saldo insuficiente');
-    }
-    const usePurchased = Math.min(bal.purchasedBlastBalance, totalCoins);
-    const useEarned = totalCoins - usePurchased;
-    const next = normalizeBlastBalances({
-      purchasedBlastBalance: bal.purchasedBlastBalance - usePurchased,
-      earnedBlastBalance: bal.earnedBlastBalance - useEarned,
-      earnedBlastSpent: bal.earnedBlastSpent + useEarned,
-      earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
-    });
-    const recipientBal = normalizeBlastBalances(
-      recipientSnap.exists() ? (recipientSnap.data() as Record<string, unknown>) : {},
-    );
-    const recipientNext = normalizeBlastBalances({
-      purchasedBlastBalance: recipientBal.purchasedBlastBalance,
-      earnedBlastBalance: recipientBal.earnedBlastBalance + totalCoins,
-      earnedBlastSpent: recipientBal.earnedBlastSpent,
-      earnedBlastWithdrawn: recipientBal.earnedBlastWithdrawn,
-    });
-    tx.set(
-      senderRef,
-      {
-        coinsBalance: next.coinsBalance,
-        purchasedBlastBalance: next.purchasedBlastBalance,
-        earnedBlastBalance: next.earnedBlastBalance,
-        earnedBlastSpent: next.earnedBlastSpent,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-    tx.set(
-      recipientRef,
-      {
-        coinsBalance: recipientNext.coinsBalance,
-        purchasedBlastBalance: recipientNext.purchasedBlastBalance,
-        earnedBlastBalance: recipientNext.earnedBlastBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    const inboxRef = doc(collection(db, 'users', recipientUid, 'giftInbox'));
-    tx.set(inboxRef, {
-      senderUid: input.senderUid,
-      senderName: input.senderName,
-      recipientUid,
-      giftId: catalog.id,
-      giftName: catalog.name,
-      emoji: catalog.emoji,
-      coins: totalCoins,
-      multiplier: mult,
-      postId: input.postId || null,
-      clientId: input.clientId,
-      source: 'gift',
-      processed: true,
-      processedAtMs: Date.now(),
-      createdAt: serverTimestamp(),
-      createdAtMs: Date.now(),
-    });
-
-    return next.coinsBalance;
-  });
-
-  return { senderBalance, usedFallback: true };
+  return {
+    senderBalance: debit.coinsBalance,
+    purchasedBlastBalance: debit.purchasedBlastBalance,
+    earnedBlastBalance: debit.earnedBlastBalance,
+    usedFallback: true,
+  };
 }
 
 function shouldFallbackToFirestore(error: unknown): boolean {
@@ -336,6 +283,7 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
   const mult = [1, 2, 4, 8].includes(input.multiplier ?? 1) ? (input.multiplier as 1 | 2 | 4 | 8) : 1;
   const totalCoins = catalog.coins * mult;
   const roomName = input.roomName || input.recipientUsername;
+  const source = resolveGiftSource(input);
 
   try {
     const result = await api<{ senderBalance: number }>('/api/gifts/send', {
@@ -346,12 +294,22 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
         clientId: input.clientId,
         currentBalance: input.senderBalance,
         multiplier: mult,
+        contentType: input.contentType || null,
+        postId: input.postId || null,
       }),
     });
-    // Billetera (Ganados) vive en Firestore: acredita al receptor aunque el API haya cobrado.
+
+    // Billetera dual vive en Firestore: debita remitente + encola ganados al receptor.
+    let debit: DebitResult | null = null;
+    try {
+      debit = await debitSenderCoins(input.senderUid, totalCoins);
+    } catch {
+      /* API ya cobró en memoria; no bloquear si FS ya estaba alineado */
+    }
+
     try {
       const recipientUid = await resolveRecipientUid(input.recipientUsername, input.recipientUid);
-      await creditRecipientEarned(recipientUid, totalCoins, {
+      await enqueueGiftInbox(recipientUid, totalCoins, {
         senderUid: input.senderUid,
         senderName: input.senderName,
         giftId: catalog.id,
@@ -359,12 +317,20 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
         emoji: catalog.emoji,
         clientId: input.clientId,
         postId: input.postId || null,
-        source: input.roomName ? 'live_gift' : 'gift',
+        contentType: input.contentType || (input.roomName ? 'live' : 'post'),
+        roomName: input.roomName || null,
+        source,
       });
     } catch {
-      /* no bloquear el envío si el crédito FS falla */
+      /* no bloquear el envío si la bandeja FS falla */
     }
-    return { senderBalance: result.senderBalance, usedFallback: false };
+
+    return {
+      senderBalance: debit?.coinsBalance ?? result.senderBalance,
+      purchasedBlastBalance: debit?.purchasedBlastBalance,
+      earnedBlastBalance: debit?.earnedBlastBalance,
+      usedFallback: false,
+    };
   } catch (error) {
     if (!shouldFallbackToFirestore(error)) {
       throw error instanceof ApiError

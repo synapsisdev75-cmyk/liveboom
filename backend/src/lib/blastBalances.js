@@ -160,6 +160,32 @@ function applyCreditEarned(balances, amount) {
   });
 }
 
+/**
+ * Retiro: solo blast ganados (regalos / llamadas). Nunca comprados/recargados.
+ */
+function applyWithdrawEarned(balances, amount) {
+  const need = floorNonNeg(amount);
+  if (need <= 0) {
+    return { ok: true, balances, withdrawn: 0 };
+  }
+  if (balances.earnedBlastBalance < need) {
+    return {
+      ok: false,
+      code: 'INSUFFICIENT_EARNED',
+      balances,
+      withdrawn: 0,
+      available: balances.earnedBlastBalance,
+    };
+  }
+  const next = normalizeBlastBalances({
+    purchasedBlastBalance: balances.purchasedBlastBalance,
+    earnedBlastBalance: balances.earnedBlastBalance - need,
+    earnedBlastSpent: balances.earnedBlastSpent,
+    earnedBlastWithdrawn: balances.earnedBlastWithdrawn + need,
+  });
+  return { ok: true, balances: next, withdrawn: need, available: next.earnedBlastBalance };
+}
+
 function firestoreBalancePatch(balances) {
   return {
     purchasedBlastBalance: balances.purchasedBlastBalance,
@@ -175,6 +201,7 @@ module.exports = {
   applySpend,
   applyCreditPurchased,
   applyCreditEarned,
+  applyWithdrawEarned,
   firestoreBalancePatch,
   floorNonNeg,
 };

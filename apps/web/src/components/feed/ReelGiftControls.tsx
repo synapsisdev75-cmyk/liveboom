@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { sendLiveboomGift } from '../../lib/giftsFirestore';
-import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
+import { addLevelXp } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { FloatingGift } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
@@ -17,6 +17,8 @@ type Props = {
   authorUsername: string;
   authorUid?: string;
   postId: string;
+  /** post | boom_clip | flashboom — para acreditar ganados correctamente */
+  contentType?: string;
   /** Fila compacta del feed (sin etiqueta debajo). */
   inline?: boolean;
   /** Flash Boom / Boom Clip: el visor congela la barra de tiempo. */
@@ -27,6 +29,7 @@ export function ReelGiftControls({
   authorUsername,
   authorUid,
   postId,
+  contentType = 'post',
   inline = false,
   onOpenChange,
 }: Props) {
@@ -105,9 +108,16 @@ export function ReelGiftControls({
         recipientUid: authorUid,
         clientId,
         postId,
+        contentType,
       });
       setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      if (result.purchasedBlastBalance != null || result.earnedBlastBalance != null) {
+        useAuthStore.getState().setBlastBalances({
+          purchasedBlastBalance: Number(result.purchasedBlastBalance) || 0,
+          earnedBlastBalance: Number(result.earnedBlastBalance) || 0,
+          coinsBalance: result.senderBalance,
+        });
+      }
       void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
       pushFloat(catalog.id, senderName);
       setOpenGifts(false);

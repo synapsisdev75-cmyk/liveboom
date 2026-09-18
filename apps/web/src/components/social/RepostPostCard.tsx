@@ -278,6 +278,7 @@ function OriginalPostEmbed({
                   authorUsername={origin.username}
                   authorUid={origin.authorUid}
                   postId={origin.id}
+                  contentType="post"
                   inline
                 />
               </span>

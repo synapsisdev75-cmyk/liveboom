@@ -208,6 +208,97 @@ async function readUserBlastBalances(uid) {
   return normalizeBlastBalances(snap.exists ? snap.data() : {});
 }
 
+/**
+ * Aplica retiro solo sobre blast ganados en Firestore (fuente de verdad de la billetera).
+ */
+async function applyEarnedWithdraw(uid, coins) {
+  const { normalizeBlastBalances, applyWithdrawEarned, firestoreBalancePatch } = require('./blastBalances');
+  const db = getAdminDb();
+  const userRef = db.collection('users').doc(String(uid));
+  const amount = Math.max(0, Math.floor(Number(coins) || 0));
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const current = normalizeBlastBalances(snap.exists ? snap.data() : {});
+    const result = applyWithdrawEarned(current, amount);
+    if (!result.ok) {
+      return {
+        ok: false,
+        error: 'insufficient_earned',
+        available: result.available || 0,
+        balances: current,
+      };
+    }
+    if (snap.exists) {
+      tx.update(userRef, {
+        ...firestoreBalancePatch(result.balances),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      tx.set(
+        userRef,
+        {
+          firebaseUid: String(uid),
+          ...firestoreBalancePatch(result.balances),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+    return { ok: true, balances: result.balances, withdrawn: result.withdrawn };
+  });
+}
+
+async function saveWithdrawalRecord(record) {
+  const db = getAdminDb();
+  const id = String(record.id || record.reference || '');
+  if (!id) return null;
+  const ref = db.collection('withdrawals').doc(id);
+  const payload = {
+    ...record,
+    uid: String(record.uid || ''),
+    coins: Math.max(0, Math.floor(Number(record.coins) || 0)),
+    amountCop: Math.max(0, Math.floor(Number(record.amountCop) || 0)),
+    status: String(record.status || 'pending'),
+    fullName: String(record.fullName || ''),
+    createdAt: record.createdAt || new Date().toISOString(),
+    createdAtMs: Number(record.createdAtMs) || Date.now(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  await ref.set(payload, { merge: true });
+  return payload;
+}
+
+async function updateWithdrawalRecord(id, patch) {
+  const db = getAdminDb();
+  const ref = db.collection('withdrawals').doc(String(id));
+  await ref.set(
+    {
+      ...patch,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  const snap = await ref.get();
+  return snap.exists ? { id: snap.id, ...snap.data() } : null;
+}
+
+async function listWithdrawalRecords(options = {}) {
+  const db = getAdminDb();
+  const limit = Math.min(500, Math.max(1, Math.floor(Number(options.limit) || 200)));
+  const uid = options.uid ? String(options.uid) : '';
+  let query = db.collection('withdrawals').orderBy('createdAtMs', 'desc').limit(limit);
+  if (uid) {
+    query = db
+      .collection('withdrawals')
+      .where('uid', '==', uid)
+      .orderBy('createdAtMs', 'desc')
+      .limit(limit);
+  }
+  const snap = await query.get();
+  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
 module.exports = {
   firestoreConfigured,
   hasAdminCredentials,
@@ -216,6 +307,10 @@ module.exports = {
   findPaymentOrderByLinkId,
   readUserCoinsBalance,
   readUserBlastBalances,
+  applyEarnedWithdraw,
+  saveWithdrawalRecord,
+  updateWithdrawalRecord,
+  listWithdrawalRecords,
   completePaymentOrder,
   completePaymentOrderByLinkId,
   getAdminDb,

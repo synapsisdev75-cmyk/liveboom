@@ -4,6 +4,7 @@ const {
   applySpend,
   applyCreditPurchased,
   applyCreditEarned,
+  applyWithdrawEarned,
 } = require('./blastBalances');
 
 /** @type {Map<string, object>} */
@@ -94,6 +95,15 @@ function debit(uid, coins) {
   return spent.balances.coinsBalance;
 }
 
+/** Retiro: solo descuenta blast ganados. */
+function debitEarnedOnly(uid, coins) {
+  const cur = getBalances(uid);
+  const result = applyWithdrawEarned(cur, coins);
+  if (!result.ok) return null;
+  setBalances(uid, result.balances);
+  return result.balances;
+}
+
 /**
  * @returns {{ ok: boolean, code?: string, balances?, chargedPurchased: number, chargedEarned: number, partial?: boolean, needsEarnedAuth?: boolean, exhausted?: boolean }}
  */
@@ -153,13 +163,43 @@ function listWithdrawals(uid) {
   );
 }
 
+function listAllWithdrawals(limit = 200) {
+  const cap = Math.min(500, Math.max(1, Math.floor(Number(limit) || 200)));
+  /** @type {object[]} */
+  const all = [];
+  for (const [uid, list] of withdrawalsByUid.entries()) {
+    for (const row of list || []) {
+      all.push({ ...row, uid: row.uid || uid });
+    }
+  }
+  all.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  return all.slice(0, cap);
+}
+
 function addWithdrawal(uid, record) {
   const key = String(uid);
   const list = withdrawalsByUid.get(key) || [];
-  list.unshift(record);
+  const withUid = { ...record, uid: record.uid || key };
+  list.unshift(withUid);
   withdrawalsByUid.set(key, list.slice(0, 80));
   flush();
-  return record;
+  return withUid;
+}
+
+function updateWithdrawalStatus(uid, id, status, extra = {}) {
+  const key = String(uid);
+  const list = withdrawalsByUid.get(key) || [];
+  const idx = list.findIndex((row) => String(row.id) === String(id));
+  if (idx < 0) return null;
+  list[idx] = {
+    ...list[idx],
+    status: String(status || list[idx].status),
+    ...extra,
+    updatedAt: new Date().toISOString(),
+  };
+  withdrawalsByUid.set(key, list);
+  flush();
+  return list[idx];
 }
 
 module.exports = {
@@ -172,9 +212,12 @@ module.exports = {
   creditPurchased,
   creditEarned,
   debit,
+  debitEarnedOnly,
   debitSplit,
   rememberOrder,
   takeOrder,
   listWithdrawals,
+  listAllWithdrawals,
   addWithdrawal,
+  updateWithdrawalStatus,
 };
