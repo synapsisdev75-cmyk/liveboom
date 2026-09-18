@@ -5,7 +5,6 @@ const {
   completePaymentOrder,
   completePaymentOrderByLinkId,
 } = require('../lib/firestoreAdmin');
-const { setBalance } = require('../lib/walletMemory');
 
 function mapWompiStatus(status) {
   if (status === 'APPROVED') return 'completed';
@@ -96,7 +95,12 @@ async function handleWompiWebhook(req, res) {
         }
         if (result?.ok) {
           if (result.uid) {
-            setBalance(result.uid, result.coinsBalance);
+            const { setBalances } = require('../lib/walletMemory');
+            setBalances(result.uid, {
+              purchasedBlastBalance: result.purchasedBlastBalance,
+              earnedBlastBalance: result.earnedBlastBalance,
+              coinsBalance: result.coinsBalance,
+            });
           }
           res.status(200).json({ ok: true, duplicate: result.duplicate, source: 'firestore' });
           return;

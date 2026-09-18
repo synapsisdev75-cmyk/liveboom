@@ -18,6 +18,14 @@ import {
 } from '../lib/coinPackages';
 import { api } from '../lib/api';
 import { normalizeBlastBalances } from '../lib/blastBalances';
+import {
+  fetchWalletSummary,
+  fetchWalletTransactions,
+  ledgerLabel,
+  signedAmount,
+  type WalletLedgerRow,
+  type WalletSummary,
+} from '../lib/walletApi';
 import { processGiftInbox } from '../lib/giftsFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
@@ -25,15 +33,6 @@ import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { useAuthStore } from '../store/authStore';
 import { useCatalogConfigStore } from '../store/catalogConfigStore';
 import { useT } from '../i18n';
-
-type WithdrawalRow = {
-  id: string;
-  coins: number;
-  amountCop: number;
-  status: string;
-  payoutMethod?: string;
-  createdAt: string;
-};
 
 const GRADIENT = 'bg-[linear-gradient(to_right,#EC4899,#06B6D4)]';
 
@@ -70,20 +69,39 @@ export function WalletView() {
   const [initialPack, setInitialPack] = useState<string | undefined>();
   const [openWithdraw, setOpenWithdraw] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'recharge' | 'earning' | 'spend' | 'withdrawal'>('all');
+  const [ledger, setLedger] = useState<WalletLedgerRow[]>([]);
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
   const packsRef = useRef<HTMLDivElement>(null);
 
-  async function refreshWithdrawals() {
+  async function refreshWallet() {
     try {
-      const data = await api<{ withdrawals: WithdrawalRow[] }>('/api/payments/withdrawals');
-      setWithdrawals(data.withdrawals || []);
+      const summary = await fetchWalletSummary();
+      setWalletSummary(summary);
+      useAuthStore.getState().setBlastBalances({
+        purchasedBlastBalance: summary.purchasedBalance,
+        earnedBlastBalance: summary.earnedAvailable,
+        coinsBalance: summary.totalAvailable,
+      });
     } catch {
-      setWithdrawals([]);
+      /* el perfil Firestore sigue como respaldo visual */
+    }
+  }
+
+  async function refreshHistory(filter = historyFilter) {
+    try {
+      const rows = await fetchWalletTransactions(filter);
+      setLedger(rows);
+    } catch {
+      setLedger([]);
     }
   }
 
   useEffect(() => {
-    if (profile) void refreshWithdrawals();
+    if (profile) {
+      void refreshWallet();
+      if (showHistory) void refreshHistory();
+    }
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
@@ -121,6 +139,7 @@ export function WalletView() {
           }
         }
         await store.syncProfile();
+        await refreshWallet();
       } catch {
         /* webhook puede acreditar después */
       } finally {
@@ -144,6 +163,7 @@ export function WalletView() {
       try {
         await processGiftInbox(profile.firebaseUid);
         if (!cancelled) await useAuthStore.getState().syncProfile();
+        if (!cancelled) await refreshWallet();
       } catch {
         /* ignore */
       }
@@ -170,16 +190,16 @@ export function WalletView() {
     };
   }, [profile?.firebaseUid]);
 
-  const bal = normalizeBlastBalances({
+  const fallback = normalizeBlastBalances({
     coinsBalance: profile?.coinsBalance,
     purchasedBlastBalance: profile?.purchasedBlastBalance,
     earnedBlastBalance: profile?.earnedBlastBalance,
     earnedBlastSpent: profile?.earnedBlastSpent,
     earnedBlastWithdrawn: profile?.earnedBlastWithdrawn,
   });
-  const purchased = bal.purchasedBlastBalance;
-  const earned = bal.earnedBlastBalance;
-  const balance = bal.totalBlastBalance;
+  const purchased = walletSummary?.purchasedBalance ?? fallback.purchasedBlastBalance;
+  const earned = walletSummary?.earnedAvailable ?? fallback.earnedBlastBalance;
+  const balance = walletSummary?.totalAvailable ?? fallback.totalBlastBalance;
 
   function openBuy(packageId?: string) {
     setInitialPack(packageId);
@@ -205,8 +225,12 @@ export function WalletView() {
         <button
           type="button"
           onClick={() => {
-            setShowHistory((v) => !v);
-            void refreshWithdrawals();
+            setShowHistory((v) => {
+              const next = !v;
+              if (next) void refreshHistory();
+              return next;
+            });
+            void refreshWallet();
           }}
           className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#14151c] px-3 py-2 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white sm:px-3.5"
         >
@@ -232,7 +256,7 @@ export function WalletView() {
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/30" />
             <div className="relative min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-400">
-                Saldo actual
+                Saldo total
               </p>
               <p className="mt-2 flex flex-wrap items-baseline gap-1.5 sm:gap-2">
                 <span className="break-all text-4xl font-black tracking-tight text-[#00E5FF] drop-shadow-[0_2px_12px_rgba(0,0,0,0.45)] sm:text-5xl md:text-6xl">
@@ -248,7 +272,7 @@ export function WalletView() {
                     Comprados
                   </p>
                   <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-white sm:text-base">
-                    {purchased.toLocaleString('es-CO')}
+                    {purchased.toLocaleString('es-CO')} BLAST
                   </p>
                   <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Recargas</p>
                 </div>
@@ -257,7 +281,7 @@ export function WalletView() {
                     Ganados
                   </p>
                   <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-emerald-200 sm:text-base">
-                    {earned.toLocaleString('es-CO')}
+                    {earned.toLocaleString('es-CO')} BLAST
                   </p>
                   <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Regalos y llamadas</p>
                 </div>
@@ -266,7 +290,7 @@ export function WalletView() {
                     Total
                   </p>
                   <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-cyan-100 sm:text-base">
-                    {balance.toLocaleString('es-CO')}
+                    {balance.toLocaleString('es-CO')} BLAST
                   </p>
                   <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Recargas + ganados</p>
                 </div>
@@ -411,29 +435,77 @@ export function WalletView() {
           {showHistory ? (
             <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
               <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
-              {withdrawals.length === 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(
+                  [
+                    ['all', 'Todos'],
+                    ['recharge', 'Recargas'],
+                    ['earning', 'Ganancias'],
+                    ['spend', 'Gastos'],
+                    ['withdrawal', 'Retiros'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => {
+                      setHistoryFilter(id);
+                      void refreshHistory(id);
+                    }}
+                    className={`min-h-10 rounded-full px-3.5 text-xs font-semibold ${
+                      historyFilter === id
+                        ? 'bg-cyan-500/20 text-cyan-200'
+                        : 'bg-black/30 text-zinc-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {ledger.length === 0 ? (
                 <p className="mt-3 text-sm text-zinc-500">
-                  Aún no hay retiros. Las recargas aparecen en tu saldo al instante.
+                  Aún no hay movimientos en este filtro.
                 </p>
               ) : (
                 <ul className="mt-3 space-y-2">
-                  {withdrawals.slice(0, 12).map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2.5 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium text-white">
-                          −{item.coins.toLocaleString('es-CO')} blast → {formatCop(item.amountCop)}
-                        </p>
-                        <p className="text-xs text-zinc-500">
-                          {new Date(item.createdAt).toLocaleString('es-CO')} ·{' '}
-                          {item.payoutMethod || '—'} ·{' '}
-                          {item.status === 'pending' ? 'Pendiente de pago' : item.status}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
+                  {ledger.slice(0, 40).map((item) => {
+                    const signed = signedAmount(item);
+                    const group = item.filterGroup === 'recharge'
+                      ? 'RECARGAS'
+                      : item.filterGroup === 'earning'
+                        ? 'GANANCIAS'
+                        : item.filterGroup === 'spend'
+                          ? 'GASTOS'
+                          : item.filterGroup === 'withdrawal'
+                            ? 'RETIROS'
+                            : 'MOVIMIENTO';
+                    return (
+                      <li
+                        key={item.id}
+                        className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2.5 text-sm"
+                      >
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                            {group}
+                          </p>
+                          <p className="font-medium text-white">{ledgerLabel(item)}</p>
+                          <p className="text-xs text-zinc-500">
+                            {item.createdAtMs
+                              ? new Date(item.createdAtMs).toLocaleString('es-CO')
+                              : ''}
+                          </p>
+                        </div>
+                        <span
+                          className={
+                            signed >= 0 ? 'font-bold text-emerald-400' : 'font-bold text-fuchsia-400'
+                          }
+                        >
+                          {signed >= 0 ? '+' : ''}
+                          {signed.toLocaleString('es-CO')} BLAST
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
@@ -468,7 +540,8 @@ export function WalletView() {
           onClose={() => setOpenWithdraw(false)}
           onDone={() => {
             setOpenWithdraw(false);
-            void refreshWithdrawals();
+            void refreshWallet();
+            void refreshHistory();
             setShowHistory(true);
           }}
         />

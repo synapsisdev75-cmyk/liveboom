@@ -710,6 +710,32 @@ async function chargeWithFirestore(session, due, already, delta, chargeId, conne
       { merge: true },
     );
 
+    const { writeLedgerEntries } = require('./walletFirestore');
+    const { TX, BUCKET, DIRECTION, spendLedgerEntries } = require('./walletEngine');
+    const billedType = normalizeCallType(live.callType || session.callType);
+    const earningType = billedType === 'voice' ? TX.EARNING_CALL : TX.EARNING_VIDEO_CALL;
+    writeLedgerEntries(tx, db, [
+      ...spendLedgerEntries({
+        userId: session.callerId,
+        amountPurchased: spent.chargedPurchased,
+        amountEarned: spent.chargedEarned,
+        idempotencyKey: `CALL:${partialChargeId}`,
+        referenceType: 'call',
+        referenceId: session.callId,
+      }),
+      {
+        userId: session.receiverId,
+        transactionType: earningType,
+        bucket: BUCKET.EARNED,
+        amount: chargedDelta,
+        direction: DIRECTION.CREDIT,
+        idempotencyKey: `CALL:${partialChargeId}:credit`,
+        referenceType: 'call',
+        referenceId: session.callId,
+        metadata: { callType: billedType },
+      },
+    ]);
+
     setBalances(session.callerId, spent.balances);
     setBalances(session.receiverId, receiverBalances);
     return {

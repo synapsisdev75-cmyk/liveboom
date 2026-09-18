@@ -130,16 +130,21 @@ async function completePaymentOrder(reference, uid, options = {}) {
     const userSnap = await tx.get(userRef);
 
     if (order.status === 'completed') {
-      const { normalizeBlastBalances } = require('./blastBalances');
-      const bal = normalizeBlastBalances(userSnap.exists ? userSnap.data() : {});
+      const { toSummary } = require('./blastBalances');
+      const summary = toSummary(userSnap.exists ? userSnap.data() : {});
       return {
         ok: true,
         duplicate: true,
         uid: orderUid,
         coins: Number(order.coins) || 0,
-        coinsBalance: bal.coinsBalance,
-        purchasedBlastBalance: bal.purchasedBlastBalance,
-        earnedBlastBalance: bal.earnedBlastBalance,
+        coinsBalance: summary.coinsBalance,
+        purchasedBlastBalance: summary.purchasedBalance,
+        earnedBlastBalance: summary.earnedAvailable,
+        earnedBlastReserved: summary.earnedReserved,
+        withdrawableBalance: summary.withdrawableBalance,
+        purchasedBalance: summary.purchasedBalance,
+        earnedAvailable: summary.earnedAvailable,
+        totalAvailable: summary.totalAvailable,
       };
     }
 
@@ -149,7 +154,9 @@ async function completePaymentOrder(reference, uid, options = {}) {
       return { ok: false, error: 'amount_mismatch' };
     }
 
-    const { normalizeBlastBalances, applyCreditPurchased, firestoreBalancePatch } = require('./blastBalances');
+    const { normalizeBlastBalances, applyCreditPurchased, firestoreBalancePatch, toSummary } = require('./blastBalances');
+    const { writeLedgerEntry } = require('./walletFirestore');
+    const { TX, BUCKET, DIRECTION } = require('./walletEngine');
     const currentBal = normalizeBlastBalances(userSnap.exists ? userSnap.data() : {});
     const rawCoins = Math.max(0, Math.floor(Number(order.coins) || 0));
     const { blastForPackage } = require('./coinPackages');
@@ -176,6 +183,21 @@ async function completePaymentOrder(reference, uid, options = {}) {
       );
     }
 
+    writeLedgerEntry(tx, db, {
+      userId: orderUid,
+      transactionType: TX.RECHARGE,
+      bucket: BUCKET.PURCHASED,
+      amount: coins,
+      direction: DIRECTION.CREDIT,
+      idempotencyKey: `RECHARGE:${reference}`,
+      referenceType: 'payment_order',
+      referenceId: String(reference),
+      metadata: {
+        packageId: order.packageId || null,
+        wompiTxnId: options.wompiTxnId || null,
+      },
+    });
+
     tx.update(orderRef, {
       status: 'completed',
       wompiTxnId: options.wompiTxnId || null,
@@ -183,14 +205,20 @@ async function completePaymentOrder(reference, uid, options = {}) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    const summary = toSummary(nextBal);
     return {
       ok: true,
       duplicate: false,
       uid: orderUid,
       coins,
-      coinsBalance: nextBal.coinsBalance,
-      purchasedBlastBalance: nextBal.purchasedBlastBalance,
-      earnedBlastBalance: nextBal.earnedBlastBalance,
+      coinsBalance: summary.coinsBalance,
+      purchasedBlastBalance: summary.purchasedBalance,
+      earnedBlastBalance: summary.earnedAvailable,
+      earnedBlastReserved: summary.earnedReserved,
+      withdrawableBalance: summary.withdrawableBalance,
+      purchasedBalance: summary.purchasedBalance,
+      earnedAvailable: summary.earnedAvailable,
+      totalAvailable: summary.totalAvailable,
     };
   });
 }

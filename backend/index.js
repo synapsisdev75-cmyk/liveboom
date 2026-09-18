@@ -30,7 +30,6 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { prisma } = require('./src/lib/prisma');
-const { getBalance } = require('./src/lib/walletMemory');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -98,53 +97,7 @@ mount('/api/ads', () => require('./src/routes/ads'));
 mount('/api/reconstructions', () => require('./src/routes/reconstructions'));
 mount('/api/translate', () => require('./src/routes/translate'));
 mount('/api/push', () => require('./src/routes/push'));
-
-app.get('/api/wallet/:firebaseUid', async (req, res) => {
-  const { firebaseUid } = req.params;
-
-  if (!prisma) {
-    const coins = getBalance(firebaseUid);
-    res.json({
-      firebaseUid,
-      username: firebaseUid.slice(0, 24) || 'user',
-      coins,
-      coinsBalance: coins,
-    });
-    return;
-  }
-
-  try {
-    const user = await prisma.user.upsert({
-      where: { firebaseUid },
-      update: {},
-      create: {
-        firebaseUid,
-        email: `${firebaseUid}@liveboom.local`,
-        username: firebaseUid.slice(0, 24) || 'user',
-        coinsBalance: 0,
-      },
-      select: {
-        id: true,
-        firebaseUid: true,
-        email: true,
-        username: true,
-        coinsBalance: true,
-        avatarUrl: true,
-        bio: true,
-      },
-    });
-
-    res.json({
-      firebaseUid: user.firebaseUid,
-      username: user.username,
-      coins: user.coinsBalance,
-      coinsBalance: user.coinsBalance,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'No se pudo consultar la billetera' });
-  }
-});
+mount('/api/wallet', () => require('./src/routes/wallet'));
 
 app.use((error, _req, res, _next) => {
   console.error('[liveboom] error no controlado', error);

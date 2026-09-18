@@ -4,25 +4,14 @@ const { asFn } = require('../lib/asFn');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const { findGift } = require('../lib/gifts');
 const { emitGiftReceived } = require('../lib/socket');
-const { getBalance, setBalance, debit, credit } = require('../lib/walletMemory');
 const { findByUsername } = require('../lib/profileMemory');
 const liveChat = require('../lib/liveChat');
+const wallet = require('../lib/walletService');
+const { firestoreConfigured, getAdminDb } = require('../lib/firestoreAdmin');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
-
-/** Alinea el wallet en memoria con el saldo que ya ve el usuario (tras recargas). */
-function syncSenderFloor(senderUid, floorFromClient = 0) {
-  const floor = Math.max(
-    getBalance(senderUid),
-    Math.max(0, Math.floor(Number(floorFromClient) || 0)),
-  );
-  if (floor > getBalance(senderUid)) {
-    setBalance(senderUid, floor);
-  }
-  return getBalance(senderUid);
-}
 
 function withTimeout(promise, ms) {
   let timer;
@@ -60,23 +49,54 @@ function announceGift(roomName, payload) {
   }
 }
 
-function memorySend(senderUid, roomName, gift, payload, floorFromClient = 0, totalCoins) {
+async function resolveRecipientUid(roomName, senderUid) {
   const host = findByUsername(roomName);
-  if (host?.firebaseUid && host.firebaseUid === senderUid) {
-    return { error: 'No puedes enviarte un regalo a ti mismo' };
+  if (host?.firebaseUid && host.firebaseUid !== senderUid) return host.firebaseUid;
+  if (hasDatabase && prisma) {
+    try {
+      const creator = await withTimeout(
+        prisma.user.findFirst({ where: { username: roomName } }),
+        4000,
+      );
+      if (creator?.firebaseUid && creator.firebaseUid !== senderUid) {
+        return creator.firebaseUid;
+      }
+    } catch (error) {
+      console.warn('[gifts/send] prisma lookup', error.message);
+    }
   }
-  const cost = Math.max(gift.coins, Math.floor(Number(totalCoins) || gift.coins));
-  syncSenderFloor(senderUid, floorFromClient);
-  const next = debit(senderUid, cost);
-  if (next == null) return { error: 'Saldo insuficiente' };
-  if (host?.firebaseUid && host.firebaseUid !== senderUid) {
-    credit(host.firebaseUid, cost);
+  if (firestoreConfigured()) {
+    try {
+      const db = getAdminDb();
+      const q = await db.collection('users').where('username', '==', String(roomName)).limit(1).get();
+      if (!q.empty) {
+        const id = q.docs[0].id;
+        if (id && id !== senderUid) return id;
+      }
+      const roomId = String(roomName || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_');
+      if (roomId) {
+        const roomSnap = await db.collection('liveRooms').doc(roomId).get();
+        const hostUid = roomSnap.exists ? String(roomSnap.data()?.hostUid || '') : '';
+        if (hostUid && hostUid !== senderUid) return hostUid;
+      }
+    } catch (error) {
+      console.warn('[gifts/send] firestore lookup', error.message);
+    }
   }
-  announceGift(roomName, { ...payload, coins: cost });
-  return {
-    senderBalance: next,
-    creatorBalance: host ? getBalance(host.firebaseUid) : 0,
-  };
+  return null;
+}
+
+function earningTypeFromBody(body) {
+  const source = String(body?.source || body?.context || '').toLowerCase();
+  if (source === 'live' || source === 'live_gift') return 'EARNING_LIVE';
+  if (source === 'private' || source === 'live_private') return 'EARNING_PRIVATE';
+  if (source === 'call') return 'EARNING_CALL';
+  if (source === 'video_call' || source === 'video') return 'EARNING_VIDEO_CALL';
+  if (source === 'subscription') return 'EARNING_SUBSCRIPTION';
+  return 'EARNING_GIFT';
 }
 
 router.post('/send', requireAuth, requireDbUser, async (req, res) => {
@@ -93,7 +113,6 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   }
 
   const senderUid = req.user.uid;
-  const floorFromClient = Math.max(0, Math.floor(Number(req.body?.currentBalance) || 0));
   const senderName =
     req.dbUser?.displayName ||
     req.dbUser?.username ||
@@ -114,132 +133,48 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   };
 
   try {
-    if (!hasDatabase || !prisma) {
-      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient, totalCoins);
-      if (sent.error) {
-        res.status(402).json({ error: sent.error });
-        return;
-      }
-      res.json({ ok: true, gift: payload, ...sent });
-      return;
-    }
-
-    let creator = null;
-    try {
-      creator = await withTimeout(
-        prisma.user.findFirst({ where: { username: roomName } }),
-        4000,
-      );
-    } catch (error) {
-      console.warn('[gifts/send] prisma lookup timeout', error.message);
-    }
-
-    if (!creator) {
-      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient, totalCoins);
-      if (sent.error) {
-        res.status(402).json({ error: sent.error });
-        return;
-      }
-      res.json({ ok: true, gift: payload, ...sent });
-      return;
-    }
-    if (creator.firebaseUid === senderUid || creator.id === req.dbUser.id) {
+    const recipientUid = await resolveRecipientUid(roomName, senderUid);
+    if (recipientUid === senderUid) {
       res.status(400).json({ error: 'No puedes enviarte un regalo a ti mismo' });
       return;
     }
 
-    // Sincroniza Prisma con el saldo visible tras recargas (evita 402 falsos).
-    syncSenderFloor(senderUid, floorFromClient);
-    if (floorFromClient > Number(req.dbUser.coinsBalance || 0)) {
-      try {
-        await prisma.user.update({
-          where: { id: req.dbUser.id },
-          data: { coinsBalance: floorFromClient },
-        });
-        req.dbUser.coinsBalance = floorFromClient;
-      } catch (error) {
-        console.warn('[gifts/send] sync prisma floor', error.message);
+    const result = await wallet.transferGift({
+      senderUid,
+      recipientUid,
+      amount: totalCoins,
+      idempotencyKey: `GIFT:${payload.id}`,
+      earningType: earningTypeFromBody(req.body),
+      referenceType: 'gift',
+      referenceId: payload.id,
+      metadata: {
+        giftId: gift.id,
+        roomName,
+        multiplier,
+        clientId: payload.id,
+      },
+    });
+
+    if (!result?.ok) {
+      if (result?.code === 'SELF_GIFT') {
+        res.status(400).json({ error: 'No puedes enviarte un regalo a ti mismo' });
+        return;
       }
-    }
-
-    const result = await withTimeout(
-      prisma.$transaction(async (tx) => {
-        const deducted = await tx.user.updateMany({
-          where: { id: req.dbUser.id, coinsBalance: { gte: totalCoins } },
-          data: { coinsBalance: { decrement: totalCoins } },
-        });
-        if (deducted.count !== 1) {
-          const error = new Error('INSUFFICIENT_COINS');
-          error.code = 'INSUFFICIENT_COINS';
-          throw error;
-        }
-
-        const creatorUpdated = await tx.user.update({
-          where: { id: creator.id },
-          data: { coinsBalance: { increment: totalCoins } },
-        });
-
-        await tx.transaction.create({
-          data: {
-            userId: req.dbUser.id,
-            amount: -totalCoins,
-            amountInCop: 0,
-            type: 'gift_send',
-            status: 'completed',
-            packageId: gift.id,
-            reference: `gift_${randomUUID()}`,
-            currency: 'COINS',
-          },
-        });
-
-        await tx.transaction.create({
-          data: {
-            userId: creator.id,
-            amount: totalCoins,
-            amountInCop: 0,
-            type: 'gift_receive',
-            status: 'completed',
-            packageId: gift.id,
-            reference: `giftin_${randomUUID()}`,
-            currency: 'COINS',
-          },
-        });
-
-        const sender = await tx.user.findUnique({ where: { id: req.dbUser.id } });
-        return { sender, creator: creatorUpdated };
-      }),
-      6000,
-    );
-
-    // Mantén wallet en memoria alineada con Prisma.
-    if (result.sender?.coinsBalance != null) {
-      setBalance(senderUid, result.sender.coinsBalance);
-    }
-    if (creator.firebaseUid && result.creator?.coinsBalance != null) {
-      setBalance(creator.firebaseUid, result.creator.coinsBalance);
+      res.status(402).json({ error: 'Saldo insuficiente' });
+      return;
     }
 
     announceGift(roomName, payload);
     res.json({
       ok: true,
       gift: payload,
-      senderBalance: result.sender.coinsBalance,
-      creatorBalance: result.creator.coinsBalance,
+      senderBalance: result.senderSummary?.coinsBalance ?? 0,
+      creatorBalance: result.recipientSummary?.coinsBalance ?? 0,
+      purchasedBlastBalance: result.senderSummary?.purchasedBalance,
+      earnedBlastBalance: result.senderSummary?.earnedAvailable,
+      duplicate: Boolean(result.duplicate),
     });
   } catch (error) {
-    if (error.code === 'INSUFFICIENT_COINS' || error.message === 'INSUFFICIENT_COINS') {
-      res.status(402).json({ error: 'Saldo insuficiente' });
-      return;
-    }
-    if (error.code === 'TIMEOUT') {
-      const sent = memorySend(senderUid, roomName, gift, payload, floorFromClient, totalCoins);
-      if (sent.error) {
-        res.status(402).json({ error: sent.error });
-        return;
-      }
-      res.json({ ok: true, gift: payload, ...sent });
-      return;
-    }
     console.error('[gifts/send]', error);
     res.status(500).json({ error: 'No se pudo enviar el regalo' });
   }

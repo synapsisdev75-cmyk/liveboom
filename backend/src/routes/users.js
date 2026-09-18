@@ -51,6 +51,8 @@ function serializeUser(user) {
       user.purchasedBlastBalance != null ? Number(user.purchasedBlastBalance) : undefined,
     earnedBlastBalance:
       user.earnedBlastBalance != null ? Number(user.earnedBlastBalance) : undefined,
+    earnedBlastReserved:
+      user.earnedBlastReserved != null ? Number(user.earnedBlastReserved) : undefined,
     createdAt: user.createdAt || new Date().toISOString(),
     updatedAt: user.updatedAt || new Date().toISOString(),
   };
@@ -82,6 +84,10 @@ function mergeProfileRecord(uid, dbUser, memory) {
   const merged = normalizeBlastBalances({
     purchasedBlastBalance: Math.max(fromDb.purchasedBlastBalance, fromMem.purchasedBlastBalance),
     earnedBlastBalance: Math.max(fromDb.earnedBlastBalance, fromMem.earnedBlastBalance),
+    earnedBlastReserved: Math.max(
+      fromDb.earnedBlastReserved || 0,
+      fromMem.earnedBlastReserved || 0,
+    ),
     earnedBlastSpent: Math.max(fromDb.earnedBlastSpent, fromMem.earnedBlastSpent),
     earnedBlastWithdrawn: Math.max(fromDb.earnedBlastWithdrawn, fromMem.earnedBlastWithdrawn),
   });

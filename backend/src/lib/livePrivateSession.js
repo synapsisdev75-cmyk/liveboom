@@ -382,6 +382,20 @@ async function requestAccess(roomName, payload) {
         createdAtMs: now,
         updatedAt: FieldValue.serverTimestamp(),
       });
+      const { writeLedgerEntries } = require('./walletFirestore');
+      const { spendLedgerEntries } = require('./walletEngine');
+      writeLedgerEntries(
+        tx,
+        db,
+        spendLedgerEntries({
+          userId: viewerUid,
+          amountPurchased: spent.chargedPurchased,
+          amountEarned: spent.chargedEarned,
+          idempotencyKey: `PRIVATE_HOLD:${clientId}`,
+          referenceType: 'live_private',
+          referenceId: sessionId,
+        }),
+      );
       tx.set(
         reqRef,
         {
@@ -504,6 +518,18 @@ async function approveRequest(roomName, { actorUid, viewerUid }) {
           },
           { merge: true },
         );
+        const { writeLedgerEntry } = require('./walletFirestore');
+        const { TX, BUCKET, DIRECTION } = require('./walletEngine');
+        writeLedgerEntry(tx, db, {
+          userId: hostUid,
+          transactionType: TX.EARNING_PRIVATE,
+          bucket: BUCKET.EARNED,
+          amount: coins,
+          direction: DIRECTION.CREDIT,
+          idempotencyKey: `PRIVATE_CAPTURE:${holdId}`,
+          referenceType: 'live_private',
+          referenceId: sessionId,
+        });
       }
       tx.set(
         holdRef,
@@ -626,6 +652,34 @@ async function rejectRequest(roomName, { actorUid, viewerUid }) {
         },
         { merge: true },
       );
+      const { writeLedgerEntries } = require('./walletFirestore');
+      const { TX, BUCKET, DIRECTION } = require('./walletEngine');
+      const refundLedger = [];
+      if (purchased) {
+        refundLedger.push({
+          userId: uid,
+          transactionType: TX.REFUND,
+          bucket: BUCKET.PURCHASED,
+          amount: purchased,
+          direction: DIRECTION.CREDIT,
+          idempotencyKey: `PRIVATE_REFUND:${holdId}:purchased`,
+          referenceType: 'live_private',
+          referenceId: sessionId,
+        });
+      }
+      if (earned) {
+        refundLedger.push({
+          userId: uid,
+          transactionType: TX.REFUND,
+          bucket: BUCKET.EARNED,
+          amount: earned,
+          direction: DIRECTION.CREDIT,
+          idempotencyKey: `PRIVATE_REFUND:${holdId}:earned`,
+          referenceType: 'live_private',
+          referenceId: sessionId,
+        });
+      }
+      writeLedgerEntries(tx, db, refundLedger);
       tx.set(
         holdRef,
         {

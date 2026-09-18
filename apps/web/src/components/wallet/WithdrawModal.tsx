@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import {
   COIN_TO_COP,
@@ -6,6 +6,7 @@ import {
   coinsToCop,
   formatCop,
 } from '../../lib/coinPackages';
+import { fetchWalletSummary } from '../../lib/walletApi';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = {
@@ -16,9 +17,33 @@ type Props = {
 
 export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const profile = useAuthStore((state) => state.profile);
-  const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const syncProfile = useAuthStore((state) => state.syncProfile);
-  const balance = profile?.coinsBalance ?? 0;
+  const [withdrawable, setWithdrawable] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWalletSummary()
+      .then((summary) => {
+        if (cancelled) return;
+        setWithdrawable(Math.max(0, Math.floor(Number(summary.withdrawableBalance) || 0)));
+        setBlastBalances({
+          purchasedBlastBalance: summary.purchasedBalance,
+          earnedBlastBalance: summary.earnedAvailable,
+          coinsBalance: summary.totalAvailable,
+        });
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.firebaseUid, setBlastBalances]);
+
+  const balance = withdrawable;
   const suggested = Math.min(
     balance,
     initialCoins && initialCoins > 0
@@ -35,6 +60,11 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!loaded) return;
+    setCoinsInput(String(Math.max(0, suggested)));
+  }, [loaded, suggested]);
+
   const coinsNum = Math.floor(Number(coins) || 0);
   const payoutCop = useMemo(() => coinsToCop(coinsNum), [coinsNum]);
 
@@ -44,6 +74,9 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
     try {
       const result = await api<{
         coinsBalance: number;
+        purchasedBlastBalance?: number;
+        earnedBlastBalance?: number;
+        withdrawableBalance?: number;
         message?: string;
       }>('/api/payments/withdraw', {
         method: 'POST',
@@ -56,7 +89,16 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
           accountType,
         }),
       });
-      setCoins(result.coinsBalance);
+      if (result.purchasedBlastBalance != null || result.earnedBlastBalance != null) {
+        setBlastBalances({
+          purchasedBlastBalance: Number(result.purchasedBlastBalance) || 0,
+          earnedBlastBalance: Number(result.earnedBlastBalance) || 0,
+          coinsBalance: Number(result.coinsBalance) || 0,
+        });
+      }
+      if (typeof result.withdrawableBalance === 'number') {
+        setWithdrawable(Math.max(0, Math.floor(result.withdrawableBalance)));
+      }
       await syncProfile();
       setNote(result.message || 'Retiro solicitado.');
       onDone?.();
@@ -88,12 +130,15 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
         </div>
 
         <p className="mt-3 text-sm font-semibold text-emerald-400">
-          Disponible para retirar: {formatCop(coinsToCop(balance))}
+          Disponible para retirar {balance.toLocaleString('es-CO')} BLAST
         </p>
         <p className="mt-1 text-xs text-zinc-500">
-          Mínimo de retiro: {formatCop(coinsToCop(MIN_WITHDRAW_COINS))}
+          Solo BLAST ganados. Los BLAST comprados no se pueden retirar.
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Equivale a {formatCop(coinsToCop(balance))} · Mínimo {MIN_WITHDRAW_COINS.toLocaleString('es-CO')} BLAST
           {initialCoins && initialCoins > 0
-            ? ` · De este live: ${formatCop(coinsToCop(initialCoins))}`
+            ? ` · De este live: ${initialCoins.toLocaleString('es-CO')} BLAST`
             : ''}
         </p>
 
@@ -186,7 +231,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
           </button>
           <button
             type="button"
-            disabled={busy || coinsNum < MIN_WITHDRAW_COINS || coinsNum > balance}
+            disabled={busy || !loaded || coinsNum < MIN_WITHDRAW_COINS || coinsNum > balance}
             onClick={() => void submit()}
             className="rounded-full bg-emerald-500 px-6 py-2.5 text-sm font-bold text-zinc-950 disabled:opacity-50"
           >

@@ -10,14 +10,10 @@ const {
   isWompiMerchantActive,
 } = require('../lib/wompi');
 const {
-  debit,
   rememberOrder,
   takeOrder,
-  getBalance,
   setBalance,
   setBalances,
-  listWithdrawals,
-  addWithdrawal,
 } = require('../lib/walletMemory');
 const dbUserFromTokenMod = require('../lib/dbUserFromToken');
 const { prisma, hasDatabase } = require('../lib/prisma');
@@ -41,90 +37,20 @@ function userForOrder(req) {
   return req.dbUser || (req.user ? dbUserFromToken(req.user) : null);
 }
 
-/** Recarga = saldo Firestore (fuente real) + coins del paquete → comprados. */
-async function creditTopup(uid, coins) {
+/** Recarga = Wallet.creditPurchased (nunca earned / nunca retirable). */
+async function creditTopup(uid, coins, idempotencyKey) {
   const amount = Math.max(0, Math.floor(Number(coins) || 0));
-  const { setBalances, getBalances } = require('../lib/walletMemory');
-  const {
-    normalizeBlastBalances,
-    applyCreditPurchased,
-    firestoreBalancePatch,
-  } = require('../lib/blastBalances');
-
-  if (firestoreConfigured()) {
-    try {
-      const { getAdminDb } = require('../lib/firestoreAdmin');
-      const { FieldValue } = require('firebase-admin/firestore');
-      const db = getAdminDb();
-      const userRef = db.collection('users').doc(String(uid));
-      const nextBal = await db.runTransaction(async (tx) => {
-        const snap = await tx.get(userRef);
-        const current = normalizeBlastBalances(snap.exists ? snap.data() : {});
-        const next = applyCreditPurchased(current, amount);
-        if (snap.exists) {
-          tx.update(userRef, {
-            ...firestoreBalancePatch(next),
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-        } else {
-          tx.set(
-            userRef,
-            {
-              firebaseUid: String(uid),
-              ...firestoreBalancePatch(next),
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true },
-          );
-        }
-        return next;
-      });
-      setBalances(uid, nextBal);
-      if (hasDatabase && prisma) {
-        try {
-          await prisma.user.update({
-            where: { firebaseUid: uid },
-            data: { coinsBalance: nextBal.coinsBalance },
-          });
-        } catch (error) {
-          console.warn('[payments] no se persistió el saldo en Prisma:', error.message);
-        }
-      }
-      return nextBal.coinsBalance;
-    } catch (error) {
-      console.warn('[payments] firestore creditTopup fallback:', error.message);
-    }
+  const wallet = require('../lib/walletService');
+  const result = await wallet.creditPurchased({
+    userId: uid,
+    amount,
+    idempotencyKey: idempotencyKey || `RECHARGE_TOPUP:${uid}:${amount}:${Date.now()}`,
+    referenceType: 'recharge',
+  });
+  if (!result?.ok) {
+    throw new Error(result?.code || 'No se pudo acreditar la recarga');
   }
-
-  let seed = getBalances(uid);
-  if (seed.coinsBalance === 0 && hasDatabase && prisma) {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { firebaseUid: uid },
-        select: { coinsBalance: true },
-      });
-      const dbCoins = Number(user?.coinsBalance ?? 0);
-      if (dbCoins > 0) {
-        seed = normalizeBlastBalances({ coinsBalance: dbCoins });
-        setBalances(uid, seed);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  const nextBal = applyCreditPurchased(getBalances(uid), amount);
-  setBalances(uid, nextBal);
-  if (hasDatabase && prisma) {
-    try {
-      await prisma.user.update({
-        where: { firebaseUid: uid },
-        data: { coinsBalance: nextBal.coinsBalance },
-      });
-    } catch (error) {
-      console.warn('[payments] no se persistió el saldo:', error.message);
-    }
-  }
-  return nextBal.coinsBalance;
+  return result.summary.coinsBalance;
 }
 
 function buildOrderResponse({ pack, packageId, amountInCop, publicKey }) {
@@ -257,7 +183,7 @@ async function completeRedirect(req, res) {
           res.status(400).json({ error: 'El blast del paquete no coincide con la orden' });
           return;
         }
-        const coinsBalance = await creditTopup(uid, packCoins);
+        const coinsBalance = await creditTopup(uid, packCoins, `RECHARGE:${reference}`);
         res.json({
           reference,
           coins: packCoins,
@@ -353,7 +279,7 @@ async function completeWidget(req, res) {
       return;
     }
 
-    const coinsBalance = await creditTopup(uid, packCoins);
+    const coinsBalance = await creditTopup(uid, packCoins, `RECHARGE:${reference}`);
 
     res.json({
       reference,
@@ -581,17 +507,10 @@ async function withdrawCoins(req, res) {
       return;
     }
 
-    const nextBalance = debit(uid, coins);
-    if (nextBalance == null) {
-      res.status(400).json({
-        error: `Saldo insuficiente. Tienes ${getBalance(uid).toLocaleString('es-CO')} coins`,
-      });
-      return;
-    }
-
     const amountCop = coinsToCop(coins);
     const reference = createWompiReference('wd');
-    const record = addWithdrawal(uid, {
+    const wallet = require('../lib/walletService');
+    const payout = {
       id: reference,
       reference,
       coins,
@@ -602,19 +521,40 @@ async function withdrawCoins(req, res) {
       payoutMethod,
       accountNumber,
       accountType,
+    };
+    const result = await wallet.requestWithdrawal({
+      userId: uid,
+      amount: coins,
+      idempotencyKey: `WITHDRAWAL_REQUEST:${reference}`,
+      payout,
+    });
+    if (!result?.ok) {
+      const summary = result?.balances ? require('../lib/walletEngine').toSummary(result.balances) : await wallet.getSummary(uid);
+      const code = result?.code;
+      if (code === 'PURCHASED_NOT_WITHDRAWABLE') {
+        res.status(400).json({
+          error: `Solo puedes retirar BLAST ganados. Disponible para retirar: ${Number(summary.withdrawableBalance || 0).toLocaleString('es-CO')} BLAST. Los BLAST comprados no se retiran.`,
+          code,
+          withdrawableBalance: summary.withdrawableBalance,
+          purchasedBalance: summary.purchasedBalance,
+        });
+        return;
+      }
+      res.status(400).json({
+        error: `Saldo retirable insuficiente. Disponible: ${Number(summary.withdrawableBalance || 0).toLocaleString('es-CO')} BLAST`,
+        code,
+        withdrawableBalance: summary.withdrawableBalance,
+      });
+      return;
+    }
+
+    const record = {
+      ...payout,
       status: 'pending',
       createdAt: new Date().toISOString(),
-    });
+    };
 
     if (hasDatabase && prisma) {
-      try {
-        await prisma.user.update({
-          where: { firebaseUid: uid },
-          data: { coinsBalance: { decrement: coins } },
-        });
-      } catch (error) {
-        console.warn('[payments/withdraw] no se persistió el saldo:', error.message);
-      }
       try {
         await prisma.transaction.create({
           data: {
@@ -635,9 +575,13 @@ async function withdrawCoins(req, res) {
 
     res.status(201).json({
       withdrawal: record,
-      coinsBalance: nextBalance,
+      coinsBalance: result.summary.coinsBalance,
+      purchasedBlastBalance: result.summary.purchasedBalance,
+      earnedBlastBalance: result.summary.earnedAvailable,
+      earnedBlastReserved: result.summary.earnedReserved,
+      withdrawableBalance: result.summary.withdrawableBalance,
       coinToCop: COIN_TO_COP,
-      message: `Solicitud registrada: ${coins} coins = $${amountCop.toLocaleString('es-CO')} COP`,
+      message: `Solicitud registrada: ${coins} BLAST ganados = $${amountCop.toLocaleString('es-CO')} COP`,
     });
   } catch (error) {
     console.error('[payments/withdraw]', error);
@@ -657,11 +601,17 @@ function listMyWithdrawals(req, res) {
       return;
     }
     const uid = dbUser.firebaseUid || dbUser.id;
+    const wallet = require('../lib/walletService');
+    const summary = await wallet.getSummary(uid);
+    const withdrawals = await wallet.listWithdrawals(uid);
     res.json({
       coinToCop: COIN_TO_COP,
       minWithdrawCoins: MIN_WITHDRAW_COINS,
-      coinsBalance: getBalance(uid),
-      withdrawals: listWithdrawals(uid),
+      coinsBalance: summary.coinsBalance,
+      withdrawableBalance: summary.withdrawableBalance,
+      purchasedBalance: summary.purchasedBalance,
+      earnedAvailable: summary.earnedAvailable,
+      withdrawals,
     });
   } catch (error) {
     res.status(500).json({

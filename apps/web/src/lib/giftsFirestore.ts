@@ -346,24 +346,9 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
         clientId: input.clientId,
         currentBalance: input.senderBalance,
         multiplier: mult,
+        source: input.roomName ? 'live_gift' : 'gift',
       }),
     });
-    // Billetera (Ganados) vive en Firestore: acredita al receptor aunque el API haya cobrado.
-    try {
-      const recipientUid = await resolveRecipientUid(input.recipientUsername, input.recipientUid);
-      await creditRecipientEarned(recipientUid, totalCoins, {
-        senderUid: input.senderUid,
-        senderName: input.senderName,
-        giftId: catalog.id,
-        giftName: catalog.name,
-        emoji: catalog.emoji,
-        clientId: input.clientId,
-        postId: input.postId || null,
-        source: input.roomName ? 'live_gift' : 'gift',
-      });
-    } catch {
-      /* no bloquear el envío si el crédito FS falla */
-    }
     return { senderBalance: result.senderBalance, usedFallback: false };
   } catch (error) {
     if (!shouldFallbackToFirestore(error)) {

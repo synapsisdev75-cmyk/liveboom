@@ -40,6 +40,17 @@ service cloud.firestore {
       return isSuperAdmin() && hasValidAdminSession();
     }
 
+    function walletBalancesUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'coinsBalance',
+        'purchasedBlastBalance',
+        'earnedBlastBalance',
+        'earnedBlastReserved',
+        'earnedBlastSpent',
+        'earnedBlastWithdrawn'
+      ]);
+    }
+
     match /config/levels {
       allow read: if true;
       allow create, update: if isUnlockedSuperAdmin();
@@ -167,6 +178,7 @@ service cloud.firestore {
           && request.resource.data.firebaseUid == request.auth.uid
           && validUsername(request.resource.data.username)
           && request.resource.data.firebaseUid == resource.data.firebaseUid
+          && walletBalancesUnchanged()
         )
         || (
           isUnlockedSuperAdmin()
@@ -175,6 +187,15 @@ service cloud.firestore {
             .hasOnly(['levelXp', 'levelXpPinned', 'coinsBalance', 'updatedAt'])
         );
       allow delete: if isSelf(userId);
+
+      match /walletLedger/{entryId} {
+        allow read: if isSelf(userId);
+        allow write: if false;
+      }
+      match /walletWithdrawals/{entryId} {
+        allow read: if isSelf(userId);
+        allow write: if false;
+      }
 
       match /friends/{friendId} {
         allow read: if true;

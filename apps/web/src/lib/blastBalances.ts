@@ -6,10 +6,12 @@
 export type BlastBalances = {
   purchasedBlastBalance: number;
   earnedBlastBalance: number;
+  earnedBlastReserved: number;
   coinsBalance: number;
   earnedBlastSpent: number;
   earnedBlastWithdrawn: number;
   totalBlastBalance: number;
+  withdrawableBalance: number;
 };
 
 function floorNonNeg(n: unknown) {
@@ -25,6 +27,7 @@ export function normalizeBlastBalances(data: Record<string, unknown> | null | un
   let earned = floorNonNeg(raw.earnedBlastBalance);
   const earnedSpent = floorNonNeg(raw.earnedBlastSpent);
   const earnedWithdrawn = floorNonNeg(raw.earnedBlastWithdrawn);
+  const earnedReserved = floorNonNeg(raw.earnedBlastReserved);
 
   if (!hasPurchased && !hasEarned) {
     // Legado: solo coinsBalance → se trata como comprados hasta que existan campos duales.
@@ -44,9 +47,11 @@ export function normalizeBlastBalances(data: Record<string, unknown> | null | un
   return {
     purchasedBlastBalance: purchased,
     earnedBlastBalance: earned,
+    earnedBlastReserved: earnedReserved,
     coinsBalance: total,
     earnedBlastSpent: earnedSpent,
     earnedBlastWithdrawn: earnedWithdrawn,
     totalBlastBalance: total,
+    withdrawableBalance: earned,
   };
 }
