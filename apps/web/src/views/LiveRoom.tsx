@@ -36,7 +36,6 @@ import {
   MessageCircle,
   Plus,
   Gamepad2,
-  Unlock,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -1468,7 +1467,6 @@ function LiveGoalWishHud({
   onLockClick,
   onRequestClick,
   onOverflowClick,
-  onReopenPublic,
   onSealPrivate,
   onSendAccessGift,
   reopenBusy = false,
@@ -1495,7 +1493,6 @@ function LiveGoalWishHud({
   onLockClick?: () => void;
   onRequestClick?: (row: PrivateAccessRequest) => void;
   onOverflowClick?: () => void;
-  onReopenPublic?: () => void;
   onSealPrivate?: () => void;
   onSendAccessGift?: () => void;
   reopenBusy?: boolean;
@@ -1602,17 +1599,6 @@ function LiveGoalWishHud({
             className="lb-live-go-private"
           >
             <span>{reopenBusy ? 'Enviando…' : 'Enviar para entrar'}</span>
-          </button>
-        ) : null}
-        {isHost && lockArmed && onReopenPublic ? (
-          <button
-            type="button"
-            disabled={reopenBusy}
-            onClick={onReopenPublic}
-            className="lb-live-reopen-public"
-          >
-            <Unlock size={14} aria-hidden />
-            <span>{reopenBusy ? 'Reabriendo…' : sealed ? 'Volver a público' : 'Quitar candado'}</span>
           </button>
         ) : null}
       </div>
@@ -5567,7 +5553,6 @@ function CreatorStage({
                 setNewCoinGoalError(null);
                 setNewCoinGoalOpen(true);
               }}
-              onReopenPublic={() => void setLiveLock(null)}
               onSealPrivate={() => void sealLiveLock()}
               reopenBusy={lockBusy}
             />
