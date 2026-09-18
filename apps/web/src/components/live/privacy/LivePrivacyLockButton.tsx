@@ -17,7 +17,7 @@ type Props = {
 
 /**
  * Candado icon-only (debajo/al lado de Deseos).
- * Contorno cuando no hay privado; cerrado 3D en LIVE privado.
+ * Contorno en público; abierto 3D con candado armado; cerrado 3D en LIVE privado.
  */
 export function LivePrivacyLockButton({
   privateActive,
@@ -32,7 +32,9 @@ export function LivePrivacyLockButton({
   const aria =
     label ||
     (appearance === 'sealed'
-        ? 'LIVE privado'
+      ? 'LIVE privado'
+      : appearance === 'collecting'
+        ? 'Candado activo'
         : 'LIVE público');
   return (
     <button
@@ -45,7 +47,7 @@ export function LivePrivacyLockButton({
       aria-label={aria}
       title={aria}
     >
-      <PrivacyLockArt open={open} />
+      <PrivacyLockArt appearance={appearance} />
     </button>
   );
 }

@@ -50,37 +50,61 @@ function lockFromGift(gift, sessionId) {
   ]);
 }
 
-function asLock(gift, sessionId) {
+function asLock(gift, sessionId, sealed = false) {
   const entry = lockFromGift(gift, sessionId);
   if (!entry) return null;
   entry.privateSessionId = sessionId;
+  entry.sealed = Boolean(sealed);
   return entry;
+}
+
+function sessionIsOpen(room) {
+  const status = String(room?.privateSessionStatus || '');
+  const phase = String(room?.privatePhase || '');
+  return (
+    status === 'armed' ||
+    status === 'active' ||
+    phase === 'collecting' ||
+    phase === 'private'
+  );
+}
+
+function sessionIsSealed(room) {
+  return (
+    room?.privateSessionStatus === 'active' ||
+    room?.privatePhase === 'private' ||
+    room?.isPrivate === true
+  );
 }
 
 async function hydrateLock(roomName) {
   const existing = liveLocks.getLock(roomName);
-  if (existing) return existing;
-  if (!firestoreConfigured()) return null;
+  if (existing && existing.sealed) return existing;
+  if (!firestoreConfigured()) return existing || null;
   try {
     const db = getAdminDb();
     const snap = await roomRef(db, roomName).get();
-    if (!snap.exists) return null;
+    if (!snap.exists) return existing || null;
     const data = snap.data() || {};
-    const active =
-      data.privateSessionStatus === 'active' || data.privatePhase === 'private';
     const giftId = String(data.requiredGiftId || data.lockGiftId || '');
     const sessionId = String(data.privateSessionId || '');
-    if (!active || !giftId || !sessionId) return null;
+    if (!sessionIsOpen(data) || !giftId || !sessionId) return existing || null;
     const gift = findGift(giftId);
-    if (!gift) return null;
-    return liveLocks.restoreLock(roomName, {
+    if (!gift) return existing || null;
+    const restored = liveLocks.restoreLock(roomName, {
       giftId: gift.id,
       giftName: gift.name,
       coins: gift.coins,
       emoji: gift.emoji,
       quantity: 1,
       privateSessionId: sessionId,
+      sealed: sessionIsSealed(data),
     });
+    if (existing && restored) {
+      restored.sealed = restored.sealed || existing.sealed;
+      if (existing.sealed) restored.sealed = true;
+    }
+    return restored;
   } catch (error) {
     console.warn('[PRIVATE] hydrate failed', error.message);
     return liveLocks.getLock(roomName);
@@ -107,7 +131,7 @@ async function startSession(roomName, { hostUid, giftId }) {
   }
   await stopSession(roomName, { reason: 'restart' });
   const sessionId = newSessionId();
-  const lock = asLock(gift, sessionId);
+  const lock = asLock(gift, sessionId, false);
   liveLocks.setLock(roomName, {
     requirements: [
       {
@@ -119,18 +143,19 @@ async function startSession(roomName, { hostUid, giftId }) {
       },
     ],
     privateSessionId: sessionId,
+    sealed: false,
   });
 
   if (firestoreConfigured()) {
     const db = getAdminDb();
     await roomRef(db, roomName).set(
       {
-        privatePhase: 'private',
+        privatePhase: 'collecting',
         privateSessionId: sessionId,
-        privateSessionStatus: 'active',
+        privateSessionStatus: 'armed',
         requiredGiftId: gift.id,
         hostUid: String(hostUid || ''),
-        isPrivate: true,
+        isPrivate: false,
         lockGiftId: gift.id,
         privateRequirements: [
           { giftId: gift.id, requiredQuantity: 1, receivedQuantity: 0 },
@@ -139,14 +164,68 @@ async function startSession(roomName, { hostUid, giftId }) {
         privateStartsAtMs: null,
         countdownDurationMs: null,
         requirementsCompletedAtMs: null,
-        privateActivatedAtMs: Date.now(),
+        privateActivatedAtMs: null,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
     );
   }
 
-  logPrivate('session-start', { room: roomKey(roomName), sessionId, giftId: gift.id });
+  logPrivate('session-arm', { room: roomKey(roomName), sessionId, giftId: gift.id });
+  return { ok: true, lock, privateSessionId: sessionId, isPrivate: false };
+}
+
+async function grantPendingOnSeal(roomName, sessionId, hostUid) {
+  if (!firestoreConfigured() || !sessionId) return;
+  const db = getAdminDb();
+  const snap = await roomRef(db, roomName)
+    .collection('privateRequests')
+    .where('status', '==', 'pending')
+    .get();
+  for (const doc of snap.docs) {
+    const data = doc.data() || {};
+    if (String(data.sessionId || '') !== sessionId) continue;
+    await approveRequest(roomName, {
+      actorUid: hostUid || null,
+      viewerUid: String(data.uid || doc.id),
+    }).catch(() => undefined);
+  }
+}
+
+async function sealSession(roomName, { hostUid } = {}) {
+  await hydrateLock(roomName);
+  let lock = liveLocks.getLock(roomName);
+  if (!lock) {
+    return { ok: false, status: 409, error: 'Activa el candado y elige el regalo primero' };
+  }
+  if (lock.sealed) {
+    return {
+      ok: true,
+      lock,
+      isPrivate: true,
+      privateSessionId: lock.privateSessionId || null,
+      already: true,
+    };
+  }
+  liveLocks.markSealed(roomName, true);
+  lock = liveLocks.getLock(roomName);
+  const sessionId = String(lock?.privateSessionId || '');
+  if (firestoreConfigured()) {
+    const db = getAdminDb();
+    await roomRef(db, roomName).set(
+      {
+        privatePhase: 'private',
+        privateSessionStatus: 'active',
+        isPrivate: true,
+        privateActivatedAtMs: Date.now(),
+        privateStartsAtMs: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  }
+  await grantPendingOnSeal(roomName, sessionId, hostUid);
+  logPrivate('session-seal', { room: roomKey(roomName), sessionId });
   return { ok: true, lock, privateSessionId: sessionId, isPrivate: true };
 }
 
@@ -225,9 +304,7 @@ async function requestAccess(roomName, payload) {
 
       const room = roomSnap.data() || {};
       const sessionId = String(room.privateSessionId || '');
-      const active =
-        room.privateSessionStatus === 'active' || room.privatePhase === 'private';
-      if (!active || !sessionId) {
+      if (!sessionIsOpen(room) || !sessionId) {
         const err = new Error('NO_SESSION');
         err.code = 'NO_SESSION';
         throw err;
@@ -626,8 +703,7 @@ async function stopSession(roomName, { reason } = {}) {
     const snap = await roomRef(db, roomName).get();
     const data = snap.exists ? snap.data() || {} : {};
     sessionId = String(data.privateSessionId || sessionId || '');
-    const wasActive =
-      data.privateSessionStatus === 'active' || data.privatePhase === 'private' || Boolean(prev);
+    const wasActive = sessionIsOpen(data) || Boolean(prev);
     if (wasActive && sessionId) {
       await roomRef(db, roomName).set(
         {
@@ -651,6 +727,7 @@ async function stopSession(roomName, { reason } = {}) {
 module.exports = {
   hydrateLock,
   startSession,
+  sealSession,
   stopSession,
   requestAccess,
   approveRequest,

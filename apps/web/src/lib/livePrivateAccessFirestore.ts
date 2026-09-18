@@ -109,14 +109,15 @@ export function canManagePrivateAccess(role: 'host' | 'moderator' | 'viewer'): b
   return role === 'host' || role === 'moderator';
 }
 
-/** HUD del candado: cerrado mientras el LIVE está privado. */
+/** HUD del candado: contorno en público, abierto al armar, cerrado al sellar. */
 export type PrivacyLockAppearance = 'public' | 'collecting' | 'sealed';
 
 export function privacyLockAppearance(
   phase: PrivateLivePhase | null,
   lockActive: boolean,
 ): PrivacyLockAppearance {
-  if (phase === 'private' || lockActive) return 'sealed';
+  if (phase === 'private') return 'sealed';
+  if (phase === 'collecting' || phase === 'countdown' || lockActive) return 'collecting';
   return 'public';
 }
 

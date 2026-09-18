@@ -469,7 +469,6 @@ export function TransmitView() {
     <LivePrivacySetupSheet
       open={lockSetupOpen}
       draftIds={lockDraftIds}
-      privateActive={lockDraftIds.length > 0}
       onClose={() => setLockSetupOpen(false)}
       onToggleGift={toggleLockDraftGift}
       onConfirm={() => setLockSetupOpen(false)}

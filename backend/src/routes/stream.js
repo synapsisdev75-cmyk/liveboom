@@ -136,9 +136,7 @@ router.get('/live', async (req, res) => {
       viewers: Math.max(Number(prev?.viewers || 0), Number(item.viewers || 0)),
       title: item.title || prev?.title || `Live de ${item.username}`,
       displayName: item.displayName || prev?.displayName || item.username,
-      isPrivate: Boolean(
-        item.isPrivate ?? prev?.isPrivate ?? item.lockGiftId ?? prev?.lockGiftId ?? false,
-      ),
+      isPrivate: Boolean(item.isPrivate ?? prev?.isPrivate ?? false),
       lockGiftId: item.lockGiftId ?? prev?.lockGiftId ?? null,
     });
   }
@@ -149,8 +147,7 @@ router.get('/live', async (req, res) => {
     // Llamadas privadas 1:1 nunca aparecen como LIVE.
     if (/^dm[_-]/i.test(String(item.username || ''))) return false;
     if (includePrivate) return true;
-    // Candado activo = privado para el feed público.
-    if (item.isPrivate || item.lockGiftId) return false;
+    if (item.isPrivate) return false;
     return true;
   });
   if (category) {
@@ -477,12 +474,13 @@ router.post('/invite/kick', requireAuth, async (req, res) => {
   res.json({ ok: true, room: roomName, banned: invites.listBans(roomName) });
 });
 
-/** Candado en vivo: el host elige regalos (+ cantidades) que desbloquean la entrada. */
+/** Candado: arma el regalo (LIVE sigue público) o sella el privado. */
 router.post('/lock', requireAuth, async (req, res) => {
   const roomName =
     typeof req.body?.roomName === 'string' ? normalize(req.body.roomName) : '';
   const giftId = typeof req.body?.giftId === 'string' ? req.body.giftId.trim() : '';
   const clear = Boolean(req.body?.clear);
+  const seal = Boolean(req.body?.seal);
   const rawReqs = Array.isArray(req.body?.requirements) ? req.body.requirements : null;
   if (!roomName) {
     res.status(400).json({ error: 'roomName es obligatorio' });
@@ -492,12 +490,38 @@ router.post('/lock', requireAuth, async (req, res) => {
     res.status(403).json({ error: 'Solo quien transmite puede activar el candado' });
     return;
   }
-  if (clear || (!giftId && !(rawReqs && rawReqs.length))) {
+  if (clear || (!seal && !giftId && !(rawReqs && rawReqs.length))) {
     await livePrivate.stopSession(roomName, { reason: 'host_clear' });
     if (typeof upsertLive === 'function') {
       upsertLive({ username: roomName, isPrivate: false, lockGiftId: null });
     }
     res.json({ ok: true, locked: false, isPrivate: false, lock: null });
+    return;
+  }
+
+  if (seal) {
+    const sealed = await livePrivate.sealSession(roomName, { hostUid: req.user.uid });
+    if (!sealed.ok) {
+      res.status(sealed.status || 400).json({ error: sealed.error || 'No se pudo pasar a privado' });
+      return;
+    }
+    if (typeof upsertLive === 'function') {
+      upsertLive({
+        username: roomName,
+        isPrivate: true,
+        lockGiftId: sealed.lock?.giftId || null,
+        lockGiftName: sealed.lock?.giftName,
+        lockCoins: sealed.lock?.coins,
+        lockEmoji: sealed.lock?.emoji,
+      });
+    }
+    res.json({
+      ok: true,
+      locked: true,
+      isPrivate: true,
+      lock: sealed.lock,
+      privateSessionId: sealed.privateSessionId,
+    });
     return;
   }
 
@@ -509,13 +533,13 @@ router.post('/lock', requireAuth, async (req, res) => {
     giftId: chosenId,
   });
   if (!started.ok) {
-    res.status(started.status || 400).json({ error: started.error || 'No se pudo activar el privado' });
+    res.status(started.status || 400).json({ error: started.error || 'No se pudo activar el candado' });
     return;
   }
   if (typeof upsertLive === 'function') {
     upsertLive({
       username: roomName,
-      isPrivate: true,
+      isPrivate: false,
       lockGiftId: started.lock?.giftId || chosenId,
       lockGiftName: started.lock?.giftName,
       lockCoins: started.lock?.coins,
@@ -525,7 +549,7 @@ router.post('/lock', requireAuth, async (req, res) => {
   res.json({
     ok: true,
     locked: true,
-    isPrivate: true,
+    isPrivate: false,
     lock: started.lock,
     privateSessionId: started.privateSessionId,
   });
@@ -536,17 +560,24 @@ router.get('/lock/:roomName', requireAuth, async (req, res) => {
   const claimed = typeof req.query.handle === 'string' ? req.query.handle : undefined;
   const lock = await livePrivate.hydrateLock(roomName);
   const host = isRoomHost(req.user, roomName, claimed);
+  const sealed = Boolean(lock?.sealed);
   const access = host
     ? { requestStatus: 'approved', privateSessionId: lock?.privateSessionId || null }
     : await livePrivate.readViewerAccess(roomName, req.user.uid);
-  const unlocked = host || access.requestStatus === 'approved' || liveLocks.isUnlocked(roomName, req.user.uid);
-  if (!unlocked && lock) {
+  const unlocked =
+    host ||
+    !lock ||
+    !sealed ||
+    access.requestStatus === 'approved' ||
+    liveLocks.isUnlocked(roomName, req.user.uid);
+  if (!unlocked && sealed) {
     await syncDurablePrivateUnlock(roomName, req.user.uid);
   }
   res.json({
     locked: Boolean(lock),
+    isPrivate: sealed,
     lock,
-    unlocked: host || liveLocks.isUnlocked(roomName, req.user.uid) || unlocked,
+    unlocked: host || !sealed || liveLocks.isUnlocked(roomName, req.user.uid) || unlocked,
     isHost: host,
     privateSessionId: access.privateSessionId || lock?.privateSessionId || null,
     requestStatus: host ? 'approved' : access.requestStatus,
@@ -861,13 +892,15 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
     }
 
     await livePrivate.hydrateLock(roomName);
-    if (!host && !isDirectCall && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
+    const sealedLock = liveLocks.getLock(roomName);
+    const sealed = Boolean(sealedLock?.sealed);
+    if (!host && !isDirectCall && sealed && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
       const granted = await syncDurablePrivateUnlock(roomName, req.user.uid);
       if (granted) {
         /* grant durable: sigue a emitir token */
       }
     }
-    if (!host && !isDirectCall && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
+    if (!host && !isDirectCall && sealed && !liveLocks.canEnterLockedLive(roomName, req.user.uid, false)) {
       const lock = liveLocks.getLock(roomName);
       res.status(402).json({
         error: 'Live con candado',

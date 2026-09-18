@@ -306,6 +306,7 @@ type LockInfo = {
   emoji: string;
   quantity?: number;
   privateSessionId?: string;
+  sealed?: boolean;
   requirements?: LockGiftRequirement[];
 };
 
@@ -793,6 +794,7 @@ export function LiveRoom() {
             api<{
               locked: boolean;
               unlocked: boolean;
+              isPrivate?: boolean;
               isHost: boolean;
               lock: LockInfo | null;
             }>(
@@ -804,7 +806,7 @@ export function LiveRoom() {
               : fetchLiveViewerToken(username, handle, gen),
           ]);
           if (cancelled || gen !== currentLiveSwitchGen()) return;
-          if (lockState.locked && !lockState.unlocked && !lockState.isHost && lockState.lock) {
+          if (lockState.isPrivate && !lockState.unlocked && !lockState.isHost && lockState.lock) {
             setGateLock(lockState.lock);
             return;
           }
@@ -816,6 +818,7 @@ export function LiveRoom() {
           const lockState = await api<{
             locked: boolean;
             unlocked: boolean;
+            isPrivate?: boolean;
             isHost: boolean;
             lock: LockInfo | null;
           }>(
@@ -823,7 +826,7 @@ export function LiveRoom() {
             { signal: abort.signal },
           );
           if (cancelled) return;
-          if (lockState.locked && !lockState.unlocked && !lockState.isHost && lockState.lock) {
+          if (lockState.isPrivate && !lockState.unlocked && !lockState.isHost && lockState.lock) {
             setGateLock(lockState.lock);
             return;
           }
@@ -854,6 +857,7 @@ export function LiveRoom() {
       void api<{
         locked: boolean;
         unlocked: boolean;
+        isPrivate?: boolean;
         isHost: boolean;
         lock: LockInfo | null;
         requestStatus?: 'outside' | 'pending' | 'approved' | 'rejected';
@@ -869,8 +873,8 @@ export function LiveRoom() {
           if (lockState.requestStatus === 'pending' || lockState.requestStatus === 'rejected') {
             setGateRequestStatus(lockState.requestStatus);
           }
-          if (lockState.requestStatus === 'approved' || !lockState.locked || lockState.unlocked || lockState.isHost) {
-            if (lockState.requestStatus === 'approved' || lockState.unlocked || lockState.isHost || !lockState.locked) {
+          if (lockState.requestStatus === 'approved' || !lockState.isPrivate || lockState.unlocked || lockState.isHost) {
+            if (lockState.requestStatus === 'approved' || lockState.unlocked || lockState.isHost || !lockState.isPrivate) {
               setGateLock(null);
               void fetchToken();
             }
@@ -897,8 +901,9 @@ export function LiveRoom() {
       if (busy) return;
       busy = true;
       void api<{
-        locked: boolean;
-        unlocked: boolean;
+        locked?: boolean;
+        unlocked?: boolean;
+        isPrivate?: boolean;
         isHost: boolean;
         lock: LockInfo | null;
       }>(
@@ -913,7 +918,7 @@ export function LiveRoom() {
             }
             return;
           }
-          if (lockState.locked && !lockState.unlocked && lockState.lock) {
+          if (lockState.isPrivate && !lockState.unlocked && lockState.lock) {
             setGateLock(lockState.lock);
             setViewerPaused(true);
             return;
@@ -1411,6 +1416,8 @@ function LiveGoalWishHud({
   onRequestClick,
   onOverflowClick,
   onReopenPublic,
+  onSealPrivate,
+  onSendAccessGift,
   reopenBusy = false,
 }: {
   username: string;
@@ -1436,19 +1443,21 @@ function LiveGoalWishHud({
   onRequestClick?: (row: PrivateAccessRequest) => void;
   onOverflowClick?: () => void;
   onReopenPublic?: () => void;
+  onSealPrivate?: () => void;
+  onSendAccessGift?: () => void;
   reopenBusy?: boolean;
 }) {
   const preparingPrivate = privatePhase === 'collecting' || privatePhase === 'countdown';
-  const privateActive = Boolean(lock) || preparingPrivate;
+  const sealed = privatePhase === 'private';
+  const lockArmed = Boolean(lock) || preparingPrivate;
+  const privateActive = lockArmed;
   const handle = username.replace(/^@/, '');
   const statusText = celebrating
     ? ' · ¡Meta conseguida!'
     : goal?.reached
       ? ' · Meta cumplida ✓'
       : '';
-  const viewerLabel = lock
-    ? 'LIVE privado'
-    : undefined;
+  const viewerLabel = sealed ? 'LIVE privado' : lockArmed ? 'Candado activo' : undefined;
 
   const activeLockGifts = lockGiftIdsOf(lock);
   const draftIds = (lockDraftIds || []).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
@@ -1469,7 +1478,7 @@ function LiveGoalWishHud({
     <div className="lb-live-privacy-row is-under-goal">
       <LivePrivacyLockButton
         privateActive={privateActive}
-        phase={privatePhase || (lock ? 'private' : null)}
+        phase={privatePhase}
         interactive={Boolean(isHost)}
         label={viewerLabel}
         pulse={lockPulse}
@@ -1482,8 +1491,10 @@ function LiveGoalWishHud({
           <LiveWishCarousel giftIds={requestedGiftIds.slice(0, 1)} />
         </div>
       ) : null}
-      {lock ? (
+      {sealed ? (
         <p className="lb-live-privacy-lock-caption">LIVE privado</p>
+      ) : lockArmed ? (
+        <p className="lb-live-privacy-lock-caption">Candado activo</p>
       ) : null}
       {isHost && (Boolean(lock) || pendingRequests.length > 0) ? (
         <LivePrivacyRequestStrip
@@ -1520,7 +1531,27 @@ function LiveGoalWishHud({
           </div>
         ) : null}
         {privacyControls}
-        {isHost && privateActive && onReopenPublic ? (
+        {isHost && lockArmed && !sealed && onSealPrivate ? (
+          <button
+            type="button"
+            disabled={reopenBusy}
+            onClick={onSealPrivate}
+            className="lb-live-go-private"
+          >
+            <span>{reopenBusy ? 'Pasando…' : 'Pasar a privado'}</span>
+          </button>
+        ) : null}
+        {!isHost && lockArmed && !sealed && onSendAccessGift ? (
+          <button
+            type="button"
+            disabled={reopenBusy}
+            onClick={onSendAccessGift}
+            className="lb-live-go-private"
+          >
+            <span>{reopenBusy ? 'Enviando…' : 'Enviar para entrar'}</span>
+          </button>
+        ) : null}
+        {isHost && lockArmed && onReopenPublic ? (
           <button
             type="button"
             disabled={reopenBusy}
@@ -1528,7 +1559,7 @@ function LiveGoalWishHud({
             className="lb-live-reopen-public"
           >
             <Unlock size={14} aria-hidden />
-            <span>{reopenBusy ? 'Reabriendo…' : 'Volver a público'}</span>
+            <span>{reopenBusy ? 'Reabriendo…' : sealed ? 'Volver a público' : 'Quitar candado'}</span>
           </button>
         ) : null}
       </div>
@@ -2170,6 +2201,7 @@ function CreatorStage({
 
   const [lockPicker, setLockPicker] = useState(false);
   const [lockBusy, setLockBusy] = useState(false);
+  const [accessHoldBusy, setAccessHoldBusy] = useState(false);
   const [lockDraftIds, setLockDraftIds] = useState<string[]>([]);
   const [lockDraftQty, setLockDraftQty] = useState<Record<string, number>>({});
   const [viewersList, setViewersList] = useState<SalaInviteViewer[]>([]);
@@ -2352,12 +2384,13 @@ function CreatorStage({
       unlocked?: boolean;
       isHost?: boolean;
       locked?: boolean;
+      isPrivate?: boolean;
     }>(
       `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
     )
       .then((data) => {
         setLock(data.lock);
-        setLockUnlocked(Boolean(data.isHost || data.unlocked || !data.lock));
+        setLockUnlocked(Boolean(data.isHost || data.unlocked || !data.isPrivate));
       })
       .catch(() => undefined);
   }, [isHost, username, handle]);
@@ -2375,15 +2408,16 @@ function CreatorStage({
         unlocked?: boolean;
         isHost?: boolean;
         locked?: boolean;
+        isPrivate?: boolean;
       }>(
         `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
       )
         .then((data) => {
           setLock(data.lock);
-          const unlocked = Boolean(data.isHost || data.unlocked || !data.lock);
+          const unlocked = Boolean(data.isHost || data.unlocked || !data.isPrivate);
           setLockUnlocked(unlocked);
           if (!isHost && isSpectator) {
-            if (data.lock && !unlocked) {
+            if (data.isPrivate && data.lock && !unlocked) {
               onViewerPausedRef.current?.(true, data.lock);
             } else {
               onViewerPausedRef.current?.(false, null);
@@ -2436,7 +2470,7 @@ function CreatorStage({
         privateActivateOnceRef.current = schedule.privateActivatedAtMs;
       }
       const prev = prevPrivatePhaseRef.current;
-      if (prev === 'collecting' && schedule.privatePhase === 'countdown') {
+      if (prev === 'collecting' && (schedule.privatePhase === 'countdown' || schedule.privatePhase === 'private')) {
         setLockPulse(true);
         window.setTimeout(() => setLockPulse(false), 750);
       }
@@ -2462,6 +2496,30 @@ function CreatorStage({
       }
     });
   }, [isHost, username, firebaseUid, privateSessionId, handle]);
+
+  useEffect(() => {
+    if (isHost || !isSpectator || !username || privatePhase !== 'private') return;
+    let cancelled = false;
+    void api<{
+      lock: LockInfo | null;
+      unlocked?: boolean;
+      isHost?: boolean;
+      isPrivate?: boolean;
+    }>(
+      `/api/stream/lock/${encodeURIComponent(username)}?handle=${encodeURIComponent(handle || username)}`,
+    )
+      .then((data) => {
+        if (cancelled) return;
+        setLock(data.lock);
+        const unlocked = Boolean(data.isHost || data.unlocked || !data.isPrivate);
+        setLockUnlocked(unlocked);
+        if (!unlocked && data.lock) onViewerPausedRef.current?.(true, data.lock);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isHost, isSpectator, username, handle, privatePhase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2686,11 +2744,13 @@ function CreatorStage({
       // No mostrar quién entra/sale de la sala en pantalla.
       if (data.type === 'lock') {
         setLock(data.lock);
+        const sealed = Boolean(data.lock?.sealed);
         if (data.lock) {
-          if (isHost) {
+          if (isHost || !sealed) {
             setLockUnlocked(true);
+            if (!sealed && isSpectator) onViewerPausedRef.current?.(false, null);
           } else {
-            void api<{ unlocked?: boolean }>('/api/stream/claim-access', {
+            void api<{ unlocked?: boolean; isPrivate?: boolean }>('/api/stream/claim-access', {
               method: 'POST',
               body: JSON.stringify({ roomName: username, handle }),
             })
@@ -3109,14 +3169,15 @@ function CreatorStage({
       );
       const next = result.locked ? result.lock : null;
       setLock(next);
-      setLockUnlocked(!next);
+      setLockUnlocked(!next || !result.isPrivate);
       setLockPicker(false);
-      const nowPrivate = Boolean(result.isPrivate ?? result.locked);
+      const nowPrivate = Boolean(result.isPrivate);
       onPrivacyChange?.(nowPrivate);
       if (next) {
         if (next.privateSessionId) setPrivateSessionIdState(next.privateSessionId);
-        setPrivatePhase('private');
-        privatePhaseRef.current = 'private';
+        const nextPhase = nowPrivate ? 'private' : 'collecting';
+        setPrivatePhase(nextPhase);
+        privatePhaseRef.current = nextPhase;
       } else {
         await clearPrivateSchedule(username).catch(() => undefined);
         setPrivateStartsAtMs(null);
@@ -3132,7 +3193,9 @@ function CreatorStage({
       await publishRoomData(room, { type: 'lock', lock: next });
       setInviteNote(
         next
-          ? 'LIVE privado activo. Quien envíe el regalo solicita entrar; tú aceptas o rechazas.'
+          ? nowPrivate
+            ? 'LIVE privado. Quien envíe el regalo solicita entrar; tú aceptas o rechazas.'
+            : 'Candado activo. El LIVE sigue público. Pasa a privado cuando quieras.'
           : 'Candado quitado. Live reabierto al público.',
       );
     } catch (err) {
@@ -3185,6 +3248,88 @@ function CreatorStage({
         quantity: 1,
       },
     ]);
+  }
+
+  async function sealLiveLock() {
+    if (!isHost) return;
+    setLockBusy(true);
+    try {
+      const result = await api<{ lock: LockInfo | null; locked: boolean; isPrivate?: boolean }>(
+        '/api/stream/lock',
+        {
+          method: 'POST',
+          body: JSON.stringify({ roomName: username, handle, seal: true }),
+        },
+      );
+      const next = result.locked ? result.lock : null;
+      if (next) {
+        next.sealed = true;
+        setLock(next);
+        if (next.privateSessionId) setPrivateSessionIdState(next.privateSessionId);
+      }
+      setLockUnlocked(true);
+      setLockPicker(false);
+      onPrivacyChange?.(true);
+      setPrivatePhase('private');
+      privatePhaseRef.current = 'private';
+      await updateLiveRoomFeed(username, {
+        isPrivate: true,
+        lockGiftId: next?.giftId ?? lock?.giftId ?? null,
+      }).catch(() => undefined);
+      await publishRoomData(room, { type: 'lock', lock: next ? { ...next, sealed: true } : lock });
+      setInviteNote('LIVE privado. Quienes ya enviaron el regalo entran; el resto solicita acceso.');
+    } catch (err) {
+      setInviteNote(err instanceof Error ? err.message : 'No se pudo pasar a privado');
+    } finally {
+      setLockBusy(false);
+    }
+  }
+
+  async function sendAccessHoldFromHud() {
+    if (isHost || accessHoldBusy) return;
+    const giftId = lockRequirementsOf(lock)[0]?.giftId;
+    const catalog = giftId ? findLiveGift(giftId) : null;
+    if (!catalog || !firebaseUid || !handle) return;
+    if (walletCoins < catalog.coins) {
+      setInviteNote('Saldo insuficiente. Recarga coins para continuar.');
+      return;
+    }
+    setAccessHoldBusy(true);
+    const previous = walletCoins;
+    const clientId = `hold-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      const result = await api<{
+        pending?: boolean;
+        unlocked?: boolean;
+        duplicate?: boolean;
+        requestStatus?: string;
+        senderBalance?: number;
+      }>('/api/stream/unlock', {
+        method: 'POST',
+        body: JSON.stringify({
+          roomName: username,
+          handle,
+          giftId: catalog.id,
+          clientId,
+          currentBalance: previous,
+          username: handle,
+        }),
+      });
+      if (typeof result.senderBalance === 'number') {
+        setCoins(result.senderBalance);
+        void setFirestoreCoins(firebaseUid, result.senderBalance).catch(() => undefined);
+      }
+      setInviteNote(
+        result.unlocked || result.requestStatus === 'approved'
+          ? 'Acceso aprobado.'
+          : 'Regalo en reserva. El creador acepta o rechaza.',
+      );
+    } catch (err) {
+      setCoins(previous);
+      setInviteNote(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
+    } finally {
+      setAccessHoldBusy(false);
+    }
   }
 
   async function acceptPrivacyRequest(uid: string) {
@@ -5304,6 +5449,7 @@ function CreatorStage({
                 setNewCoinGoalOpen(true);
               }}
               onReopenPublic={() => void setLiveLock(null)}
+              onSealPrivate={() => void sealLiveLock()}
               reopenBusy={lockBusy}
             />
           </div>
@@ -5380,6 +5526,8 @@ function CreatorStage({
               privatePhase={privatePhase}
               privateRequirements={privateRequirements}
               lockPulse={lockPulse}
+              onSendAccessGift={() => void sendAccessHoldFromHud()}
+              reopenBusy={accessHoldBusy}
             />
           </div>
         )}
@@ -5480,10 +5628,12 @@ function CreatorStage({
         open={Boolean(lockPicker && isHost)}
         busy={lockBusy}
         draftIds={lockDraftIds}
-        privateActive={Boolean(lock)}
+        lockArmed={Boolean(lock) && privatePhase !== 'private'}
+        privateActive={privatePhase === 'private'}
         onClose={() => setLockPicker(false)}
         onToggleGift={toggleLockDraftGift}
         onConfirm={() => void applyLockDraft()}
+        onSealPrivate={() => void sealLiveLock()}
         onClearPrivate={() => void setLiveLock(null)}
       />
       <LivePrivacyRequestsSheet
@@ -6541,6 +6691,17 @@ function ChatPanel({
   const levelXpRef = useRef(0);
   const giftCatalog = useMemo(() => sortedLiveGiftCatalog(), []);
   const popularGifts = useMemo(() => giftCatalog.slice(0, 8), [giftCatalog]);
+  const [accessHoldGiftId, setAccessHoldGiftId] = useState<string | null>(null);
+
+  useEffect(() => {
+    return listenPrivateSchedule(roomName, (schedule) => {
+      const id =
+        schedule.privateRequirements?.[0]?.giftId ||
+        schedule.privatePendingRequirements?.[0]?.giftId ||
+        null;
+      setAccessHoldGiftId(schedule.privatePhase === 'collecting' && id ? id : null);
+    });
+  }, [roomName]);
 
   useEffect(() => {
     const openGiftsEv = () => {
@@ -6826,6 +6987,56 @@ function ChatPanel({
       setRechargeNeeded(totalCoins);
       setOpenGifts(true);
       setPendingGiftId(null);
+      return;
+    }
+
+    if (accessHoldGiftId && catalog.id === accessHoldGiftId) {
+      setGiftError(null);
+      setRechargeNeeded(null);
+      setSendingGift(giftId);
+      setPendingGiftId(null);
+      setOpenGifts(false);
+      setGiftMultiplier(1);
+      const previousCoins = coins;
+      const clientId = `hold-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      try {
+        const result = await api<{
+          pending?: boolean;
+          unlocked?: boolean;
+          duplicate?: boolean;
+          requestStatus?: string;
+          senderBalance?: number;
+        }>('/api/stream/unlock', {
+          method: 'POST',
+          body: JSON.stringify({
+            roomName,
+            handle: profile.handle,
+            giftId: catalog.id,
+            clientId,
+            currentBalance: previousCoins,
+            username: profile.handle,
+          }),
+        });
+        if (typeof result.senderBalance === 'number') {
+          setCoins(result.senderBalance);
+          void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+        }
+        if (result.unlocked || result.requestStatus === 'approved') {
+          setGiftError(null);
+          return;
+        }
+        setGiftError(
+          result.duplicate
+            ? 'Solicitud pendiente. El creador te avisará.'
+            : 'Regalo en reserva. El creador acepta o rechaza.',
+        );
+      } catch (err) {
+        setCoins(previousCoins);
+        setGiftError(err instanceof Error ? err.message : 'No se pudo reservar el regalo');
+        setOpenGifts(true);
+      } finally {
+        setSendingGift(null);
+      }
       return;
     }
 

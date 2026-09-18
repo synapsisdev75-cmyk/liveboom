@@ -75,6 +75,7 @@ function setLock(room, lock) {
   if (lock.privateSessionId) {
     entry.privateSessionId = String(lock.privateSessionId);
   }
+  entry.sealed = Boolean(lock.sealed);
   locks.set(key, entry);
   return entry;
 }
@@ -99,6 +100,7 @@ function restoreLock(room, lock) {
   const entry = buildLockEntry(requirements);
   if (!entry) return getLock(room);
   if (lock.privateSessionId) entry.privateSessionId = String(lock.privateSessionId);
+  entry.sealed = Boolean(lock.sealed);
   locks.set(key, entry);
   return entry;
 }
@@ -128,10 +130,17 @@ function markUnlocked(room, uid) {
   set.add(String(uid));
 }
 
+function markSealed(room, sealed = true) {
+  const lock = getLock(room);
+  if (!lock) return null;
+  lock.sealed = Boolean(sealed);
+  return lock;
+}
+
 function canEnterLockedLive(room, uid, isHost) {
   if (isHost) return true;
   const lock = getLock(room);
-  if (!lock) return true;
+  if (!lock || !lock.sealed) return true;
   return isUnlocked(room, uid);
 }
 
@@ -142,6 +151,7 @@ module.exports = {
   clearLock,
   isUnlocked,
   markUnlocked,
+  markSealed,
   canEnterLockedLive,
   buildLockEntry,
 };

@@ -504,7 +504,7 @@ export function listenActiveLiveRooms(
       const data = item.data();
       const username = String(data.username || item.id || '').trim();
       if (!username) continue;
-      if (data.isPrivate || data.lockGiftId) continue;
+      if (data.isPrivate) continue;
       if (!isLiveHeartbeatFresh(data, now)) continue;
       const startedAtMs = Number(data.startedAtMs || Date.now());
       streams.push({

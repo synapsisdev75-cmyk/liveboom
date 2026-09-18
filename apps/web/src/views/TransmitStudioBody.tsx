@@ -351,10 +351,10 @@ export function TransmitStudioBody(props: Props) {
             >
               <span className="lb-live-privacy-lock-label">
                 <PrivacyLockArt open className="lb-live-privacy-lock-label__art" />
-                <span className="text-xs font-semibold text-sky-200">Candado · LIVE privado</span>
+                <span className="text-xs font-semibold text-sky-200">Candado · 1 regalo</span>
               </span>
               <span className="max-w-[55%] truncate text-[11px] text-zinc-300">
-                {props.lockSummary || 'Elegir regalos'}
+                {props.lockSummary || 'El LIVE sigue público'}
               </span>
             </button>
           ) : null}
@@ -368,10 +368,10 @@ export function TransmitStudioBody(props: Props) {
         >
           <span className="lb-live-privacy-lock-label">
             <PrivacyLockArt open className="lb-live-privacy-lock-label__art" />
-            <span className="text-xs font-bold text-sky-200">Candado · privado</span>
+            <span className="text-xs font-bold text-sky-200">Candado · 1 regalo</span>
           </span>
           <span className="max-w-[58%] truncate text-[11px] text-zinc-300">
-            {props.lockSummary || 'Elige el regalo para el privado'}
+            {props.lockSummary || 'El LIVE sigue público hasta que pases a privado'}
           </span>
         </button>
       ) : null}

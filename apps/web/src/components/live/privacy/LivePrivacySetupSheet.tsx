@@ -10,10 +10,14 @@ type Props = {
   open: boolean;
   busy?: boolean;
   draftIds: string[];
+  /** Candado armado, LIVE sigue público. */
+  lockArmed?: boolean;
+  /** LIVE ya pasó a privado. */
   privateActive?: boolean;
   onClose: () => void;
   onToggleGift: (giftId: string) => void;
   onConfirm: () => void;
+  onSealPrivate?: () => void;
   onClearPrivate?: () => void;
 };
 
@@ -21,15 +25,18 @@ export function LivePrivacySetupSheet({
   open,
   busy,
   draftIds,
+  lockArmed,
   privateActive,
   onClose,
   onToggleGift,
   onConfirm,
+  onSealPrivate,
   onClearPrivate,
 }: Props) {
   if (!open) return null;
   const selectedId = draftIds[0] || '';
   const selected = selectedId ? findLiveGift(selectedId) : null;
+  const giftLocked = Boolean(lockArmed || privateActive);
 
   return (
     <div className="lb-live-privacy-setup" role="dialog" aria-modal="true">
@@ -42,12 +49,15 @@ export function LivePrivacySetupSheet({
           </button>
         </div>
         <p className="lb-live-privacy-setup__hint">
-          Elige el regalo para entrar al privado. Al activar, el LIVE pasa a privado de inmediato.
-          Quien envíe ese regalo pide acceso; tú aceptas o rechazas.
+          Elige 1 regalo de acceso. El LIVE sigue público. Tú decides cuándo pasar a privado.
+          Quien envíe el regalo queda en reserva; al pasar a privado entra. Después, tú aceptas o rechazas.
         </p>
         {selected ? (
           <p className="lb-live-privacy-setup__chosen">
-            <PrivacyLockArt open={false} className="lb-live-privacy-setup__art" />
+            <PrivacyLockArt
+              appearance={privateActive ? 'sealed' : lockArmed ? 'collecting' : 'public'}
+              className="lb-live-privacy-setup__art"
+            />
             Regalo de acceso: {selected.name}
           </p>
         ) : null}
@@ -59,7 +69,7 @@ export function LivePrivacySetupSheet({
               <button
                 key={gift.id}
                 type="button"
-                disabled={Boolean(privateActive)}
+                disabled={giftLocked}
                 onClick={() => onToggleGift(gift.id)}
                 className={`flex w-full min-w-0 items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs ${
                   active ? 'bg-amber-500/20 text-amber-100' : 'text-white'
@@ -74,15 +84,27 @@ export function LivePrivacySetupSheet({
             );
           })}
         </div>
-        <button
-          type="button"
-          disabled={busy || !selectedId || Boolean(privateActive)}
-          onClick={onConfirm}
-          className="lb-live-privacy-setup__confirm"
-        >
-          {busy ? 'Aplicando…' : 'Activar LIVE privado'}
-        </button>
-        {privateActive && onClearPrivate ? (
+        {!lockArmed && !privateActive ? (
+          <button
+            type="button"
+            disabled={busy || !selectedId}
+            onClick={onConfirm}
+            className="lb-live-privacy-setup__confirm"
+          >
+            {busy ? 'Aplicando…' : 'Activar candado'}
+          </button>
+        ) : null}
+        {lockArmed && !privateActive && onSealPrivate ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onSealPrivate}
+            className="lb-live-privacy-setup__confirm"
+          >
+            {busy ? 'Pasando…' : 'Pasar a privado'}
+          </button>
+        ) : null}
+        {(lockArmed || privateActive) && onClearPrivate ? (
           <button
             type="button"
             disabled={busy}

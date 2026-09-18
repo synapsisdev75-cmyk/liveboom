@@ -4287,6 +4287,38 @@ html[data-lb-theme='dark'] .lb-media-fab {
   opacity: 0.55;
 }
 
+.lb-live-go-private {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.18);
+  color: #fde68a;
+  font-size: clamp(0.72rem, 0.66rem + 0.28vw, 0.82rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+.lb-live-go-private:hover,
+.lb-live-go-private:focus-visible {
+  background: rgba(251, 191, 36, 0.28);
+  border-color: rgba(253, 224, 71, 0.8);
+  color: #fff;
+}
+
+.lb-live-go-private:disabled {
+  opacity: 0.55;
+}
+
 .lb-live-candado-gifts {
   flex: 1 1 auto;
   min-width: 0;
