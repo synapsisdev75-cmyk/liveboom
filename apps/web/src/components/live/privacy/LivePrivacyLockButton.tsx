@@ -17,7 +17,7 @@ type Props = {
 
 /**
  * Candado icon-only (debajo/al lado de Deseos).
- * Abierto en público; cerrado con ✗ en LIVE privado.
+ * Contorno cuando no hay privado; cerrado 3D en LIVE privado.
  */
 export function LivePrivacyLockButton({
   privateActive,
