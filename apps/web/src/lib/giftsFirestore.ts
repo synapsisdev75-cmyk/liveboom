@@ -28,9 +28,17 @@ export type SendGiftInput = {
   multiplier?: 1 | 2 | 4 | 8;
 };
 
+export type SenderBalances = {
+  purchasedBlastBalance: number;
+  earnedBlastBalance: number;
+  coinsBalance: number;
+};
+
 export type SendGiftResult = {
   senderBalance: number;
   usedFallback: boolean;
+  /** Saldos duales tras el cobro (comprados / ganados) cuando se pudieron calcular. */
+  senderBalances?: SenderBalances;
 };
 
 async function resolveRecipientUid(
@@ -49,7 +57,7 @@ async function resolveRecipientUid(
 }
 
 /** Debita Blast del remitente: primero comprados, luego ganados. */
-async function debitSenderCoins(senderUid: string, amount: number): Promise<number> {
+async function debitSenderCoins(senderUid: string, amount: number): Promise<SenderBalances> {
   const coins = Math.max(1, Math.floor(Number(amount) || 0));
   return runTransaction(db, async (tx) => {
     const ref = doc(db, 'users', senderUid);
@@ -79,7 +87,11 @@ async function debitSenderCoins(senderUid: string, amount: number): Promise<numb
       },
       { merge: true },
     );
-    return next.coinsBalance;
+    return {
+      purchasedBlastBalance: next.purchasedBlastBalance,
+      earnedBlastBalance: next.earnedBlastBalance,
+      coinsBalance: next.coinsBalance,
+    };
   });
 }
 
@@ -219,7 +231,7 @@ async function sendGiftViaFirestore(
   const isLive = Boolean(input.roomName);
 
   if (isLive && input.roomName) {
-    const senderBalance = await debitSenderCoins(input.senderUid, totalCoins);
+    const senderBalances = await debitSenderCoins(input.senderUid, totalCoins);
     await creditRecipientEarned(recipientUid, totalCoins, {
       senderUid: input.senderUid,
       senderName: input.senderName,
@@ -239,10 +251,14 @@ async function sendGiftViaFirestore(
       coins: totalCoins,
       multiplier: mult,
     });
-    return { senderBalance, usedFallback: true };
+    return {
+      senderBalance: senderBalances.coinsBalance,
+      usedFallback: true,
+      senderBalances,
+    };
   }
 
-  const senderBalance = await runTransaction(db, async (tx) => {
+  const senderBalances = await runTransaction(db, async (tx) => {
     const senderRef = doc(db, 'users', input.senderUid);
     const recipientRef = doc(db, 'users', recipientUid);
     const [senderSnap, recipientSnap] = await Promise.all([tx.get(senderRef), tx.get(recipientRef)]);
@@ -310,10 +326,14 @@ async function sendGiftViaFirestore(
       createdAtMs: Date.now(),
     });
 
-    return next.coinsBalance;
+    return {
+      purchasedBlastBalance: next.purchasedBlastBalance,
+      earnedBlastBalance: next.earnedBlastBalance,
+      coinsBalance: next.coinsBalance,
+    };
   });
 
-  return { senderBalance, usedFallback: true };
+  return { senderBalance: senderBalances.coinsBalance, usedFallback: true, senderBalances };
 }
 
 function shouldFallbackToFirestore(error: unknown): boolean {
@@ -348,7 +368,15 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
         multiplier: mult,
       }),
     });
-    // Billetera (Ganados) vive en Firestore: acredita al receptor aunque el API haya cobrado.
+    // La billetera dual (Comprados / Ganados) vive en Firestore: cobra ahí también,
+    // si no el gasto solo baja el total del API y los Ganados quedarían retirables.
+    let senderBalances: SenderBalances | undefined;
+    try {
+      senderBalances = await debitSenderCoins(input.senderUid, totalCoins);
+    } catch {
+      /* si Firestore no alcanza, queda el saldo que reportó el API */
+    }
+    // Acredita al receptor aunque el API haya cobrado.
     try {
       const recipientUid = await resolveRecipientUid(input.recipientUsername, input.recipientUid);
       await creditRecipientEarned(recipientUid, totalCoins, {
@@ -364,7 +392,11 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
     } catch {
       /* no bloquear el envío si el crédito FS falla */
     }
-    return { senderBalance: result.senderBalance, usedFallback: false };
+    return {
+      senderBalance: senderBalances?.coinsBalance ?? result.senderBalance,
+      usedFallback: false,
+      senderBalances,
+    };
   } catch (error) {
     if (!shouldFallbackToFirestore(error)) {
       throw error instanceof ApiError

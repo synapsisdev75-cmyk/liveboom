@@ -33,6 +33,7 @@ export function ReelGiftControls({
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const coins = profile?.coinsBalance ?? 0;
 
   const [openGifts, setOpenGifts] = useState(false);
@@ -106,8 +107,12 @@ export function ReelGiftControls({
         clientId,
         postId,
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      if (result.senderBalances) {
+        setBlastBalances(result.senderBalances);
+      } else {
+        setCoins(result.senderBalance);
+        void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      }
       void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
       pushFloat(catalog.id, senderName);
       setOpenGifts(false);

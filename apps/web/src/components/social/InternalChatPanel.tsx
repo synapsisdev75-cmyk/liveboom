@@ -610,6 +610,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const isPage = page || fullscreen;
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const [searchParams, setSearchParams] = useSearchParams();
   const [friends, setFriends] = useState<FriendChip[]>([]);
   const [following, setFollowing] = useState<FriendChip[]>([]);
@@ -1452,8 +1453,12 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         clientId: `chat-${chatId || activeFriend.uid}-${Date.now()}`,
         roomName: `chat:${activeFriend.username}`,
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      if (result.senderBalances) {
+        setBlastBalances(result.senderBalances);
+      } else {
+        setCoins(result.senderBalance);
+        void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      }
       void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
       await send(`🎁 ${catalog.name}`, { giftId: catalog.id });
       animateGiftInChat(catalog.id, senderName);

@@ -6728,6 +6728,7 @@ function ChatPanel({
   const profile = useAuthStore((state) => state.profile);
   const coins = profile?.coinsBalance ?? 0;
   const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const [messages, setMessages] = useState<ChatMessage[]>(() => liveChatCache.get(roomName) ?? []);
   const [text, setText] = useState('');
   const [openGifts, setOpenGifts] = useState(false);
@@ -7117,8 +7118,12 @@ function ChatPanel({
         roomName,
         multiplier: mult,
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      if (result.senderBalances) {
+        setBlastBalances(result.senderBalances);
+      } else {
+        setCoins(result.senderBalance);
+        void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      }
       void addLevelXp(profile.firebaseUid, totalCoins)
         .then((xp) => {
           levelXpRef.current = xp;

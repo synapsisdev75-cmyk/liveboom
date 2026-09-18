@@ -126,10 +126,17 @@ async function readCallerBalances(uid) {
     const { readUserBlastBalances } = require('./firestoreAdmin');
     const fsBal = await readUserBlastBalances(uid);
     const mem = getBalances(uid);
+    // Firestore manda si registró retiros o gastos de Ganados que la memoria no vio:
+    // si no, un retiro ya reservado volvería a aparecer como saldo retirable.
+    const firestoreAhead =
+      fsBal.earnedBlastWithdrawn > mem.earnedBlastWithdrawn ||
+      fsBal.earnedBlastSpent > mem.earnedBlastSpent;
     // Conservar el máximo por bolsillo (evita que memoria stale ponga Ganados en 0).
     const merged = normalizeBlastBalances({
       purchasedBlastBalance: Math.max(fsBal.purchasedBlastBalance, mem.purchasedBlastBalance),
-      earnedBlastBalance: Math.max(fsBal.earnedBlastBalance, mem.earnedBlastBalance),
+      earnedBlastBalance: firestoreAhead
+        ? fsBal.earnedBlastBalance
+        : Math.max(fsBal.earnedBlastBalance, mem.earnedBlastBalance),
       earnedBlastSpent: Math.max(fsBal.earnedBlastSpent, mem.earnedBlastSpent),
       earnedBlastWithdrawn: Math.max(fsBal.earnedBlastWithdrawn, mem.earnedBlastWithdrawn),
     });
