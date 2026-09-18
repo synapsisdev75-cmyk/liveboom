@@ -3229,7 +3229,8 @@ function CreatorStage({
   }, [liveEnded, summaryOpen, username]);
 
   useEffect(() => {
-    if (!isHost) return;
+    if (!username) return;
+    const excludeUid = hostUid || (isHost ? firebaseUid : undefined);
     let latest: Array<{
       uid: string;
       username: string;
@@ -3250,7 +3251,7 @@ function CreatorStage({
           .filter(
             (viewer) =>
               viewer.uid &&
-              viewer.uid !== firebaseUid &&
+              (!excludeUid || viewer.uid !== excludeUid) &&
               viewer.heartbeatAtMs > 0 &&
               now - viewer.heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS,
           )
@@ -3270,7 +3271,7 @@ function CreatorStage({
       unsub();
       window.clearInterval(timer);
     };
-  }, [isHost, username, firebaseUid]);
+  }, [isHost, username, firebaseUid, hostUid]);
 
   useEffect(() => {
     if (!viewersOpen) return;
