@@ -204,7 +204,7 @@ export function LiveFrameEditor({
     <div ref={rootRef} className="lb-live-frame-editor pointer-events-none absolute inset-0 z-[25]">
       {visible && rect ? (
         <div
-          className="pointer-events-auto absolute touch-none rounded-2xl border-2 border-dashed border-cyan-400/70 bg-cyan-500/5"
+          className="pointer-events-auto absolute touch-none rounded-2xl border-2 border-dashed border-cyan-400/70 bg-transparent"
           style={{
             left: rect.x,
             top: rect.y,

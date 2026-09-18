@@ -68,7 +68,7 @@ export function LiveFramedVideo({
   return (
     <div ref={rootRef} className="pointer-events-none absolute inset-0">
       <div
-        className={`lb-live-framed-pip absolute overflow-hidden ${
+        className={`lb-live-framed-pip absolute z-[20] overflow-hidden ${
           isFullFrame
             ? 'rounded-none border-0 shadow-none ring-0'
             : 'rounded-2xl border-2 border-white/30 shadow-lg ring-1 ring-black/40'

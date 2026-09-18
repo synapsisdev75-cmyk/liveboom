@@ -5340,6 +5340,7 @@ function CreatorStage({
                 onToggleVisible={() => {
                   const next = !pipVisible;
                   setPipVisible(next);
+                  if (next) setHostCamOn(true);
                   void publishFrameSync(room, frameLayout, next).catch(() => undefined);
                 }}
                 toggleLabel={{ show: 'Mostrar cámara', hide: 'Ocultar cámara' }}
@@ -6391,8 +6392,8 @@ function CreatorVideo({
   const mainIsScreen = Boolean(resolvedScreen) && !hostSelfCameraOnly;
   const main = hostSelfCameraOnly ? null : resolvedScreen;
   const framedCamera = hostTracks.camera || (salaIsHost ? localTracksPick.camera : null);
-  // Spec: NUNCA cámara PiP sobre el juego / pantalla compartida.
-  const showFramedCamera = Boolean(framedCamera && !mainIsScreen);
+  // Web: PiP de cámara sobre Screen Share. Android share (hostSelfCameraOnly): no.
+  const showFramedCamera = Boolean(framedCamera && !hostSelfCameraOnly);
   const framedPipAspect =
     mainIsScreen && framedCamera
       ? readCameraTrackAspect(
@@ -6445,7 +6446,9 @@ function CreatorVideo({
       : !mainIsScreen && cached && trackIsRenderable(cached)
         ? cached
         : null;
-  const shownCamera = renderableCamera || (!shownScreen && framedCamera ? framedCamera : null);
+  const shownCamera =
+    renderableCamera ||
+    (framedCamera && (!shownScreen || showFramedCamera) ? framedCamera : null);
 
   useEffect(() => {
     let timer = 0;
