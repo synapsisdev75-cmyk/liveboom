@@ -17,6 +17,7 @@ import {
   type PostReactionUser,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { resolveContentType } from '../../lib/contentType';
 import { useT } from '../../i18n';
 import { EmojiText } from './EmojiText';
 import { PostReactionButtons } from './PostReactionButtons';
@@ -278,6 +279,7 @@ function OriginalPostEmbed({
                   authorUsername={origin.username}
                   authorUid={origin.authorUid}
                   postId={origin.id}
+                  contentType={resolveContentType(origin)}
                   inline
                 />
               </span>

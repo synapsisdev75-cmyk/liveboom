@@ -2,8 +2,8 @@ import { Gift } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
-import { sendLiveboomGift } from '../../lib/giftsFirestore';
-import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
+import { sendLiveboomGift, type GiftContentType } from '../../lib/giftsFirestore';
+import { addLevelXp } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { FloatingGift } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
@@ -21,6 +21,7 @@ type Props = {
   inline?: boolean;
   /** Flash Boom / Boom Clip: el visor congela la barra de tiempo. */
   onOpenChange?: (open: boolean) => void;
+  contentType?: GiftContentType;
 };
 
 export function ReelGiftControls({
@@ -29,10 +30,12 @@ export function ReelGiftControls({
   postId,
   inline = false,
   onOpenChange,
+  contentType = 'post',
 }: Props) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const coins = profile?.coinsBalance ?? 0;
 
   const [openGifts, setOpenGifts] = useState(false);
@@ -105,9 +108,18 @@ export function ReelGiftControls({
         recipientUid: authorUid,
         clientId,
         postId,
+        contentType,
+        source: 'gift',
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      if (result.purchasedBlastBalance != null && result.earnedBlastBalance != null) {
+        setBlastBalances({
+          purchasedBlastBalance: result.purchasedBlastBalance,
+          earnedBlastBalance: result.earnedBlastBalance,
+          coinsBalance: result.senderBalance,
+        });
+      } else {
+        setCoins(result.senderBalance);
+      }
       void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
       pushFloat(catalog.id, senderName);
       setOpenGifts(false);

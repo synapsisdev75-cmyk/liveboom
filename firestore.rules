@@ -157,6 +157,16 @@ service cloud.firestore {
       allow delete: if isOwner() && hasValidAdminSession();
     }
 
+    // Solicitudes de retiro: el backend (Admin SDK) crea/debita.
+    // El usuario ve las suyas; Super Admin ve todas.
+    match /withdrawalRequests/{requestId} {
+      allow get: if signedIn()
+        && (resource.data.uid == request.auth.uid || isUnlockedSuperAdmin());
+      allow list: if isUnlockedSuperAdmin()
+        || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
     match /users/{userId} {
       allow read: if true;
       allow create: if isSelf(userId)

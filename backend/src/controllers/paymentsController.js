@@ -10,14 +10,16 @@ const {
   isWompiMerchantActive,
 } = require('../lib/wompi');
 const {
-  debit,
   rememberOrder,
   takeOrder,
-  getBalance,
-  setBalance,
+  getBalances,
   setBalances,
   listWithdrawals,
+  listAllWithdrawals,
   addWithdrawal,
+  withdrawEarned,
+  restoreEarned,
+  updateWithdrawal,
 } = require('../lib/walletMemory');
 const dbUserFromTokenMod = require('../lib/dbUserFromToken');
 const { prisma, hasDatabase } = require('../lib/prisma');
@@ -27,6 +29,10 @@ const {
   completePaymentOrder,
   readPaymentOrder,
   readUserCoinsBalance,
+  createWithdrawalRequest,
+  listWithdrawalRequests,
+  updateWithdrawalRequest,
+  readSuperAdminEmails,
 } = require('../lib/firestoreAdmin');
 
 function dbUserFromToken(decoded) {
@@ -39,6 +45,37 @@ function dbUserFromToken(decoded) {
 
 function userForOrder(req) {
   return req.dbUser || (req.user ? dbUserFromToken(req.user) : null);
+}
+
+const SUPER_ADMIN_OWNER_EMAIL = 'synapsisdev75@gmail.com';
+
+async function isReqSuperAdmin(req) {
+  const email = String(req.user?.email || req.dbUser?.email || '')
+    .trim()
+    .toLowerCase();
+  if (!email) return false;
+  if (email === SUPER_ADMIN_OWNER_EMAIL) return true;
+  if (!firestoreConfigured()) return false;
+  try {
+    const emails = await readSuperAdminEmails();
+    return emails.includes(email);
+  } catch {
+    return false;
+  }
+}
+
+function serializeWithdrawalForUser(row) {
+  return {
+    id: row.id,
+    coins: row.coins,
+    amountCop: row.amountCop,
+    status: row.status,
+    payoutMethod: row.payoutMethod,
+    fullName: row.fullName || row.displayName,
+    displayName: row.displayName || row.fullName,
+    createdAt: row.createdAt,
+    source: row.source || 'earned',
+  };
 }
 
 /** Recarga = saldo Firestore (fuente real) + coins del paquete → comprados. */
@@ -560,7 +597,7 @@ async function withdrawCoins(req, res) {
 
     if (!Number.isFinite(coins) || coins < MIN_WITHDRAW_COINS) {
       res.status(400).json({
-        error: `El retiro mínimo es ${MIN_WITHDRAW_COINS} coins (${coinsToCop(MIN_WITHDRAW_COINS).toLocaleString('es-CO')} COP)`,
+        error: `El retiro mínimo es ${MIN_WITHDRAW_COINS} Blast ganados (${coinsToCop(MIN_WITHDRAW_COINS).toLocaleString('es-CO')} COP)`,
       });
       return;
     }
@@ -581,36 +618,87 @@ async function withdrawCoins(req, res) {
       return;
     }
 
-    const nextBalance = debit(uid, coins);
-    if (nextBalance == null) {
-      res.status(400).json({
-        error: `Saldo insuficiente. Tienes ${getBalance(uid).toLocaleString('es-CO')} coins`,
-      });
-      return;
-    }
-
     const amountCop = coinsToCop(coins);
     const reference = createWompiReference('wd');
-    const record = addWithdrawal(uid, {
-      id: reference,
-      reference,
-      coins,
-      amountCop,
-      coinToCop: COIN_TO_COP,
-      fullName,
-      documentId,
-      payoutMethod,
-      accountNumber,
-      accountType,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    });
+    let balances = getBalances(uid);
+    let record = null;
+    let creditedFirestore = false;
+
+    if (firestoreConfigured()) {
+      try {
+        const created = await createWithdrawalRequest(uid, {
+          id: reference,
+          coins,
+          amountCop,
+          coinToCop: COIN_TO_COP,
+          fullName,
+          documentId,
+          payoutMethod,
+          accountNumber,
+          accountType,
+        });
+        if (created?.ok === false && created.error === 'INSUFFICIENT_EARNED') {
+          res.status(400).json({
+            error: `Solo puedes retirar Blast ganados (regalos, llamadas y videollamadas). Tienes ${Number(created.available || 0).toLocaleString('es-CO')} Blast ganados. Las recargas no se retiran.`,
+            availableEarnedBlast: created.available || 0,
+            purchasedBlastBalance: created.balances?.purchasedBlastBalance,
+          });
+          return;
+        }
+        if (created?.ok && created.balances && created.withdrawal) {
+          creditedFirestore = true;
+          balances = created.balances;
+          record = created.withdrawal;
+          setBalances(uid, balances);
+        }
+      } catch (error) {
+        console.warn('[payments/withdraw] firestore fallback:', error.message);
+      }
+    }
+
+    if (!creditedFirestore) {
+      const next = withdrawEarned(uid, coins);
+      if (!next) {
+        const earned = getBalances(uid).earnedBlastBalance;
+        res.status(400).json({
+          error: `Solo puedes retirar Blast ganados (regalos, llamadas y videollamadas). Tienes ${earned.toLocaleString('es-CO')} Blast ganados. Las recargas no se retiran.`,
+          availableEarnedBlast: earned,
+        });
+        return;
+      }
+      balances = next;
+      record = addWithdrawal(uid, {
+        id: reference,
+        reference,
+        uid,
+        coins,
+        amountCop,
+        coinToCop: COIN_TO_COP,
+        fullName,
+        displayName: fullName,
+        documentId,
+        payoutMethod,
+        accountNumber,
+        accountType,
+        status: 'pending',
+        source: 'earned',
+        createdAt: new Date().toISOString(),
+      });
+    } else {
+      addWithdrawal(uid, {
+        ...record,
+        reference,
+        documentId,
+        accountNumber,
+        accountType,
+      });
+    }
 
     if (hasDatabase && prisma) {
       try {
         await prisma.user.update({
           where: { firebaseUid: uid },
-          data: { coinsBalance: { decrement: coins } },
+          data: { coinsBalance: balances.coinsBalance },
         });
       } catch (error) {
         console.warn('[payments/withdraw] no se persistió el saldo:', error.message);
@@ -634,10 +722,13 @@ async function withdrawCoins(req, res) {
     }
 
     res.status(201).json({
-      withdrawal: record,
-      coinsBalance: nextBalance,
+      withdrawal: serializeWithdrawalForUser(record),
+      coinsBalance: balances.coinsBalance,
+      purchasedBlastBalance: balances.purchasedBlastBalance,
+      earnedBlastBalance: balances.earnedBlastBalance,
+      earnedBlastWithdrawn: balances.earnedBlastWithdrawn,
       coinToCop: COIN_TO_COP,
-      message: `Solicitud registrada: ${coins} coins = $${amountCop.toLocaleString('es-CO')} COP`,
+      message: `Solicitud registrada: ${coins} Blast ganados = $${amountCop.toLocaleString('es-CO')} COP`,
     });
   } catch (error) {
     console.error('[payments/withdraw]', error);
@@ -649,7 +740,7 @@ async function withdrawCoins(req, res) {
   }
 }
 
-function listMyWithdrawals(req, res) {
+async function listMyWithdrawals(req, res) {
   try {
     const dbUser = userForOrder(req);
     if (!dbUser?.id) {
@@ -657,15 +748,111 @@ function listMyWithdrawals(req, res) {
       return;
     }
     const uid = dbUser.firebaseUid || dbUser.id;
+    let withdrawals = listWithdrawals(uid);
+    if (firestoreConfigured()) {
+      try {
+        const rows = await listWithdrawalRequests({ uid, limit: 80 });
+        if (rows.length) withdrawals = rows;
+      } catch (error) {
+        console.warn('[payments/withdrawals]', error.message);
+      }
+    }
+    const balances = getBalances(uid);
     res.json({
       coinToCop: COIN_TO_COP,
       minWithdrawCoins: MIN_WITHDRAW_COINS,
-      coinsBalance: getBalance(uid),
-      withdrawals: listWithdrawals(uid),
+      coinsBalance: balances.coinsBalance,
+      purchasedBlastBalance: balances.purchasedBlastBalance,
+      earnedBlastBalance: balances.earnedBlastBalance,
+      withdrawals: withdrawals.map(serializeWithdrawalForUser),
     });
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'No se pudo listar retiros',
+    });
+  }
+}
+
+async function listAdminWithdrawals(req, res) {
+  try {
+    if (!(await isReqSuperAdmin(req))) {
+      res.status(403).json({ error: 'Solo Super Admin puede ver las solicitudes de retiro' });
+      return;
+    }
+    let withdrawals = listAllWithdrawals();
+    if (firestoreConfigured()) {
+      try {
+        const rows = await listWithdrawalRequests({ limit: 200 });
+        if (rows.length) withdrawals = rows;
+      } catch (error) {
+        console.warn('[payments/admin/withdrawals]', error.message);
+      }
+    }
+    res.json({
+      coinToCop: COIN_TO_COP,
+      withdrawals,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudieron listar los retiros',
+    });
+  }
+}
+
+async function reviewAdminWithdrawal(req, res) {
+  try {
+    if (!(await isReqSuperAdmin(req))) {
+      res.status(403).json({ error: 'Solo Super Admin puede revisar retiros' });
+      return;
+    }
+    const id = String(req.params?.id || req.body?.id || '').trim();
+    const status = String(req.body?.status || '').trim();
+    const reviewNote = String(req.body?.reviewNote || '').trim().slice(0, 500);
+    if (!id) {
+      res.status(400).json({ error: 'Falta el id de la solicitud' });
+      return;
+    }
+    if (!['pending', 'paid', 'rejected'].includes(status)) {
+      res.status(400).json({ error: 'Estado inválido' });
+      return;
+    }
+
+    const reviewer = String(req.user?.email || req.dbUser?.email || '').trim().toLowerCase();
+    let result = null;
+    if (firestoreConfigured()) {
+      try {
+        result = await updateWithdrawalRequest(id, {
+          status,
+          reviewNote,
+          reviewedByEmail: reviewer,
+        });
+      } catch (error) {
+        console.warn('[payments/admin/withdraw] firestore fallback', error.message);
+      }
+    }
+
+    if (!result?.ok) {
+      const mem = updateWithdrawal(id, {
+        status,
+        reviewNote,
+        reviewedByEmail: reviewer,
+      });
+      if (!mem) {
+        res.status(404).json({ error: result?.error === 'not_found' ? 'Solicitud no encontrada' : 'No se pudo actualizar' });
+        return;
+      }
+      if (status === 'rejected' && mem.record?.uid && mem.record?.coins) {
+        restoreEarned(mem.record.uid, mem.record.coins);
+      }
+      result = { ok: true, withdrawal: mem.record };
+    } else if (result.balances && result.withdrawal?.uid) {
+      setBalances(result.withdrawal.uid, result.balances);
+    }
+
+    res.json({ ok: true, withdrawal: result.withdrawal });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo actualizar el retiro',
     });
   }
 }
@@ -677,6 +864,8 @@ module.exports = {
   getPaymentStatus,
   withdrawCoins,
   listMyWithdrawals,
+  listAdminWithdrawals,
+  reviewAdminWithdrawal,
 };
 module.exports.createOrder = createOrder;
 module.exports.completeWidget = completeWidget;
@@ -684,3 +873,5 @@ module.exports.completeRedirect = completeRedirect;
 module.exports.getPaymentStatus = getPaymentStatus;
 module.exports.withdrawCoins = withdrawCoins;
 module.exports.listMyWithdrawals = listMyWithdrawals;
+module.exports.listAdminWithdrawals = listAdminWithdrawals;
+module.exports.reviewAdminWithdrawal = reviewAdminWithdrawal;

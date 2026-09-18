@@ -383,6 +383,7 @@ export function PostPhotoViewer({
                 mediaType="photo"
                 commentsPanelOpen={commentsOpen}
                 onGiftsOpenChange={setGiftsOpen}
+                giftContentType={storyMode ? 'flashboom' : 'post'}
                 anchor="media"
                 layout={useLandscapeAside ? 'aside' : 'corner'}
               />

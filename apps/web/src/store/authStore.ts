@@ -20,7 +20,7 @@ import {
   listenFirestoreProfile,
   updateFirestoreProfileFields,
 } from '../lib/profileFirestore';
-import { processGiftInbox } from '../lib/giftsFirestore';
+import { processGiftInbox, listenUnprocessedGifts } from '../lib/giftsFirestore';
 import { readPendingBirthDate, storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
 import { t } from '../i18n';
@@ -262,10 +262,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   hydrate: () => {
     let unsubDoc: (() => void) | null = null;
+    let unsubInbox: (() => void) | null = null;
     let cancelled = false;
     const unsubAuth = onAuthStateChanged(auth, (user) => {
       unsubDoc?.();
+      unsubInbox?.();
       unsubDoc = null;
+      unsubInbox = null;
       void (async () => {
         if (!user) {
           set({ firebaseUser: null, profile: null, ready: true, profileWriteAt: 0 });
@@ -290,11 +293,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           const current = get().profile;
           set({ profile: applyRemoteProfile(current, incoming, get().profileWriteAt) });
         });
+        unsubInbox = listenUnprocessedGifts(user.uid, () => {
+          void (async () => {
+            const credited = await processGiftInbox(user.uid).catch(() => 0);
+            if (!credited) return;
+            const next = await fetchFirestoreProfile(user.uid).catch(() => null);
+            if (!next || cancelled) return;
+            const current = get().profile;
+            set({ profile: applyRemoteProfile(current, next, get().profileWriteAt) });
+          })();
+        });
       })();
     });
     return () => {
       cancelled = true;
       unsubDoc?.();
+      unsubInbox?.();
       unsubAuth();
     };
   },

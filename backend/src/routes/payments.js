@@ -44,5 +44,19 @@ router.post(
   bind(() => require('../controllers/paymentsController'), 'withdrawCoins'),
 );
 
+router.get(
+  '/admin/withdrawals',
+  requireAuth,
+  requireDbUser,
+  bind(() => require('../controllers/paymentsController'), 'listAdminWithdrawals'),
+);
+
+router.post(
+  '/admin/withdrawals/:id',
+  requireAuth,
+  requireDbUser,
+  bind(() => require('../controllers/paymentsController'), 'reviewAdminWithdrawal'),
+);
+
 module.exports = router;
 module.exports.default = router;

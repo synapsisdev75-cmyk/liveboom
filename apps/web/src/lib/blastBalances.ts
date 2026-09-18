@@ -50,3 +50,27 @@ export function normalizeBlastBalances(data: Record<string, unknown> | null | un
     totalBlastBalance: total,
   };
 }
+
+/** Solo Blast ganados (regalos / llamadas). Las recargas no se retiran. */
+export function applyWithdrawEarned(
+  balances: BlastBalances,
+  amount: number,
+): { ok: true; balances: BlastBalances; withdrawn: number } | { ok: false; available: number } {
+  const need = floorNonNeg(amount);
+  if (need <= 0) {
+    return { ok: true, balances: normalizeBlastBalances(balances), withdrawn: 0 };
+  }
+  if (balances.earnedBlastBalance < need) {
+    return { ok: false, available: balances.earnedBlastBalance };
+  }
+  return {
+    ok: true,
+    withdrawn: need,
+    balances: normalizeBlastBalances({
+      purchasedBlastBalance: balances.purchasedBlastBalance,
+      earnedBlastBalance: balances.earnedBlastBalance - need,
+      earnedBlastSpent: balances.earnedBlastSpent,
+      earnedBlastWithdrawn: balances.earnedBlastWithdrawn + need,
+    }),
+  };
+}

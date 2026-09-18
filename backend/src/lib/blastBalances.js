@@ -160,6 +160,43 @@ function applyCreditEarned(balances, amount) {
   });
 }
 
+/**
+ * Retiro: solo Blast ganados (regalos / llamadas / videollamadas).
+ * Nunca toca recargas (purchasedBlastBalance).
+ */
+function applyWithdrawEarned(balances, amount) {
+  const need = floorNonNeg(amount);
+  if (need <= 0) {
+    return { ok: true, balances: normalizeBlastBalances(balances), withdrawn: 0 };
+  }
+  if (balances.earnedBlastBalance < need) {
+    return {
+      ok: false,
+      code: 'INSUFFICIENT_EARNED',
+      available: balances.earnedBlastBalance,
+      balances,
+    };
+  }
+  const next = normalizeBlastBalances({
+    purchasedBlastBalance: balances.purchasedBlastBalance,
+    earnedBlastBalance: balances.earnedBlastBalance - need,
+    earnedBlastSpent: balances.earnedBlastSpent,
+    earnedBlastWithdrawn: balances.earnedBlastWithdrawn + need,
+  });
+  return { ok: true, balances: next, withdrawn: need };
+}
+
+/** Devuelve Blast ganados si un retiro se rechaza. */
+function applyRestoreEarned(balances, amount) {
+  const add = floorNonNeg(amount);
+  return normalizeBlastBalances({
+    purchasedBlastBalance: balances.purchasedBlastBalance,
+    earnedBlastBalance: balances.earnedBlastBalance + add,
+    earnedBlastSpent: balances.earnedBlastSpent,
+    earnedBlastWithdrawn: Math.max(0, balances.earnedBlastWithdrawn - add),
+  });
+}
+
 function firestoreBalancePatch(balances) {
   return {
     purchasedBlastBalance: balances.purchasedBlastBalance,
@@ -175,6 +212,8 @@ module.exports = {
   applySpend,
   applyCreditPurchased,
   applyCreditEarned,
+  applyWithdrawEarned,
+  applyRestoreEarned,
   firestoreBalancePatch,
   floorNonNeg,
 };

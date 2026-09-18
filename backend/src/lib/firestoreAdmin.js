@@ -208,6 +208,352 @@ async function readUserBlastBalances(uid) {
   return normalizeBlastBalances(snap.exists ? snap.data() : {});
 }
 
+function usernameKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '');
+}
+
+async function resolveUidByUsername(username) {
+  const key = usernameKey(username);
+  if (!key) return null;
+  const db = getAdminDb();
+  const handleSnap = await db.collection('usernames').doc(key).get();
+  if (handleSnap.exists) {
+    const uid = String(handleSnap.data()?.uid || '').trim();
+    if (uid) return uid;
+  }
+  const q = await db.collection('users').where('username', '==', key).limit(1).get();
+  if (!q.empty) return q.docs[0].id;
+  return null;
+}
+
+function publicUserFields(data, uid) {
+  const raw = data && typeof data === 'object' ? data : {};
+  return {
+    uid: String(uid || ''),
+    username: String(raw.username || ''),
+    displayName: String(raw.displayName || raw.username || ''),
+    email: String(raw.email || ''),
+  };
+}
+
+/**
+ * Debita al remitente (comprados primero) y acredita Blast ganados al receptor.
+ * Idempotente por clientId en giftInbox.
+ */
+async function transferGiftBlast(input) {
+  const senderUid = String(input.senderUid || '').trim();
+  const recipientUid = String(input.recipientUid || '').trim();
+  const coins = Math.max(0, Math.floor(Number(input.coins) || 0));
+  const clientId = String(input.clientId || '').trim().slice(0, 80);
+  if (!senderUid || !recipientUid || senderUid === recipientUid || coins <= 0) {
+    return { ok: false, error: 'invalid' };
+  }
+
+  const {
+    normalizeBlastBalances,
+    applySpend,
+    applyCreditEarned,
+    firestoreBalancePatch,
+  } = require('./blastBalances');
+  const db = getAdminDb();
+  const senderRef = db.collection('users').doc(senderUid);
+  const recipientRef = db.collection('users').doc(recipientUid);
+  const inboxRef = clientId
+    ? recipientRef.collection('giftInbox').doc(clientId)
+    : recipientRef.collection('giftInbox').doc();
+
+  return db.runTransaction(async (tx) => {
+    const senderSnap = await tx.get(senderRef);
+    const recipientSnap = await tx.get(recipientRef);
+    const inboxSnap = await tx.get(inboxRef);
+
+    if (inboxSnap.exists && inboxSnap.data()?.processed) {
+      const senderBal = normalizeBlastBalances(senderSnap.exists ? senderSnap.data() : {});
+      const recipientBal = normalizeBlastBalances(recipientSnap.exists ? recipientSnap.data() : {});
+      return {
+        ok: true,
+        duplicate: true,
+        sender: senderBal,
+        recipient: recipientBal,
+      };
+    }
+
+    const senderBal = normalizeBlastBalances(senderSnap.exists ? senderSnap.data() : {});
+    const spent = applySpend(senderBal, coins, true);
+    if (!spent.ok) {
+      return { ok: false, error: spent.code || 'INSUFFICIENT', sender: senderBal };
+    }
+
+    const recipientNext = applyCreditEarned(
+      normalizeBlastBalances(recipientSnap.exists ? recipientSnap.data() : {}),
+      coins,
+    );
+
+    tx.set(
+      senderRef,
+      {
+        firebaseUid: senderUid,
+        ...firestoreBalancePatch(spent.balances),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    tx.set(
+      recipientRef,
+      {
+        firebaseUid: recipientUid,
+        ...firestoreBalancePatch(recipientNext),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    tx.set(
+      inboxRef,
+      {
+        senderUid,
+        senderName: input.senderName || null,
+        recipientUid,
+        giftId: input.giftId || null,
+        giftName: input.giftName || null,
+        emoji: input.emoji || null,
+        coins,
+        multiplier: Math.max(1, Math.floor(Number(input.multiplier) || 1)),
+        postId: input.postId || null,
+        roomName: input.roomName || null,
+        clientId: clientId || inboxRef.id,
+        source: input.source || 'gift',
+        contentType: input.contentType || null,
+        processed: true,
+        processedAtMs: Date.now(),
+        createdAt: FieldValue.serverTimestamp(),
+        createdAtMs: Date.now(),
+      },
+      { merge: true },
+    );
+
+    return {
+      ok: true,
+      duplicate: false,
+      sender: spent.balances,
+      recipient: recipientNext,
+    };
+  });
+}
+
+function serializeWithdrawalDoc(id, data) {
+  const raw = data && typeof data === 'object' ? data : {};
+  const createdAt =
+    raw.createdAt && typeof raw.createdAt.toDate === 'function'
+      ? raw.createdAt.toDate().toISOString()
+      : raw.createdAtMs
+        ? new Date(Number(raw.createdAtMs)).toISOString()
+        : raw.createdAt || null;
+  const updatedAt =
+    raw.updatedAt && typeof raw.updatedAt.toDate === 'function'
+      ? raw.updatedAt.toDate().toISOString()
+      : raw.updatedAt || null;
+  return {
+    id: String(id),
+    uid: String(raw.uid || ''),
+    displayName: String(raw.displayName || ''),
+    username: String(raw.username || ''),
+    email: String(raw.email || ''),
+    coins: Math.max(0, Math.floor(Number(raw.coins) || 0)),
+    amountCop: Math.max(0, Math.floor(Number(raw.amountCop) || 0)),
+    payoutMethod: String(raw.payoutMethod || ''),
+    accountNumber: String(raw.accountNumber || ''),
+    accountType: String(raw.accountType || ''),
+    documentId: String(raw.documentId || ''),
+    fullName: String(raw.fullName || raw.displayName || ''),
+    status: String(raw.status || 'pending'),
+    source: String(raw.source || 'earned'),
+    reviewNote: String(raw.reviewNote || ''),
+    reviewedByEmail: raw.reviewedByEmail ? String(raw.reviewedByEmail) : null,
+    createdAt,
+    createdAtMs: Number(raw.createdAtMs) || (createdAt ? Date.parse(createdAt) : 0),
+    updatedAt,
+  };
+}
+
+async function createWithdrawalRequest(uid, payload) {
+  const {
+    normalizeBlastBalances,
+    applyWithdrawEarned,
+    firestoreBalancePatch,
+  } = require('./blastBalances');
+  const coins = Math.max(0, Math.floor(Number(payload.coins) || 0));
+  const id = String(payload.id || '').trim();
+  if (!uid || !id || coins <= 0) {
+    return { ok: false, error: 'invalid' };
+  }
+
+  const db = getAdminDb();
+  const userRef = db.collection('users').doc(String(uid));
+  const reqRef = db.collection('withdrawalRequests').doc(id);
+
+  return db.runTransaction(async (tx) => {
+    const existing = await tx.get(reqRef);
+    if (existing.exists) {
+      const userSnap = await tx.get(userRef);
+      return {
+        ok: true,
+        duplicate: true,
+        withdrawal: serializeWithdrawalDoc(existing.id, existing.data()),
+        balances: normalizeBlastBalances(userSnap.exists ? userSnap.data() : {}),
+      };
+    }
+
+    const userSnap = await tx.get(userRef);
+    const current = normalizeBlastBalances(userSnap.exists ? userSnap.data() : {});
+    const withdrawn = applyWithdrawEarned(current, coins);
+    if (!withdrawn.ok) {
+      return {
+        ok: false,
+        error: 'INSUFFICIENT_EARNED',
+        available: withdrawn.available,
+        balances: current,
+      };
+    }
+
+    const profile = publicUserFields(userSnap.exists ? userSnap.data() : {}, uid);
+    const nowMs = Date.now();
+    const record = {
+      uid: String(uid),
+      displayName: String(payload.fullName || profile.displayName || profile.username || ''),
+      fullName: String(payload.fullName || profile.displayName || ''),
+      username: profile.username,
+      email: profile.email,
+      coins,
+      amountCop: Math.max(0, Math.floor(Number(payload.amountCop) || 0)),
+      coinToCop: Number(payload.coinToCop) || 0,
+      payoutMethod: String(payload.payoutMethod || ''),
+      accountNumber: String(payload.accountNumber || ''),
+      accountType: String(payload.accountType || 'ahorros'),
+      documentId: String(payload.documentId || ''),
+      status: 'pending',
+      source: 'earned',
+      sourceNote: 'Solo Blast ganados por regalos, llamadas y videollamadas',
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtMs: nowMs,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    tx.set(
+      userRef,
+      {
+        firebaseUid: String(uid),
+        ...firestoreBalancePatch(withdrawn.balances),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    tx.set(reqRef, record);
+
+    return {
+      ok: true,
+      duplicate: false,
+      withdrawal: serializeWithdrawalDoc(id, { ...record, createdAt: new Date(nowMs).toISOString() }),
+      balances: withdrawn.balances,
+    };
+  });
+}
+
+async function listWithdrawalRequests({ uid, limit = 80 } = {}) {
+  const db = getAdminDb();
+  const cap = Math.min(200, Math.max(1, Math.floor(Number(limit) || 80)));
+  let snap;
+  if (uid) {
+    snap = await db
+      .collection('withdrawalRequests')
+      .where('uid', '==', String(uid))
+      .orderBy('createdAtMs', 'desc')
+      .limit(cap)
+      .get();
+  } else {
+    snap = await db
+      .collection('withdrawalRequests')
+      .orderBy('createdAtMs', 'desc')
+      .limit(cap)
+      .get();
+  }
+  return snap.docs.map((docSnap) => serializeWithdrawalDoc(docSnap.id, docSnap.data()));
+}
+
+async function updateWithdrawalRequest(id, { status, reviewNote, reviewedByEmail }) {
+  const {
+    normalizeBlastBalances,
+    applyRestoreEarned,
+    firestoreBalancePatch,
+  } = require('./blastBalances');
+  const nextStatus = String(status || '').trim();
+  if (!['pending', 'paid', 'rejected'].includes(nextStatus)) {
+    return { ok: false, error: 'invalid_status' };
+  }
+  const db = getAdminDb();
+  const reqRef = db.collection('withdrawalRequests').doc(String(id));
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(reqRef);
+    if (!snap.exists) return { ok: false, error: 'not_found' };
+    const current = snap.data() || {};
+    const prevStatus = String(current.status || 'pending');
+    if (prevStatus === nextStatus) {
+      return { ok: true, duplicate: true, withdrawal: serializeWithdrawalDoc(snap.id, current) };
+    }
+
+    let balances = null;
+    if (prevStatus === 'pending' && nextStatus === 'rejected') {
+      const uid = String(current.uid || '');
+      const coins = Math.max(0, Math.floor(Number(current.coins) || 0));
+      if (uid && coins > 0) {
+        const userRef = db.collection('users').doc(uid);
+        const userSnap = await tx.get(userRef);
+        balances = applyRestoreEarned(
+          normalizeBlastBalances(userSnap.exists ? userSnap.data() : {}),
+          coins,
+        );
+        tx.set(
+          userRef,
+          {
+            firebaseUid: uid,
+            ...firestoreBalancePatch(balances),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+    }
+
+    const patch = {
+      status: nextStatus,
+      reviewNote: String(reviewNote || current.reviewNote || ''),
+      reviewedByEmail: reviewedByEmail ? String(reviewedByEmail) : current.reviewedByEmail || null,
+      updatedAt: FieldValue.serverTimestamp(),
+      resolvedAtMs: Date.now(),
+    };
+    tx.set(reqRef, patch, { merge: true });
+    return {
+      ok: true,
+      duplicate: false,
+      withdrawal: serializeWithdrawalDoc(snap.id, { ...current, ...patch, updatedAt: new Date().toISOString() }),
+      balances,
+    };
+  });
+}
+
+async function readSuperAdminEmails() {
+  try {
+    const snap = await getAdminDb().collection('config').doc('superAdmins').get();
+    const emails = Array.isArray(snap.data()?.emails) ? snap.data().emails : [];
+    return emails.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 module.exports = {
   firestoreConfigured,
   hasAdminCredentials,
@@ -219,4 +565,10 @@ module.exports = {
   completePaymentOrder,
   completePaymentOrderByLinkId,
   getAdminDb,
+  resolveUidByUsername,
+  transferGiftBlast,
+  createWithdrawalRequest,
+  listWithdrawalRequests,
+  updateWithdrawalRequest,
+  readSuperAdminEmails,
 };

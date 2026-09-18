@@ -4,6 +4,7 @@ import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
 import { AdminCatalogPanel } from '../components/admin/AdminCatalogPanel';
 import { AdminVaultSecurityPanel } from '../components/admin/AdminVaultSecurityPanel';
+import { AdminWithdrawalsPanel } from '../components/admin/AdminWithdrawalsPanel';
 import { CommunityHeaderEditor } from '../components/admin/CommunityHeaderEditor';
 import { isOwnerEmail } from '../lib/superAdmin';
 import { useSuperAdminVaultStore } from '../store/superAdminVaultStore';
@@ -20,7 +21,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { useLevelsConfigStore } from '../store/levelsConfigStore';
 
-type AdminTab = 'levels' | 'users' | 'messages' | 'community' | 'catalog' | 'security';
+type AdminTab = 'levels' | 'users' | 'messages' | 'community' | 'catalog' | 'security' | 'withdrawals';
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -214,6 +215,7 @@ export function SuperAdminView() {
         {(
           [
             { id: 'users' as const, label: 'Usuarios / XP' },
+            { id: 'withdrawals' as const, label: 'Retiros' },
             { id: 'messages' as const, label: 'Mensajes' },
             { id: 'catalog' as const, label: 'Regalos / Blast' },
             { id: 'levels' as const, label: 'Niveles / Marcos' },
@@ -243,6 +245,7 @@ export function SuperAdminView() {
       ) : null}
 
       {tab === 'users' ? <AdminUsersPanel /> : null}
+      {tab === 'withdrawals' ? <AdminWithdrawalsPanel /> : null}
       {tab === 'messages' ? <AdminMessagesPanel /> : null}
       {tab === 'catalog' ? <AdminCatalogPanel /> : null}
       {tab === 'community' ? <CommunityHeaderEditor /> : null}

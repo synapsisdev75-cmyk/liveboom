@@ -22,17 +22,24 @@ import { processGiftInbox } from '../lib/giftsFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
+import {
+  formatWithdrawalWhen,
+  listenMyWithdrawalRequests,
+  type WithdrawalRequest,
+} from '../lib/withdrawalRequestsFirestore';
 import { useAuthStore } from '../store/authStore';
 import { useCatalogConfigStore } from '../store/catalogConfigStore';
 import { useT } from '../i18n';
 
-type WithdrawalRow = {
+type WithdrawalRow = WithdrawalRequest | {
   id: string;
   coins: number;
   amountCop: number;
   status: string;
   payoutMethod?: string;
-  createdAt: string;
+  fullName?: string;
+  displayName?: string;
+  createdAt: string | null;
 };
 
 const GRADIENT = 'bg-[linear-gradient(to_right,#EC4899,#06B6D4)]';
@@ -69,7 +76,6 @@ export function WalletView() {
   const [openTopup, setOpenTopup] = useState(false);
   const [initialPack, setInitialPack] = useState<string | undefined>();
   const [openWithdraw, setOpenWithdraw] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
   const packsRef = useRef<HTMLDivElement>(null);
 
@@ -84,6 +90,13 @@ export function WalletView() {
 
   useEffect(() => {
     if (profile) void refreshWithdrawals();
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!profile?.firebaseUid) return;
+    return listenMyWithdrawalRequests(profile.firebaseUid, (rows) => {
+      if (rows.length) setWithdrawals(rows);
+    });
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
@@ -205,14 +218,14 @@ export function WalletView() {
         <button
           type="button"
           onClick={() => {
-            setShowHistory((v) => !v);
+            document.getElementById('lb-withdrawal-requests')?.scrollIntoView({ behavior: 'smooth' });
             void refreshWithdrawals();
           }}
           className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#14151c] px-3 py-2 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white sm:px-3.5"
         >
           <History size={14} />
-          <span className="sm:hidden">Historial</span>
-          <span className="hidden sm:inline">Historial de transacciones</span>
+          <span className="sm:hidden">Retiros</span>
+          <span className="hidden sm:inline">Solicitudes de retiro</span>
         </button>
       </header>
 
@@ -259,7 +272,7 @@ export function WalletView() {
                   <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-emerald-200 sm:text-base">
                     {earned.toLocaleString('es-CO')}
                   </p>
-                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Regalos y llamadas</p>
+                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Regalos, llamadas y videollamadas</p>
                 </div>
                 <div className="min-w-0 rounded-xl border border-cyan-400/25 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-cyan-300/90 sm:text-[11px]">
@@ -408,36 +421,51 @@ export function WalletView() {
             </p>
           </section>
 
-          {showHistory ? (
-            <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
-              <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
-              {withdrawals.length === 0 ? (
-                <p className="mt-3 text-sm text-zinc-500">
-                  Aún no hay retiros. Las recargas aparecen en tu saldo al instante.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {withdrawals.slice(0, 12).map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2.5 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium text-white">
-                          −{item.coins.toLocaleString('es-CO')} blast → {formatCop(item.amountCop)}
-                        </p>
-                        <p className="text-xs text-zinc-500">
-                          {new Date(item.createdAt).toLocaleString('es-CO')} ·{' '}
-                          {item.payoutMethod || '—'} ·{' '}
-                          {item.status === 'pending' ? 'Pendiente de pago' : item.status}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ) : null}
+          <section id="lb-withdrawal-requests" className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
+            <h2 className="text-sm font-semibold text-zinc-200">Solicitudes de retiro</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Fecha, hora, nombre y Blast ganados que pediste retirar. Las recargas no se pueden sacar.
+            </p>
+            {withdrawals.length === 0 ? (
+              <p className="mt-3 text-sm text-zinc-500">
+                Aún no hay solicitudes de retiro.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {withdrawals.slice(0, 20).map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl bg-black/30 px-3 py-2.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-white">
+                        −{item.coins.toLocaleString('es-CO')} Blast → {formatCop(item.amountCop)}
+                      </p>
+                      <p className="truncate text-xs text-zinc-500">
+                        {formatWithdrawalWhen(item.createdAt)}
+                        {' · '}
+                        {'fullName' in item && item.fullName
+                          ? item.fullName
+                          : 'displayName' in item && item.displayName
+                            ? item.displayName
+                            : profile?.displayName || 'Tú'}
+                        {' · '}
+                        {item.payoutMethod || '—'}
+                        {' · '}
+                        {item.status === 'pending'
+                          ? 'Pendiente'
+                          : item.status === 'paid'
+                            ? 'Pagado'
+                            : item.status === 'rejected'
+                              ? 'Rechazado'
+                              : item.status}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </>
       ) : (
         <section className="rounded-3xl border border-white/[0.08] bg-[#12131a] p-8 text-center">
@@ -469,7 +497,6 @@ export function WalletView() {
           onDone={() => {
             setOpenWithdraw(false);
             void refreshWithdrawals();
-            setShowHistory(true);
           }}
         />
       ) : null}

@@ -4,6 +4,8 @@ const {
   applySpend,
   applyCreditPurchased,
   applyCreditEarned,
+  applyWithdrawEarned,
+  applyRestoreEarned,
 } = require('./blastBalances');
 
 /** @type {Map<string, object>} */
@@ -122,6 +124,19 @@ function debitSplit(uid, coins, allowEarned) {
   };
 }
 
+function withdrawEarned(uid, coins) {
+  const cur = getBalances(uid);
+  const result = applyWithdrawEarned(cur, coins);
+  if (!result.ok) return null;
+  setBalances(uid, result.balances);
+  return result.balances;
+}
+
+function restoreEarned(uid, coins) {
+  const cur = getBalances(uid);
+  return setBalances(uid, applyRestoreEarned(cur, coins));
+}
+
 function rememberOrder(order) {
   pendingOrders.set(order.reference, {
     uid: String(order.uid),
@@ -162,6 +177,38 @@ function addWithdrawal(uid, record) {
   return record;
 }
 
+function listAllWithdrawals() {
+  const all = [];
+  for (const [uid, list] of withdrawalsByUid.entries()) {
+    for (const row of list || []) {
+      all.push({ ...row, uid });
+    }
+  }
+  return all.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+function findWithdrawal(id) {
+  const needle = String(id || '');
+  if (!needle) return null;
+  for (const [uid, list] of withdrawalsByUid.entries()) {
+    const record = (list || []).find((row) => String(row.id) === needle);
+    if (record) return { uid, record };
+  }
+  return null;
+}
+
+function updateWithdrawal(id, patch) {
+  const found = findWithdrawal(id);
+  if (!found) return null;
+  const list = withdrawalsByUid.get(found.uid) || [];
+  const next = list.map((row) =>
+    String(row.id) === String(id) ? { ...row, ...patch, updatedAt: new Date().toISOString() } : row,
+  );
+  withdrawalsByUid.set(found.uid, next);
+  flush();
+  return { uid: found.uid, record: next.find((row) => String(row.id) === String(id)) };
+}
+
 module.exports = {
   getBalance,
   getBalances,
@@ -173,8 +220,13 @@ module.exports = {
   creditEarned,
   debit,
   debitSplit,
+  withdrawEarned,
+  restoreEarned,
   rememberOrder,
   takeOrder,
   listWithdrawals,
+  listAllWithdrawals,
+  findWithdrawal,
+  updateWithdrawal,
   addWithdrawal,
 };

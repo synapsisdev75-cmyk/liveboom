@@ -30,7 +30,7 @@ import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
-import { isBoomClipPost, isPublicationPost } from '../../lib/contentType';
+import { isBoomClipPost, isPublicationPost, resolveContentType } from '../../lib/contentType';
 import { RepostPostCard } from './RepostPostCard';
 import { isRepostPost } from '../../lib/socialFirestore';
 import type { Reconstruction3DPayload } from '../../lib/reconstruction3d/types';
@@ -899,6 +899,7 @@ function StandardPostCard({
               authorUsername={post.authorUsername}
               authorUid={post.authorUid}
               postId={post.id}
+              contentType={resolveContentType(post)}
               inline
             />
           ) : null}

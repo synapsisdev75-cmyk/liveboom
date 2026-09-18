@@ -64,6 +64,7 @@ type Props = {
   commentsPanelOpen?: boolean;
   showGifts?: boolean;
   onGiftsOpenChange?: (open: boolean) => void;
+  giftContentType?: 'post' | 'boom_clip' | 'flashboom';
   /** `media` = anclado al borde del video; `viewport` = borde de pantalla (legacy). */
   anchor?: 'media' | 'viewport';
   /** `aside` = columna al lado del media (PC, igual que Explorar). */
@@ -97,6 +98,7 @@ export function PostActionRail({
   commentsPanelOpen = false,
   showGifts = true,
   onGiftsOpenChange,
+  giftContentType = 'post',
   anchor = 'viewport',
   layout = 'default',
 }: Props) {
@@ -175,6 +177,7 @@ export function PostActionRail({
             authorUsername={authorUsername}
             authorUid={authorUid}
             postId={postId}
+            contentType={giftContentType}
             onOpenChange={onGiftsOpenChange}
           />
         </div>

@@ -895,6 +895,7 @@ export function PostVideoPlayer({
               mediaType="video"
               commentsPanelOpen={commentsPanelOpen}
               onGiftsOpenChange={setGiftsOpen}
+              giftContentType={storyMode ? 'flashboom' : reelFeed ? 'boom_clip' : 'post'}
               anchor="media"
               layout={expandedRailLayout}
             />

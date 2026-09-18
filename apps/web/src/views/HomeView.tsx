@@ -64,7 +64,7 @@ import {
   nextHomeFeedPage,
   rankHomePublications,
 } from '../lib/homeFeedRanking';
-import { canEditOwnedPublication, isPublicationPost } from '../lib/contentType';
+import { canEditOwnedPublication, isPublicationPost, resolveContentType } from '../lib/contentType';
 import { fetchPrivateLocation } from '../lib/userLocation';
 import { isStoryActive, isStoryPost } from '../lib/storyLifecycle';
 import { useAuthStore } from '../store/authStore';
@@ -341,6 +341,7 @@ function HomePublicationCard({
               authorUsername={post.authorUsername}
               authorUid={post.authorUid}
               postId={post.id}
+              contentType={resolveContentType(post)}
               inline
             />
           </span>
