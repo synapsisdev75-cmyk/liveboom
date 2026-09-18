@@ -225,12 +225,22 @@ html[data-lb-theme] .border-zinc-800 {
 }
 
 html[data-lb-theme] .hover\:bg-white\/5:hover,
-html[data-lb-theme] .hover\:bg-white\/10:hover {
+html[data-lb-theme] .hover\:bg-white\/10:hover,
+html[data-lb-theme] .hover\:bg-white\/\[0\.04\]:hover {
   background-color: var(--surface-hover);
 }
 
-html[data-lb-theme] .bg-white\/10 {
+html[data-lb-theme] .bg-white\/10,
+html[data-lb-theme] .bg-white\/\[0\.04\] {
   background-color: var(--surface-hover);
+}
+
+html[data-lb-theme] .bg-white\/\[0\.06\] {
+  background-color: var(--surface-selected);
+}
+
+html[data-lb-theme] .border-white\/\[0\.06\] {
+  border-color: var(--border-default);
 }
 
 html[data-lb-theme] .ring-cyan-500\/30,
@@ -1919,6 +1929,11 @@ html[data-lb-theme='dark'] .lb-payment-methods {
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
+.lb-chat-pane {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
 .lb-chat-bubble.is-in {
   background: var(--surface-secondary);
   color: var(--text-primary);
@@ -1936,10 +1951,89 @@ html[data-lb-theme] .lb-chat-bubble.is-in {
   border: 1px solid var(--border-soft);
 }
 
+html[data-lb-theme] .lb-chat-bubble.is-in .text-white,
+html[data-lb-theme] .lb-chat-bubble.is-in .text-zinc-100,
+html[data-lb-theme] .lb-chat-bubble.is-in .text-zinc-200 {
+  color: var(--text-primary);
+}
+
+html[data-lb-theme] .lb-chat-bubble.is-out,
+html[data-lb-theme] .lb-chat-bubble.is-out.text-white,
+html[data-lb-theme] .lb-chat-bubble.is-out .text-white,
+html[data-lb-theme] .lb-chat-bubble.is-out .text-zinc-100,
+html[data-lb-theme] .lb-chat-bubble.is-out .text-zinc-200,
+html[data-lb-theme] .lb-chat-bubble.is-out .text-cyan-200,
+html[data-lb-theme] .lb-chat-bubble.is-out .text-cyan-300,
+html[data-lb-theme] .lb-chat-bubble.is-out .text-cyan-400 {
+  color: var(--text-on-accent);
+}
+
 html[data-lb-theme] .lb-chat-bubble.is-out,
 html[data-lb-theme] .lb-chat-bubble.is-out.text-white {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  color: var(--text-on-accent);
+}
+
+html[data-lb-theme='light'] .lb-chat-pane {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+html[data-lb-theme='light'] .lb-chat-thread-head {
+  background: var(--bg-elevated);
+  border-bottom-color: var(--border-default);
+  box-shadow: 0 1px 0 var(--border-soft);
+}
+
+html[data-lb-theme='light'] .lb-chat-bubble.is-in {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--bg-primary) 55%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-chat-search {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--bg-primary) 40%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-chat-composer-field {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+}
+
+html[data-lb-theme='light'] .lb-chat-tombstone,
+html[data-lb-theme='light'] .lb-chat-call-chip,
+html[data-lb-theme='light'] .lb-chat-emoji-chip,
+html[data-lb-theme='light'] .lb-chat-react-pop,
+html[data-lb-theme='light'] .lb-chat-reply-bar,
+html[data-lb-theme='light'] .lb-chat-attach-menu,
+html[data-lb-theme='light'] .lb-chat-manage,
+html[data-lb-theme='light'] .lb-chat-report,
+html[data-lb-theme='light'] .lb-chat-safety-menu,
+html[data-lb-theme='light'] .lb-chat-msg-menu {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--bg-primary) 28%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-chat-call-chip.is-mine {
+  background: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-elevated));
+}
+
+html[data-lb-theme='light'] .lb-chat-typing video {
+  mix-blend-mode: normal;
+}
+
+html[data-lb-theme='light'] .lb-chat-bubble.is-in .bg-black\/25,
+html[data-lb-theme='light'] .lb-chat-bubble.is-in .bg-black\/40 {
+  background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-chat-composer-field,
+html[data-lb-theme='light'] .lb-chat-composer-field textarea,
+html[data-lb-theme='light'] .lb-chat-composer-field input {
+  color: var(--text-primary);
 }
 
 .lb-settings-stat {

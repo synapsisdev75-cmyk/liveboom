@@ -1760,7 +1760,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   const listPane = (
     <div
-      className={`flex min-h-0 flex-col border-white/[0.06] bg-[#0a0a0b] ${
+      className={`lb-chat-pane flex min-h-0 flex-col border-white/[0.06] bg-[#0a0a0b] ${
         isPage
           ? `w-full md:w-[min(32%,18rem)] lg:w-[min(26%,16.5rem)] md:shrink-0 md:border-l ${mobileHideList ? 'hidden md:flex' : 'flex'}`
           : 'flex w-full md:w-48 md:border-r'
@@ -1994,7 +1994,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   const threadPane = activeFriend ? (
       <div
-        className={`min-h-0 min-w-0 flex-1 flex-col bg-[#0a0a0b] ${
+        className={`lb-chat-pane min-h-0 min-w-0 flex-1 flex-col bg-[#0a0a0b] ${
           isPage ? (chatOpen ? 'flex' : 'hidden md:flex') : 'flex'
         }`}
       >
