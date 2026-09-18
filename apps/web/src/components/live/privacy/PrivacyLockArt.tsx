@@ -15,7 +15,7 @@ export function PrivacyLockArt({ open, className = 'lb-live-privacy-lock__art' }
       src={open ? PRIVACY_LOCK_IDLE_SRC : PRIVACY_LOCK_CLOSED_SRC}
       alt=""
       draggable={false}
-      className={className}
+      className={`${className}${open ? ' is-idle' : ''}`}
     />
   );
 }
