@@ -134,6 +134,36 @@ service cloud.firestore {
       allow delete: if isOwner() && hasValidAdminSession();
     }
 
+    /**
+     * Solicitudes de retiro (Blast ganados → COP).
+     * El usuario crea la suya y la consulta; el Super Admin ve todas y resuelve.
+     * Constantes espejo de apps/web/src/lib/coinPackages.ts:
+     * MIN_WITHDRAW_COINS = 50 · COIN_TO_COP = 15.
+     */
+    match /withdrawalRequests/{requestId} {
+      allow read: if isSuperAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.blast is int
+        && request.resource.data.blast >= 50
+        && request.resource.data.blast <= 5000000
+        && request.resource.data.amountCop is int
+        && request.resource.data.amountCop == request.resource.data.blast * 15
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() >= 3
+        && request.resource.data.documentId is string
+        && request.resource.data.accountNumber is string
+        && request.resource.data.reviewedByEmail == null;
+      allow update: if isUnlockedSuperAdmin()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.blast == resource.data.blast
+        && request.resource.data.amountCop == resource.data.amountCop
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'reviewNote', 'reviewedByEmail', 'reviewedAtMs', 'updatedAtMs']);
+      allow delete: if false;
+    }
+
     match /users/{userId} {
       allow read: if true;
       allow create: if isSelf(userId)
@@ -149,7 +179,15 @@ service cloud.firestore {
           isUnlockedSuperAdmin()
           && request.resource.data.firebaseUid == resource.data.firebaseUid
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['levelXp', 'levelXpPinned', 'coinsBalance', 'updatedAt'])
+            .hasOnly([
+              'levelXp',
+              'levelXpPinned',
+              'coinsBalance',
+              'purchasedBlastBalance',
+              'earnedBlastBalance',
+              'earnedBlastWithdrawn',
+              'updatedAt'
+            ])
         );
       allow delete: if isSelf(userId);
 

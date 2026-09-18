@@ -22,6 +22,7 @@ import { processGiftInbox } from '../lib/giftsFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
+import { WithdrawRequestsPanel } from '../components/wallet/WithdrawRequestsPanel';
 import { useAuthStore } from '../store/authStore';
 import { useCatalogConfigStore } from '../store/catalogConfigStore';
 import { useT } from '../i18n';
@@ -72,6 +73,7 @@ export function WalletView() {
   const [showHistory, setShowHistory] = useState(false);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
   const packsRef = useRef<HTMLDivElement>(null);
+  const requestsRef = useRef<HTMLDivElement>(null);
 
   async function refreshWithdrawals() {
     try {
@@ -205,14 +207,15 @@ export function WalletView() {
         <button
           type="button"
           onClick={() => {
-            setShowHistory((v) => !v);
+            setShowHistory(true);
             void refreshWithdrawals();
+            requestsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
           className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#14151c] px-3 py-2 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white sm:px-3.5"
         >
           <History size={14} />
-          <span className="sm:hidden">Historial</span>
-          <span className="hidden sm:inline">Historial de transacciones</span>
+          <span className="sm:hidden">Retiros</span>
+          <span className="hidden sm:inline">Mis solicitudes de retiro</span>
         </button>
       </header>
 
@@ -259,7 +262,9 @@ export function WalletView() {
                   <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-emerald-200 sm:text-base">
                     {earned.toLocaleString('es-CO')}
                   </p>
-                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Regalos y llamadas</p>
+                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">
+                    Regalos y llamadas · retirable
+                  </p>
                 </div>
                 <div className="min-w-0 rounded-xl border border-cyan-400/25 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-cyan-300/90 sm:text-[11px]">
@@ -287,6 +292,10 @@ export function WalletView() {
                   Retirar a COP
                 </button>
               </div>
+              <p className="mt-2 text-[11px] text-zinc-400">
+                Retirable: {earned.toLocaleString('es-CO')} blast ganados. Las recargas no se
+                retiran.
+              </p>
             </div>
           </section>
 
@@ -408,35 +417,33 @@ export function WalletView() {
             </p>
           </section>
 
-          {showHistory ? (
-            <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
-              <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
-              {withdrawals.length === 0 ? (
-                <p className="mt-3 text-sm text-zinc-500">
-                  Aún no hay retiros. Las recargas aparecen en tu saldo al instante.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {withdrawals.slice(0, 12).map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2.5 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium text-white">
-                          −{item.coins.toLocaleString('es-CO')} blast → {formatCop(item.amountCop)}
-                        </p>
-                        <p className="text-xs text-zinc-500">
-                          {new Date(item.createdAt).toLocaleString('es-CO')} ·{' '}
-                          {item.payoutMethod || '—'} ·{' '}
-                          {item.status === 'pending' ? 'Pendiente de pago' : item.status}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+          <div ref={requestsRef} className="scroll-mt-20">
+            <WithdrawRequestsPanel uid={profile.firebaseUid} />
+          </div>
+
+          {showHistory && withdrawals.length > 0 ? (
+                <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
+                  <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
+                  <ul className="mt-3 space-y-2">
+                    {withdrawals.slice(0, 12).map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2.5 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium text-white">
+                            −{item.coins.toLocaleString('es-CO')} blast → {formatCop(item.amountCop)}
+                          </p>
+                          <p className="text-xs text-zinc-500">
+                            {new Date(item.createdAt).toLocaleString('es-CO')} ·{' '}
+                            {item.payoutMethod || '—'} ·{' '}
+                            {item.status === 'pending' ? 'Pendiente de pago' : item.status}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
           ) : null}
         </>
       ) : (

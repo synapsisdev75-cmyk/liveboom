@@ -10,7 +10,6 @@ const {
   isWompiMerchantActive,
 } = require('../lib/wompi');
 const {
-  debit,
   rememberOrder,
   takeOrder,
   getBalance,
@@ -125,6 +124,64 @@ async function creditTopup(uid, coins) {
     }
   }
   return nextBal.coinsBalance;
+}
+
+/**
+ * Retiro = solo Blast ganados (regalos, llamadas y videollamadas).
+ * Reserva el monto: baja `earnedBlastBalance` y sube `earnedBlastWithdrawn`.
+ * @returns {Promise<{ ok: boolean, earned?: number, balances?: object }>}
+ */
+async function reserveEarnedForWithdrawal(uid, coins) {
+  const amount = Math.max(0, Math.floor(Number(coins) || 0));
+  const { getBalances, setBalances } = require('../lib/walletMemory');
+  const { normalizeBlastBalances, firestoreBalancePatch } = require('../lib/blastBalances');
+
+  if (firestoreConfigured()) {
+    try {
+      const { getAdminDb } = require('../lib/firestoreAdmin');
+      const { FieldValue } = require('firebase-admin/firestore');
+      const db = getAdminDb();
+      const userRef = db.collection('users').doc(String(uid));
+      const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(userRef);
+        const current = normalizeBlastBalances(snap.exists ? snap.data() : {});
+        if (current.earnedBlastBalance < amount) {
+          return { ok: false, earned: current.earnedBlastBalance };
+        }
+        const next = normalizeBlastBalances({
+          purchasedBlastBalance: current.purchasedBlastBalance,
+          earnedBlastBalance: current.earnedBlastBalance - amount,
+          earnedBlastSpent: current.earnedBlastSpent,
+          earnedBlastWithdrawn: current.earnedBlastWithdrawn + amount,
+        });
+        tx.set(
+          userRef,
+          {
+            ...firestoreBalancePatch(next),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+        return { ok: true, balances: next };
+      });
+      if (result.ok) setBalances(uid, result.balances);
+      return result;
+    } catch (error) {
+      console.warn('[payments/withdraw] firestore reserve fallback:', error.message);
+    }
+  }
+
+  const current = getBalances(uid);
+  if (current.earnedBlastBalance < amount) {
+    return { ok: false, earned: current.earnedBlastBalance };
+  }
+  const next = setBalances(uid, {
+    purchasedBlastBalance: current.purchasedBlastBalance,
+    earnedBlastBalance: current.earnedBlastBalance - amount,
+    earnedBlastSpent: current.earnedBlastSpent,
+    earnedBlastWithdrawn: current.earnedBlastWithdrawn + amount,
+  });
+  return { ok: true, balances: next };
 }
 
 function buildOrderResponse({ pack, packageId, amountInCop, publicKey }) {
@@ -581,13 +638,16 @@ async function withdrawCoins(req, res) {
       return;
     }
 
-    const nextBalance = debit(uid, coins);
-    if (nextBalance == null) {
+    const reserved = await reserveEarnedForWithdrawal(uid, coins);
+    if (!reserved.ok) {
       res.status(400).json({
-        error: `Saldo insuficiente. Tienes ${getBalance(uid).toLocaleString('es-CO')} coins`,
+        error: `Solo puedes retirar Blast ganados (regalos, llamadas y videollamadas). Disponibles: ${Number(
+          reserved.earned || 0,
+        ).toLocaleString('es-CO')}`,
       });
       return;
     }
+    const nextBalance = reserved.balances.coinsBalance;
 
     const amountCop = coinsToCop(coins);
     const reference = createWompiReference('wd');
