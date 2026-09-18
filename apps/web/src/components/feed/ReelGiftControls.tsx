@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { sendLiveboomGift } from '../../lib/giftsFirestore';
-import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
+import { addLevelXp } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { FloatingGift } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
@@ -32,7 +32,7 @@ export function ReelGiftControls({
 }: Props) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
-  const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const coins = profile?.coinsBalance ?? 0;
 
   const [openGifts, setOpenGifts] = useState(false);
@@ -106,8 +106,7 @@ export function ReelGiftControls({
         clientId,
         postId,
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      setBlastBalances(result);
       void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
       pushFloat(catalog.id, senderName);
       setOpenGifts(false);

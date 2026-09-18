@@ -40,6 +40,17 @@ service cloud.firestore {
       return isSuperAdmin() && hasValidAdminSession();
     }
 
+    function walletFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'coins',
+        'coinsBalance',
+        'purchasedBlastBalance',
+        'earnedBlastBalance',
+        'earnedBlastSpent',
+        'earnedBlastWithdrawn'
+      ]);
+    }
+
     match /config/levels {
       allow read: if true;
       allow create, update: if isUnlockedSuperAdmin();
@@ -161,12 +172,19 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isSelf(userId)
         && request.resource.data.firebaseUid == request.auth.uid
-        && validUsername(request.resource.data.username);
+        && validUsername(request.resource.data.username)
+        && request.resource.data.get('coins', 0) == 0
+        && request.resource.data.get('coinsBalance', 0) == 0
+        && request.resource.data.get('purchasedBlastBalance', 0) == 0
+        && request.resource.data.get('earnedBlastBalance', 0) == 0
+        && request.resource.data.get('earnedBlastSpent', 0) == 0
+        && request.resource.data.get('earnedBlastWithdrawn', 0) == 0;
       allow update: if (
           isSelf(userId)
           && request.resource.data.firebaseUid == request.auth.uid
           && validUsername(request.resource.data.username)
           && request.resource.data.firebaseUid == resource.data.firebaseUid
+          && walletFieldsUnchanged()
         )
         || (
           isUnlockedSuperAdmin()
@@ -241,16 +259,8 @@ service cloud.firestore {
 
       match /giftInbox/{giftId} {
         allow read: if isSelf(userId);
-        allow create: if signedIn()
-          && request.resource.data.senderUid == request.auth.uid
-          && request.resource.data.recipientUid == userId
-          && request.resource.data.coins is number
-          && request.resource.data.coins > 0
-          && request.resource.data.coins <= 500000
-          && request.resource.data.giftId is string
-          && request.resource.data.processed == false;
-        allow update: if isSelf(userId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['processed', 'processedAtMs']);
+        // Regalos y llamadas se acreditan únicamente desde Cloud Functions.
+        allow create, update, delete: if false;
       }
 
       match /callSettings/{docId} {
@@ -689,11 +699,8 @@ service cloud.firestore {
 
       match /gifts/{giftId} {
         allow read: if signedIn();
-        allow create: if signedIn()
-          && request.resource.data.senderUid == request.auth.uid
-          && request.resource.data.giftId is string
-          && request.resource.data.giftName is string
-          && request.resource.data.senderName is string;
+        // El evento solo se publica después del débito/crédito atómico del API.
+        allow create: if false;
         allow delete: if signedIn();
       }
 
@@ -765,6 +772,18 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if signedIn();
       allow delete: if signedIn();
+    }
+
+    match /giftTransactions/{transactionId} {
+      allow read, write: if false;
+    }
+
+    match /withdrawalRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    match /wallet_transactions/{transactionId} {
+      allow read, write: if false;
     }
 
     /** Boom de comentarios: independiente de posts/{postId}/reactions. UNIQUE por commentId + userId. */

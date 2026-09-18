@@ -32,6 +32,7 @@ type WithdrawalRow = {
   amountCop: number;
   status: string;
   payoutMethod?: string;
+  fullName?: string;
   createdAt: string;
 };
 
@@ -62,6 +63,7 @@ function BlastArt({ artUrl, blast }: { artUrl: string; blast: number }) {
 export function WalletView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const error = useAuthStore((state) => state.error);
   const packsVersion = useCatalogConfigStore((s) => s.packsVersion);
   const coinPackages = listCoinPackages();
@@ -75,8 +77,14 @@ export function WalletView() {
 
   async function refreshWithdrawals() {
     try {
-      const data = await api<{ withdrawals: WithdrawalRow[] }>('/api/payments/withdrawals');
+      const data = await api<{
+        withdrawals: WithdrawalRow[];
+        coinsBalance: number;
+        purchasedBlastBalance: number;
+        earnedBlastBalance: number;
+      }>('/api/payments/withdrawals');
       setWithdrawals(data.withdrawals || []);
+      setBlastBalances(data);
     } catch {
       setWithdrawals([]);
     }
@@ -410,7 +418,7 @@ export function WalletView() {
 
           {showHistory ? (
             <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
-              <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
+              <h2 className="text-sm font-semibold text-zinc-200">Mis solicitudes de retiro</h2>
               {withdrawals.length === 0 ? (
                 <p className="mt-3 text-sm text-zinc-500">
                   Aún no hay retiros. Las recargas aparecen en tu saldo al instante.
@@ -428,8 +436,17 @@ export function WalletView() {
                         </p>
                         <p className="text-xs text-zinc-500">
                           {new Date(item.createdAt).toLocaleString('es-CO')} ·{' '}
+                          {item.fullName || profile.displayName} ·{' '}
                           {item.payoutMethod || '—'} ·{' '}
-                          {item.status === 'pending' ? 'Pendiente de pago' : item.status}
+                          {item.status === 'pending'
+                            ? 'Pendiente de revisión'
+                            : item.status === 'processing'
+                              ? 'En proceso'
+                              : item.status === 'paid'
+                                ? 'Pagado'
+                                : item.status === 'rejected'
+                                  ? 'Rechazado y devuelto'
+                                  : item.status}
                         </p>
                       </div>
                     </li>

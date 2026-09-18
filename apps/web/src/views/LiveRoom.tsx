@@ -127,7 +127,6 @@ import {
   startLiveCoinGoal,
   liveGoalProgress,
   type LiveCoinGoalCycle,
-  publishLiveGift,
   listenLiveChat,
   publishLiveChatMessage,
   resetLiveRoomChat,
@@ -171,7 +170,7 @@ import {
 } from '../hooks/useLiveChatAuthorProfile';
 import { parseSalaBoomLayout, type SalaBoomLayout, type SalaCameraAction } from '../lib/salaBoomLayout';
 import { downloadReelBlob, savePendingReel } from '../lib/pendingReelStore';
-import { addFirestoreCoins, addLevelXp, fetchLevelXp, profileHref, setFirestoreCoins } from '../lib/profileFirestore';
+import { addLevelXp, fetchLevelXp, profileHref } from '../lib/profileFirestore';
 import { shareContent } from '../lib/shareContent';
 import { listFollowers, listFriends } from '../lib/socialFirestore';
 import { sendLiveboomGift } from '../lib/giftsFirestore';
@@ -1032,7 +1031,6 @@ export function LiveRoom() {
       });
       if (typeof result.senderBalance === 'number') {
         setCoins(result.senderBalance);
-        void setFirestoreCoins(firebaseUid, result.senderBalance).catch(() => undefined);
       }
       if (result.unlocked || result.requestStatus === 'approved') {
         await claimPrivateAccessFromGrant(gateSessionId);
@@ -1656,7 +1654,6 @@ function CreatorStage({
   const displayName = useAuthStore((state) => state.profile?.displayName);
   const walletCoins = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
   const firebaseUid = useAuthStore((state) => state.profile?.firebaseUid);
-  const setCoins = useAuthStore((state) => state.setCoins);
   const { viewers } = useViewerCount(username);
   const liveStartedAt = useRef(0);
   const creditedGifts = useRef(new Set<string>());
@@ -3733,18 +3730,9 @@ function CreatorStage({
           ),
         ].slice(0, 12),
       );
-      void addFirestoreCoins(firebaseUid, gift.coins)
-        .then((next) => {
-          if (typeof next === 'number') setCoins(next);
-        })
-        .catch(() => {
-          const current = useAuthStore.getState().profile?.coinsBalance ?? 0;
-          setCoins(current + gift.coins);
-        });
       void addLevelXp(firebaseUid, Math.max(1, Math.floor(gift.coins / 2))).catch(() => undefined);
-      battle.creditGift(gift.coins);
     });
-  }, [isHost, firebaseUid, username, goalCoins, goalLabel, setCoins]);
+  }, [isHost, firebaseUid, username, goalCoins, goalLabel]);
 
   useEffect(() => {
     const link = document.createElement('link');
@@ -6785,6 +6773,7 @@ function ChatPanel({
   const profile = useAuthStore((state) => state.profile);
   const coins = profile?.coinsBalance ?? 0;
   const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const [messages, setMessages] = useState<ChatMessage[]>(() => liveChatCache.get(roomName) ?? []);
   const [text, setText] = useState('');
   const [openGifts, setOpenGifts] = useState(false);
@@ -7132,7 +7121,6 @@ function ChatPanel({
         });
         if (typeof result.senderBalance === 'number') {
           setCoins(result.senderBalance);
-          void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
         }
         if (result.unlocked || result.requestStatus === 'approved') {
           setGiftError(null);
@@ -7174,8 +7162,7 @@ function ChatPanel({
         roomName,
         multiplier: mult,
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      setBlastBalances(result);
       void addLevelXp(profile.firebaseUid, totalCoins)
         .then((xp) => {
           levelXpRef.current = xp;
@@ -7212,18 +7199,6 @@ function ChatPanel({
         emoji: catalog.emoji,
         multiplier: mult,
       }).catch((error) => console.error('[gift] publishData', error));
-      if (!result.usedFallback) {
-        void publishLiveGift(roomName, {
-          clientId,
-          giftId: catalog.id,
-          giftName: catalog.name,
-          emoji: catalog.emoji,
-          senderName,
-          senderUid: profile.firebaseUid,
-          coins: totalCoins,
-          multiplier: mult,
-        }).catch((error) => console.error('[gift] firestore', error));
-      }
       void publishLiveChatMessage(roomName, {
         clientId: chatGift.id,
         authorUid: profile.firebaseUid,

@@ -10,14 +10,10 @@ const {
   isWompiMerchantActive,
 } = require('../lib/wompi');
 const {
-  debit,
   rememberOrder,
   takeOrder,
-  getBalance,
   setBalance,
   setBalances,
-  listWithdrawals,
-  addWithdrawal,
 } = require('../lib/walletMemory');
 const dbUserFromTokenMod = require('../lib/dbUserFromToken');
 const { prisma, hasDatabase } = require('../lib/prisma');
@@ -557,6 +553,7 @@ async function withdrawCoins(req, res) {
     const payoutMethod = String(req.body?.payoutMethod || '').trim().slice(0, 40);
     const accountNumber = String(req.body?.accountNumber || '').trim().slice(0, 40);
     const accountType = String(req.body?.accountType || 'ahorros').trim().slice(0, 20);
+    const clientRequestId = String(req.body?.clientRequestId || '').trim().slice(0, 120);
 
     if (!Number.isFinite(coins) || coins < MIN_WITHDRAW_COINS) {
       res.status(400).json({
@@ -580,42 +577,37 @@ async function withdrawCoins(req, res) {
       res.status(400).json({ error: 'Indica el número de cuenta o celular Nequi/Daviplata' });
       return;
     }
-
-    const nextBalance = debit(uid, coins);
-    if (nextBalance == null) {
-      res.status(400).json({
-        error: `Saldo insuficiente. Tienes ${getBalance(uid).toLocaleString('es-CO')} coins`,
-      });
+    if (!clientRequestId || clientRequestId.length < 8) {
+      res.status(400).json({ error: 'No se pudo identificar esta solicitud. Intenta de nuevo.' });
       return;
     }
 
     const amountCop = coinsToCop(coins);
-    const reference = createWompiReference('wd');
-    const record = addWithdrawal(uid, {
-      id: reference,
-      reference,
+    const { createWithdrawalRequest } = require('../lib/withdrawalRequests');
+    const result = await createWithdrawalRequest({
+      uid,
+      tokenProfile: req.user,
       coins,
       amountCop,
       coinToCop: COIN_TO_COP,
+      clientRequestId,
       fullName,
       documentId,
       payoutMethod,
       accountNumber,
       accountType,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
     });
 
     if (hasDatabase && prisma) {
       try {
         await prisma.user.update({
           where: { firebaseUid: uid },
-          data: { coinsBalance: { decrement: coins } },
+          data: { coinsBalance: result.balances.coinsBalance },
         });
       } catch (error) {
         console.warn('[payments/withdraw] no se persistió el saldo:', error.message);
       }
-      try {
+      if (!result.duplicate) try {
         await prisma.transaction.create({
           data: {
             userId: dbUser.id,
@@ -624,7 +616,7 @@ async function withdrawCoins(req, res) {
             type: 'withdraw',
             status: 'pending',
             packageId: 'withdraw',
-            reference,
+            reference: result.withdrawal.reference,
             currency: 'COP',
           },
         });
@@ -634,22 +626,28 @@ async function withdrawCoins(req, res) {
     }
 
     res.status(201).json({
-      withdrawal: record,
-      coinsBalance: nextBalance,
+      withdrawal: result.withdrawal,
+      duplicate: result.duplicate,
+      coinsBalance: result.balances.coinsBalance,
+      purchasedBlastBalance: result.balances.purchasedBlastBalance,
+      earnedBlastBalance: result.balances.earnedBlastBalance,
       coinToCop: COIN_TO_COP,
-      message: `Solicitud registrada: ${coins} coins = $${amountCop.toLocaleString('es-CO')} COP`,
+      message: result.duplicate
+        ? 'Esta solicitud ya estaba registrada.'
+        : `Solicitud registrada: ${coins} Blast = $${amountCop.toLocaleString('es-CO')} COP`,
     });
   } catch (error) {
     console.error('[payments/withdraw]', error);
     if (!res.headersSent) {
-      res.status(500).json({
+      res.status(Number(error?.status) || 500).json({
         error: error instanceof Error ? error.message : 'No se pudo registrar el retiro',
+        code: error?.code,
       });
     }
   }
 }
 
-function listMyWithdrawals(req, res) {
+async function listMyWithdrawals(req, res) {
   try {
     const dbUser = userForOrder(req);
     if (!dbUser?.id) {
@@ -657,15 +655,55 @@ function listMyWithdrawals(req, res) {
       return;
     }
     const uid = dbUser.firebaseUid || dbUser.id;
+    const { readUserBlastBalances } = require('../lib/firestoreAdmin');
+    const { listUserWithdrawalRequests } = require('../lib/withdrawalRequests');
+    const [balances, withdrawals] = await Promise.all([
+      readUserBlastBalances(uid),
+      listUserWithdrawalRequests(uid),
+    ]);
     res.json({
       coinToCop: COIN_TO_COP,
       minWithdrawCoins: MIN_WITHDRAW_COINS,
-      coinsBalance: getBalance(uid),
-      withdrawals: listWithdrawals(uid),
+      coinsBalance: balances.coinsBalance,
+      purchasedBlastBalance: balances.purchasedBlastBalance,
+      earnedBlastBalance: balances.earnedBlastBalance,
+      withdrawals,
     });
   } catch (error) {
-    res.status(500).json({
+    res.status(Number(error?.status) || 500).json({
       error: error instanceof Error ? error.message : 'No se pudo listar retiros',
+      code: error?.code,
+    });
+  }
+}
+
+async function listAdminWithdrawals(req, res) {
+  try {
+    const { listAdminWithdrawalRequests } = require('../lib/withdrawalRequests');
+    const withdrawals = await listAdminWithdrawalRequests(req.user);
+    res.json({ withdrawals });
+  } catch (error) {
+    res.status(Number(error?.status) || 500).json({
+      error: error instanceof Error ? error.message : 'No se pudieron listar los retiros',
+      code: error?.code,
+    });
+  }
+}
+
+async function reviewWithdrawal(req, res) {
+  try {
+    const { updateWithdrawalRequest } = require('../lib/withdrawalRequests');
+    const withdrawal = await updateWithdrawalRequest(
+      req.user,
+      req.params?.id,
+      req.body?.status,
+      req.body?.reviewNote,
+    );
+    res.json({ withdrawal });
+  } catch (error) {
+    res.status(Number(error?.status) || 500).json({
+      error: error instanceof Error ? error.message : 'No se pudo actualizar el retiro',
+      code: error?.code,
     });
   }
 }
@@ -677,6 +715,8 @@ module.exports = {
   getPaymentStatus,
   withdrawCoins,
   listMyWithdrawals,
+  listAdminWithdrawals,
+  reviewWithdrawal,
 };
 module.exports.createOrder = createOrder;
 module.exports.completeWidget = completeWidget;
@@ -684,3 +724,5 @@ module.exports.completeRedirect = completeRedirect;
 module.exports.getPaymentStatus = getPaymentStatus;
 module.exports.withdrawCoins = withdrawCoins;
 module.exports.listMyWithdrawals = listMyWithdrawals;
+module.exports.listAdminWithdrawals = listAdminWithdrawals;
+module.exports.reviewWithdrawal = reviewWithdrawal;

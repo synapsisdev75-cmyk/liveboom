@@ -1,19 +1,5 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  limit,
-  query,
-  runTransaction,
-  serverTimestamp,
-  where,
-} from 'firebase/firestore';
-import { api, ApiError } from './api';
-import { normalizeBlastBalances } from './blastBalances';
-import { db } from './firebase';
+import { api } from './api';
 import { findLiveGift } from './liveboomGifts';
-import { publishLiveGift } from './liveGiftsFirestore';
-import { fetchPublicUserByUid, fetchPublicUserByUsername } from './profileFirestore';
 
 export type SendGiftInput = {
   giftId: string;
@@ -30,178 +16,23 @@ export type SendGiftInput = {
 
 export type SendGiftResult = {
   senderBalance: number;
+  purchasedBlastBalance: number;
+  earnedBlastBalance: number;
   usedFallback: boolean;
 };
 
-async function resolveRecipientUid(
-  recipientUsername: string,
-  recipientUid?: string,
-): Promise<string> {
-  if (recipientUid) {
-    const byUid = await fetchPublicUserByUid(recipientUid);
-    if (byUid?.firebaseUid) return byUid.firebaseUid;
-  }
-  const user = await fetchPublicUserByUsername(recipientUsername);
-  if (!user?.firebaseUid) {
-    throw new Error('No encontramos al creador de este contenido');
-  }
-  return user.firebaseUid;
-}
-
-/** Debita Blast del remitente: primero comprados, luego ganados. */
-async function debitSenderCoins(senderUid: string, amount: number): Promise<number> {
-  const coins = Math.max(1, Math.floor(Number(amount) || 0));
-  return runTransaction(db, async (tx) => {
-    const ref = doc(db, 'users', senderUid);
-    const snap = await tx.get(ref);
-    const bal = normalizeBlastBalances(
-      snap.exists() ? (snap.data() as Record<string, unknown>) : {},
-    );
-    if (bal.coinsBalance < coins) {
-      throw new Error('Saldo insuficiente');
-    }
-    const usePurchased = Math.min(bal.purchasedBlastBalance, coins);
-    const useEarned = coins - usePurchased;
-    const next = normalizeBlastBalances({
-      purchasedBlastBalance: bal.purchasedBlastBalance - usePurchased,
-      earnedBlastBalance: bal.earnedBlastBalance - useEarned,
-      earnedBlastSpent: bal.earnedBlastSpent + useEarned,
-      earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
-    });
-    tx.set(
-      ref,
-      {
-        coinsBalance: next.coinsBalance,
-        purchasedBlastBalance: next.purchasedBlastBalance,
-        earnedBlastBalance: next.earnedBlastBalance,
-        earnedBlastSpent: next.earnedBlastSpent,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-    return next.coinsBalance;
-  });
-}
-
-/** Acredita Blast al receptor como ganados (regalos / llamadas). */
-async function creditRecipientEarned(
-  recipientUid: string,
-  amount: number,
-  meta: {
-    senderUid: string;
-    senderName?: string;
-    giftId?: string;
-    giftName?: string;
-    emoji?: string;
-    clientId?: string;
-    postId?: string | null;
-    source: 'gift' | 'live_gift' | 'call_billing';
-  },
-): Promise<number> {
-  const coins = Math.max(0, Math.floor(Number(amount) || 0));
-  if (!coins) return 0;
-  return runTransaction(db, async (tx) => {
-    const userRef = doc(db, 'users', recipientUid);
-    const userSnap = await tx.get(userRef);
-    const bal = normalizeBlastBalances(
-      userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : {},
-    );
-    const next = normalizeBlastBalances({
-      purchasedBlastBalance: bal.purchasedBlastBalance,
-      earnedBlastBalance: bal.earnedBlastBalance + coins,
-      earnedBlastSpent: bal.earnedBlastSpent,
-      earnedBlastWithdrawn: bal.earnedBlastWithdrawn,
-    });
-    const inboxRef = meta.clientId
-      ? doc(db, 'users', recipientUid, 'giftInbox', String(meta.clientId).slice(0, 80))
-      : doc(collection(db, 'users', recipientUid, 'giftInbox'));
-    const existingInbox = meta.clientId ? await tx.get(inboxRef) : null;
-    if (existingInbox?.exists() && existingInbox.data()?.processed) {
-      return bal.earnedBlastBalance;
-    }
-    tx.set(
-      userRef,
-      {
-        coinsBalance: next.coinsBalance,
-        purchasedBlastBalance: next.purchasedBlastBalance,
-        earnedBlastBalance: next.earnedBlastBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-    tx.set(inboxRef, {
-      senderUid: meta.senderUid,
-      senderName: meta.senderName || null,
-      recipientUid,
-      giftId: meta.giftId || null,
-      giftName: meta.giftName || null,
-      emoji: meta.emoji || null,
-      coins,
-      postId: meta.postId ?? null,
-      clientId: meta.clientId || null,
-      source: meta.source,
-      processed: true,
-      processedAtMs: Date.now(),
-      createdAt: serverTimestamp(),
-      createdAtMs: Date.now(),
-    });
-    return next.earnedBlastBalance;
-  });
-}
-
 /** Acredita Blast pendientes en la bandeja del receptor (como ganados). */
 export async function processGiftInbox(uid: string): Promise<number> {
-  const id = String(uid || '').trim();
-  if (!id) return 0;
-
-  const snap = await getDocs(
-    query(collection(db, 'users', id, 'giftInbox'), where('processed', '==', false), limit(25)),
-  );
-  if (snap.empty) return 0;
-
-  let credited = 0;
-  await runTransaction(db, async (tx) => {
-    const userRef = doc(db, 'users', id);
-    const userSnap = await tx.get(userRef);
-    const bal = normalizeBlastBalances(
-      userSnap.exists() ? (userSnap.data() as Record<string, unknown>) : {},
-    );
-    let purchased = bal.purchasedBlastBalance;
-    let earned = bal.earnedBlastBalance;
-    let earnedSpent = bal.earnedBlastSpent;
-    const earnedWithdrawn = bal.earnedBlastWithdrawn;
-
-    for (const item of snap.docs) {
-      const data = item.data();
-      const coins = Math.floor(Number(data.coins || 0));
-      if (coins > 0) {
-        earned += coins;
-        credited += coins;
-      }
-      tx.set(item.ref, { processed: true, processedAtMs: Date.now() }, { merge: true });
-    }
-
-    const next = normalizeBlastBalances({
-      purchasedBlastBalance: purchased,
-      earnedBlastBalance: earned,
-      earnedBlastSpent: earnedSpent,
-      earnedBlastWithdrawn: earnedWithdrawn,
-    });
-    tx.set(
-      userRef,
-      {
-        coinsBalance: next.coinsBalance,
-        purchasedBlastBalance: next.purchasedBlastBalance,
-        earnedBlastBalance: next.earnedBlastBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
-  });
-
-  return credited;
+  // Los abonos actuales ya llegan procesados por el API en una transacción atómica.
+  // No se acreditan entradas legacy creadas desde cliente porque no son verificables.
+  void uid;
+  return 0;
 }
 
+/*
+ * El fallback cliente anterior modificaba saldos directamente y permitía
+ * acreditar regalos sin una transacción verificada. Se conserva fuera de
+ * compilación solo durante la migración histórica del archivo.
 async function sendGiftViaFirestore(
   input: SendGiftInput,
   catalog: NonNullable<ReturnType<typeof findLiveGift>>,
@@ -322,8 +153,9 @@ function shouldFallbackToFirestore(error: unknown): boolean {
   }
   return true;
 }
+*/
 
-/** Envía regalo vía API en línea; si falla, usa Firestore. */
+/** Envía el regalo al API autoritativo; nunca modifica saldos desde el cliente. */
 export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftResult> {
   const catalog = findLiveGift(input.giftId);
   if (!catalog) {
@@ -335,46 +167,28 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
 
   const mult = [1, 2, 4, 8].includes(input.multiplier ?? 1) ? (input.multiplier as 1 | 2 | 4 | 8) : 1;
   const totalCoins = catalog.coins * mult;
-  const roomName = input.roomName || input.recipientUsername;
-
-  try {
-    const result = await api<{ senderBalance: number }>('/api/gifts/send', {
-      method: 'POST',
-      body: JSON.stringify({
-        giftId: catalog.id,
-        roomName,
-        clientId: input.clientId,
-        currentBalance: input.senderBalance,
-        multiplier: mult,
-      }),
-    });
-    // Billetera (Ganados) vive en Firestore: acredita al receptor aunque el API haya cobrado.
-    try {
-      const recipientUid = await resolveRecipientUid(input.recipientUsername, input.recipientUid);
-      await creditRecipientEarned(recipientUid, totalCoins, {
-        senderUid: input.senderUid,
-        senderName: input.senderName,
-        giftId: catalog.id,
-        giftName: catalog.name,
-        emoji: catalog.emoji,
-        clientId: input.clientId,
-        postId: input.postId || null,
-        source: input.roomName ? 'live_gift' : 'gift',
-      });
-    } catch {
-      /* no bloquear el envío si el crédito FS falla */
-    }
-    return { senderBalance: result.senderBalance, usedFallback: false };
-  } catch (error) {
-    if (!shouldFallbackToFirestore(error)) {
-      throw error instanceof ApiError
-        ? new Error(error.message)
-        : error instanceof Error
-          ? error
-          : new Error('No se pudo enviar el regalo');
-    }
-    return sendGiftViaFirestore(input, catalog, totalCoins);
-  }
+  const result = await api<{
+    senderBalance: number;
+    purchasedBlastBalance: number;
+    earnedBlastBalance: number;
+  }>('/api/gifts/send', {
+    method: 'POST',
+    body: JSON.stringify({
+      giftId: catalog.id,
+      roomName: input.roomName || null,
+      postId: input.postId || null,
+      recipientUid: input.recipientUid || null,
+      recipientUsername: input.recipientUsername,
+      clientId: input.clientId,
+      multiplier: mult,
+    }),
+  });
+  return {
+    senderBalance: result.senderBalance,
+    purchasedBlastBalance: result.purchasedBlastBalance,
+    earnedBlastBalance: result.earnedBlastBalance,
+    usedFallback: false,
+  };
 }
 
 export function validateCoinsBalance(balance: number, cost: number): boolean {

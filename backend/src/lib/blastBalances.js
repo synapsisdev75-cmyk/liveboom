@@ -160,6 +160,29 @@ function applyCreditEarned(balances, amount) {
   });
 }
 
+/** Reserva un retiro usando exclusivamente Blast ganado. */
+function applyWithdrawEarned(balances, amount) {
+  const take = floorNonNeg(amount);
+  const current = normalizeBlastBalances(balances);
+  if (take <= 0 || current.earnedBlastBalance < take) return null;
+  return normalizeBlastBalances({
+    ...current,
+    earnedBlastBalance: current.earnedBlastBalance - take,
+    earnedBlastWithdrawn: current.earnedBlastWithdrawn + take,
+  });
+}
+
+/** Devuelve el Blast reservado cuando Super Admin rechaza un retiro. */
+function applyRefundWithdrawal(balances, amount) {
+  const refund = floorNonNeg(amount);
+  const current = normalizeBlastBalances(balances);
+  return normalizeBlastBalances({
+    ...current,
+    earnedBlastBalance: current.earnedBlastBalance + refund,
+    earnedBlastWithdrawn: Math.max(0, current.earnedBlastWithdrawn - refund),
+  });
+}
+
 function firestoreBalancePatch(balances) {
   return {
     purchasedBlastBalance: balances.purchasedBlastBalance,
@@ -175,6 +198,8 @@ module.exports = {
   applySpend,
   applyCreditPurchased,
   applyCreditEarned,
+  applyWithdrawEarned,
+  applyRefundWithdrawal,
   firestoreBalancePatch,
   floorNonNeg,
 };

@@ -6,6 +6,7 @@ import {
   coinsToCop,
   formatCop,
 } from '../../lib/coinPackages';
+import { normalizeBlastBalances } from '../../lib/blastBalances';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = {
@@ -16,9 +17,16 @@ type Props = {
 
 export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const profile = useAuthStore((state) => state.profile);
-  const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const syncProfile = useAuthStore((state) => state.syncProfile);
-  const balance = profile?.coinsBalance ?? 0;
+  const balances = normalizeBlastBalances({
+    coinsBalance: profile?.coinsBalance,
+    purchasedBlastBalance: profile?.purchasedBlastBalance,
+    earnedBlastBalance: profile?.earnedBlastBalance,
+    earnedBlastSpent: profile?.earnedBlastSpent,
+    earnedBlastWithdrawn: profile?.earnedBlastWithdrawn,
+  });
+  const balance = balances.earnedBlastBalance;
   const suggested = Math.min(
     balance,
     initialCoins && initialCoins > 0
@@ -34,6 +42,11 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const [accountType, setAccountType] = useState('ahorros');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [clientRequestId] = useState(() =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `withdraw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
 
   const coinsNum = Math.floor(Number(coins) || 0);
   const payoutCop = useMemo(() => coinsToCop(coinsNum), [coinsNum]);
@@ -44,6 +57,8 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
     try {
       const result = await api<{
         coinsBalance: number;
+        purchasedBlastBalance: number;
+        earnedBlastBalance: number;
         message?: string;
       }>('/api/payments/withdraw', {
         method: 'POST',
@@ -54,9 +69,10 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
           payoutMethod,
           accountNumber,
           accountType,
+          clientRequestId,
         }),
       });
-      setCoins(result.coinsBalance);
+      setBlastBalances(result);
       await syncProfile();
       setNote(result.message || 'Retiro solicitado.');
       onDone?.();
@@ -79,7 +95,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
           <div>
             <h2 className="text-lg font-bold text-white">Retirar ganancias</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Solo verás el monto en pesos que puedes retirar.
+              Solo puedes retirar Blast ganados por regalos y llamadas.
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-sm text-zinc-500 hover:text-white">
@@ -92,6 +108,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
         </p>
         <p className="mt-1 text-xs text-zinc-500">
           Mínimo de retiro: {formatCop(coinsToCop(MIN_WITHDRAW_COINS))}
+          {` · ${balances.purchasedBlastBalance.toLocaleString('es-CO')} Blast de recargas no son retirables`}
           {initialCoins && initialCoins > 0
             ? ` · De este live: ${formatCop(coinsToCop(initialCoins))}`
             : ''}
@@ -188,7 +205,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
             type="button"
             disabled={busy || coinsNum < MIN_WITHDRAW_COINS || coinsNum > balance}
             onClick={() => void submit()}
-            className="rounded-full bg-emerald-500 px-6 py-2.5 text-sm font-bold text-zinc-950 disabled:opacity-50"
+            className="min-h-11 rounded-full bg-emerald-500 px-6 py-2.5 text-sm font-bold text-zinc-950 disabled:opacity-50"
           >
             {busy ? 'Enviando…' : `Retirar ${formatCop(payoutCop)}`}
           </button>

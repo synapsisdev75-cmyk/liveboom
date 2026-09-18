@@ -59,7 +59,7 @@ import {
   validateCoinsBalance,
 } from '../../lib/giftsFirestore';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
-import { addLevelXp, setFirestoreCoins } from '../../lib/profileFirestore';
+import { addLevelXp } from '../../lib/profileFirestore';
 import { FloatingGift, GiftVisual } from '../live/FloatingGift';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
@@ -609,7 +609,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const t = useT();
   const isPage = page || fullscreen;
   const profile = useAuthStore((state) => state.profile);
-  const setCoins = useAuthStore((state) => state.setCoins);
+  const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const [searchParams, setSearchParams] = useSearchParams();
   const [friends, setFriends] = useState<FriendChip[]>([]);
   const [following, setFollowing] = useState<FriendChip[]>([]);
@@ -1452,8 +1452,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         clientId: `chat-${chatId || activeFriend.uid}-${Date.now()}`,
         roomName: `chat:${activeFriend.username}`,
       });
-      setCoins(result.senderBalance);
-      void setFirestoreCoins(profile.firebaseUid, result.senderBalance).catch(() => undefined);
+      setBlastBalances(result);
       void addLevelXp(profile.firebaseUid, catalog.coins).catch(() => undefined);
       await send(`🎁 ${catalog.name}`, { giftId: catalog.id });
       animateGiftInChat(catalog.id, senderName);

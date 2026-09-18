@@ -31,6 +31,18 @@ router.post(
 );
 
 router.get(
+  '/admin/withdrawals',
+  requireAuth,
+  bind(() => require('../controllers/paymentsController'), 'listAdminWithdrawals'),
+);
+
+router.patch(
+  '/admin/withdrawals/:id',
+  requireAuth,
+  bind(() => require('../controllers/paymentsController'), 'reviewWithdrawal'),
+);
+
+router.get(
   '/withdrawals',
   requireAuth,
   requireDbUser,
