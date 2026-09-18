@@ -1507,6 +1507,7 @@ function LiveGoalWishHud({
       ? ' · Meta cumplida ✓'
       : '';
   const viewerLabel = sealed ? 'LIVE privado' : lockArmed ? 'Candado activo' : undefined;
+  const showLockButton = isHost || lockArmed || sealed;
 
   const activeLockGifts = lockGiftIdsOf(lock);
   const draftIds = (lockDraftIds || []).filter(Boolean).slice(0, LIVE_LOCK_ACTIVE_MAX);
@@ -1523,7 +1524,7 @@ function LiveGoalWishHud({
         : showPending
           ? pendingIds
           : [];
-  const privacyControls = (
+  const privacyControls = showLockButton ? (
     <div className="lb-live-privacy-row is-under-goal">
       <LivePrivacyLockButton
         privateActive={privateActive}
@@ -1553,7 +1554,7 @@ function LiveGoalWishHud({
         />
       ) : null}
     </div>
-  );
+  ) : null;
 
   return (
     <div className="lb-live-viewer-hud__info">
