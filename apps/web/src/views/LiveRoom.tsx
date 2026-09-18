@@ -1452,6 +1452,7 @@ function LiveGoalWishHud({
   goal,
   wishlist,
   wishQty,
+  wishReceived,
   achievedWish,
   leaving,
   isHost = false,
@@ -1474,6 +1475,7 @@ function LiveGoalWishHud({
   goal: LiveCoinGoalInfo | null;
   wishlist: string[];
   wishQty: Record<string, number>;
+  wishReceived?: Record<string, number>;
   achievedWish: AchievedWish | null;
   leaving: boolean;
   isHost?: boolean;
@@ -1592,7 +1594,7 @@ function LiveGoalWishHud({
       <div className="lb-live-wishlist-stack">
         {wishlist.length > 0 ? (
           <div className="lb-live-wishlist">
-            <LiveWishHexStage giftIds={wishlist} quantities={wishQty} />
+            <LiveWishHexStage giftIds={wishlist} quantities={wishQty} received={wishReceived} />
           </div>
         ) : null}
         <LiveWishAchievedCard wish={achievedWish} leaving={leaving} />
@@ -1696,6 +1698,7 @@ function CreatorStage({
   }, [username]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [wishQty, setWishQty] = useState<Record<string, number>>({});
+  const [wishReceived, setWishReceived] = useState<Record<string, number>>({});
   const [completedWishItems, setCompletedWishItems] = useState<LiveWishItem[]>([]);
   const [wishlistOpen, setWishlistOpen] = useState(false);
   const [wishSyncReady, setWishSyncReady] = useState(false);
@@ -2728,6 +2731,12 @@ function CreatorStage({
               delete next[done.giftId];
               return next;
             });
+            setWishReceived((current) => {
+              if (!(done.giftId in current)) return current;
+              const next = { ...current };
+              delete next[done.giftId];
+              return next;
+            });
             setCompletedWishItems((current) =>
               current.some((row) => row.wishId === done.wishId) ? current : [...current, done],
             );
@@ -3497,8 +3506,13 @@ function CreatorStage({
       wishItemsRef.current = items;
       setWishlist(ids);
       const next: Record<string, number> = {};
-      for (const item of items) next[item.giftId] = item.targetQuantity;
+      const nextReceived: Record<string, number> = {};
+      for (const item of items) {
+        next[item.giftId] = item.targetQuantity;
+        nextReceived[item.giftId] = item.receivedQuantity;
+      }
       setWishQty(next);
+      setWishReceived(nextReceived);
       setCompletedWishItems(completed);
       setWishSyncReady(true);
     });
@@ -5459,6 +5473,7 @@ function CreatorStage({
               goal={liveGoal}
               wishlist={wishlist}
               wishQty={wishQty}
+              wishReceived={wishReceived}
               achievedWish={achievedWish}
               leaving={wishAchievedLeaving}
               isHost
@@ -5555,6 +5570,7 @@ function CreatorStage({
               goal={liveGoal}
               wishlist={wishlist}
               wishQty={wishQty}
+              wishReceived={wishReceived}
               achievedWish={achievedWish}
               leaving={wishAchievedLeaving}
               celebrating={goalCelebrating}
