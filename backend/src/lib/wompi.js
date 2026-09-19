@@ -81,7 +81,7 @@ function verifyWompiChecksum(payload, eventsSecret, req) {
     return true;
   }
 
-  const txn = payload.data?.transaction;
+  const txn = extractWompiTransaction(payload);
   if (!txn) {
     return false;
   }
@@ -148,9 +148,40 @@ function createWidgetIntegritySignature(reference, amountInCents, currency, inte
   return sha256Hex(payload);
 }
 
+function wompiEnvFromKeys() {
+  const pub = cleanWompiSecret(process.env.WOMPI_PUBLIC_KEY);
+  const prv = cleanWompiSecret(process.env.WOMPI_PRIVATE_KEY);
+  if (pub.startsWith('pub_prod_') || prv.startsWith('prv_prod_')) return 'prod';
+  if (pub.startsWith('pub_test_') || prv.startsWith('prv_test_')) return 'test';
+  return null;
+}
+
+function wompiUrlForEnv(env) {
+  return env === 'prod' ? 'https://production.wompi.co/v1' : 'https://sandbox.wompi.co/v1';
+}
+
 function wompiBaseUrl() {
+  const fromKeys = wompiEnvFromKeys();
+  if (fromKeys) return wompiUrlForEnv(fromKeys);
   const raw = String(process.env.WOMPI_BASE_URL || 'https://sandbox.wompi.co/v1').trim();
   return raw.replace(/\/$/, '');
+}
+
+function wompiFallbackBaseUrl() {
+  return wompiBaseUrl().includes('sandbox')
+    ? 'https://production.wompi.co/v1'
+    : 'https://sandbox.wompi.co/v1';
+}
+
+function extractWompiTransaction(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const data = payload.data;
+  if (data?.transaction && typeof data.transaction === 'object') return data.transaction;
+  if (payload.transaction && typeof payload.transaction === 'object') return payload.transaction;
+  if (data && typeof data === 'object' && (data.id || data.status) && data.amount_in_cents != null) {
+    return data;
+  }
+  return null;
 }
 
 function wompiRedirectUrl() {
@@ -163,11 +194,20 @@ function wompiRedirectUrl() {
 async function getWompiMerchant(publicKey) {
   const key = cleanWompiSecret(publicKey);
   if (!key) return null;
-  const baseUrl = wompiBaseUrl();
-  const response = await fetch(`${baseUrl}/merchants/${encodeURIComponent(key)}`);
-  if (!response.ok) return null;
-  const json = await response.json();
-  return json?.data ?? null;
+  const urls = [wompiBaseUrl(), wompiFallbackBaseUrl()].filter(
+    (url, index, all) => all.indexOf(url) === index,
+  );
+  for (const baseUrl of urls) {
+    try {
+      const response = await fetch(`${baseUrl}/merchants/${encodeURIComponent(key)}`);
+      if (!response.ok) continue;
+      const json = await response.json();
+      if (json?.data) return json.data;
+    } catch {
+      /* probar el otro ambiente */
+    }
+  }
+  return null;
 }
 
 async function isWompiMerchantActive(publicKey) {
@@ -176,15 +216,15 @@ async function isWompiMerchantActive(publicKey) {
 }
 
 /** Checkout hospedado Wompi (no requiere firma de integridad en el cliente). */
-async function wompiPrivateGet(path) {
+async function wompiPrivateGetFrom(baseUrl, path) {
   const privateKey = cleanWompiSecret(process.env.WOMPI_PRIVATE_KEY);
   if (!privateKey) {
     throw new Error('WOMPI_PRIVATE_KEY no configurada');
   }
-  const baseUrl = wompiBaseUrl();
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${String(baseUrl).replace(/\/$/, '')}${path}`, {
     headers: { Authorization: `Bearer ${privateKey}` },
   });
+  if (response.status === 404) return null;
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Wompi API ${path}: ${response.status} ${body}`);
@@ -193,11 +233,26 @@ async function wompiPrivateGet(path) {
   return json?.data ?? null;
 }
 
+async function wompiPrivateGet(path) {
+  return wompiPrivateGetFrom(wompiBaseUrl(), path);
+}
+
 /** Consulta transacción por id (redirect ?id=… o verificación servidor). */
 async function getWompiTransaction(transactionId) {
   const id = String(transactionId || '').trim();
   if (!id) return null;
-  return wompiPrivateGet(`/transactions/${encodeURIComponent(id)}`);
+  const path = `/transactions/${encodeURIComponent(id)}`;
+  try {
+    const first = await wompiPrivateGetFrom(wompiBaseUrl(), path);
+    if (first) return first;
+  } catch {
+    /* probar el otro ambiente Wompi */
+  }
+  try {
+    return await wompiPrivateGetFrom(wompiFallbackBaseUrl(), path);
+  } catch {
+    return null;
+  }
 }
 
 async function createPaymentLink(input) {
@@ -254,4 +309,5 @@ module.exports = {
   isWompiMerchantActive,
   wompiBaseUrl,
   wompiRedirectUrl,
+  extractWompiTransaction,
 };

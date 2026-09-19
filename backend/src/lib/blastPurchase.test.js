@@ -70,6 +70,39 @@ describe('blastPurchase Wompi', () => {
     }
   });
 
+  it('orden APPROVED sin CREDITED todavía acredita', () => {
+    const d = evaluateWompiSettlement({
+      order: { ...ORDER, status: 'APPROVED' },
+      txn: txn(),
+    });
+    assert.equal(d.action, 'credit');
+    assert.equal(d.blast, 200);
+  });
+
+  it('acepta monto en pesos si Wompi envía centavos', () => {
+    const d = evaluateWompiSettlement({
+      order: { ...ORDER, amountInCop: 10_900 },
+      txn: txn({ amount_in_cents: 1_090_000 }),
+    });
+    assert.equal(d.action, 'credit');
+    assert.equal(d.blast, 200);
+  });
+
+  it('paquete nuevo 25 BLAST a COP 1600 acredita 25', () => {
+    const d = evaluateWompiSettlement({
+      order: {
+        ...ORDER,
+        packageId: 'basico_25',
+        coins: 25,
+        blastAmount: 25,
+        amountInCop: 160_000,
+      },
+      txn: txn({ amount_in_cents: 160_000 }),
+    });
+    assert.equal(d.action, 'credit');
+    assert.equal(d.blast, 25);
+  });
+
   it('monto / paquete / referencia / evento inválido se bloquean', () => {
     assert.equal(
       evaluateWompiSettlement({
@@ -87,10 +120,17 @@ describe('blastPurchase Wompi', () => {
     );
     assert.equal(
       evaluateWompiSettlement({
-        order: { ...ORDER, packageId: 'no_existe' },
+        order: { ...ORDER, packageId: 'no_existe', coins: 0, blastAmount: 0 },
         txn: txn(),
       }).code,
       'PACKAGE_TAMPERED',
+    );
+    assert.equal(
+      evaluateWompiSettlement({
+        order: { ...ORDER, packageId: 'no_existe' },
+        txn: txn(),
+      }).blast,
+      200,
     );
     assert.equal(
       evaluateWompiSettlement({

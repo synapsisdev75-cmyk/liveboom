@@ -1,4 +1,4 @@
-const { verifyWompiChecksum, cleanWompiSecret } = require('../lib/wompi');
+const { verifyWompiChecksum, cleanWompiSecret, extractWompiTransaction } = require('../lib/wompi');
 const { prisma } = require('../lib/prisma');
 const { firestoreConfigured } = require('../lib/firestoreAdmin');
 const { settleWompiTransaction } = require('../lib/blastPurchaseService');
@@ -45,8 +45,13 @@ async function handleWompiWebhook(req, res) {
       return;
     }
 
-    const txn = payload.data?.transaction;
-    if (!txn || payload.event !== 'transaction.updated') {
+    const txn = extractWompiTransaction(payload);
+    const eventName = String(payload.event || '').trim();
+    if (!txn) {
+      res.status(200).json({ ok: true, ignored: true });
+      return;
+    }
+    if (eventName && eventName !== 'transaction.updated' && String(txn.status || '').toUpperCase() !== 'APPROVED') {
       res.status(200).json({ ok: true, ignored: true });
       return;
     }

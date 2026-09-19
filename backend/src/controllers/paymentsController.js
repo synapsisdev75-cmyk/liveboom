@@ -84,10 +84,17 @@ function buildOrderResponse({ pack, packageId, amountInCop, publicKey, reference
   };
 }
 
-async function settleFromWompiId(transactionId, expectedUid) {
+async function settleFromWompiId(transactionId, expectedUid, referenceHint) {
   const id = String(transactionId || '').trim();
   if (!id) return { ok: false, error: 'transactionId es obligatorio' };
-  const { reconcileTransactionId } = require('../lib/blastPurchaseService');
+  const { reconcileTransactionId, attachWompiTransactionId } = require('../lib/blastPurchaseService');
+  if (referenceHint && expectedUid && firestoreConfigured()) {
+    try {
+      await attachWompiTransactionId(referenceHint, expectedUid, id);
+    } catch {
+      /* hint opcional */
+    }
+  }
   if (firestoreConfigured()) {
     return reconcileTransactionId(id, expectedUid || null);
   }
@@ -157,7 +164,8 @@ async function completeRedirect(req, res) {
       return;
     }
     const uid = req.user?.uid;
-    const result = await settleFromWompiId(transactionId, uid);
+    const reference = String(req.body?.reference || '').trim();
+    const result = await settleFromWompiId(transactionId, uid, reference);
     if (!result.ok) {
       const code = result.error;
       if (code === 'PENDING' || result.pending || result.decision?.action === 'pending') {
@@ -223,7 +231,7 @@ async function completeWidget(req, res) {
     const uid = req.user?.uid;
 
     if (transactionId) {
-      const result = await settleFromWompiId(transactionId, uid);
+      const result = await settleFromWompiId(transactionId, uid, reference);
       if (result.pending) {
         res.json({
           pending: true,
@@ -264,7 +272,7 @@ async function completeWidget(req, res) {
         res.status(403).json({ error: 'Esta orden de recarga no es tuya' });
         return;
       }
-      const credited = ['completed', 'COMPLETED', 'CREDITED', 'APPROVED'].includes(
+      const credited = ['completed', 'COMPLETED', 'CREDITED'].includes(
         String(saved.status || ''),
       );
       if (credited) {
@@ -306,6 +314,7 @@ async function reconcilePayment(req, res) {
   try {
     const transactionId = String(req.body?.transactionId || '').trim();
     const uid = req.user?.uid;
+    const reference = String(req.body?.reference || '').trim();
     if (!transactionId) {
       const { reconcileStalePending } = require('../lib/blastPurchaseService');
       const stats = await reconcileStalePending(20);
@@ -317,7 +326,7 @@ async function reconcilePayment(req, res) {
       });
       return;
     }
-    const result = await settleFromWompiId(transactionId, uid);
+    const result = await settleFromWompiId(transactionId, uid, reference);
     if (!result.ok && !result.pending) {
       res.status(400).json({ error: result.error || 'No se pudo conciliar' });
       return;
@@ -411,7 +420,11 @@ async function createOrder(req, res) {
       publicKey,
     });
 
-    const orderUid = dbUser.firebaseUid || dbUser.id;
+    const orderUid = String(req.user?.uid || dbUser.firebaseUid || '').trim();
+    if (!orderUid) {
+      res.status(401).json({ error: 'No hay usuario para crear el pedido' });
+      return;
+    }
     rememberOrder({
       reference: order.reference,
       uid: orderUid,

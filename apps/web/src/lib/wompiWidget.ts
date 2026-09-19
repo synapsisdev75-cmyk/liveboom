@@ -3,6 +3,7 @@ export type WompiOrder = {
   publicKey: string;
   amountInCop: number;
   currency: string;
+  coins?: number;
   integritySignature?: string | null;
   expirationTime?: string | null;
   checkoutUrl?: string | null;

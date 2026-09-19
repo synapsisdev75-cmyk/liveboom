@@ -15,7 +15,7 @@ import {
   packageCopLabel,
   type ResolvedCoinPackage,
 } from '../lib/coinPackages';
-import { api } from '../lib/api';
+import { confirmBlastPurchase } from '../lib/blastPurchaseClient';
 import { normalizeBlastBalances } from '../lib/blastBalances';
 import {
   fetchWalletSummary,
@@ -163,16 +163,9 @@ export function WalletView() {
     let cancelled = false;
     void (async () => {
       try {
-        const paid = await api<{
-          coinsBalance: number;
-          coins?: number;
-          purchasedBlastBalance?: number;
-          earnedBlastBalance?: number;
-          pending?: boolean;
-          message?: string;
-        }>('/api/payments/complete-redirect', {
-          method: 'POST',
-          body: JSON.stringify({ transactionId }),
+        const paid = await confirmBlastPurchase({
+          transactionId,
+          path: '/api/payments/complete-redirect',
         });
         if (cancelled) return;
         if (paid.pending) {
@@ -197,7 +190,6 @@ export function WalletView() {
           }
           setRechargeNote({ kind: 'success', coins: Number(paid.coins) || 0 });
         }
-        await useAuthStore.getState().syncProfile();
         await refreshWallet();
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';

@@ -22,7 +22,7 @@ function normStatus(value) {
 
 function isCreditedStatus(status) {
   const s = normStatus(status);
-  return s === 'COMPLETED' || s === 'CREDITED' || s === 'APPROVED';
+  return s === 'COMPLETED' || s === 'CREDITED';
 }
 
 function isPendingStatus(status) {
@@ -32,10 +32,22 @@ function isPendingStatus(status) {
 
 function catalogBlast(order) {
   const packageId = String(order?.packageId || '').trim();
-  if (!packageId) return null;
-  const resolved = resolveCoinPackage(packageId);
-  if (resolved.error) return null;
-  return resolved.pack.coins;
+  if (packageId) {
+    const resolved = resolveCoinPackage(packageId);
+    if (!resolved.error) return resolved.pack.coins;
+  }
+  const frozen = Math.max(0, Math.floor(Number(order?.blastAmount || order?.coins) || 0));
+  return frozen || null;
+}
+
+function amountsMatch(orderAmount, paidAmount) {
+  const expected = Math.max(0, Math.floor(Number(orderAmount) || 0));
+  const paid = Math.max(0, Math.floor(Number(paidAmount) || 0));
+  if (!expected || !paid) return false;
+  if (expected === paid) return true;
+  if (expected * 100 === paid) return true;
+  if (paid * 100 === expected) return true;
+  return false;
 }
 
 /**
@@ -102,7 +114,7 @@ function evaluateWompiSettlement({ order, txn, expectedUid }) {
     return { action: 'reject', code: 'CURRENCY_MISMATCH', currency };
   }
   const expectedAmount = Math.max(0, Math.floor(Number(order.amountInCop || order.priceCOP || 0)));
-  if (!expectedAmount || paidAmount !== expectedAmount) {
+  if (!amountsMatch(expectedAmount, paidAmount)) {
     return {
       action: 'reject',
       code: 'AMOUNT_MISMATCH',
@@ -164,6 +176,7 @@ module.exports = {
   PURCHASE_STATUS,
   evaluateWompiSettlement,
   catalogBlast,
+  amountsMatch,
   creditLedgerMetadata,
   applyApprovedCredit,
   applyVoidCompensation,

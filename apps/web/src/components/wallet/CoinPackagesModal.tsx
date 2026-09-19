@@ -6,6 +6,7 @@ import {
   type ResolvedCoinPackage,
 } from '../../lib/coinPackages';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
+import { confirmBlastPurchase } from '../../lib/blastPurchaseClient';
 import {
   BLAST_RECHARGE_DECLINED,
   BLAST_RECHARGE_PENDING,
@@ -112,7 +113,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     pendingPollRef.current = window.setInterval(() => {
       void syncProfile();
       applyWalletSummary();
-    }, 3000);
+    }, 1500);
     window.setTimeout(stopPendingPoll, 120_000);
   }
 
@@ -167,19 +168,18 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
 
       try {
         openWompiWidget(order, (result) => {
-          const status = result.transaction?.status;
-          const txnId = String(result.transaction?.id || '').trim();
+          const txn =
+            result.transaction ||
+            (result as { data?: { transaction?: { id?: string; status?: string } } }).data
+              ?.transaction;
+          const status = String(txn?.status || '').toUpperCase();
+          const txnId = String(txn?.id || '').trim();
           if (status === 'APPROVED') {
             if (txnId) {
-              void api<{
-                coinsBalance?: number;
-                coins?: number;
-                purchasedBlastBalance?: number;
-                pending?: boolean;
-                message?: string;
-              }>('/api/payments/reconcile', {
-                method: 'POST',
-                body: JSON.stringify({ transactionId: txnId }),
+              void confirmBlastPurchase({
+                transactionId: txnId,
+                reference: order.reference,
+                path: '/api/payments/reconcile',
               })
                 .then((paid) => {
                   if (paid.pending) {
@@ -188,19 +188,26 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
                     return;
                   }
                   applyTopup(paid);
-                  void syncProfile();
                   stopPendingPoll();
-                  setNote({ kind: 'success', coins: Number(paid.coins) || 0 });
+                  const credited = Math.max(
+                    0,
+                    Math.floor(Number(paid.coins) || Number(order.coins) || 0),
+                  );
+                  setNote({ kind: 'success', coins: credited });
+                  void applyWalletSummary();
                 })
-                .catch(() => {
+                .catch((error) => {
+                  const msg = error instanceof Error ? error.message : '';
+                  if (/declinado|DECLINED|no fue aprobado/i.test(msg)) {
+                    setNote({ kind: 'declined' });
+                    return;
+                  }
                   setNote({ kind: 'pending' });
                   watchUntilCredited();
-                  void syncProfile();
                 });
             } else {
               setNote({ kind: 'pending' });
               watchUntilCredited();
-              void syncProfile();
             }
             return;
           }

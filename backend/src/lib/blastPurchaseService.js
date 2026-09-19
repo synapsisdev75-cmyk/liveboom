@@ -49,7 +49,7 @@ function purchasePatch(decision, txn, extra = {}) {
 }
 
 async function findOrder(txn) {
-  const reference = String(txn?.reference || '').trim();
+  const reference = String(txn?.reference || txn?.sku || '').trim();
   const paymentLinkId = txn?.payment_link_id ? String(txn.payment_link_id) : '';
   if (reference) {
     const byRef = await readPaymentOrder(reference);
@@ -58,6 +58,22 @@ async function findOrder(txn) {
   if (paymentLinkId) {
     const byLink = await findPaymentOrderByLinkId(paymentLinkId);
     if (byLink) return byLink;
+  }
+  if (reference && firestoreConfigured()) {
+    try {
+      const db = getAdminDb();
+      const q = await db
+        .collection('paymentOrders')
+        .where('wompiReference', '==', reference)
+        .limit(1)
+        .get();
+      if (!q.empty) {
+        const doc = q.docs[0];
+        return { id: doc.id, ...doc.data() };
+      }
+    } catch (error) {
+      console.warn('[blastPurchase] findOrder wompiReference', error.message);
+    }
   }
   return null;
 }
@@ -71,6 +87,18 @@ async function markPurchase(orderId, fields) {
     .set({ ...fields, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 }
 
+async function attachWompiTransactionId(reference, uid, transactionId) {
+  const ref = String(reference || '').trim();
+  const txnId = String(transactionId || '').trim();
+  const userId = String(uid || '').trim();
+  if (!ref || !txnId || !userId) return false;
+  const order = await readPaymentOrder(ref);
+  if (!order) return false;
+  if (String(order.uid || order.userId || '') !== userId) return false;
+  await markPurchase(order.id, { wompiTransactionId: txnId, source: 'client_hint' });
+  return true;
+}
+
 async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
   if (!txn) return { ok: false, error: 'INVALID_EVENT' };
 
@@ -80,7 +108,26 @@ async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
   }
 
   const order = await findOrder(txn);
+  if (order?.id && txn?.id) {
+    try {
+      await markPurchase(order.id, {
+        wompiTransactionId: String(txn.id),
+        source: source || 'wompi',
+      });
+    } catch (error) {
+      console.warn('[blastPurchase] attach txn', error.message);
+    }
+  }
   const decision = evaluateWompiSettlement({ order, txn, expectedUid });
+  if (decision.action !== 'credit' && decision.action !== 'duplicate') {
+    console.warn(
+      '[blastPurchase] settle',
+      decision.action,
+      decision.code || '',
+      txn?.reference || '',
+      txn?.id || '',
+    );
+  }
 
   if (decision.action === 'unmatched') {
     return { ok: false, error: 'not_found', decision };
@@ -115,7 +162,10 @@ async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
 
   const db = getAdminDb();
   const orderRef = db.collection('paymentOrders').doc(String(order.id));
-  const uid = String(order.uid || order.userId || '');
+  const uid = String(order.uid || order.userId || expectedUid || '');
+  if (!uid) {
+    return { ok: false, error: 'NO_USER', decision };
+  }
   const idempotencyKey = `RECHARGE:${order.id}`;
   const txnIdempotencyKey = txn.id ? `RECHARGE_TXN:${txn.id}` : null;
 
@@ -276,6 +326,17 @@ async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
     } catch {
       /* memoria opcional */
     }
+    try {
+      const { prisma, hasDatabase } = require('./prisma');
+      if (hasDatabase && prisma && !out.pending) {
+        await prisma.user.update({
+          where: { firebaseUid: String(out.uid) },
+          data: { coinsBalance: Math.max(0, Math.floor(Number(out.summary.coinsBalance) || 0)) },
+        });
+      }
+    } catch {
+      /* prisma opcional */
+    }
   }
   return out;
 }
@@ -283,7 +344,7 @@ async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
 async function reconcileTransactionId(transactionId, expectedUid) {
   const { getWompiTransaction } = require('./wompi');
   const txn = await getWompiTransaction(transactionId);
-  if (!txn) return { ok: false, error: 'wompi_not_found' };
+  if (!txn) return { ok: false, pending: true, error: 'wompi_not_found' };
   return settleWompiTransaction(txn, { expectedUid, source: 'reconcile' });
 }
 
@@ -323,6 +384,7 @@ module.exports = {
   reconcileTransactionId,
   reconcileStalePending,
   notifyWallet,
+  attachWompiTransactionId,
   PURCHASE_STATUS,
   isCreditedStatus,
 };
