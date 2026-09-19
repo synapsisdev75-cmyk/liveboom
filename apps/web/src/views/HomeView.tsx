@@ -22,6 +22,7 @@ import { PostReactionButtons } from '../components/social/PostReactionButtons';
 import { PostComments, PostVideoPlayer } from '../components/social/PostVideoPlayer';
 import { ShareContentButton } from '../components/social/ShareContentButton';
 import { PostViewsIndicator } from '../components/social/PostViewsIndicator';
+import { PostReceivedGiftsButton } from '../components/social/PostReceivedGiftsButton';
 import { ReelGiftControls } from '../components/feed/ReelGiftControls';
 import { buildPostShareUrl } from '../lib/shareContent';
 import { PostPhotoViewer } from '../components/social/PostPhotoViewer';
@@ -89,6 +90,7 @@ function toSocial(post: FsPost): SocialPost {
     likes: post.likes,
     dislikes: 0,
     views: post.views,
+    giftUnitsReceived: post.giftUnitsReceived,
     viewerReaction: null,
     postFormat: post.postFormat,
     durationSec: post.durationSec,
@@ -345,6 +347,7 @@ function HomePublicationCard({
             />
           </span>
         ) : null}
+        <PostReceivedGiftsButton postId={post.id} variant="pill" initialUnits={post.giftUnitsReceived} />
         <PostViewsIndicator
           postId={post.id}
           variant="pill"

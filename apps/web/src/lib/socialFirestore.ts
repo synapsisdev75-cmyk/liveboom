@@ -203,6 +203,7 @@ export type FsPost = {
   likes: number;
   viewerReaction: string | null;
   views?: number;
+  giftUnitsReceived?: number;
   /** story = historia 24h; post = video publicación normal */
   postFormat?: 'story' | 'post';
   storyExpiresAtMs?: number;
@@ -1935,6 +1936,7 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     createdAt: asIso(data.createdAt),
     likes: Number(data.likes ?? 0),
     views: Number(data.views ?? 0),
+    giftUnitsReceived: Math.max(0, Math.floor(Number(data.giftUnitsReceived) || 0)),
     viewerReaction: null,
     postFormat: (data.postFormat as FsPost['postFormat']) || undefined,
     storyExpiresAtMs: Number(data.storyExpiresAtMs) || undefined,

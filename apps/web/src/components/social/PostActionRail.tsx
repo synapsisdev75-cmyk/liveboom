@@ -7,6 +7,7 @@ import { UserAvatar } from '../profile/UserAvatar';
 import { LiveBoomReactionControl } from './LiveBoomReactionControl';
 import { ShareContentButton } from './ShareContentButton';
 import { PostViewsIndicator } from './PostViewsIndicator';
+import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
 import { useT } from '../../i18n';
 
@@ -192,6 +193,8 @@ export function PostActionRail({
           {commentCount > 0 ? commentCount : t('actions.comment')}
         </span>
       </div>
+
+      <PostReceivedGiftsButton postId={postId} variant="rail" />
 
       <PostViewsIndicator postId={postId} variant="rail" recordMode="open" />
 

@@ -409,6 +409,7 @@ export const it: Catalog = {
     gift: 'Regalo',
     gifts: 'Regali',
     sendGift: 'Invia regalo',
+    viewReceivedGifts: 'Vedi i regali ricevuti',
     noSelfGift: 'Non puoi inviarti regali',
     like: 'Mi piace',
     dislike: 'Non mi piace',
@@ -447,6 +448,14 @@ export const it: Catalog = {
     recordVideo: 'Registra video',
     recordVideoHint: 'Se il dispositivo lo consente',
     gallery: 'Galleria',
+  },
+  giftsReceived: {
+    title: 'Regali ricevuti',
+    empty: 'Questa pubblicazione non ha ancora ricevuto regali',
+    loading: 'Caricamento…',
+    error: 'Impossibile caricare i regali',
+    retry: 'Riprova',
+    more: 'Vedi altri',
   },
   share: {
     title: 'Condividi',

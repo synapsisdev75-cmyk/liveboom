@@ -53,7 +53,7 @@ type Props = {
 };
 
 const IMMERSIVE_INTERACTIVE_SELECTOR =
-  'button, a, input, textarea, select, label, [role="button"], [role="link"], .lb-media-mute-fab, .lb-action-rail, .lb-gift-action, .lb-views-indicator';
+  'button, a, input, textarea, select, label, [role="button"], [role="link"], .lb-media-mute-fab, .lb-action-rail, .lb-gift-action, .lb-gift-history, .lb-views-indicator';
 
 function isInteractiveHit(target: EventTarget | null) {
   return target instanceof Element && Boolean(target.closest(IMMERSIVE_INTERACTIVE_SELECTOR));

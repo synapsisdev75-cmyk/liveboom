@@ -409,6 +409,7 @@ export const en: Catalog = {
     gift: 'Gift',
     gifts: 'Gifts',
     sendGift: 'Send gift',
+    viewReceivedGifts: 'View received gifts',
     noSelfGift: 'You cannot send gifts to yourself',
     like: 'Like',
     dislike: 'Dislike',
@@ -447,6 +448,14 @@ export const en: Catalog = {
     recordVideo: 'Record video',
     recordVideoHint: 'If the device allows it',
     gallery: 'Gallery',
+  },
+  giftsReceived: {
+    title: 'Received gifts',
+    empty: 'This post has not received gifts yet',
+    loading: 'Loading…',
+    error: 'Could not load gifts',
+    retry: 'Try again',
+    more: 'Load more',
   },
   share: {
     title: 'Share',

@@ -381,6 +381,7 @@ export function UserProfileView() {
             likes: item.likes,
             dislikes: 0,
             views: item.views,
+            giftUnitsReceived: item.giftUnitsReceived,
             viewerReaction: null,
             postFormat: item.postFormat,
             durationSec: item.durationSec,

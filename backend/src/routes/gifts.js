@@ -200,6 +200,28 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       return;
     }
 
+    const postId =
+      typeof req.body?.postId === 'string' ? req.body.postId.trim() : '';
+    const isPostGift = earningTypeFromBody(req.body) === 'EARNING_GIFT' && Boolean(postId);
+    if (isPostGift && recipientUid && !result.duplicate) {
+      try {
+        const { recordPostReceivedGift } = require('../lib/postReceivedGifts');
+        await recordPostReceivedGift({
+          postId,
+          recipientUid,
+          senderUid,
+          senderName,
+          senderUsername: req.dbUser?.username || '',
+          giftId: gift.id,
+          giftName: gift.name,
+          units: multiplier,
+          clientId: payload.id,
+        });
+      } catch (error) {
+        console.warn('[gifts/send] post history', error.message);
+      }
+    }
+
     announceGift(roomName, payload);
     res.json({
       ok: true,

@@ -407,6 +407,7 @@ export const zh: Catalog = {
     gift: '送礼',
     gifts: '礼物',
     sendGift: '送出礼物',
+    viewReceivedGifts: '查看收到的礼物',
     noSelfGift: '直播时不能给自己送礼',
     like: '喜欢',
     dislike: '不喜欢',
@@ -445,6 +446,14 @@ export const zh: Catalog = {
     recordVideo: '录制视频',
     recordVideoHint: '如果设备支持',
     gallery: '相册',
+  },
+  giftsReceived: {
+    title: '收到的礼物',
+    empty: '这条内容还没有收到礼物',
+    loading: '加载中…',
+    error: '无法加载礼物',
+    retry: '重试',
+    more: '查看更多',
   },
   share: {
     title: '分享',

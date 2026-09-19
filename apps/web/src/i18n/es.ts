@@ -407,6 +407,7 @@ export const es = {
     gift: 'Regalar',
     gifts: 'Regalos',
     sendGift: 'Enviar regalo',
+    viewReceivedGifts: 'Ver regalos recibidos',
     noSelfGift: 'No puedes enviarte regalos a ti mismo',
     like: 'Me gusta',
     dislike: 'No me gusta',
@@ -445,6 +446,14 @@ export const es = {
     recordVideo: 'Grabar video',
     recordVideoHint: 'Si el dispositivo lo permite',
     gallery: 'Galería',
+  },
+  giftsReceived: {
+    title: 'Regalos recibidos',
+    empty: 'Esta publicación todavía no ha recibido regalos',
+    loading: 'Cargando…',
+    error: 'No se pudieron cargar los regalos',
+    retry: 'Reintentar',
+    more: 'Ver más',
   },
   share: {
     title: 'Compartir',

@@ -515,6 +515,8 @@ service cloud.firestore {
           resource.data.authorUid == request.auth.uid
           && request.resource.data.authorUid == resource.data.authorUid
           && validVisibility(postVis())
+          && request.resource.data.get('giftUnitsReceived', 0)
+            == resource.data.get('giftUnitsReceived', 0)
         )
         || (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
@@ -523,6 +525,11 @@ service cloud.firestore {
         )
       );
       allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
+
+      match /receivedGifts/{giftId} {
+        allow read: if canReadLoadedPost();
+        allow create, update, delete: if false;
+      }
 
       match /views/{viewerId} {
         allow read: if signedIn() && (

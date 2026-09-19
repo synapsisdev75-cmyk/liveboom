@@ -30,6 +30,7 @@ import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
+import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
 import { isBoomClipPost, isPublicationPost } from '../../lib/contentType';
 import { RepostPostCard } from './RepostPostCard';
 import { isRepostPost } from '../../lib/socialFirestore';
@@ -456,6 +457,7 @@ export type SocialPost = {
   likes: number;
   dislikes: number;
   views?: number;
+  giftUnitsReceived?: number;
   viewerReaction: 'like' | 'dislike' | null;
   postFormat?: 'story' | 'post' | null;
   durationSec?: number | null;
@@ -902,6 +904,7 @@ function StandardPostCard({
               inline
             />
           ) : null}
+          <PostReceivedGiftsButton postId={post.id} variant="pill" initialUnits={post.giftUnitsReceived} />
           <PostViewsIndicator
             postId={post.id}
             variant="pill"

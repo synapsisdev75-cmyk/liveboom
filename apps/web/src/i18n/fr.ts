@@ -409,6 +409,7 @@ export const fr: Catalog = {
     gift: 'Cadeau',
     gifts: 'Cadeaux',
     sendGift: 'Envoyer un cadeau',
+    viewReceivedGifts: 'Voir les cadeaux reçus',
     noSelfGift: 'Tu ne peux pas t’envoyer de cadeaux',
     like: 'J’aime',
     dislike: 'Je n’aime pas',
@@ -447,6 +448,14 @@ export const fr: Catalog = {
     recordVideo: 'Enregistrer une vidéo',
     recordVideoHint: 'Si l’appareil le permet',
     gallery: 'Galerie',
+  },
+  giftsReceived: {
+    title: 'Cadeaux reçus',
+    empty: 'Cette publication n’a pas encore reçu de cadeaux',
+    loading: 'Chargement…',
+    error: 'Impossible de charger les cadeaux',
+    retry: 'Réessayer',
+    more: 'Voir plus',
   },
   share: {
     title: 'Partager',

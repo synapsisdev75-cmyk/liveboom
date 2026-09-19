@@ -409,6 +409,7 @@ export const pt: Catalog = {
     gift: 'Presentear',
     gifts: 'Presentes',
     sendGift: 'Enviar presente',
+    viewReceivedGifts: 'Ver presentes recebidos',
     noSelfGift: 'Você não pode enviar presentes para si mesmo',
     like: 'Curtir',
     dislike: 'Não curtir',
@@ -447,6 +448,14 @@ export const pt: Catalog = {
     recordVideo: 'Gravar vídeo',
     recordVideoHint: 'Se o dispositivo permitir',
     gallery: 'Galeria',
+  },
+  giftsReceived: {
+    title: 'Presentes recebidos',
+    empty: 'Esta publicação ainda não recebeu presentes',
+    loading: 'Carregando…',
+    error: 'Não foi possível carregar os presentes',
+    retry: 'Tentar de novo',
+    more: 'Ver mais',
   },
   share: {
     title: 'Compartilhar',

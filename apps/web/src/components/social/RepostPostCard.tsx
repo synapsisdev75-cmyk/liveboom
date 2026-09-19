@@ -26,6 +26,7 @@ import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
 import { PublicationCaption } from './PublicationCaption';
 import { ShareContentButton } from './ShareContentButton';
 import { PostViewsIndicator } from './PostViewsIndicator';
+import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
 
 export type RepostSourcePost = {
   id: string;
@@ -283,6 +284,7 @@ function OriginalPostEmbed({
               </span>
             ) : null}
             <span className="ml-auto inline-flex items-center gap-1.5" onClick={() => onInteracted?.()}>
+              <PostReceivedGiftsButton postId={origin.id} variant="pill" />
               <PostViewsIndicator
                 postId={origin.id}
                 variant="pill"
