@@ -30,6 +30,14 @@ import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { formatMoneyExact } from '../lib/moneyDisplay';
+import {
+  BLAST_RECHARGE_DECLINED,
+  BLAST_RECHARGE_PENDING,
+  BLAST_RECHARGE_PURCHASED_LABEL,
+  BLAST_RECHARGE_SUCCESS_BODY,
+  BLAST_RECHARGE_SUCCESS_TITLE,
+  formatPurchasedBlast,
+} from '../lib/blastRechargeCopy';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 import { useCatalogConfigStore } from '../store/catalogConfigStore';
@@ -73,7 +81,10 @@ export function WalletView() {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'recharge' | 'earning' | 'spend' | 'withdrawal'>('all');
   const [ledger, setLedger] = useState<WalletLedgerRow[]>([]);
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
-  const [rechargeNote, setRechargeNote] = useState<string | null>(null);
+  const [rechargeNote, setRechargeNote] = useState<{
+    kind: 'success' | 'pending' | 'declined';
+    coins?: number;
+  } | null>(null);
   const packsRef = useRef<HTMLDivElement>(null);
 
   async function refreshWallet() {
@@ -165,9 +176,13 @@ export function WalletView() {
         });
         if (cancelled) return;
         if (paid.pending) {
-          setRechargeNote(
-            'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
-          );
+          setRechargeNote({
+            kind: 'pending',
+            coins: Math.max(
+              0,
+              Math.floor(Number(useAuthStore.getState().profile?.purchasedBlastBalance) || 0),
+            ),
+          });
         } else {
           const store = useAuthStore.getState();
           if (
@@ -180,18 +195,23 @@ export function WalletView() {
               coinsBalance: Number(paid.coinsBalance) || 0,
             });
           }
-          const added = Number(paid.coins) || 0;
-          setRechargeNote(
-            paid.message ||
-              `¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.${
-                added ? ` BLAST comprados +${added.toLocaleString('es-CO')}` : ''
-              }`,
-          );
+          setRechargeNote({ kind: 'success', coins: Number(paid.coins) || 0 });
         }
         await useAuthStore.getState().syncProfile();
         await refreshWallet();
-      } catch {
-        /* webhook puede acreditar después */
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('no fue aprobado')) {
+          setRechargeNote({ kind: 'declined' });
+        } else {
+          setRechargeNote({
+            kind: 'pending',
+            coins: Math.max(
+              0,
+              Math.floor(Number(useAuthStore.getState().profile?.purchasedBlastBalance) || 0),
+            ),
+          });
+        }
       } finally {
         if (!cancelled) {
           const url = new URL(window.location.href);
@@ -251,6 +271,14 @@ export function WalletView() {
   const earned = walletSummary?.earnedAvailable ?? fallback.earnedBlastBalance;
   const balance = walletSummary?.totalAvailable ?? fallback.totalBlastBalance;
   const withdrawableMoney = walletSummary?.withdrawableAmount || null;
+
+  useEffect(() => {
+    if (rechargeNote?.kind !== 'pending') return;
+    const baseline = Math.max(0, Math.floor(Number(rechargeNote.coins) || 0));
+    if (purchased > baseline) {
+      setRechargeNote({ kind: 'success', coins: purchased - baseline });
+    }
+  }, [purchased, rechargeNote?.kind]);
 
   function openBuy(packageId?: string) {
     setInitialPack(packageId);
@@ -352,7 +380,23 @@ export function WalletView() {
                 </p>
               ) : null}
               {rechargeNote ? (
-                <p className="mt-3 text-sm font-semibold text-emerald-300">{rechargeNote}</p>
+                <div className="mt-3 space-y-1 text-sm font-semibold text-emerald-300">
+                  {rechargeNote.kind === 'success' ? (
+                    <>
+                      <p>{BLAST_RECHARGE_SUCCESS_TITLE}</p>
+                      <p className="font-medium">{BLAST_RECHARGE_SUCCESS_BODY}</p>
+                      {rechargeNote.coins ? (
+                        <p className="text-white">
+                          {BLAST_RECHARGE_PURCHASED_LABEL} {formatPurchasedBlast(rechargeNote.coins)}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : rechargeNote.kind === 'pending' ? (
+                    <p>{BLAST_RECHARGE_PENDING}</p>
+                  ) : (
+                    <p className="text-fuchsia-300">{BLAST_RECHARGE_DECLINED}</p>
+                  )}
+                </div>
               ) : null}
               <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
                 <button

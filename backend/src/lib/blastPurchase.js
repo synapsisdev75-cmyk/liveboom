@@ -4,7 +4,7 @@
  * Nunca acredita earned. Nunca confía en el frontend.
  */
 
-const { blastForPackage, resolveCoinPackage } = require('./coinPackages');
+const { resolveCoinPackage } = require('./coinPackages');
 const engine = require('./walletEngine');
 
 const PURCHASE_STATUS = {
@@ -32,16 +32,10 @@ function isPendingStatus(status) {
 
 function catalogBlast(order) {
   const packageId = String(order?.packageId || '').trim();
-  const listed = order?.blastAmount ?? order?.coins;
-  if (packageId) {
-    const fromCatalog = blastForPackage(packageId, listed);
-    if (fromCatalog) return fromCatalog;
-    const resolved = resolveCoinPackage(packageId);
-    if (!resolved.error) return resolved.pack.coins;
-    return null;
-  }
-  const n = Math.max(0, Math.floor(Number(listed) || 0));
-  return n > 0 && n <= 25_000 ? n : null;
+  if (!packageId) return null;
+  const resolved = resolveCoinPackage(packageId);
+  if (resolved.error) return null;
+  return resolved.pack.coins;
 }
 
 /**

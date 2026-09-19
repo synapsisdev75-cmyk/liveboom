@@ -80,7 +80,14 @@ describe('blastPurchase Wompi', () => {
     );
     assert.equal(
       evaluateWompiSettlement({
-        order: { ...ORDER, packageId: 'no_existe', coins: 999999 },
+        order: { ...ORDER, coins: 999999, blastAmount: 999999 },
+        txn: txn(),
+      }).blast,
+      200,
+    );
+    assert.equal(
+      evaluateWompiSettlement({
+        order: { ...ORDER, packageId: 'no_existe' },
         txn: txn(),
       }).code,
       'PACKAGE_TAMPERED',

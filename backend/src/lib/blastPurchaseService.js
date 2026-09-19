@@ -24,9 +24,8 @@ const {
 
 function notifyWallet(uid, summary) {
   try {
-    const { getIO } = require('./socket');
-    const io = getIO();
-    if (uid && io) io.to(`user:${uid}`).emit('wallet_updated', summary);
+    const { emitWalletUpdated } = require('./socket');
+    emitWalletUpdated(uid, summary);
   } catch {
     /* socket opcional */
   }
@@ -87,6 +86,14 @@ async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
     return { ok: false, error: 'not_found', decision };
   }
   if (decision.action === 'reject') {
+    if (order?.id) {
+      await markPurchase(order.id, {
+        status: PURCHASE_STATUS.ERROR,
+        rejectCode: decision.code,
+        wompiTransactionId: txn.id || null,
+        source: source || 'wompi',
+      });
+    }
     return { ok: false, error: decision.code, decision };
   }
   if (decision.action === 'pending' || decision.action === 'ignore') {

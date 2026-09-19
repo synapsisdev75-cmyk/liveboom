@@ -22,6 +22,11 @@ const {
   readPaymentOrder,
   readUserCoinsBalance,
 } = require('../lib/firestoreAdmin');
+const {
+  SUCCESS: RECHARGE_OK,
+  PENDING: RECHARGE_PENDING,
+  DECLINED: RECHARGE_DECLINED,
+} = require('../lib/blastRechargeCopy');
 
 function dbUserFromToken(decoded) {
   const fn =
@@ -158,13 +163,13 @@ async function completeRedirect(req, res) {
       if (code === 'PENDING' || result.pending || result.decision?.action === 'pending') {
         res.json({
           pending: true,
-          message: 'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
+          message: RECHARGE_PENDING,
         });
         return;
       }
       if (code === 'DECLINED' || result.decision?.code === 'DECLINED') {
         res.status(400).json({
-          error: 'El pago no fue aprobado. No se realizó ninguna recarga.',
+          error: RECHARGE_DECLINED,
           status: 'DECLINED',
         });
         return;
@@ -182,7 +187,7 @@ async function completeRedirect(req, res) {
     if (result.pending) {
       res.json({
         pending: true,
-        message: 'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
+        message: RECHARGE_PENDING,
       });
       return;
     }
@@ -196,7 +201,7 @@ async function completeRedirect(req, res) {
     }
     res.json({
       ...publicPurchaseResult(result),
-      message: '¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.',
+      message: RECHARGE_OK,
     });
   } catch (error) {
     console.error('[payments/complete-redirect]', error);
@@ -222,14 +227,14 @@ async function completeWidget(req, res) {
       if (result.pending) {
         res.json({
           pending: true,
-          message: 'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
+          message: RECHARGE_PENDING,
         });
         return;
       }
       if (!result.ok) {
         if (result.decision?.code === 'DECLINED') {
           res.status(400).json({
-            error: 'El pago no fue aprobado. No se realizó ninguna recarga.',
+            error: RECHARGE_DECLINED,
             status: 'DECLINED',
           });
           return;
@@ -239,7 +244,7 @@ async function completeWidget(req, res) {
       }
       res.json({
         ...publicPurchaseResult(result),
-        message: '¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.',
+        message: RECHARGE_OK,
       });
       return;
     }
@@ -269,7 +274,7 @@ async function completeWidget(req, res) {
           coins: Number(saved.blastAmount || saved.coins) || 0,
           coinsBalance: balance,
           duplicate: true,
-          message: '¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.',
+          message: RECHARGE_OK,
         });
         return;
       }
@@ -277,7 +282,7 @@ async function completeWidget(req, res) {
         pending: true,
         reference,
         status: saved.status || 'PENDING',
-        message: 'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
+        message: RECHARGE_PENDING,
       });
       return;
     }
@@ -285,7 +290,7 @@ async function completeWidget(req, res) {
     res.json({
       pending: true,
       reference,
-      message: 'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
+      message: RECHARGE_PENDING,
     });
   } catch (error) {
     console.error('[payments/complete-widget]', error);
@@ -321,8 +326,8 @@ async function reconcilePayment(req, res) {
       ...publicPurchaseResult(result),
       pending: Boolean(result.pending),
       message: result.pending
-        ? 'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.'
-        : '¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.',
+        ? RECHARGE_PENDING
+        : RECHARGE_OK,
     });
   } catch (error) {
     console.error('[payments/reconcile]', error);
@@ -426,6 +431,8 @@ async function createOrder(req, res) {
         });
       } catch (error) {
         console.error('[payments/create-order] firestore order:', error.message);
+        res.status(500).json({ error: 'No se pudo crear la orden interna de recarga' });
+        return;
       }
     }
 

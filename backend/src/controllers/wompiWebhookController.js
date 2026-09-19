@@ -53,9 +53,9 @@ async function handleWompiWebhook(req, res) {
 
     if (firestoreConfigured()) {
       const result = await settleWompiTransaction(txn, { source: 'webhook' });
-      if (result?.error === 'AMOUNT_MISMATCH' || result?.error === 'CURRENCY_MISMATCH' || result?.error === 'REFERENCE_MISMATCH') {
+      if (result?.error === 'AMOUNT_MISMATCH' || result?.error === 'CURRENCY_MISMATCH' || result?.error === 'REFERENCE_MISMATCH' || result?.error === 'PACKAGE_TAMPERED') {
         console.error('[webhooks/wompi] validación', result.error, txn.reference);
-        res.status(400).json({ error: 'El evento no coincide con la orden interna' });
+        res.status(200).json({ ok: false, error: result.error, credited: false });
         return;
       }
       if (result?.error === 'INVALID_EVENT') {

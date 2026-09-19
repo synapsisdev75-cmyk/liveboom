@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import {
   listCoinPackages,
@@ -6,9 +6,47 @@ import {
   type ResolvedCoinPackage,
 } from '../../lib/coinPackages';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
+import {
+  BLAST_RECHARGE_DECLINED,
+  BLAST_RECHARGE_PENDING,
+  BLAST_RECHARGE_PURCHASED_LABEL,
+  BLAST_RECHARGE_SUCCESS_BODY,
+  BLAST_RECHARGE_SUCCESS_TITLE,
+  formatPurchasedBlast,
+} from '../../lib/blastRechargeCopy';
+import { fetchWalletSummary } from '../../lib/walletApi';
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { PaymentMethodsStrip } from './PaymentMethodsStrip';
+
+type RechargeNote =
+  | { kind: 'success'; coins?: number }
+  | { kind: 'pending' }
+  | { kind: 'declined' }
+  | { kind: 'error'; text: string };
+
+function RechargeStatus({ note }: { note: RechargeNote }) {
+  if (note.kind === 'success') {
+    return (
+      <div className="mb-4 space-y-1 text-sm text-emerald-300">
+        <p className="font-bold">{BLAST_RECHARGE_SUCCESS_TITLE}</p>
+        <p>{BLAST_RECHARGE_SUCCESS_BODY}</p>
+        {note.coins ? (
+          <p className="font-semibold text-white">
+            {BLAST_RECHARGE_PURCHASED_LABEL} {formatPurchasedBlast(note.coins)}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+  if (note.kind === 'pending') {
+    return <p className="mb-4 text-sm text-emerald-400">{BLAST_RECHARGE_PENDING}</p>;
+  }
+  if (note.kind === 'declined') {
+    return <p className="mb-4 text-sm text-fuchsia-400">{BLAST_RECHARGE_DECLINED}</p>;
+  }
+  return <p className="mb-4 text-sm text-fuchsia-400">{note.text}</p>;
+}
 
 type Props = {
   onClose: () => void;
@@ -35,7 +73,48 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
       : DEFAULT_PACK,
   );
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useState<RechargeNote | null>(null);
+  const pendingPollRef = useRef<number | null>(null);
+  const purchasedBeforeRef = useRef(0);
+
+  function stopPendingPoll() {
+    if (pendingPollRef.current != null) {
+      window.clearInterval(pendingPollRef.current);
+      pendingPollRef.current = null;
+    }
+  }
+
+  useEffect(() => () => stopPendingPoll(), []);
+
+  function applyWalletSummary() {
+    void fetchWalletSummary()
+      .then((summary) => {
+        useAuthStore.getState().setBlastBalances({
+          purchasedBlastBalance: summary.purchasedBalance,
+          earnedBlastBalance: summary.earnedAvailable,
+          coinsBalance: summary.totalAvailable,
+        });
+        const gained = summary.purchasedBalance - purchasedBeforeRef.current;
+        if (gained > 0) {
+          stopPendingPoll();
+          setNote({ kind: 'success', coins: gained });
+        }
+      })
+      .catch(() => undefined);
+  }
+
+  function watchUntilCredited() {
+    stopPendingPoll();
+    purchasedBeforeRef.current = Math.max(
+      0,
+      Math.floor(Number(useAuthStore.getState().profile?.purchasedBlastBalance) || 0),
+    );
+    pendingPollRef.current = window.setInterval(() => {
+      void syncProfile();
+      applyWalletSummary();
+    }, 3000);
+    window.setTimeout(stopPendingPoll, 120_000);
+  }
 
   function applyTopup(paid: {
     coinsBalance?: number;
@@ -73,13 +152,16 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
       });
 
       if (order.checkoutUrl && (order.preferCheckout || !order.widgetAvailable)) {
-        setNote('Redirigiendo al checkout seguro de Wompi…');
+        setNote({ kind: 'error', text: 'Redirigiendo al checkout seguro de Wompi…' });
         window.location.href = order.checkoutUrl;
         return;
       }
 
       if (!order.widgetAvailable) {
-        setNote('Wompi no reconoce la llave pública. Revisa las credenciales en el dashboard.');
+        setNote({
+          kind: 'error',
+          text: 'Wompi no reconoce la llave pública. Revisa las credenciales en el dashboard.',
+        });
         return;
       }
 
@@ -101,51 +183,49 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
               })
                 .then((paid) => {
                   if (paid.pending) {
-                    setNote(
-                      'Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.',
-                    );
+                    setNote({ kind: 'pending' });
+                    watchUntilCredited();
                     return;
                   }
                   applyTopup(paid);
                   void syncProfile();
-                  setNote(
-                    `¡Recarga exitosa! Tus BLAST ya están disponibles en tu billetera.${
-                      paid.coins ? ` BLAST comprados +${Number(paid.coins).toLocaleString('es-CO')}` : ''
-                    }`,
-                  );
+                  stopPendingPoll();
+                  setNote({ kind: 'success', coins: Number(paid.coins) || 0 });
                 })
                 .catch(() => {
-                  setNote('Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.');
+                  setNote({ kind: 'pending' });
+                  watchUntilCredited();
                   void syncProfile();
                 });
             } else {
-              setNote('Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.');
+              setNote({ kind: 'pending' });
+              watchUntilCredited();
               void syncProfile();
             }
             return;
           }
           if (status === 'PENDING') {
-            setNote('Estamos confirmando tu pago. Tus BLAST se agregarán automáticamente.');
+            setNote({ kind: 'pending' });
+            watchUntilCredited();
             return;
           }
-          if (status === 'DECLINED') {
-            setNote('El pago no fue aprobado. No se realizó ninguna recarga.');
-            return;
-          }
-          if (status) {
-            setNote('El pago no fue aprobado. No se realizó ninguna recarga.');
+          if (status === 'DECLINED' || status) {
+            setNote({ kind: 'declined' });
           }
         });
       } catch (widgetError) {
         if (order.checkoutUrl) {
-          setNote('Abriendo checkout alternativo de Wompi…');
+          setNote({ kind: 'error', text: 'Abriendo checkout alternativo de Wompi…' });
           window.location.href = order.checkoutUrl;
           return;
         }
         throw widgetError;
       }
     } catch (error) {
-      setNote(error instanceof Error ? error.message : 'No se pudo crear el pedido');
+      setNote({
+        kind: 'error',
+        text: error instanceof Error ? error.message : 'No se pudo crear el pedido',
+      });
     } finally {
       setBusy(false);
     }
@@ -234,15 +314,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
 
         <div className="shrink-0 border-t border-white/5 p-4 sm:p-6">
           <PaymentMethodsStrip compact className="mb-3" />
-          {note ? (
-            <p
-              className={`mb-4 text-sm ${
-                note.includes('exitosa') || note.includes('confirmando') ? 'text-emerald-400' : 'text-fuchsia-400'
-              }`}
-            >
-              {note}
-            </p>
-          ) : null}
+          {note ? <RechargeStatus note={note} /> : null}
 
           <div className="flex flex-col gap-2 pb-[env(safe-area-inset-bottom)] sm:flex-row sm:justify-end sm:pb-0">
             <button
@@ -251,7 +323,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
               onClick={() => void pay()}
               className="w-full rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-3 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105 disabled:opacity-60 sm:w-auto sm:py-2"
             >
-              {busy ? 'Abriendo Wompi…' : `Pagar ${selectedPack ? packageCopLabel(selectedPack.amountInCop) : ''}`}
+              {busy ? 'Abriendo Wompi…' : 'Recargar BLAST'}
             </button>
           </div>
         </div>
