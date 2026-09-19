@@ -1,6 +1,7 @@
 /** Precios de paquetes BLAST (compra). La tasa de retiro del creador vive solo en el backend. */
 
 const FIXED_PACK_PRICE_COP: Record<number, number> = {
+  25: 1_600,
   125: 7_990,
   150: 8_990,
   200: 10_900,
@@ -26,6 +27,7 @@ function packAmountInCop(blast: number) {
 }
 
 export const COIN_PACKAGES = [
+  { id: 'basico_25', name: 'Básico', coins: 25, amountInCop: packAmountInCop(25), popular: false, bestValue: false, artUrl: '/blast/pack-basico.png' },
   { id: 'impulso_125', name: 'Impulso', coins: 125, amountInCop: packAmountInCop(125), popular: false, bestValue: false, artUrl: '/blast/pack-impulso.png' },
   { id: 'plus_150', name: 'Plus', coins: 150, amountInCop: packAmountInCop(150), popular: false, bestValue: false, artUrl: '/blast/pack-plus.png' },
   { id: 'popular_200', name: 'Popular', coins: 200, amountInCop: packAmountInCop(200), popular: true, bestValue: false, artUrl: '/blast/pack-popular.png' },

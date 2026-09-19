@@ -5,6 +5,7 @@ const MAX_PACK_COINS = 25_000;
 
 /** Precio final cliente (COP) para paquetes con precio fijo. */
 const FIXED_PACK_PRICE_COP = {
+  25: 1_600,
   125: 7_990,
   150: 8_990,
   200: 10_900,
@@ -29,6 +30,7 @@ function packAmountInCop(blast) {
 }
 
 const DEFAULT_COIN_PACKAGES = {
+  basico_25: { coins: 25, amountInCop: packAmountInCop(25) },
   impulso_125: { coins: 125, amountInCop: packAmountInCop(125) },
   plus_150: { coins: 150, amountInCop: packAmountInCop(150) },
   popular_200: { coins: 200, amountInCop: packAmountInCop(200) },
