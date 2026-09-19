@@ -183,11 +183,13 @@ service cloud.firestore {
         || (
           isUnlockedSuperAdmin()
           && request.resource.data.firebaseUid == resource.data.firebaseUid
+          && walletBalancesUnchanged()
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['levelXp', 'levelXpPinned', 'coinsBalance', 'updatedAt'])
+            .hasOnly(['levelXp', 'levelXpPinned', 'updatedAt'])
         );
       allow delete: if isSelf(userId);
 
+      // Ledger / retiros: solo backend (Admin SDK). Cliente solo lectura.
       match /walletLedger/{entryId} {
         allow read: if isSelf(userId);
         allow write: if false;
@@ -260,18 +262,15 @@ service cloud.firestore {
         allow update, delete: if isSelf(userId);
       }
 
+      // Inbox de regalos: crear solo backend. Cliente marca processed.
       match /giftInbox/{giftId} {
         allow read: if isSelf(userId);
-        allow create: if signedIn()
-          && request.resource.data.senderUid == request.auth.uid
-          && request.resource.data.recipientUid == userId
-          && request.resource.data.coins is number
-          && request.resource.data.coins > 0
-          && request.resource.data.coins <= 500000
-          && request.resource.data.giftId is string
-          && request.resource.data.processed == false;
+        allow create: if false;
         allow update: if isSelf(userId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['processed', 'processedAtMs']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['processed', 'processedAtMs'])
+          && request.resource.data.processed == true
+          && resource.data.processed == false;
+        allow delete: if false;
       }
 
       match /callSettings/{docId} {
@@ -710,12 +709,21 @@ service cloud.firestore {
 
       match /gifts/{giftId} {
         allow read: if signedIn();
+        // Solo fan-out visual en sala; el cobro va por /api/gifts (Admin SDK).
         allow create: if signedIn()
           && request.resource.data.senderUid == request.auth.uid
           && request.resource.data.giftId is string
           && request.resource.data.giftName is string
-          && request.resource.data.senderName is string;
-        allow delete: if signedIn();
+          && request.resource.data.senderName is string
+          && request.resource.data.coins is number
+          && request.resource.data.coins >= 0
+          && request.resource.data.coins <= 500000;
+        allow update: if false;
+        allow delete: if signedIn()
+          && (
+            resource.data.senderUid == request.auth.uid
+            || request.auth.uid == get(/databases/$(database)/documents/liveRooms/$(roomName)).data.hostUid
+          );
       }
 
       match /messages/{messageId} {
