@@ -49,7 +49,7 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
   { id: 'cafecito', name: 'Cafecito', emoji: '☕', image: '/gifts/cafecito.png', coins: 5, level: 1, animation: 'Taza con vapor en forma de corazón' },
   { id: 'arepita', name: 'Arepita', emoji: '🫓', image: '/gifts/arepita.png', coins: 8, level: 1, animation: 'Gira como moneda y brillo dorado' },
   { id: 'empanadita', name: 'Empanadita', emoji: '🥟', image: '/gifts/empanadita.png', coins: 10, level: 1, animation: 'Vuelta rápida y migas brillantes' },
-  { id: 'flor_tropical', name: 'Flor Tropical', emoji: '🌺', image: '/gifts/flor_tropical.png', coins: 15, level: 1, animation: 'Face Mesh: flor anclada a la frente' },
+  { id: 'flor_tropical', name: 'Flor Tropical', emoji: '🌺', image: '/gifts/flor_tropical.png', video: '/gifts/flor_tropical.webm', coins: 15, level: 1, animation: 'Face Mesh: flor anclada a la frente' },
   { id: 'maracas', name: 'Maracas', emoji: '🪇', image: '/gifts/maracas.png', coins: 20, level: 1, animation: 'Agitación rítmica chispeante' },
   { id: 'aguacate', name: 'Aguacate', emoji: '🥑', image: '/gifts/aguacate.png', video: '/gifts/aguacate.webm', coins: 25, level: 1, animation: 'Animación especial al caer' },
   { id: 'pina_tropical', name: 'Piña Tropical', emoji: '🍍', image: '/gifts/pina_tropical.png', coins: 30, level: 1, animation: 'Gira y explota en destellos' },

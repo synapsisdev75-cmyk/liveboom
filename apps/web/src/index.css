@@ -559,9 +559,103 @@
   --lb-safe-right: env(safe-area-inset-right, 0px);
   --lb-safe-bottom: env(safe-area-inset-bottom, 0px);
   --lb-safe-left: env(safe-area-inset-left, 0px);
-  --lb-bottom-nav-h: 4.25rem;
+  /* Incluye burbuja líquida que sobresale (solo móvil/tablet; lg oculta la nav) */
+  --lb-bottom-nav-h: 5.35rem;
   /* Espacio bajo el contenido hasta que desaparece la bottom nav (lg) */
-  --lb-main-pad-bottom: calc(7.5rem + var(--lb-safe-bottom));
+  --lb-main-pad-bottom: calc(7.75rem + var(--lb-safe-bottom));
+}
+
+/* Bottom nav líquido — móvil / tablet (< lg). Desktop: sidebar. */
+.lb-liquid-nav {
+  pointer-events: none;
+}
+
+.lb-liquid-nav__shell {
+  pointer-events: auto;
+  filter: drop-shadow(0 -8px 22px rgba(0, 0, 0, 0.32));
+}
+
+.lb-liquid-nav__curve-fill,
+.lb-liquid-nav__bar-fill {
+  fill: var(--lb-bg-sidebar);
+  background: var(--lb-bg-sidebar);
+  transition: fill 0.2s ease, background-color 0.2s ease;
+}
+
+.lb-liquid-nav__bubble {
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    var(--lb-accent-primary) 0%,
+    color-mix(in srgb, var(--lb-accent-primary) 55%, var(--lb-accent-secondary)) 52%,
+    var(--lb-accent-secondary) 100%
+  );
+  border: 1.5px solid color-mix(in srgb, var(--lb-accent-secondary) 75%, #fff);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--lb-accent-primary) 85%, #fff),
+    0 0 10px 1px color-mix(in srgb, var(--lb-accent-primary) 70%, transparent),
+    0 0 22px 3px color-mix(in srgb, var(--lb-accent-secondary) 55%, transparent),
+    0 10px 22px color-mix(in srgb, var(--lb-accent-primary) 42%, transparent),
+    0 0 0 0.35rem var(--lb-bg-sidebar);
+}
+
+.lb-liquid-nav__bubble-icon {
+  color: #fff;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, #fff 55%, transparent));
+  pointer-events: none;
+}
+
+.lb-liquid-nav__icon--idle {
+  color: color-mix(in srgb, var(--lb-text) 55%, transparent);
+}
+
+.lb-liquid-nav__icon--active {
+  color: transparent;
+  transform: translateY(-1.05rem);
+}
+
+.lb-liquid-nav__label--idle {
+  color: color-mix(in srgb, var(--lb-text) 48%, transparent);
+}
+
+.lb-liquid-nav__label--active {
+  color: var(--lb-accent-secondary);
+}
+
+html[data-lb-theme='light'] .lb-liquid-nav__curve-fill,
+html[data-lb-theme='light'] .lb-liquid-nav__bar-fill {
+  fill: var(--lb-surface);
+  background: var(--lb-surface);
+}
+
+html[data-lb-theme='light'] .lb-liquid-nav__bubble {
+  border-color: color-mix(in srgb, var(--lb-accent-primary) 70%, #fff);
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--lb-accent-primary) 75%, #fff),
+    0 0 10px 1px color-mix(in srgb, var(--lb-accent-primary) 45%, transparent),
+    0 0 20px 3px color-mix(in srgb, var(--lb-accent-secondary) 35%, transparent),
+    0 10px 20px color-mix(in srgb, var(--lb-accent-primary) 28%, transparent),
+    0 0 0 0.35rem var(--lb-surface);
+}
+
+html[data-lb-theme='light'] .lb-liquid-nav__icon--idle {
+  color: color-mix(in srgb, var(--lb-text) 62%, transparent);
+}
+
+html[data-lb-theme='light'] .lb-liquid-nav__label--active {
+  color: var(--lb-accent-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-liquid-nav__icon--active {
+    transition: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lb-liquid-nav {
+    display: none !important;
+  }
 }
 
 .lb-promo-nav {
