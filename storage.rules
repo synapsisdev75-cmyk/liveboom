@@ -290,7 +290,8 @@ service firebase.storage {
         || fileName.matches('.*\\.webp$')
         || fileName.matches('.*\\.gif$')
         || fileName.matches('.*\\.webm$')
-        || fileName.matches('.*\\.mp4$');
+        || fileName.matches('.*\\.mp4$')
+        || fileName.matches('.*\\.mov$');
     }
 
     function isBlastCatalogFileName(fileName) {
@@ -304,8 +305,17 @@ service firebase.storage {
     match /config/gifts/{fileName} {
       allow read: if true;
       allow create, update: if canWriteGiftCatalog()
-        && request.resource.size < 25 * 1024 * 1024
-        && isGiftCatalogFileName(fileName);
+        && isGiftCatalogFileName(fileName)
+        && (
+          (
+            fileName.matches('.*\\.mov$')
+            && request.resource.size < 80 * 1024 * 1024
+          )
+          || (
+            !fileName.matches('.*\\.mov$')
+            && request.resource.size < 25 * 1024 * 1024
+          )
+        );
       allow delete: if canWriteGiftCatalog();
     }
 

@@ -12,6 +12,7 @@ const { firestoreConfigured, getAdminDb } = require('../lib/firestoreAdmin');
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
+const requireSuperAdmin = asFn(require('../middleware/requireSuperAdmin'));
 
 function withTimeout(promise, ms) {
   let timer;
@@ -104,6 +105,24 @@ function lookupRoomName(roomName) {
   if (/^chat:/i.test(raw)) return raw.slice(5).trim();
   return raw;
 }
+
+router.post('/convert-alpha', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { convertGiftAlphaMov } = require('../lib/giftAlphaConvert');
+    const result = await convertGiftAlphaMov({
+      storagePath: typeof req.body?.storagePath === 'string' ? req.body.storagePath : '',
+    });
+    res.json({ ok: true, url: result.url, storagePath: result.storagePath });
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    const status =
+      code === 'INVALID_PATH' || code === 'TOO_LARGE' ? 400 : code === 'NOT_FOUND' ? 404 : 500;
+    console.error('[gifts/convert-alpha]', error);
+    res.status(status).json({
+      error: error instanceof Error ? error.message : 'No se pudo convertir el MOV 4444',
+    });
+  }
+});
 
 router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const giftId = req.body?.giftId;

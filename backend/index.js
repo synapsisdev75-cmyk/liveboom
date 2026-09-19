@@ -163,8 +163,8 @@ try {
   module.exports.api = onRequest(
     {
       region: 'us-central1',
-      memory: '512MiB',
-      timeoutSeconds: 120,
+      memory: '1GiB',
+      timeoutSeconds: 180,
     },
     app,
   );

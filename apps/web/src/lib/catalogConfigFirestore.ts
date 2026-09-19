@@ -292,6 +292,7 @@ function catalogAssetContentType(file: File, ext: string): string {
     gif: 'image/gif',
     webm: 'video/webm',
     mp4: 'video/mp4',
+    mov: 'video/quicktime',
   };
   return map[ext] || 'application/octet-stream';
 }

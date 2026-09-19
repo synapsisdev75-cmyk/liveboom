@@ -18,6 +18,7 @@ import {
   GiftCatalogPreview,
   type PreviewDevice,
 } from './GiftCatalogPreview';
+import { needsAlphaMovConvert, uploadGiftAnimation } from '../../lib/giftAlphaConvert';
 
 const PLACEMENT_LABELS: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -37,6 +38,7 @@ function AssetDropZone({
   previewUrl,
   isVideo,
   disabled,
+  busyLabel,
   onFile,
 }: {
   label: string;
@@ -45,6 +47,7 @@ function AssetDropZone({
   previewUrl?: string;
   isVideo?: boolean;
   disabled?: boolean;
+  busyLabel?: string;
   onFile: (file: File) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -108,7 +111,7 @@ function AssetDropZone({
           <span className="text-2xl text-zinc-500">⬆</span>
         )}
         <span className="text-sm font-semibold text-white">
-          {disabled ? 'Subiendo…' : 'Subir desde el escritorio'}
+          {disabled ? busyLabel || 'Subiendo…' : 'Subir desde el escritorio'}
         </span>
         <span className="text-[11px] text-zinc-500">{hint}</span>
       </div>
@@ -142,6 +145,7 @@ export function AdminCatalogPanel() {
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [convertingAlpha, setConvertingAlpha] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile');
 
@@ -265,16 +269,26 @@ export function AdminCatalogPanel() {
 
   async function onUploadGiftAsset(kind: 'image' | 'video', file: File | null) {
     if (!file || !gift) return;
+    const convertMov = kind === 'video' && needsAlphaMovConvert(file);
     setUploading(true);
+    setConvertingAlpha(convertMov);
     setMessage(null);
     try {
-      const url = await uploadCatalogAsset('gifts', `${gift.id}-${kind}`, file);
+      const url =
+        kind === 'video'
+          ? await uploadGiftAnimation(gift.id, file)
+          : await uploadCatalogAsset('gifts', `${gift.id}-${kind}`, file);
       patchGift(gift.id, kind === 'image' ? { image: url } : { video: url });
-      setMessage(`${kind === 'image' ? 'Imagen' : 'Animación'} subida. Publica para aplicar.`);
+      setMessage(
+        convertMov
+          ? 'MOV 4444 convertido a WebM con alpha. Publica para aplicar.'
+          : `${kind === 'image' ? 'Imagen' : 'Animación'} subida. Publica para aplicar.`,
+      );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Error al subir archivo');
     } finally {
       setUploading(false);
+      setConvertingAlpha(false);
     }
   }
 
@@ -506,12 +520,13 @@ export function AdminCatalogPanel() {
               </div>
               <div className="space-y-3">
                 <AssetDropZone
-                  label="Animación WebM / MP4"
-                  accept="video/webm,video/mp4"
-                  hint="Arrastra o haz clic · WebM o MP4"
+                  label="Animación WebM / MP4 / MOV 4444"
+                  accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov"
+                  hint="Arrastra o haz clic · MOV ProRes 4444 con alpha se convierte a WebM al instante"
                   previewUrl={gift.video}
                   isVideo
                   disabled={uploading}
+                  busyLabel={convertingAlpha ? 'Convirtiendo MOV 4444…' : 'Subiendo…'}
                   onFile={(file) => void onUploadGiftAsset('video', file)}
                 />
                 <label className="block space-y-1 text-xs text-zinc-400">
@@ -522,7 +537,7 @@ export function AdminCatalogPanel() {
                       const value = e.target.value.trim();
                       patchGift(gift.id, { video: value || undefined });
                     }}
-                    placeholder="https://…webm"
+                    placeholder="/gifts/flor_tropical.webm o MOV 4444 convertido"
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
                   />
                 </label>
