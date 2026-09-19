@@ -194,7 +194,7 @@ export function PostActionRail({
         </span>
       </div>
 
-      <PostReceivedGiftsButton postId={postId} variant="rail" />
+      <PostReceivedGiftsButton postId={postId} authorUid={authorUid} variant="rail" />
 
       <PostViewsIndicator postId={postId} variant="rail" recordMode="open" />
 

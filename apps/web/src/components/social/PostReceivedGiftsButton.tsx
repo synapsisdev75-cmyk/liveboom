@@ -13,6 +13,7 @@ import { formatViewCount } from '../../lib/postViews';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { UserAvatar } from '../profile/UserAvatar';
 import { GiftIcon } from '../live/FloatingGift';
+import { useAuthStore } from '../../store/authStore';
 import { useT } from '../../i18n';
 
 function formatReceivedAt(ms: number, now = Date.now()) {
@@ -34,15 +35,20 @@ type Variant = 'rail' | 'pill';
 
 export function PostReceivedGiftsButton({
   postId,
+  authorUid,
   variant,
   initialUnits = 0,
 }: {
   postId?: string | null;
+  authorUid?: string | null;
   variant: Variant;
   initialUnits?: number;
 }) {
   const t = useT();
+  const myUid = useAuthStore((state) => state.profile?.firebaseUid);
   const id = String(postId || '').trim();
+  const ownerUid = String(authorUid || '').trim();
+  const isOwner = Boolean(myUid && ownerUid && myUid === ownerUid);
   const [units, setUnits] = useState(Math.max(0, Math.floor(Number(initialUnits) || 0)));
   const [open, setOpen] = useState(false);
 
@@ -51,11 +57,11 @@ export function PostReceivedGiftsButton({
   }, [id, initialUnits]);
 
   useEffect(() => {
-    if (!id) return undefined;
+    if (!id || !isOwner) return undefined;
     return listenPostGiftUnits(id, setUnits);
-  }, [id]);
+  }, [id, isOwner]);
 
-  if (!id) return null;
+  if (!id || !isOwner) return null;
 
   const label = t('actions.viewReceivedGifts');
   const iconSize = variant === 'rail' ? 22 : 18;

@@ -284,7 +284,7 @@ function OriginalPostEmbed({
               </span>
             ) : null}
             <span className="ml-auto inline-flex items-center gap-1.5" onClick={() => onInteracted?.()}>
-              <PostReceivedGiftsButton postId={origin.id} variant="pill" />
+              <PostReceivedGiftsButton postId={origin.id} authorUid={origin.authorUid} variant="pill" />
               <PostViewsIndicator
                 postId={origin.id}
                 variant="pill"

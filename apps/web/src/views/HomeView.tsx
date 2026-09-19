@@ -347,7 +347,12 @@ function HomePublicationCard({
             />
           </span>
         ) : null}
-        <PostReceivedGiftsButton postId={post.id} variant="pill" initialUnits={post.giftUnitsReceived} />
+        <PostReceivedGiftsButton
+          postId={post.id}
+          authorUid={post.authorUid}
+          variant="pill"
+          initialUnits={post.giftUnitsReceived}
+        />
         <PostViewsIndicator
           postId={post.id}
           variant="pill"

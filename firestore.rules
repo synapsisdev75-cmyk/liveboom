@@ -527,7 +527,7 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.authorUid == request.auth.uid;
 
       match /receivedGifts/{giftId} {
-        allow read: if canReadLoadedPost();
+        allow read: if signedIn() && loadedPost().authorUid == request.auth.uid;
         allow create, update, delete: if false;
       }
 
