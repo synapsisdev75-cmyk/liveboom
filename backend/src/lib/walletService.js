@@ -319,8 +319,16 @@ async function transferGift({
         chargedEarned: claimed.existing.chargedEarned || 0,
       };
     }
+    // Firestore: todas las lecturas deben ir antes de cualquier escritura.
     const senderRef = db.collection('users').doc(senderId);
     const senderSnap = await tx.get(senderRef);
+    let recipientRef = null;
+    let recipientSnap = null;
+    if (recipientId) {
+      recipientRef = db.collection('users').doc(recipientId);
+      recipientSnap = await tx.get(recipientRef);
+    }
+
     const spent = engine.applySpend(wf.balancesFromSnap(senderSnap), coins, {
       allowEarned: true,
       strict: true,
@@ -344,9 +352,7 @@ async function transferGift({
 
     let recipientSummary = null;
     let recipientBalances = null;
-    if (recipientId) {
-      const recipientRef = db.collection('users').doc(recipientId);
-      const recipientSnap = await tx.get(recipientRef);
+    if (recipientRef) {
       recipientBalances = engine.applyCreditEarned(wf.balancesFromSnap(recipientSnap), coins);
       wf.patchUserBalances(tx, recipientRef, recipientSnap, recipientBalances);
       const txType =
