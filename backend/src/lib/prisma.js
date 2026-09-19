@@ -16,21 +16,6 @@ if (databaseUrl && !localDb) {
     const { PrismaClient } = require('@prisma/client');
     prisma = new PrismaClient();
     hasDatabase = true;
-    prisma
-      .$executeRawUnsafe('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3)')
-      .catch((error) => {
-        console.warn('[prisma] no se pudo asegurar birthDate:', error.message);
-      });
-    prisma
-      .$executeRawUnsafe('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "displayName" TEXT')
-      .catch((error) => {
-        console.warn('[prisma] no se pudo asegurar displayName:', error.message);
-      });
-    prisma
-      .$executeRawUnsafe('ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "category" TEXT')
-      .catch((error) => {
-        console.warn('[prisma] no se pudo asegurar category:', error.message);
-      });
   } catch (error) {
     console.warn('[prisma] cliente no disponible:', error.message);
     prisma = null;
