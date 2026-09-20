@@ -45,7 +45,11 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
                     {sticker.text}
                   </span>
                 ) : (
-                  <img src={sticker.src} alt={sticker.label} className="h-10 w-10 object-contain" />
+                  <img
+                    src={sticker.src}
+                    alt={sticker.label}
+                    className="h-12 w-12 object-contain sm:h-14 sm:w-14"
+                  />
                 )}
               </button>
             ))}

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { processSheetCell } from './matte-sheet-cell.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -13,7 +14,7 @@ const SOURCE =
 const EXTRA_SOURCE = path.join(root, 'assets', 'emojis', 'source-boom-sheet-2.jpg');
 
 const OUT_DIR = path.join(root, 'public', 'emojis', 'boom');
-const OUT_SIZE = 256;
+const OUT_SIZE = 512;
 
 /** 4×6 — fila a fila, izquierda a derecha */
 const IDS = [
@@ -55,54 +56,11 @@ const EXTRA_IDS = [
 const COLS = 6;
 const ROWS = 4;
 
-function matteBackground(data) {
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const min = Math.min(r, g, b);
-    const max = Math.max(r, g, b);
-    const neutral = max - min < 24;
-
-    if (neutral && max < 52) {
-      data[i + 3] = 0;
-      continue;
-    }
-    if (neutral && max < 78) {
-      const fringe = Math.min(1, (max - 52) / 26);
-      data[i + 3] = Math.round(data[i + 3] * (1 - fringe));
-      continue;
-    }
-
-    if (neutral && min > 248) {
-      data[i + 3] = 0;
-      continue;
-    }
-    if (neutral && min > 215 && max > 238) {
-      const fringe = Math.min(1, (min - 215) / 33);
-      data[i + 3] = Math.round(data[i + 3] * (1 - fringe));
-    }
-  }
+function processCell(buffer, protectRadius) {
+  return processSheetCell(buffer, OUT_SIZE, protectRadius);
 }
 
-function processCell(buffer) {
-  return sharp(buffer)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true })
-    .then(({ data, info }) => {
-      matteBackground(data);
-      return sharp(data, { raw: info })
-        .trim({ threshold: 12 })
-        .resize(OUT_SIZE, OUT_SIZE, {
-          fit: 'contain',
-          background: { r: 0, g: 0, b: 0, alpha: 0 },
-        })
-        .png({ compressionLevel: 9, effort: 10 });
-    });
-}
-
-async function splitSheet(source, ids, cols, rows) {
+async function splitSheet(source, ids, cols, rows, protectRadius) {
   const meta = await sharp(source).metadata();
   const W = meta.width ?? 1024;
   const H = meta.height ?? 682;
@@ -117,8 +75,18 @@ async function splitSheet(source, ids, cols, rows) {
       const top = row * cellH;
       const width = col === cols - 1 ? W - left : cellW;
       const height = row === rows - 1 ? H - top : cellH;
-      const cell = await sharp(source).extract({ left, top, width, height }).png().toBuffer();
-      await processCell(cell).then((img) => img.toFile(path.join(OUT_DIR, `${id}.png`)));
+      const padX = Math.max(1, Math.round(width * 0.012));
+      const padY = Math.max(1, Math.round(height * 0.012));
+      const cell = await sharp(source)
+        .extract({
+          left: left + padX,
+          top: top + padY,
+          width: Math.max(8, width - padX * 2),
+          height: Math.max(8, height - padY * 2),
+        })
+        .png()
+        .toBuffer();
+      await processCell(cell, protectRadius).then((img) => img.toFile(path.join(OUT_DIR, `${id}.png`)));
       index++;
     }
   }
@@ -135,11 +103,11 @@ async function main() {
       console.error('Source not found:', SOURCE);
       process.exit(1);
     }
-    total += await splitSheet(SOURCE, IDS, COLS, ROWS);
+    total += await splitSheet(SOURCE, IDS, COLS, ROWS, 3);
   }
 
   if (fs.existsSync(EXTRA_SOURCE)) {
-    total += await splitSheet(EXTRA_SOURCE, EXTRA_IDS, 3, 2);
+    total += await splitSheet(EXTRA_SOURCE, EXTRA_IDS, 3, 2, 16);
   }
 
   console.log(`Wrote ${total} boom emojis (${OUT_SIZE}×${OUT_SIZE}) → ${OUT_DIR}`);
