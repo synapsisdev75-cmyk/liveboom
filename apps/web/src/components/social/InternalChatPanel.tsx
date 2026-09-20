@@ -1169,7 +1169,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       seenGiftAnimRef.current.add(message.id);
       animateGiftInChat(
         message.giftId,
-        activeFriend?.displayName || activeFriend?.username || activeFriend?.handle || undefined,
+        activeFriend?.displayName || activeFriend?.username || undefined,
       );
     }
   }, [chatId, messages]);
