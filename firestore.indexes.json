@@ -77,20 +77,6 @@
       ]
     },
     {
-      "collectionGroup": "wallet_withdrawals",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "createdAtMs", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "wallet_withdrawals",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "createdAtMs", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "wallet_withdrawal_outbox",
       "queryScope": "COLLECTION",
       "fields": [
