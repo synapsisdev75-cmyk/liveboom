@@ -13,7 +13,7 @@ import {
   giftPlaybackLiveFormat,
   isGiftLayoutBleed,
   isGiftLayoutVariantId,
-  resolveGiftLayoutSlot,
+  resolveGiftLayoutCell,
   type GiftLayoutSlot,
   type GiftLayoutVariantId,
 } from '../../lib/giftLayout';
@@ -409,13 +409,34 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
   const useLayout = Boolean(variant) || !fillViewport;
 
   if (useLayout && (gift?.video || gift?.image)) {
-    const slot = resolveGiftLayoutSlot({
+    const cell = resolveGiftLayoutCell({
       layout: gift.giftLayout,
       animScale: gift.animScale,
       device,
       liveFormat: liveAspect ? giftLiveFormatFromAspect(liveAspect) : giftPlaybackLiveFormat(device),
       variant,
     });
+    const unconfiguredChatOrCall =
+      (variant === 'chat' || variant === 'llamadas_voz' || variant === 'llamadas_video') &&
+      (cell.source === 'legacy' || cell.source === 'default');
+    if (unconfiguredChatOrCall && gift.video) {
+      return (
+        <AnimatePresence>
+          <GiftVideoBurst
+            src={gift.video}
+            poster={gift.image}
+            senderName={senderName}
+            combo={combo}
+            animScale={clampGiftAnimScale(gift.animScale, level)}
+            fillViewport
+            volume={gift.media?.volume ?? 1}
+            durationMs={giftPlaybackDurationMs(gift.media)}
+            onComplete={onComplete}
+          />
+        </AnimatePresence>
+      );
+    }
+    const slot = cell.slot;
     const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
     const burst = gift.video ? (
       <AnimatePresence>
