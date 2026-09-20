@@ -10,6 +10,8 @@ const SOURCE =
   process.argv[2] ||
   path.join(root, 'assets', 'emojis', 'source-boom-sheet.jpg');
 
+const EXTRA_SOURCE = path.join(root, 'assets', 'emojis', 'source-boom-sheet-2.jpg');
+
 const OUT_DIR = path.join(root, 'public', 'emojis', 'boom');
 const OUT_SIZE = 256;
 
@@ -39,6 +41,15 @@ const IDS = [
   'boom_dj',
   'boom_rage',
   'boom_zen',
+];
+
+const EXTRA_IDS = [
+  'boom_search',
+  'boom_binoculars',
+  'boom_map',
+  'boom_compass',
+  'boom_star',
+  'boom_backpack',
 ];
 
 const COLS = 6;
@@ -91,37 +102,47 @@ function processCell(buffer) {
     });
 }
 
-async function main() {
-  if (!fs.existsSync(SOURCE)) {
-    console.error('Source not found:', SOURCE);
-    process.exit(1);
-  }
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-
-  const meta = await sharp(SOURCE).metadata();
+async function splitSheet(source, ids, cols, rows) {
+  const meta = await sharp(source).metadata();
   const W = meta.width ?? 1024;
   const H = meta.height ?? 682;
-  const cellW = Math.floor(W / COLS);
-  const cellH = Math.floor(H / ROWS);
-
+  const cellW = Math.floor(W / cols);
+  const cellH = Math.floor(H / rows);
   let index = 0;
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      const id = IDS[index];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const id = ids[index];
       if (!id) break;
       const left = col * cellW;
       const top = row * cellH;
-      const width = col === COLS - 1 ? W - left : cellW;
-      const height = row === ROWS - 1 ? H - top : cellH;
-
-      const cell = await sharp(SOURCE).extract({ left, top, width, height }).png().toBuffer();
+      const width = col === cols - 1 ? W - left : cellW;
+      const height = row === rows - 1 ? H - top : cellH;
+      const cell = await sharp(source).extract({ left, top, width, height }).png().toBuffer();
       await processCell(cell).then((img) => img.toFile(path.join(OUT_DIR, `${id}.png`)));
-
       index++;
     }
   }
+  return index;
+}
 
-  console.log(`Wrote ${index} boom emojis (${OUT_SIZE}×${OUT_SIZE}) → ${OUT_DIR}`);
+async function main() {
+  const extraOnly = process.argv.includes('--extra-only');
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  let total = 0;
+  if (!extraOnly) {
+    if (!fs.existsSync(SOURCE)) {
+      console.error('Source not found:', SOURCE);
+      process.exit(1);
+    }
+    total += await splitSheet(SOURCE, IDS, COLS, ROWS);
+  }
+
+  if (fs.existsSync(EXTRA_SOURCE)) {
+    total += await splitSheet(EXTRA_SOURCE, EXTRA_IDS, 3, 2);
+  }
+
+  console.log(`Wrote ${total} boom emojis (${OUT_SIZE}×${OUT_SIZE}) → ${OUT_DIR}`);
 }
 
 main().catch((err) => {

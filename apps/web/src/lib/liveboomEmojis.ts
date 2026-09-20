@@ -72,7 +72,7 @@ export const LIVEBOOM_EMOJIS: LiveboomEmoji[] = [
   { id: 'devil_angry', label: 'Diablito enojado', file: '/emojis/devil_angry.png' },
 ];
 
-/** Set Boom — 4×6 bombas desde assets/emojis/source-boom-sheet.jpg */
+/** Set Boom — 4×6 + 3×2 desde source-boom-sheet.jpg / source-boom-sheet-2.jpg */
 export const BOOM_EMOJIS: LiveboomEmoji[] = [
   { id: 'boom_thumbs_up', label: 'Boom pulgar arriba', file: '/emojis/boom/boom_thumbs_up.png' },
   { id: 'boom_cool', label: 'Boom cool', file: '/emojis/boom/boom_cool.png' },
@@ -98,6 +98,12 @@ export const BOOM_EMOJIS: LiveboomEmoji[] = [
   { id: 'boom_dj', label: 'Boom DJ', file: '/emojis/boom/boom_dj.png' },
   { id: 'boom_rage', label: 'Boom furia', file: '/emojis/boom/boom_rage.png' },
   { id: 'boom_zen', label: 'Boom zen', file: '/emojis/boom/boom_zen.png' },
+  { id: 'boom_search', label: 'Boom lupa', file: '/emojis/boom/boom_search.png' },
+  { id: 'boom_binoculars', label: 'Boom binoculares', file: '/emojis/boom/boom_binoculars.png' },
+  { id: 'boom_map', label: 'Boom mapa', file: '/emojis/boom/boom_map.png' },
+  { id: 'boom_compass', label: 'Boom brújula', file: '/emojis/boom/boom_compass.png' },
+  { id: 'boom_star', label: 'Boom estrella', file: '/emojis/boom/boom_star.png' },
+  { id: 'boom_backpack', label: 'Boom mochila', file: '/emojis/boom/boom_backpack.png' },
 ];
 
 /** GIFs/JPG/PNG en public/emojis/emoticones — drop-in; npm run sync-emoticones para copiar más. */
