@@ -55,7 +55,7 @@ async function isGiftDeleted(giftId) {
   return snap.exists;
 }
 
-async function deleteGiftPermanently({ giftId, adminUserId, adminEmail, confirmWord }) {
+async function deleteGiftPermanently({ giftId, adminUserId, adminEmail }) {
   if (!firestoreConfigured()) {
     throw Object.assign(new Error('Firestore no configurado'), { code: 'NO_DB' });
   }
@@ -80,12 +80,6 @@ async function deleteGiftPermanently({ giftId, adminUserId, adminEmail, confirmW
   }
   if (gifts.length <= 1) {
     throw Object.assign(new Error('Debe quedar al menos un regalo en el catálogo.'), { code: 'LAST_GIFT' });
-  }
-
-  const published = target.enabled !== false;
-  const used = Boolean(target.video || target.image || target.media?.originalAsset);
-  if ((published || used) && String(confirmWord || '').trim().toUpperCase() !== 'ELIMINAR') {
-    throw Object.assign(new Error('Escribe ELIMINAR para confirmar.'), { code: 'CONFIRM' });
   }
 
   const remaining = gifts.filter((g) => String(g?.id || '') !== gid);

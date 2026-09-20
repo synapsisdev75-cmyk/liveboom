@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ALL_GIFT_PLACEMENTS,
   buildDefaultCoinPackages,
@@ -222,7 +223,7 @@ export function AdminCatalogPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile');
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteWord, setDeleteWord] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [bgBusy, setBgBusy] = useState(false);
   const [adjustMode, setAdjustMode] = useState(false);
   const animGenRef = useRef<Record<string, number>>({});
@@ -341,34 +342,30 @@ export function AdminCatalogPanel() {
 
   async function confirmPermanentDelete() {
     if (!gift) return;
-    const published = storeGifts.some((row) => row.id === gift.id);
-    const needsWord = published || gift.enabled !== false || Boolean(gift.video || gift.image);
-    if (needsWord && deleteWord.trim().toUpperCase() !== 'ELIMINAR') {
-      setMessage('Escribe ELIMINAR para confirmar.');
+    const giftId = gift.id;
+    const published = storeGifts.some((row) => row.id === giftId);
+    const next = gifts.filter((g) => g.id !== giftId);
+    if (!next.length) {
+      setDeleteError('Debe quedar al menos un regalo en el catálogo.');
       return;
     }
     setSaving(true);
+    setDeleteError(null);
     setMessage(null);
     try {
       if (published) {
-        await deleteGiftPermanentlyApi(gift.id, needsWord ? 'ELIMINAR' : '');
-      }
-      const next = gifts.filter((g) => g.id !== gift.id);
-      if (!next.length) {
-        setMessage('Debe quedar al menos un regalo en el catálogo.');
-        return;
+        await deleteGiftPermanentlyApi(giftId);
       }
       setGifts(next);
       setSelectedGiftId(next[0]?.id || '');
       setDeleteOpen(false);
-      setDeleteWord('');
       setMessage(
         published
           ? 'Regalo eliminado permanentemente del catálogo.'
           : 'Regalo borrador eliminado.',
       );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'No se pudo eliminar el regalo');
+      setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar el regalo');
     } finally {
       setSaving(false);
     }
@@ -829,7 +826,7 @@ export function AdminCatalogPanel() {
               <button
                 type="button"
                 onClick={() => {
-                  setDeleteWord('');
+                  setDeleteError(null);
                   setDeleteOpen(true);
                 }}
                 className="rounded-xl border border-rose-500/50 bg-rose-600/20 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-600/35"
@@ -1145,46 +1142,48 @@ export function AdminCatalogPanel() {
         </div>
       ) : null}
 
-      {deleteOpen && gift ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md space-y-3 rounded-2xl border border-rose-500/30 bg-zinc-950 p-4">
-            <h3 className="text-base font-bold text-white">¿Eliminar este regalo permanentemente?</h3>
-            <p className="text-sm text-zinc-300">
-              Esta acción eliminará el regalo y sus recursos asociados y no se puede deshacer.
-            </p>
-            {gift.enabled !== false || gift.video || gift.image ? (
-              <label className="block space-y-1 text-xs text-zinc-400">
-                Escribe ELIMINAR para confirmar
-                <input
-                  value={deleteWord}
-                  onChange={(e) => setDeleteWord(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
-                />
-              </label>
-            ) : null}
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteOpen(false);
-                  setDeleteWord('');
-                }}
-                className="min-h-11 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-200"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void confirmPermanentDelete()}
-                className="min-h-11 rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-              >
-                Eliminar permanentemente
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {deleteOpen && gift && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[240] flex items-start justify-center overflow-y-auto bg-black/70 px-4 pb-8 pt-[max(4.75rem,calc(var(--lb-safe-top,0px)+4.75rem))]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="gift-delete-title"
+            >
+              <div className="w-full max-w-md space-y-3 rounded-2xl border border-rose-500/30 bg-zinc-950 p-4 shadow-2xl">
+                <h3 id="gift-delete-title" className="text-base font-bold text-white">
+                  ¿Eliminar este regalo permanentemente?
+                </h3>
+                <p className="text-sm text-zinc-300">
+                  Esta acción eliminará el regalo y sus recursos asociados y no se puede deshacer.
+                </p>
+                {deleteError ? <p className="text-sm text-rose-300">{deleteError}</p> : null}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => {
+                      setDeleteOpen(false);
+                      setDeleteError(null);
+                    }}
+                    className="min-h-11 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-200 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void confirmPermanentDelete()}
+                    className="min-h-11 rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    {saving ? 'Eliminando…' : 'Aceptar'}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {sub === 'coins' && pack ? (
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">

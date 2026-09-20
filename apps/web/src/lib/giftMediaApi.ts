@@ -181,10 +181,10 @@ export async function retryGiftBackgroundRemove(
   return pollBgJob(started.job.jobId, onProgress);
 }
 
-export async function deleteGiftPermanentlyApi(giftId: string, confirmWord: string) {
+export async function deleteGiftPermanentlyApi(giftId: string) {
   return authFetch<{ ok: boolean; giftId: string; version: number }>(
     `/api/gifts/catalog/${encodeURIComponent(giftId)}/delete`,
-    { method: 'POST', body: JSON.stringify({ confirmWord }) },
+    { method: 'POST', body: '{}' },
     60_000,
   );
 }

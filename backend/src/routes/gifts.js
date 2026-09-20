@@ -277,7 +277,6 @@ router.post('/catalog/:giftId/delete', requireAuth, requireSuperAdmin, async (re
       giftId: req.params.giftId,
       adminUserId: req.user?.uid || '',
       adminEmail: req.user?.email || '',
-      confirmWord: typeof req.body?.confirmWord === 'string' ? req.body.confirmWord : '',
     });
     res.json(result);
   } catch (error) {
