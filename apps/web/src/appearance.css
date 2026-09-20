@@ -2887,6 +2887,16 @@ html[data-lb-theme] .lb-brand-background .bg-boom-bg\/82 {
   background-color: rgba(10, 10, 11, 0.82);
 }
 
+html[data-lb-theme] .grid.h-full.place-items-center.bg-zinc-950 > p {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-default);
+  border-radius: 1rem;
+  max-width: 28rem;
+  padding: 1.5rem 1.75rem;
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-card);
+}
+
 /* Vista previa LIVE: escenario negro, no superficie de tema. */
 html[data-lb-theme] .lb-live-prep-frame,
 html[data-lb-theme] .lb-live-prep-frame .bg-zinc-950,
