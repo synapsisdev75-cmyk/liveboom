@@ -26,10 +26,19 @@ interface ImportMeta {
 }
 
 type WompiWidgetResult = {
+  id?: string;
+  status?: string;
   transaction?: {
     id: string;
     status: string;
     reference?: string;
+  };
+  data?: {
+    transaction?: {
+      id: string;
+      status: string;
+      reference?: string;
+    };
   };
 };
 
