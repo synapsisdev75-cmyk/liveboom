@@ -1083,6 +1083,7 @@ export function UserProfileView() {
       <CommentMediaViewer
         item={profileMedia}
         onClose={() => setProfileMedia(null)}
+        variant="profile"
         label={
           profileMedia?.kind === 'video'
             ? 'Portada del perfil'

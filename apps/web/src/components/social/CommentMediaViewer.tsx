@@ -14,9 +14,10 @@ type Props = {
   item: CommentMediaViewerItem | null;
   onClose: () => void;
   label?: string;
+  variant?: 'comment' | 'profile';
 };
 
-export function CommentMediaViewer({ item, onClose, label }: Props) {
+export function CommentMediaViewer({ item, onClose, label, variant = 'comment' }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   useBodyScrollLock(Boolean(item));
 
@@ -62,7 +63,7 @@ export function CommentMediaViewer({ item, onClose, label }: Props) {
 
   return createPortal(
     <div
-      className="lb-comment-media-viewer"
+      className={`lb-comment-media-viewer${variant === 'profile' ? ' is-profile' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={dialogLabel}
@@ -110,6 +111,7 @@ export function CommentMediaViewer({ item, onClose, label }: Props) {
             alt=""
             className="lb-comment-media-viewer__media"
             draggable={false}
+            decoding="async"
           />
         )}
         {item.kind === 'gif' ? (
