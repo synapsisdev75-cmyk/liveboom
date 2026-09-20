@@ -1,20 +1,14 @@
 const express = require('express');
 const { asFn } = require('../lib/asFn');
 const wallet = require('../lib/walletService');
-const { publicWalletSummary, quoteWithdrawal, publicWithdrawalRecord, hasLeakedRate } = require('../lib/payoutConversion');
+const { publicWalletSummary, quoteWithdrawal, publicWithdrawalRecord, stripLeakedRate } = require('../lib/payoutConversion');
 const { normalizeWithdrawalStatus } = require('../lib/walletEngine');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 
 function sendPublic(res, payload) {
-  if (hasLeakedRate(payload)) {
-    const { coinToCop, blastRate, creatorRate, internalRate, platformMargin, conversionFactor, ...safe } =
-      payload;
-    res.json(safe);
-    return;
-  }
-  res.json(payload);
+  res.json(stripLeakedRate(payload));
 }
 
 router.get('/summary', requireAuth, async (req, res) => {
@@ -36,13 +30,15 @@ router.get('/payout-quote', requireAuth, async (req, res) => {
     const blast = Math.floor(Number(req.query.blast ?? req.query.coins) || 0);
     const quote = quoteWithdrawal(blast, summary.withdrawableBalance);
     if (!quote.ok) {
-      res.status(400).json({
-        error:
-          quote.code === 'PURCHASED_NOT_WITHDRAWABLE'
-            ? 'Solo puedes retirar BLAST ganados.'
-            : 'Monto inválido',
-        ...quote,
-      });
+      res.status(400).json(
+        stripLeakedRate({
+          error:
+            quote.code === 'PURCHASED_NOT_WITHDRAWABLE'
+              ? 'Solo puedes retirar BLAST ganados.'
+              : 'Monto inválido',
+          ...quote,
+        }),
+      );
       return;
     }
     sendPublic(res, quote);

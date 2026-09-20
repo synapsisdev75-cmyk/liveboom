@@ -1,5 +1,3 @@
-/** Retiro del creador: 1 Blast ganado = $15 COP. No usar para precios de compra. */
-const COIN_TO_COP = 15;
 const MIN_WITHDRAW_COINS = 50;
 const MAX_PACK_COINS = 25_000;
 
@@ -104,7 +102,7 @@ function resolveCoinPackage(packageId, amountInCop) {
 }
 
 function coinsToCop(coins) {
-  return Math.max(0, Math.floor(Number(coins) || 0)) * COIN_TO_COP;
+  return require('./payoutConversion').blastToMoneyCop(coins);
 }
 
 /** Blast del paquete — rechaza montos inflados o centavos Wompi por error. */
@@ -118,7 +116,6 @@ function blastForPackage(packageId, coins) {
 
 module.exports = {
   COIN_PACKAGES: DEFAULT_COIN_PACKAGES,
-  COIN_TO_COP,
   MIN_WITHDRAW_COINS,
   MAX_PACK_COINS,
   resolveCoinPackage,

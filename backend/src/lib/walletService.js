@@ -415,8 +415,9 @@ async function requestWithdrawal({
   if (!coins) return { ok: false, code: 'INVALID_AMOUNT' };
   const uid = String(userId || '').trim();
   const withdrawalId = String(payout?.id || payout?.reference || idempotencyKey || '').trim();
-  const { blastToMoneyExact, INTERNAL_CREATOR_RATE_EXACT } = require('./payoutConversion');
-  const moneyAmountExact = payout?.moneyAmountExact || blastToMoneyExact(coins);
+  const { blastToMoneyCop, WALLET_RULES_VERSION } = require('./payoutConversion');
+  const moneyAmountCOP = blastToMoneyCop(coins);
+  const moneyAmountExact = String(moneyAmountCOP);
 
   const result = await runMutation(uid, idempotencyKey, ({ tx, db, current }) => {
     const moved = engine.applyRequestWithdrawal(current, coins);
@@ -429,14 +430,25 @@ async function requestWithdrawal({
         userId: uid,
         coins,
         earnedBlastAmount: coins,
+        moneyAmountCOP,
         moneyAmountExact,
         currency: 'COP',
         status: engine.WITHDRAWAL_STATUS.REQUESTED,
         paymentReference: withdrawalId,
         requestedAt,
         processedAt: null,
-        payout: payout || null,
-        internalRate: INTERNAL_CREATOR_RATE_EXACT,
+        payout: payout
+          ? {
+              id: payout.id || null,
+              reference: payout.reference || null,
+              fullName: payout.fullName || null,
+              documentId: payout.documentId || null,
+              payoutMethod: payout.payoutMethod || null,
+              accountNumber: payout.accountNumber || null,
+              accountType: payout.accountType || null,
+            }
+          : null,
+        walletRulesVersion: WALLET_RULES_VERSION,
         createdAtMs: Date.now(),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -449,7 +461,7 @@ async function requestWithdrawal({
     return {
       ok: true,
       balances: moved.balances,
-      extra: { withdrawalId, coins, moneyAmountExact, currency: 'COP' },
+      extra: { withdrawalId, coins, earnedBlastAmount: coins, moneyAmountCOP, moneyAmountExact, currency: 'COP' },
       ledger: [
         {
           userId: uid,
@@ -462,9 +474,11 @@ async function requestWithdrawal({
           referenceId: withdrawalId || null,
           metadata: {
             earnedBlastAmount: coins,
+            moneyAmountCOP,
             moneyAmountExact,
             currency: 'COP',
             status: engine.WITHDRAWAL_STATUS.REQUESTED,
+            walletRulesVersion: WALLET_RULES_VERSION,
           },
         },
       ],
@@ -478,11 +492,13 @@ async function requestWithdrawal({
       reference: withdrawalId,
       coins,
       earnedBlastAmount: coins,
+      moneyAmountCOP,
       moneyAmountExact,
       currency: 'COP',
       status: engine.WITHDRAWAL_STATUS.REQUESTED,
       requestedAt: new Date().toISOString(),
       paymentReference: withdrawalId,
+      walletRulesVersion: WALLET_RULES_VERSION,
     });
   }
   return result;

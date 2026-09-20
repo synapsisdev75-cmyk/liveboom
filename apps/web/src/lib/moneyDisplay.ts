@@ -1,13 +1,22 @@
-/** Formatea montos COP exactos (string 4 decimales) sin calcular tasas. */
-export function formatMoneyExact(amountExact: string | null | undefined, currency = 'COP') {
-  const raw = String(amountExact || '').trim();
-  const match = raw.match(/^(-?)(\d+)(?:\.(\d{1,4}))?$/);
-  if (!match) return raw ? `$${raw} ${currency}` : `$0 ${currency}`;
-  const sign = match[1] || '';
-  const whole = Number(match[2] || '0');
-  const frac = (match[3] || '0000').padEnd(4, '0').slice(0, 4);
-  const wholeFmt = Number.isFinite(whole) ? whole.toLocaleString('es-CO') : match[2];
-  return `${sign}$${wholeFmt},${frac} ${currency}`;
+/** Formatea montos COP enteros recibidos del backend. No calcula tasas. */
+export function formatMoneyExact(
+  amountExact: string | number | null | undefined,
+  currency = 'COP',
+) {
+  const pesos = parseCopInteger(amountExact);
+  const formatted = pesos.toLocaleString('es-CO');
+  return `$${formatted} ${currency}`;
+}
+
+function parseCopInteger(value: string | number | null | undefined) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  const match = raw.match(/^(-?)(\d+)(?:\.(\d+))?$/);
+  if (!match) return 0;
+  return Math.max(0, Math.floor(Number(match[2] || '0') || 0));
 }
 
 export function statusLabel(status: string | null | undefined) {

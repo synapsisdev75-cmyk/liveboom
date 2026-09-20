@@ -1,36 +1,66 @@
 /**
- * Conversión privada BLAST ganados → COP.
- * La tasa NUNCA se envía al cliente. Solo montos finales en string 4 decimales.
+ * Retiro del creador: conversión privada BLAST ganados → COP.
+ * Única fuente de verdad de la tasa. Nunca se envía al cliente.
  */
 
-const { MIN_WITHDRAW_COINS, COIN_TO_COP } = require('./coinPackages');
-const money = require('./moneyDecimal');
+const { MIN_WITHDRAW_COINS } = require('./coinPackages');
 
-/** Tasa interna (pesos COP por 1 BLAST ganado). No exportar en APIs públicas. */
-const INTERNAL_CREATOR_RATE_EXACT = `${Number(COIN_TO_COP) || 15}.0000`;
+/** 1 BLAST ganado disponible = 15 COP. No aplicar a BLAST comprados. */
+const CREATOR_BLAST_COP_RATE = 15;
+const WALLET_RULES_VERSION = 'creator-blast-15-cop-v1';
 
-function blastToMoneyUnits(blastAmount) {
-  const blast = Math.max(0, Math.floor(Number(blastAmount) || 0));
-  return money.multiplyIntegerByRate(blast, INTERNAL_CREATOR_RATE_EXACT);
+const RATE_LEAK_KEYS = new Set([
+  'blastRate',
+  'creatorRate',
+  'internalRate',
+  'platformMargin',
+  'conversionFactor',
+  'coinToCop',
+  'COIN_TO_COP',
+  'CREATOR_BLAST_COP_RATE',
+  'creatorBlastCopRate',
+]);
+
+function earnedBlastOf(value) {
+  return Math.max(0, Math.floor(Number(value) || 0));
 }
 
+function blastToMoneyCop(blastAmount) {
+  return earnedBlastOf(blastAmount) * CREATOR_BLAST_COP_RATE;
+}
+
+/** Compat: string entero de pesos, sin decimales. */
 function blastToMoneyExact(blastAmount) {
-  return money.toExactString(blastToMoneyUnits(blastAmount));
+  return String(blastToMoneyCop(blastAmount));
+}
+
+function moneyAmountCopOf(row) {
+  if (row && row.moneyAmountCOP != null && Number.isFinite(Number(row.moneyAmountCOP))) {
+    return Math.max(0, Math.floor(Number(row.moneyAmountCOP)));
+  }
+  const exact = String(row?.moneyAmountExact || '').trim();
+  if (exact) {
+    const whole = exact.split('.')[0];
+    const n = Math.floor(Number(whole) || 0);
+    if (n > 0 || exact === '0' || exact.startsWith('0.')) return Math.max(0, n);
+  }
+  return blastToMoneyCop(row?.earnedBlastAmount ?? row?.coins);
 }
 
 function publicPayoutFields(withdrawableBlast) {
-  const blast = Math.max(0, Math.floor(Number(withdrawableBlast) || 0));
+  const blast = earnedBlastOf(withdrawableBlast);
   return {
-    withdrawableAmount: blastToMoneyExact(blast),
+    earnedBlastAvailable: blast,
+    withdrawableAmount: blastToMoneyCop(blast),
     currency: 'COP',
     minWithdrawBlast: MIN_WITHDRAW_COINS,
-    minWithdrawAmount: blastToMoneyExact(MIN_WITHDRAW_COINS),
+    minWithdrawAmount: blastToMoneyCop(MIN_WITHDRAW_COINS),
   };
 }
 
 function quoteWithdrawal(blastAmount, availableBlast) {
-  const requested = Math.max(0, Math.floor(Number(blastAmount) || 0));
-  const available = Math.max(0, Math.floor(Number(availableBlast) || 0));
+  const requested = earnedBlastOf(blastAmount);
+  const available = earnedBlastOf(availableBlast);
   if (requested <= 0) {
     return { ok: false, code: 'INVALID_AMOUNT' };
   }
@@ -39,31 +69,39 @@ function quoteWithdrawal(blastAmount, availableBlast) {
       ok: false,
       code: 'PURCHASED_NOT_WITHDRAWABLE',
       availableBlast: available,
-      withdrawableAmount: blastToMoneyExact(available),
+      earnedBlastAvailable: available,
+      withdrawableAmount: blastToMoneyCop(available),
       currency: 'COP',
     };
   }
+  const moneyAmountCOP = blastToMoneyCop(requested);
   return {
     ok: true,
     earnedBlastAmount: requested,
-    moneyAmountExact: blastToMoneyExact(requested),
+    moneyAmountCOP,
+    moneyAmountExact: String(moneyAmountCOP),
+    withdrawableAmount: moneyAmountCOP,
     currency: 'COP',
   };
 }
 
 function publicWalletSummary(summary) {
-  const withdrawableBalance = Math.max(0, Math.floor(Number(summary?.withdrawableBalance) || 0));
-  const payout = publicPayoutFields(withdrawableBalance);
+  const earnedAvailable = earnedBlastOf(summary?.earnedAvailable);
+  const withdrawableBalance = earnedBlastOf(
+    summary?.withdrawableBalance != null ? summary.withdrawableBalance : earnedAvailable,
+  );
+  const payout = publicPayoutFields(earnedAvailable);
   return {
     purchasedBalance: summary.purchasedBalance,
-    earnedAvailable: summary.earnedAvailable,
+    earnedAvailable,
+    earnedBlastAvailable: earnedAvailable,
     earnedReserved: summary.earnedReserved,
     earnedTotal: summary.earnedTotal,
     totalAvailable: summary.totalAvailable,
     withdrawableBalance,
     coinsBalance: summary.coinsBalance,
     purchasedBlastBalance: summary.purchasedBlastBalance ?? summary.purchasedBalance,
-    earnedBlastBalance: summary.earnedBlastBalance ?? summary.earnedAvailable,
+    earnedBlastBalance: summary.earnedBlastBalance ?? earnedAvailable,
     earnedBlastReserved: summary.earnedBlastReserved ?? summary.earnedReserved,
     ...payout,
   };
@@ -71,45 +109,50 @@ function publicWalletSummary(summary) {
 
 function publicWithdrawalRecord(row) {
   if (!row || typeof row !== 'object') return row;
-  const earnedBlastAmount = Math.max(
-    0,
-    Math.floor(Number(row.earnedBlastAmount ?? row.coins) || 0),
-  );
-  const moneyAmountExact =
-    row.moneyAmountExact != null
-      ? String(row.moneyAmountExact)
-      : blastToMoneyExact(earnedBlastAmount);
+  const earnedBlastAmount = earnedBlastOf(row.earnedBlastAmount ?? row.coins);
+  const moneyAmountCOP = moneyAmountCopOf({ ...row, earnedBlastAmount });
   return {
     withdrawalId: row.withdrawalId || row.id || row.reference || null,
     userId: row.userId || null,
     earnedBlastAmount,
-    moneyAmountExact,
+    moneyAmountCOP,
+    moneyAmountExact: String(moneyAmountCOP),
     currency: row.currency || 'COP',
     status: row.status || 'REQUESTED',
     requestedAt: row.requestedAt || row.createdAt || null,
     processedAt: row.processedAt || null,
     paymentReference: row.paymentReference || row.reference || row.id || null,
+    walletRulesVersion: row.walletRulesVersion || WALLET_RULES_VERSION,
   };
 }
 
 function hasLeakedRate(payload) {
   if (!payload || typeof payload !== 'object') return false;
-  const keys = Object.keys(payload);
-  return keys.some((key) =>
-    /^(blastRate|creatorRate|internalRate|platformMargin|conversionFactor|coinToCop|COIN_TO_COP)$/i.test(
-      key,
-    ),
-  );
+  return Object.keys(payload).some((key) => RATE_LEAK_KEYS.has(key));
+}
+
+function stripLeakedRate(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const next = { ...payload };
+  for (const key of Object.keys(next)) {
+    if (RATE_LEAK_KEYS.has(key)) delete next[key];
+  }
+  return next;
 }
 
 module.exports = {
-  INTERNAL_CREATOR_RATE_EXACT,
-  blastToMoneyUnits,
+  CREATOR_BLAST_COP_RATE,
+  WALLET_RULES_VERSION,
+  INTERNAL_CREATOR_RATE_EXACT: String(CREATOR_BLAST_COP_RATE),
+  blastToMoneyCop,
+  blastToMoneyUnits: blastToMoneyCop,
   blastToMoneyExact,
+  moneyAmountCopOf,
   publicPayoutFields,
   quoteWithdrawal,
   publicWalletSummary,
   publicWithdrawalRecord,
   hasLeakedRate,
+  stripLeakedRate,
 };
 module.exports.default = module.exports;

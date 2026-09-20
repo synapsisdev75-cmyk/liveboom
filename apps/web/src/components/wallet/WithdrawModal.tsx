@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { formatMoneyExact, statusLabel } from '../../lib/moneyDisplay';
-import { fetchPayoutQuote, fetchWalletSummary } from '../../lib/walletApi';
+import { fetchPayoutQuote, fetchWalletSummary, quotedCop } from '../../lib/walletApi';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = {
@@ -17,8 +17,8 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const setBlastBalances = useAuthStore((state) => state.setBlastBalances);
   const syncProfile = useAuthStore((state) => state.syncProfile);
   const [earnedBlast, setEarnedBlast] = useState(0);
-  const [availableMoney, setAvailableMoney] = useState('0.0000');
-  const [minWithdrawAmount, setMinWithdrawAmount] = useState<string | null>(null);
+  const [availableMoney, setAvailableMoney] = useState<number | string>('0');
+  const [minWithdrawAmount, setMinWithdrawAmount] = useState<number | string | null>(null);
   const [currency, setCurrency] = useState('COP');
   const [loaded, setLoaded] = useState(false);
   const [step, setStep] = useState<Step>('form');
@@ -28,9 +28,14 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
     void fetchWalletSummary()
       .then((summary) => {
         if (cancelled) return;
-        setEarnedBlast(Math.max(0, Math.floor(Number(summary.earnedAvailable) || 0)));
-        setAvailableMoney(String(summary.withdrawableAmount || '0.0000'));
-        setMinWithdrawAmount(summary.minWithdrawAmount || null);
+        setEarnedBlast(
+          Math.max(
+            0,
+            Math.floor(Number(summary.earnedBlastAvailable ?? summary.earnedAvailable) || 0),
+          ),
+        );
+        setAvailableMoney(quotedCop(summary) ?? summary.withdrawableAmount ?? 0);
+        setMinWithdrawAmount(summary.minWithdrawAmount ?? null);
         setCurrency(summary.currency || 'COP');
         setBlastBalances({
           purchasedBlastBalance: summary.purchasedBalance,
@@ -53,7 +58,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   );
 
   const [coins, setCoinsInput] = useState(String(Math.max(0, suggested)));
-  const [quoteMoney, setQuoteMoney] = useState<string | null>(null);
+  const [quoteMoney, setQuoteMoney] = useState<number | string | null>(null);
   const [fullName, setFullName] = useState(profile?.displayName || '');
   const [documentId, setDocumentId] = useState('');
   const [payoutMethod, setPayoutMethod] = useState('Nequi');
@@ -61,7 +66,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const [accountType, setAccountType] = useState('ahorros');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [doneMoney, setDoneMoney] = useState<string | null>(null);
+  const [doneMoney, setDoneMoney] = useState<number | string | null>(null);
 
   useEffect(() => {
     if (!loaded) return;
@@ -80,7 +85,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
       void fetchPayoutQuote(coinsNum)
         .then((quote) => {
           if (cancelled) return;
-          setQuoteMoney(quote.moneyAmountExact);
+          setQuoteMoney(quotedCop(quote) ?? quote.moneyAmountExact ?? null);
           setNote(null);
         })
         .catch((error) => {
@@ -106,6 +111,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
         purchasedBlastBalance?: number;
         earnedBlastBalance?: number;
         withdrawableBalance?: number;
+        moneyAmountCOP?: number;
         moneyAmountExact?: string;
         currency?: string;
         message?: string;
@@ -129,7 +135,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
           coinsBalance: Number(result.coinsBalance) || 0,
         });
       }
-      setDoneMoney(result.moneyAmountExact || displayMoney);
+      setDoneMoney(quotedCop(result) ?? result.moneyAmountExact ?? displayMoney);
       setStep('done');
       await syncProfile();
     } catch (error) {
@@ -151,12 +157,16 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-[color:var(--lb-text,#fff)]">
-              {step === 'done' ? 'Retiro solicitado' : 'Retirar ganancias'}
+              {step === 'done'
+                ? 'Retiro solicitado'
+                : step === 'confirm'
+                  ? 'Confirmar retiro'
+                  : 'Retirar ganancias'}
             </h2>
             <p className="mt-1 text-sm text-zinc-400">
               {step === 'done'
                 ? 'Tu solicitud de retiro fue recibida correctamente.'
-                : 'Solo ganancias disponibles. Los BLAST comprados no se retiran.'}
+                : 'Solo BLAST ganados. Los BLAST comprados no se retiran.'}
             </p>
           </div>
           <button type="button" onClick={onClose} className="min-h-11 px-2 text-sm text-zinc-500 hover:text-white">
@@ -170,7 +180,10 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
               El dinero se desembolsará en tu cuenta en un plazo de 3 a 5 días hábiles.
             </p>
             <p className="text-sm font-semibold text-[color:var(--lb-text,#fff)]">
-              Monto solicitado {formatMoneyExact(doneMoney, currency)}
+              Monto solicitado
+            </p>
+            <p className="text-2xl font-black tabular-nums text-emerald-400">
+              {formatMoneyExact(doneMoney, currency)}
             </p>
             <p className="text-sm text-zinc-400">Estado {statusLabel('REQUESTED')}</p>
             <button
@@ -186,26 +199,35 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
           </div>
         ) : (
           <>
+            {step === 'form' ? (
+              <>
             <p className="mt-4 text-xs font-bold uppercase tracking-wide text-zinc-500">
-              Ganancias disponibles
+              BLAST ganados
             </p>
-            <p className="mt-1 text-sm text-zinc-300">
-              BLAST ganados {earnedBlast.toLocaleString('es-CO')}
+            <p className="mt-1 text-2xl font-black tabular-nums text-white">
+              {earnedBlast.toLocaleString('es-CO')}
             </p>
-            <p className="mt-2 text-2xl font-black tabular-nums text-emerald-400">
+            <p className="mt-4 text-xs font-bold uppercase tracking-wide text-zinc-500">
+              Dinero disponible para retirar
+            </p>
+            <p className="mt-1 text-2xl font-black tabular-nums text-emerald-400">
               {formatMoneyExact(availableMoney, currency)}
             </p>
-            <p className="mt-1 text-xs font-semibold text-emerald-300/90">Disponible para retirar</p>
             {minWithdrawAmount ? (
               <p className="mt-1 text-xs text-zinc-500">
                 Mínimo {formatMoneyExact(minWithdrawAmount, currency)}
               </p>
             ) : null}
+              </>
+            ) : null}
 
             {step === 'confirm' ? (
               <div className="mt-5 space-y-4">
-                <p className="text-lg font-bold text-[color:var(--lb-text,#fff)]">
-                  Monto a retirar {formatMoneyExact(displayMoney, currency)}
+                <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+                  Monto a retirar
+                </p>
+                <p className="text-2xl font-black tabular-nums text-emerald-400">
+                  {formatMoneyExact(displayMoney, currency)}
                 </p>
                 {note ? <p className="text-sm text-fuchsia-400">{note}</p> : null}
                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -220,7 +242,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
                     type="button"
                     disabled={busy || !loaded}
                     onClick={() => void submit()}
-                    className="min-h-11 rounded-full bg-emerald-500 px-6 text-sm font-bold text-zinc-950 disabled:opacity-50"
+                    className="min-h-11 rounded-full bg-emerald-500 px-6 text-sm font-bold uppercase tracking-wide text-zinc-950 disabled:opacity-50"
                   >
                     {busy ? 'Enviando…' : 'Confirmar retiro'}
                   </button>
@@ -307,7 +329,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
                     type="button"
                     disabled={busy || !loaded || coinsNum <= 0 || coinsNum > earnedBlast || !quoteMoney}
                     onClick={() => setStep('confirm')}
-                    className="min-h-11 rounded-full bg-emerald-500 px-6 text-sm font-bold text-zinc-950 disabled:opacity-50"
+                    className="min-h-11 rounded-full bg-emerald-500 px-6 text-sm font-bold uppercase tracking-wide text-zinc-950 disabled:opacity-50"
                   >
                     Retirar
                   </button>

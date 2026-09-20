@@ -366,7 +366,7 @@ export function WalletView() {
                 </div>
                 <div className="min-w-0 rounded-xl border border-emerald-400/25 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-300/90 sm:text-[11px]">
-                    Ganados
+                    BLAST ganados
                   </p>
                   <p className="mt-0.5 break-all text-sm font-bold tabular-nums text-emerald-200 sm:text-base">
                     {earned.toLocaleString('es-CO')} BLAST
@@ -385,7 +385,8 @@ export function WalletView() {
               </div>
               {withdrawableMoney ? (
                 <p className="mt-3 text-sm font-semibold text-emerald-300">
-                  Disponible para retirar {formatMoneyExact(withdrawableMoney, walletSummary?.currency || 'COP')}
+                  Dinero disponible para retirar{' '}
+                  {formatMoneyExact(withdrawableMoney, walletSummary?.currency || 'COP')}
                 </p>
               ) : null}
               {rechargeNote ? (
@@ -420,7 +421,7 @@ export function WalletView() {
                   onClick={() => setOpenWithdraw(true)}
                   className="inline-flex h-11 w-full items-center justify-center rounded-full border-[1.5px] border-[#10B981] bg-black/35 px-6 text-sm font-bold text-[#10B981] backdrop-blur-sm transition hover:bg-[#10B981]/10 sm:w-auto"
                 >
-                  Retirar a COP
+                  Retirar
                 </button>
               </div>
             </div>

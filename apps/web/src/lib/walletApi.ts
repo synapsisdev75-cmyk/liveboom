@@ -8,10 +8,11 @@ export type WalletSummary = {
   totalAvailable: number;
   withdrawableBalance: number;
   coinsBalance: number;
-  withdrawableAmount?: string;
+  withdrawableAmount?: number | string;
   currency?: string;
   minWithdrawBlast?: number;
-  minWithdrawAmount?: string;
+  minWithdrawAmount?: number | string;
+  earnedBlastAvailable?: number;
 };
 
 export type WalletLedgerRow = {
@@ -31,7 +32,9 @@ export type WalletLedgerRow = {
 export type PayoutQuote = {
   ok: boolean;
   earnedBlastAmount: number;
-  moneyAmountExact: string;
+  moneyAmountCOP?: number;
+  moneyAmountExact?: string;
+  withdrawableAmount?: number;
   currency: string;
 };
 
@@ -39,12 +42,14 @@ export type PublicWithdrawal = {
   withdrawalId: string | null;
   userId: string | null;
   earnedBlastAmount: number;
-  moneyAmountExact: string;
+  moneyAmountCOP?: number;
+  moneyAmountExact?: string;
   currency: string;
   status: string;
   requestedAt?: string | null;
   processedAt?: string | null;
   paymentReference?: string | null;
+  walletRulesVersion?: string;
 };
 
 export async function fetchWalletSummary() {
@@ -65,6 +70,24 @@ export async function fetchWalletTransactions(filter = 'all') {
 export async function fetchWalletWithdrawals() {
   const data = await api<{ withdrawals: PublicWithdrawal[] }>('/api/wallet/withdrawals');
   return data.withdrawals || [];
+}
+
+export function quotedCop(row: {
+  moneyAmountCOP?: number;
+  moneyAmountExact?: string;
+  withdrawableAmount?: number | string;
+} | null | undefined) {
+  if (!row) return null;
+  if (row.moneyAmountCOP != null && Number.isFinite(Number(row.moneyAmountCOP))) {
+    return Math.max(0, Math.floor(Number(row.moneyAmountCOP)));
+  }
+  if (row.withdrawableAmount != null && String(row.withdrawableAmount) !== '') {
+    return Math.max(0, Math.floor(Number(row.withdrawableAmount) || 0));
+  }
+  if (row.moneyAmountExact != null && String(row.moneyAmountExact) !== '') {
+    return Math.max(0, Math.floor(Number(String(row.moneyAmountExact).split('.')[0]) || 0));
+  }
+  return null;
 }
 
 export function ledgerLabel(row: WalletLedgerRow) {
