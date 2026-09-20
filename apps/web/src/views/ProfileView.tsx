@@ -12,7 +12,6 @@ import {
   LogOut,
   MoreHorizontal,
   Share2,
-  Palette,
   Shield,
   Trash2,
   User,
@@ -56,7 +55,6 @@ type SettingsTab =
   | 'notificaciones'
   | 'preferencias'
   | 'billetera'
-  | 'apariencia'
   | 'idioma';
 
 type EditField = 'displayName' | 'username' | null;
@@ -110,14 +108,13 @@ function formEqualsSnapshot(
   );
 }
 
-const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabAppearance' | 'settings.tabLanguage'; icon: typeof User }> = [
+const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabLanguage'; icon: typeof User }> = [
   { id: 'cuenta', labelKey: 'settings.tabAccount', icon: User },
   { id: 'privacidad', labelKey: 'settings.tabPrivacy', icon: Shield },
   { id: 'notificaciones', labelKey: 'settings.tabNotifications', icon: Bell },
   { id: 'preferencias', labelKey: 'settings.tabPreferences', icon: Eye },
   { id: 'idioma', labelKey: 'settings.tabLanguage', icon: Languages },
   { id: 'billetera', labelKey: 'settings.tabWallet', icon: Wallet },
-  { id: 'apariencia', labelKey: 'settings.tabAppearance', icon: Palette },
 ];
 
 function Card({
@@ -1074,40 +1071,6 @@ export function ProfileView() {
               {t('nav.withdraw')}
             </Link>
           </div>
-        </Card>
-      ) : null}
-
-      {tab === 'apariencia' ? (
-        <Card title={t('settings.tabAppearance')} subtitle={t('settings.appearanceSub')}>
-          <p className="text-sm text-zinc-400">
-            {t('settings.appearanceSub')}
-          </p>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {['dark', 'auto', 'light'].map((id, i) => (
-              <button
-                key={id}
-                type="button"
-                disabled={i !== 0}
-                className={`rounded-xl border px-3 py-4 text-xs font-bold ${
-                  i === 0
-                    ? 'border-violet-500/50 bg-violet-500/15 text-violet-200'
-                    : 'border-white/10 text-zinc-600'
-                }`}
-              >
-                {id === 'dark' ? t('appearance.dark') : id === 'light' ? t('appearance.light') : t('appearance.mode')}
-              </button>
-            ))}
-          </div>
-          {profile ? (
-            <button
-              type="button"
-              onClick={() => void logout()}
-              className="mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-fuchsia-400/40 bg-fuchsia-500/10 text-sm font-semibold text-fuchsia-200"
-            >
-              <LogOut size={16} />
-              {t('settings.logOut')}
-            </button>
-          ) : null}
         </Card>
       ) : null}
 

@@ -416,13 +416,6 @@ export function WalletView() {
               <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => openBuy()}
-                  className={`inline-flex h-11 w-full items-center justify-center rounded-full ${GRADIENT} px-6 text-sm font-bold text-white shadow-[0_6px_22px_rgba(236,72,153,0.3)] transition hover:brightness-110 sm:w-auto`}
-                >
-                  Recargar Blast
-                </button>
-                <button
-                  type="button"
                   onClick={() => setOpenWithdraw(true)}
                   className="inline-flex h-11 w-full items-center justify-center rounded-full border-[1.5px] border-[#10B981] bg-black/35 px-6 text-sm font-bold text-[#10B981] backdrop-blur-sm transition hover:bg-[#10B981]/10 sm:w-auto"
                 >
