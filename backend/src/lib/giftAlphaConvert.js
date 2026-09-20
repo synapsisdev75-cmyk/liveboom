@@ -1130,7 +1130,8 @@ async function restoreGiftAudioFromStorage({ ffmpegPath, bucket, db, gift, force
     !force &&
     (status === 'ok' ||
       status === 'bundled' ||
-      (status === 'skip' && ['no-original-audio', 'nothing-to-restore', 'original-silent'].includes(prevReason)))
+      (status === 'skip' &&
+        ['no-original-audio', 'nothing-to-restore', 'original-silent', 'invalid-webm'].includes(prevReason)))
   ) {
     return { giftId: gid, skipped: true, reason: status === 'skip' ? prevReason : status };
   }
@@ -1144,7 +1145,7 @@ async function restoreGiftAudioFromStorage({ ffmpegPath, bucket, db, gift, force
   const seen = new Set();
   for (const file of [...fromUrls, ...listed.webms]) {
     if (!file?.name || seen.has(file.name) || !/\.webm$/i.test(file.name)) continue;
-    if (!file.name.startsWith(`config/gifts/${gid}`)) continue;
+    if (!file.name.startsWith(`config/gifts/${gid}-`) && file.name !== `config/gifts/${gid}.webm`) continue;
     seen.add(file.name);
     webms.push(file);
   }
@@ -1201,30 +1202,35 @@ async function restoreGiftAudioFromStorage({ ffmpegPath, bucket, db, gift, force
     }
 
     for (const webmFile of webms) {
-      await webmFile.download({ destination: tmpWebm });
-      const webmProbe = await probeFile(tmpWebm);
-      if (probeHasAudio(webmProbe)) {
-        already.push(webmFile.name);
-        continue;
-      }
-      await muxAudioOntoWebm(ffmpegPath, tmpWebm, tmpAudio, tmpOut);
-      const [meta] = await webmFile.getMetadata();
-      const existingToken =
-        (meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens) || randomUUID();
-      await bucket.upload(tmpOut, {
-        destination: webmFile.name,
-        metadata: {
-          contentType: 'video/webm',
-          cacheControl: 'public, max-age=0, must-revalidate',
+      try {
+        await webmFile.download({ destination: tmpWebm });
+        const webmProbe = await probeFile(tmpWebm);
+        if (probeHasAudio(webmProbe)) {
+          already.push(webmFile.name);
+          continue;
+        }
+        await muxAudioOntoWebm(ffmpegPath, tmpWebm, tmpAudio, tmpOut);
+        const [meta] = await webmFile.getMetadata();
+        const existingToken =
+          (meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens) || randomUUID();
+        await bucket.upload(tmpOut, {
+          destination: webmFile.name,
           metadata: {
-            ...((meta && meta.metadata) || {}),
-            firebaseStorageDownloadTokens: existingToken,
-            audioRestored: '1',
+            contentType: 'video/webm',
+            cacheControl: 'public, max-age=0, must-revalidate',
+            metadata: {
+              ...((meta && meta.metadata) || {}),
+              firebaseStorageDownloadTokens: existingToken,
+              audioRestored: '1',
+            },
           },
-        },
-      });
-      restoredPaths.push(webmFile.name);
-      console.log('[gift-alpha] audio restored', gid, webmFile.name);
+        });
+        restoredPaths.push(webmFile.name);
+        console.log('[gift-alpha] audio restored', gid, webmFile.name);
+      } catch (fileError) {
+        const message = fileError instanceof Error ? fileError.message : String(fileError);
+        console.warn('[gift-alpha] audio restore skip file', gid, webmFile.name, message.slice(0, 180));
+      }
     }
 
     if (!restoredPaths.length && already.length) {
@@ -1291,7 +1297,6 @@ async function restoreSilentGiftAudio({ limit = 4, force = false } = {}) {
     if (!row || row.skipped) continue;
     results.push(row);
     if (row.restored) restoredCount += 1;
-    if (row.error) break;
   }
   return {
     restored: results.filter((row) => row.restored).map((row) => row.giftId),
