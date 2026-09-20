@@ -14,6 +14,7 @@ const {
   classifyAlphaSamples,
   LIMITS,
   OPAQUE_ALPHA_WARNING,
+  storagePathFromGiftUrl,
 } = require('./giftAlphaConvert');
 
 describe('conversión MOV ProRes 4444 → WebM', () => {
@@ -25,6 +26,21 @@ describe('conversión MOV ProRes 4444 → WebM', () => {
     assert.equal(safeGiftId('besito'), 'besito');
     assert.equal(safeGiftId('../flor'), null);
     assert.equal(safeGiftId(''), null);
+  });
+
+  it('extrae la ruta de Storage desde URLs públicas o gs://', () => {
+    assert.equal(
+      storagePathFromGiftUrl(
+        'https://firebasestorage.googleapis.com/v0/b/liveboom-app.firebasestorage.app/o/config%2Fgifts%2Fbotas_llaneras-video-1.webm?alt=media&token=abc',
+      ),
+      'config/gifts/botas_llaneras-video-1.webm',
+    );
+    assert.equal(
+      storagePathFromGiftUrl('gs://liveboom-app.firebasestorage.app/config/gifts/botas_llaneras-video-1.webm'),
+      'config/gifts/botas_llaneras-video-1.webm',
+    );
+    assert.equal(storagePathFromGiftUrl('/gifts/besito.webm'), null);
+    assert.equal(storagePathFromGiftUrl('config/gifts/botas_llaneras-video-1.webm'), 'config/gifts/botas_llaneras-video-1.webm');
   });
 
   it('detecta alfa por formato de píxel, no por el nombre 4444', () => {

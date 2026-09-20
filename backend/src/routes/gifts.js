@@ -311,6 +311,19 @@ router.post('/convert-alpha', requireAuth, requireSuperAdmin, async (req, res) =
   }
 });
 
+router.post('/restore-audio', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { restoreSilentGiftAudio } = require('../lib/giftAlphaConvert');
+    const result = await restoreSilentGiftAudio({ limit: 8, force: true });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('[gifts/restore-audio]', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo restaurar el audio de los regalos',
+    });
+  }
+});
+
 router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const giftId = req.body?.giftId;
   const roomName = lookupRoomName(

@@ -490,6 +490,68 @@ async function muxAudioOntoWebm(ffmpegPath, videoPath, audioSourcePath, destPath
       fs.rmSync(muxed, { force: true });
     }
   }
+  const extracted = `${destPath}.audio.opus`;
+  const muxed = `${destPath}.mux-try.webm`;
+  try {
+    await runTool(
+      ffmpegPath,
+      [
+        '-hide_banner',
+        '-nostdin',
+        '-y',
+        '-i',
+        audioSourcePath,
+        '-vn',
+        '-map',
+        '0:a:0',
+        '-c:a',
+        'libopus',
+        '-b:a',
+        '128k',
+        '-ac',
+        '2',
+        '-ar',
+        '48000',
+        extracted,
+      ],
+      { timeoutMs: 180_000 },
+    );
+    await runTool(
+      ffmpegPath,
+      [
+        '-hide_banner',
+        '-nostdin',
+        '-y',
+        '-i',
+        videoPath,
+        '-i',
+        extracted,
+        '-map',
+        '0:v:0',
+        '-map',
+        '1:a:0',
+        '-c:v',
+        'copy',
+        '-c:a',
+        'copy',
+        '-f',
+        'webm',
+        muxed,
+      ],
+      { timeoutMs: 180_000 },
+    );
+    const probe = await probeFile(muxed);
+    if (!probeHasAudio(probe)) {
+      throw new Error('El mux no dejó pista de audio.');
+    }
+    fs.renameSync(muxed, destPath);
+    return;
+  } catch (error) {
+    lastError = error;
+  } finally {
+    fs.rmSync(extracted, { force: true });
+    fs.rmSync(muxed, { force: true });
+  }
   throw Object.assign(
     new Error(lastError instanceof Error ? lastError.message : 'No se pudo conservar el audio.'),
     { code: 'AUDIO' },
@@ -971,85 +1033,189 @@ async function processGiftAlphaJob(jobId) {
 const RESTORE = 'gift_audio_restore';
 const CATALOG_PATH = 'config/giftsCatalog';
 
-function storagePathFromGiftUrl(url) {
-  const raw = String(url || '');
-  const match = raw.match(/\/o\/([^?]+)/);
-  if (!match) return null;
-  const decoded = decodeURIComponent(match[1]);
-  if (decoded.includes('..') || decoded.includes('\\')) return null;
-  if (!decoded.startsWith('config/gifts/') && !decoded.startsWith('admin/private/gifts/')) return null;
-  return decoded;
+function isGiftStoragePath(value) {
+  const decoded = String(value || '').split('?')[0];
+  if (decoded.includes('..') || decoded.includes('\\') || decoded.includes('\0')) return false;
+  return decoded.startsWith('config/gifts/') || decoded.startsWith('admin/private/gifts/');
 }
 
-async function findGiftOriginalMov(bucket, giftId) {
-  const prefixes = [`admin/private/gifts/${giftId}/`, `config/gifts/${giftId}-video-`];
-  for (const prefix of prefixes) {
-    const [files] = await bucket.getFiles({ prefix });
-    const movs = (files || [])
-      .filter((file) => file && /\.mov$/i.test(file.name))
-      .sort((a, b) => String(b.name).localeCompare(String(a.name)));
-    if (movs[0]) return movs[0];
+function storagePathFromGiftUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return null;
+  if (isGiftStoragePath(raw)) return raw.split('?')[0];
+  try {
+    const oMatch = raw.match(/\/o\/([^?&#]+)/);
+    if (oMatch) {
+      const decoded = decodeURIComponent(oMatch[1]);
+      if (isGiftStoragePath(decoded)) return decoded.split('?')[0];
+    }
+    const gs = raw.match(/^gs:\/\/[^/]+\/(.+)$/);
+    if (gs) {
+      const decoded = decodeURIComponent(gs[1].split('?')[0]);
+      if (isGiftStoragePath(decoded)) return decoded;
+    }
+    const hosted = raw.match(
+      /(?:liveboom-app(?:\.firebasestorage\.app|\.appspot\.com)|storage\.googleapis\.com\/liveboom-app(?:\.firebasestorage\.app|\.appspot\.com))\/(.+)$/i,
+    );
+    if (hosted) {
+      const decoded = decodeURIComponent(hosted[1].split('?')[0]);
+      if (isGiftStoragePath(decoded)) return decoded;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
 
-async function restoreOneSilentGiftAudio() {
-  if (!firestoreConfigured()) return { skipped: true };
-  const ffmpegPath = ffmpegBin();
-  if (!ffmpegPath) return { skipped: true, reason: 'no-ffmpeg' };
-  const db = getAdminDb();
-  const catalogSnap = await db.doc(CATALOG_PATH).get();
-  const gifts = Array.isArray(catalogSnap.data()?.gifts) ? catalogSnap.data().gifts : [];
-  const bucket = getAdminBucket();
+async function listGiftStorageFiles(bucket, giftId) {
+  const prefixes = [`admin/private/gifts/${giftId}/`, `config/gifts/${giftId}`];
+  const files = [];
+  for (const prefix of prefixes) {
+    const [batch] = await bucket.getFiles({ prefix });
+    files.push(...(batch || []));
+  }
+  const seen = new Set();
+  const unique = files.filter((file) => {
+    if (!file?.name || seen.has(file.name)) return false;
+    seen.add(file.name);
+    return true;
+  });
+  const newest = (a, b) => String(b.name).localeCompare(String(a.name));
+  return {
+    webms: unique.filter((file) => /\.webm$/i.test(file.name)).sort(newest),
+    audios: unique
+      .filter((file) => /\.(mov|mp4|m4a|aac|webm)$/i.test(file.name))
+      .sort(newest),
+  };
+}
 
-  for (const gift of gifts) {
-    const gid = safeGiftId(gift?.id);
-    if (!gid) continue;
-    const markerRef = db.collection(RESTORE).doc(gid);
-    const prev = await markerRef.get();
-    const prevData = prev.exists ? prev.data() || {} : {};
-    const status = String(prevData.status || '');
-    const attempts = Number(prevData.attempts || 0);
-    if (status === 'ok' || status === 'skip' || attempts >= 3) continue;
+function catalogMediaUrls(gift) {
+  return [gift?.video, gift?.media?.processedAsset, gift?.media?.originalAsset].filter(Boolean);
+}
 
-    const videoUrl = gift.video || gift.media?.processedAsset || gift.media?.originalAsset || '';
-    const webmPath = storagePathFromGiftUrl(videoUrl);
-    if (!webmPath || !/\.webm$/i.test(webmPath)) {
-      await markerRef.set({ status: 'skip', reason: 'no-webm', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
-      continue;
+async function patchCatalogGiftAudio(db, giftId, { videoUrl, replaceVideo = false }) {
+  const ref = db.doc(CATALOG_PATH);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const gifts = Array.isArray(snap.data()?.gifts) ? snap.data().gifts : [];
+    let changed = false;
+    const next = gifts.map((gift) => {
+      if (String(gift?.id || '') !== giftId) return gift;
+      changed = true;
+      const media = gift.media && typeof gift.media === 'object' ? { ...gift.media } : {};
+      media.hasAudio = true;
+      const canReplace =
+        Boolean(replaceVideo && videoUrl) && (!gift.video || Boolean(storagePathFromGiftUrl(gift.video)));
+      if (canReplace) media.originalAsset = media.originalAsset || videoUrl;
+      return {
+        ...gift,
+        video: canReplace ? videoUrl : gift.video,
+        media,
+      };
+    });
+    if (!changed) return;
+    tx.set(ref, { gifts: next, audioRestoredAtMs: Date.now() }, { merge: true });
+  });
+}
+
+async function restoreGiftAudioFromStorage({ ffmpegPath, bucket, db, gift, force }) {
+  const gid = safeGiftId(gift?.id);
+  if (!gid) return { giftId: null, skipped: true };
+  const markerRef = db.collection(RESTORE).doc(gid);
+  const prev = await markerRef.get();
+  const prevData = prev.exists ? prev.data() || {} : {};
+  const status = String(prevData.status || '');
+  const prevReason = String(prevData.reason || '');
+  if (
+    !force &&
+    (status === 'ok' ||
+      status === 'bundled' ||
+      (status === 'skip' && ['no-original-audio', 'nothing-to-restore', 'original-silent'].includes(prevReason)))
+  ) {
+    return { giftId: gid, skipped: true, reason: status === 'skip' ? prevReason : status };
+  }
+
+  const listed = await listGiftStorageFiles(bucket, gid);
+  const fromUrls = catalogMediaUrls(gift)
+    .map((url) => storagePathFromGiftUrl(url))
+    .filter((value) => value && /\.webm$/i.test(value))
+    .map((name) => bucket.file(name));
+  const webms = [];
+  const seen = new Set();
+  for (const file of [...fromUrls, ...listed.webms]) {
+    if (!file?.name || seen.has(file.name) || !/\.webm$/i.test(file.name)) continue;
+    if (!file.name.startsWith(`config/gifts/${gid}`)) continue;
+    seen.add(file.name);
+    webms.push(file);
+  }
+
+  if (!webms.length) {
+    await markerRef.set(
+      {
+        status: 'bundled',
+        reason: 'no-uploaded-webm',
+        attempts: Number(prevData.attempts || 0) + 1,
+        updatedAtMs: Date.now(),
+      },
+      { merge: true },
+    );
+    return { giftId: gid, skipped: true, reason: 'no-uploaded-webm' };
+  }
+
+  const audioCandidates = [
+    ...listed.audios.filter((file) => /\.mov$/i.test(file.name)),
+    ...listed.audios.filter((file) => file.name !== webms[0]?.name),
+  ];
+
+  const tmpId = randomUUID();
+  const tmpWebm = path.join(os.tmpdir(), `gift-audio-${tmpId}.webm`);
+  const tmpAudio = path.join(os.tmpdir(), `gift-audio-${tmpId}.src`);
+  const tmpOut = path.join(os.tmpdir(), `gift-audio-${tmpId}.out.webm`);
+  let restoredPaths = [];
+  let already = [];
+  try {
+    let audioFile = null;
+    for (const candidate of audioCandidates) {
+      try {
+        await candidate.download({ destination: tmpAudio });
+        const probe = await probeFile(tmpAudio);
+        if (probeHasAudio(probe)) {
+          audioFile = candidate;
+          break;
+        }
+      } catch {
+        /* siguiente fuente */
+      }
+    }
+    if (!audioFile) {
+      await markerRef.set(
+        {
+          status: 'skip',
+          reason: 'no-original-audio',
+          attempts: Number(prevData.attempts || 0) + 1,
+          updatedAtMs: Date.now(),
+        },
+        { merge: true },
+      );
+      return { giftId: gid, skipped: true, reason: 'no-original-audio' };
     }
 
-    const tmpId = randomUUID();
-    const tmpWebm = path.join(os.tmpdir(), `gift-audio-${tmpId}.webm`);
-    const tmpMov = path.join(os.tmpdir(), `gift-audio-${tmpId}.mov`);
-    const tmpOut = path.join(os.tmpdir(), `gift-audio-${tmpId}.out.webm`);
-    try {
-      await bucket.file(webmPath).download({ destination: tmpWebm });
+    for (const webmFile of webms) {
+      await webmFile.download({ destination: tmpWebm });
       const webmProbe = await probeFile(tmpWebm);
       if (probeHasAudio(webmProbe)) {
-        await markerRef.set({ status: 'ok', reason: 'already-has-audio', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
+        already.push(webmFile.name);
         continue;
       }
-      const movFile = await findGiftOriginalMov(bucket, gid);
-      if (!movFile) {
-        await markerRef.set({ status: 'skip', reason: 'no-original-mov', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
-        continue;
-      }
-      await movFile.download({ destination: tmpMov });
-      const movProbe = await probeFile(tmpMov);
-      if (!probeHasAudio(movProbe)) {
-        await markerRef.set({ status: 'skip', reason: 'original-silent', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
-        continue;
-      }
-      await muxAudioOntoWebm(ffmpegPath, tmpWebm, tmpMov, tmpOut);
-      const [meta] = await bucket.file(webmPath).getMetadata();
+      await muxAudioOntoWebm(ffmpegPath, tmpWebm, tmpAudio, tmpOut);
+      const [meta] = await webmFile.getMetadata();
       const existingToken =
         (meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens) || randomUUID();
       await bucket.upload(tmpOut, {
-        destination: webmPath,
+        destination: webmFile.name,
         metadata: {
           contentType: 'video/webm',
-          cacheControl: 'public,max-age=3600',
+          cacheControl: 'public, max-age=0, must-revalidate',
           metadata: {
             ...((meta && meta.metadata) || {}),
             firebaseStorageDownloadTokens: existingToken,
@@ -1057,27 +1223,85 @@ async function restoreOneSilentGiftAudio() {
           },
         },
       });
-      await markerRef.set(
-        { status: 'ok', reason: 'restored', path: webmPath, attempts: attempts + 1, updatedAtMs: Date.now() },
-        { merge: true },
-      );
-      console.log('[gift-alpha] audio restored', gid, webmPath);
-      return { restored: gid, path: webmPath };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn('[gift-alpha] audio restore', gid, message);
-      await markerRef.set(
-        { status: 'retry', reason: message.slice(0, 300), attempts: attempts + 1, updatedAtMs: Date.now() },
-        { merge: true },
-      );
-      return { restored: false, giftId: gid, error: message };
-    } finally {
-      fs.rmSync(tmpWebm, { force: true });
-      fs.rmSync(tmpMov, { force: true });
-      fs.rmSync(tmpOut, { force: true });
+      restoredPaths.push(webmFile.name);
+      console.log('[gift-alpha] audio restored', gid, webmFile.name);
     }
+
+    if (!restoredPaths.length && already.length) {
+      await patchCatalogGiftAudio(db, gid, { videoUrl: null, replaceVideo: false });
+      await markerRef.set(
+        { status: 'ok', reason: 'already-has-audio', path: already[0], attempts: Number(prevData.attempts || 0) + 1, updatedAtMs: Date.now() },
+        { merge: true },
+      );
+      return { giftId: gid, skipped: true, reason: 'already-has-audio' };
+    }
+    if (!restoredPaths.length) {
+      await markerRef.set(
+        { status: 'skip', reason: 'nothing-to-restore', attempts: Number(prevData.attempts || 0) + 1, updatedAtMs: Date.now() },
+        { merge: true },
+      );
+      return { giftId: gid, skipped: true, reason: 'nothing-to-restore' };
+    }
+
+    const [meta] = await bucket.file(restoredPaths[0]).getMetadata();
+    const token =
+      (meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens) || randomUUID();
+    const videoUrl = downloadUrlFor(bucket.name, restoredPaths[0], token);
+    await patchCatalogGiftAudio(db, gid, { videoUrl, replaceVideo: true });
+    await markerRef.set(
+      {
+        status: 'ok',
+        reason: 'restored',
+        path: restoredPaths.join(','),
+        attempts: Number(prevData.attempts || 0) + 1,
+        updatedAtMs: Date.now(),
+      },
+      { merge: true },
+    );
+    return { giftId: gid, restored: true, paths: restoredPaths };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[gift-alpha] audio restore', gid, message);
+    await markerRef.set(
+      { status: 'retry', reason: message.slice(0, 300), attempts: Number(prevData.attempts || 0) + 1, updatedAtMs: Date.now() },
+      { merge: true },
+    );
+    return { giftId: gid, restored: false, error: message };
+  } finally {
+    fs.rmSync(tmpWebm, { force: true });
+    fs.rmSync(tmpAudio, { force: true });
+    fs.rmSync(tmpOut, { force: true });
   }
-  return { restored: 0, done: true };
+}
+
+async function restoreSilentGiftAudio({ limit = 4, force = false } = {}) {
+  if (!firestoreConfigured()) return { skipped: true };
+  const ffmpegPath = ffmpegBin();
+  if (!ffmpegPath) return { skipped: true, reason: 'no-ffmpeg' };
+  const db = getAdminDb();
+  const catalogSnap = await db.doc(CATALOG_PATH).get();
+  const gifts = Array.isArray(catalogSnap.data()?.gifts) ? catalogSnap.data().gifts : [];
+  const bucket = getAdminBucket();
+  const results = [];
+  const deadline = Date.now() + 420_000;
+  let restoredCount = 0;
+  for (const gift of gifts) {
+    if (Date.now() > deadline || restoredCount >= limit) break;
+    const row = await restoreGiftAudioFromStorage({ ffmpegPath, bucket, db, gift, force });
+    if (!row || row.skipped) continue;
+    results.push(row);
+    if (row.restored) restoredCount += 1;
+    if (row.error) break;
+  }
+  return {
+    restored: results.filter((row) => row.restored).map((row) => row.giftId),
+    errors: results.filter((row) => row.error),
+    done: restoredCount < limit,
+  };
+}
+
+async function restoreOneSilentGiftAudio() {
+  return restoreSilentGiftAudio({ limit: 4, force: false });
 }
 
 async function processGiftAlphaQueue() {
@@ -1091,22 +1315,28 @@ async function processGiftAlphaQueue() {
     ...queued.docs.map((d) => d.id),
     ...stale.map((d) => d.id),
   ];
-  if (!ids.length) {
+  let convert = null;
+  if (ids.length) {
+    const jobId = ids[0];
     try {
-      const restored = await restoreOneSilentGiftAudio();
-      return { ok: true, processed: 0, ...restored };
+      await processGiftAlphaJob(jobId);
+      convert = { processed: 1, jobId };
     } catch (error) {
-      console.warn('[gift-alpha] audio restore queue', error.message);
-      return { ok: true, processed: 0, restoreError: error.message };
+      console.error('[gift-alpha] queue', jobId, error.message);
+      convert = { processed: 1, jobId, error: error.message };
     }
   }
-  const jobId = ids[0];
   try {
-    await processGiftAlphaJob(jobId);
-    return { ok: true, processed: 1, jobId };
+    const restored = await restoreSilentGiftAudio({ limit: ids.length ? 2 : 4, force: false });
+    return { ok: !convert?.error, processed: convert?.processed || 0, jobId: convert?.jobId || null, ...restored };
   } catch (error) {
-    console.error('[gift-alpha] queue', jobId, error.message);
-    return { ok: false, processed: 1, jobId, error: error.message };
+    console.warn('[gift-alpha] audio restore queue', error.message);
+    return {
+      ok: !convert?.error,
+      processed: convert?.processed || 0,
+      jobId: convert?.jobId || null,
+      restoreError: error.message,
+    };
   }
 }
 
@@ -1168,5 +1398,7 @@ module.exports = {
   readJob,
   convertGiftAlphaMov,
   kickGiftAlphaJob,
+  storagePathFromGiftUrl,
+  restoreSilentGiftAudio,
 };
 module.exports.default = module.exports;
