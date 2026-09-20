@@ -2956,7 +2956,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         : null}
       {giftFloats.length > 0 && typeof document !== 'undefined'
         ? createPortal(
-            <div className="pointer-events-none fixed inset-0 z-[112] overflow-hidden">
+            <div className="pointer-events-none fixed inset-0 z-[116] overflow-visible">
               {giftFloats.map((item) => (
                 <FloatingGift
                   key={item.id}
@@ -2964,6 +2964,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                   senderName={item.senderName}
                   left={item.left}
                   lite
+                  fillViewport
                   onComplete={() =>
                     setGiftFloats((current) => current.filter((row) => row.id !== item.id))
                   }

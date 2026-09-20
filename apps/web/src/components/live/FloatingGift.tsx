@@ -127,6 +127,7 @@ function GiftVideoBurst({
   senderName,
   combo,
   animScale = 0.72,
+  fillViewport = false,
   onComplete,
 }: {
   src: string;
@@ -134,12 +135,16 @@ function GiftVideoBurst({
   senderName?: string;
   combo?: number;
   animScale?: number;
+  fillViewport?: boolean;
   onComplete?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const doneRef = useRef(false);
   const [ready, setReady] = useState(false);
   const scale = clampGiftAnimScale(animScale);
+  const mediaStyle = fillViewport
+    ? { background: 'transparent' as const }
+    : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
 
   const finish = () => {
     if (doneRef.current) return;
@@ -219,16 +224,20 @@ function GiftVideoBurst({
         <img
           src={poster}
           alt=""
-          className="absolute inset-0 m-auto bg-transparent object-contain opacity-80"
-          style={{ width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' }}
+          className={`absolute inset-0 m-auto bg-transparent object-contain opacity-80 ${
+            fillViewport ? 'lb-gift-burst-video--fill' : ''
+          }`}
+          style={mediaStyle}
           draggable={false}
         />
       ) : null}
       <video
         ref={videoRef}
         src={src}
-        className="lb-gift-burst-video bg-transparent object-contain"
-        style={{ width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' }}
+        className={`lb-gift-burst-video bg-transparent object-contain ${
+          fillViewport ? 'lb-gift-burst-video--fill' : ''
+        }`}
+        style={mediaStyle}
         playsInline
         muted
         autoPlay
@@ -259,9 +268,11 @@ type FloatingGiftProps = {
   /** Menos partículas/FX para espectadores bajo carga. */
   lite?: boolean;
   combo?: number;
+  /** Mensajes / feed: llena el viewport como en el celular. LIVE sigue usando animScale. */
+  fillViewport?: boolean;
 };
 
-export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo }: FloatingGiftProps) {
+export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo, fillViewport = false }: FloatingGiftProps) {
   const gift = findLiveGift(giftId);
   const level = (gift?.level || 1) as GiftLevel;
   const fx = GIFT_LEVEL_FX[level];
@@ -303,6 +314,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}
+          fillViewport={fillViewport}
           onComplete={onComplete}
         />
       </AnimatePresence>
