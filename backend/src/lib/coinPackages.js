@@ -1,5 +1,4 @@
-/** Mínimo de BLAST ganados para solicitar retiro. La tasa COP vive en payoutConversion. */
-const MIN_WITHDRAW_COINS = 50;
+/** Precios de paquetes BLAST (compra). El mínimo de retiro vive en payoutConversion. */
 const MAX_PACK_COINS = 25_000;
 
 /** Precio final cliente (COP) para paquetes con precio fijo. */
@@ -113,7 +112,6 @@ function blastForPackage(packageId, coins) {
 
 module.exports = {
   COIN_PACKAGES: DEFAULT_COIN_PACKAGES,
-  MIN_WITHDRAW_COINS,
   MAX_PACK_COINS,
   resolveCoinPackage,
   blastForPackage,

@@ -1,4 +1,4 @@
-const { resolveCoinPackage, MIN_WITHDRAW_COINS } = require('../lib/coinPackages');
+const { resolveCoinPackage } = require('../lib/coinPackages');
 const {
   assertIntegrityPair,
   cleanWompiSecret,
@@ -541,11 +541,11 @@ async function withdrawCoins(req, res) {
     const accountNumber = String(req.body?.accountNumber || '').trim().slice(0, 40);
     const accountType = String(req.body?.accountType || 'ahorros').trim().slice(0, 20);
 
+    const { quoteWithdrawal, blastToMoneyExact, publicWalletSummary, stripLeakedRate, MIN_WITHDRAW_COINS, MIN_WITHDRAW_COP } = require('../lib/payoutConversion');
     if (!Number.isFinite(coins) || coins < MIN_WITHDRAW_COINS) {
-      const { blastToMoneyExact } = require('../lib/payoutConversion');
       res.status(400).json({
         error: 'El monto a retirar no alcanza el mínimo autorizado.',
-        minWithdrawAmount: blastToMoneyExact(MIN_WITHDRAW_COINS),
+        minWithdrawAmount: MIN_WITHDRAW_COP,
         currency: 'COP',
       });
       return;
@@ -567,12 +567,20 @@ async function withdrawCoins(req, res) {
       return;
     }
 
-    const { quoteWithdrawal, blastToMoneyExact, publicWalletSummary, stripLeakedRate } = require('../lib/payoutConversion');
     const wallet = require('../lib/walletService');
     const summary = await wallet.getSummary(uid);
     const quote = quoteWithdrawal(coins, summary.earnedAvailable);
     if (!quote.ok) {
       const code = quote.code;
+      if (code === 'BELOW_MINIMUM') {
+        res.status(400).json({
+          error: 'El monto a retirar no alcanza el mínimo autorizado.',
+          code,
+          minWithdrawAmount: quote.minWithdrawAmount ?? MIN_WITHDRAW_COP,
+          currency: 'COP',
+        });
+        return;
+      }
       if (code === 'PURCHASED_NOT_WITHDRAWABLE') {
         res.status(400).json({
           error: 'Solo puedes retirar BLAST ganados. Los BLAST comprados no se retiran.',
@@ -589,14 +597,6 @@ async function withdrawCoins(req, res) {
         code,
         withdrawableBalance: summary.withdrawableBalance,
         withdrawableAmount: blastToMoneyExact(summary.withdrawableBalance),
-        currency: 'COP',
-      });
-      return;
-    }
-    if (coins < MIN_WITHDRAW_COINS) {
-      res.status(400).json({
-        error: 'El monto a retirar no alcanza el mínimo autorizado.',
-        minWithdrawAmount: blastToMoneyExact(MIN_WITHDRAW_COINS),
         currency: 'COP',
       });
       return;

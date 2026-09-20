@@ -39,7 +39,9 @@ router.get('/payout-quote', requireAuth, async (req, res) => {
         error:
           quote.code === 'PURCHASED_NOT_WITHDRAWABLE'
             ? 'Solo puedes retirar BLAST ganados.'
-            : 'Monto inválido',
+            : quote.code === 'BELOW_MINIMUM'
+              ? 'El monto a retirar no alcanza el mínimo autorizado.'
+              : 'Monto inválido',
         ...quote,
       });
       return;

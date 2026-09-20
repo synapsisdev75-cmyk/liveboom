@@ -3,10 +3,11 @@
  * Única fuente de verdad de la tasa. Nunca se envía al cliente.
  */
 
-const { MIN_WITHDRAW_COINS } = require('./coinPackages');
-
 /** 1 BLAST ganado disponible = 15 COP. No aplicar a BLAST comprados. */
 const CREATOR_BLAST_COP_RATE = 15;
+/** Mínimo de retiro en COP. El creador solo ve este monto, no la tasa. */
+const MIN_WITHDRAW_COP = 315_000;
+const MIN_WITHDRAW_COINS = Math.ceil(MIN_WITHDRAW_COP / CREATOR_BLAST_COP_RATE);
 const WALLET_RULES_VERSION = 'creator-blast-15-cop-v1';
 
 const RATE_LEAK_KEYS = new Set([
@@ -55,7 +56,7 @@ function publicPayoutFields(withdrawableBlast) {
     withdrawableAmount: blastToMoneyCop(blast),
     currency: 'COP',
     minWithdrawBlast: MIN_WITHDRAW_COINS,
-    minWithdrawAmount: blastToMoneyCop(MIN_WITHDRAW_COINS),
+    minWithdrawAmount: MIN_WITHDRAW_COP,
   };
 }
 
@@ -64,6 +65,14 @@ function quoteWithdrawal(blastAmount, availableBlast) {
   const available = earnedBlastOf(availableBlast);
   if (requested <= 0) {
     return { ok: false, code: 'INVALID_AMOUNT' };
+  }
+  if (requested < MIN_WITHDRAW_COINS) {
+    return {
+      ok: false,
+      code: 'BELOW_MINIMUM',
+      minWithdrawAmount: MIN_WITHDRAW_COP,
+      currency: 'COP',
+    };
   }
   if (requested > available) {
     return {
@@ -147,6 +156,8 @@ function stripLeakedRate(payload) {
 
 module.exports = {
   CREATOR_BLAST_COP_RATE,
+  MIN_WITHDRAW_COP,
+  MIN_WITHDRAW_COINS,
   WALLET_RULES_VERSION,
   INTERNAL_CREATOR_RATE_EXACT: String(CREATOR_BLAST_COP_RATE),
   blastToMoneyCop,

@@ -54,12 +54,26 @@ describe('payoutConversion', () => {
   });
 
   it('quote no incluye tasa interna', () => {
-    const q = quoteWithdrawal(200, 500);
+    const q = quoteWithdrawal(21000, 25000);
     assert.equal(q.ok, true);
-    assert.equal(q.earnedBlastAmount, 200);
-    assert.equal(q.moneyAmountCOP, 3000);
+    assert.equal(q.earnedBlastAmount, 21000);
+    assert.equal(q.moneyAmountCOP, 315000);
     assert.equal(q.currency, 'COP');
     assert.equal(hasLeakedRate(q), false);
+  });
+
+  it('mínimo de retiro es 315000 COP', () => {
+    const { MIN_WITHDRAW_COP, MIN_WITHDRAW_COINS } = require('./payoutConversion');
+    assert.equal(MIN_WITHDRAW_COP, 315000);
+    assert.equal(blastToMoneyCop(MIN_WITHDRAW_COINS), 315000);
+    const below = quoteWithdrawal(20999, 50000);
+    assert.equal(below.ok, false);
+    assert.equal(below.code, 'BELOW_MINIMUM');
+    assert.equal(below.minWithdrawAmount, 315000);
+    const pub = publicWalletSummary(
+      toSummary(normalizeBlastBalances({ earnedBlastBalance: 25840 })),
+    );
+    assert.equal(pub.minWithdrawAmount, 315000);
   });
 
   it('historial congela moneyAmountCOP y oculta rate', () => {
