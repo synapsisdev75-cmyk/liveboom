@@ -163,6 +163,15 @@ function pixFmtHasAlpha(pixFmt) {
   );
 }
 
+/** VP9+alfa en WebM: ffprobe suele reportar yuv420p y guardar el canal en ALPHA_MODE. */
+function streamHasAlpha(stream) {
+  if (!stream || typeof stream !== 'object') return false;
+  if (pixFmtHasAlpha(stream.pix_fmt)) return true;
+  const tags = stream.tags && typeof stream.tags === 'object' ? stream.tags : {};
+  const mode = String(tags.ALPHA_MODE || tags.alpha_mode || '').trim().toLowerCase();
+  return mode === '1' || mode === 'true' || mode === 'yes';
+}
+
 function classifyProRes(stream) {
   const codec = String(stream?.codec_name || '').toLowerCase();
   if (codec !== 'prores') {
@@ -193,7 +202,7 @@ function inspectProbe(probe) {
   const width = Number(video?.width || 0);
   const height = Number(video?.height || 0);
   const pixFmt = String(video?.pix_fmt || '');
-  const hasAlphaChannel = pixFmtHasAlpha(pixFmt);
+  const hasAlphaChannel = streamHasAlpha(video);
   const prores = classifyProRes(video);
   const nbFrames = Number(video?.nb_frames || 0);
 
@@ -462,9 +471,9 @@ async function convertWithProgress({
     '2',
     '-tile-columns',
     '1',
-    '-vf',
-    vfParts.join(','),
   );
+  if (hasAlpha) args.push('-metadata:s:v:0', 'alpha_mode=1');
+  args.push('-vf', vfParts.join(','));
   if (keepAudio && inspect.hasAudio) {
     args.push('-c:a', 'libopus', '-b:a', '96k');
   } else {
@@ -507,7 +516,12 @@ async function verifyWebm({ ffmpegPath, tmpOut, inspect, expectAlpha }) {
     throw Object.assign(new Error(`El WebM no usa VP9 (códec ${codec || 'vacío'}).`), { code: 'VERIFY' });
   }
   const pixFmt = String(video.pix_fmt || '');
-  if (expectAlpha && !pixFmtHasAlpha(pixFmt)) {
+  let hasAlphaOut = streamHasAlpha(video);
+  if (expectAlpha && !hasAlphaOut) {
+    const sampled = await sampleAlpha(ffmpegPath, tmpOut, ['-c:v', 'libvpx-vp9']);
+    if (sampled.usable) hasAlphaOut = true;
+  }
+  if (expectAlpha && !hasAlphaOut) {
     throw Object.assign(new Error('La conversión no conservó el canal alfa.'), { code: 'VERIFY' });
   }
   const srcDur = inspect.durationSec || 0;
@@ -914,6 +928,7 @@ module.exports = {
   safeGiftId,
   safeGiftSourcePath,
   pixFmtHasAlpha,
+  streamHasAlpha,
   classifyProRes,
   inspectProbe,
   parseFfmpegProgress,

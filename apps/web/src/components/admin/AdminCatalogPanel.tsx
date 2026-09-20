@@ -21,10 +21,13 @@ import {
 import {
   forgetGiftAlphaJob,
   formatGiftAnimBytes,
+  giftAlphaStageLabel,
   giftAnimLimitsHint,
   isGiftAnimationFile,
   needsAlphaMovConvert,
+  rememberedGiftAlphaJobId,
   resumeGiftAlphaJob,
+  retryGiftAlphaJob,
   uploadGiftAnimation,
   type GiftAnimProgress,
 } from '../../lib/giftAlphaConvert';
@@ -57,6 +60,7 @@ function AssetDropZone({
   busyLabel,
   progress,
   onFile,
+  onRetry,
 }: {
   label: string;
   accept: string;
@@ -67,6 +71,7 @@ function AssetDropZone({
   busyLabel?: string;
   progress?: GiftAnimProgress | null;
   onFile: (file: File) => void;
+  onRetry?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -166,6 +171,19 @@ function AssetDropZone({
         ) : null}
         {progress?.error ? (
           <span className="text-[11px] text-rose-300">{progress.error}</span>
+        ) : null}
+        {progress?.stage === 'failed' && onRetry ? (
+          <button
+            type="button"
+            className="min-h-10 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-100 ring-1 ring-cyan-400/30"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRetry();
+            }}
+          >
+            Reintentar conversión
+          </button>
         ) : null}
         <span className="text-[11px] text-zinc-500">{hint}</span>
       </div>
@@ -520,6 +538,93 @@ export function AdminCatalogPanel() {
     }
   }
 
+  async function onRetryGiftAnim(targetGiftId: string) {
+    const jobId = rememberedGiftAlphaJobId(targetGiftId);
+    if (!jobId) {
+      setMessage('Vuelve a soltar el MOV para convertir.');
+      return;
+    }
+    const row = gifts.find((g) => g.id === targetGiftId);
+    const gen = (animGenRef.current[targetGiftId] || 0) + 1;
+    animGenRef.current[targetGiftId] = gen;
+    setMessage(null);
+    setAnimProgress((prev) => ({
+      ...prev,
+      [targetGiftId]: {
+        stage: 'queued',
+        label: 'En cola…',
+        percent: null,
+        indeterminate: true,
+        fileName: prev[targetGiftId]?.fileName,
+        fileBytes: prev[targetGiftId]?.fileBytes,
+        error: null,
+      },
+    }));
+    try {
+      const job = await retryGiftAlphaJob(jobId, (next) => {
+        setAnimProgress((prev) => ({
+          ...prev,
+          [targetGiftId]: {
+            stage: (next.stage || 'queued') as GiftAnimProgress['stage'],
+            label: giftAlphaStageLabel(next.stage || 'queued', next.progressPercent),
+            percent: next.progressPercent,
+            indeterminate: Boolean(next.indeterminate) || next.progressPercent == null,
+            warning: next.warning,
+            error: next.error,
+            fileName: next.fileName || prev[targetGiftId]?.fileName,
+            fileBytes: next.sourceBytes || prev[targetGiftId]?.fileBytes,
+          },
+        }));
+      });
+      if (animGenRef.current[targetGiftId] !== gen) return;
+      if (!job.url) throw new Error('La conversión no devolvió un video');
+      patchGift(targetGiftId, {
+        video: job.url,
+        media: {
+          ...(row?.media || defaultGiftMedia()),
+          originalAsset: job.url,
+          processedAsset: null,
+          backgroundRemoved: false,
+          processingStatus: 'ready',
+          hasAudio: true,
+        },
+      });
+      forgetGiftAlphaJob(targetGiftId);
+      setAnimProgress((prev) => ({
+        ...prev,
+        [targetGiftId]: {
+          stage: 'done',
+          label: 'Animación lista.',
+          percent: 100,
+          indeterminate: false,
+          fileName: job.fileName || prev[targetGiftId]?.fileName,
+          fileBytes: job.sourceBytes || prev[targetGiftId]?.fileBytes,
+        },
+      }));
+      setMessage(
+        job.warning ? `${job.warning} Publica para aplicar.` : 'MOV convertido a WebM. Publica para aplicar.',
+      );
+    } catch (err) {
+      if (animGenRef.current[targetGiftId] !== gen) return;
+      const error = err instanceof Error ? err.message : 'No se pudo reintentar la conversión';
+      setAnimProgress((prev) => ({
+        ...prev,
+        [targetGiftId]: {
+          ...(prev[targetGiftId] || {
+            stage: 'failed',
+            label: 'Error al convertir',
+            percent: null,
+            indeterminate: false,
+          }),
+          stage: 'failed',
+          label: 'Error al convertir',
+          error,
+        },
+      }));
+      setMessage(error);
+    }
+  }
+
   async function removeBackground(mode: 'auto' | 'adjust', similarity?: number, blend?: number) {
     if (!gift?.video) {
       setMessage('Sube un video para quitar el fondo.');
@@ -844,6 +949,7 @@ export function AdminCatalogPanel() {
                   progress={animProgress[gift.id] || null}
                   disabled={bgBusy}
                   onFile={(file) => void onUploadGiftAsset('video', file)}
+                  onRetry={() => void onRetryGiftAnim(gift.id)}
                 />
                 <label className="block space-y-1 text-xs text-zinc-400">
                   URL animación (opcional)

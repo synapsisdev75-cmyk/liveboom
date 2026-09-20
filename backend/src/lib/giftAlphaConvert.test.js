@@ -4,6 +4,7 @@ const {
   safeGiftId,
   safeGiftSourcePath,
   pixFmtHasAlpha,
+  streamHasAlpha,
   classifyProRes,
   inspectProbe,
   parseFfmpegProgress,
@@ -24,11 +25,26 @@ describe('conversión MOV ProRes 4444 → WebM', () => {
     assert.equal(safeGiftId(''), null);
   });
 
-  it('detecta alfa por formato de píxel, no por el nombre 4444', () => {
-    assert.equal(pixFmtHasAlpha('yuva444p10le'), true);
-    assert.equal(pixFmtHasAlpha('yuva420p'), true);
-    assert.equal(pixFmtHasAlpha('yuv420p'), false);
-    assert.equal(pixFmtHasAlpha('yuv422p10le'), false);
+  it('detecta alfa VP9 en WebM por ALPHA_MODE aunque pix_fmt sea yuv420p', () => {
+    assert.equal(streamHasAlpha({ pix_fmt: 'yuv420p', tags: { ALPHA_MODE: '1' } }), true);
+    assert.equal(streamHasAlpha({ pix_fmt: 'yuv420p', tags: { alpha_mode: '1' } }), true);
+    assert.equal(streamHasAlpha({ pix_fmt: 'yuva420p' }), true);
+    assert.equal(streamHasAlpha({ pix_fmt: 'yuv420p', tags: {} }), false);
+    const webm = inspectProbe({
+      format: { format_name: 'matroska,webm', duration: '1' },
+      streams: [
+        {
+          codec_type: 'video',
+          codec_name: 'vp9',
+          pix_fmt: 'yuv420p',
+          width: 320,
+          height: 320,
+          duration: '1',
+          tags: { ALPHA_MODE: '1' },
+        },
+      ],
+    });
+    assert.equal(webm.hasAlphaChannel, true);
   });
 
   it('distingue ProRes 4444 y 4444 XQ por etiqueta y perfil', () => {
