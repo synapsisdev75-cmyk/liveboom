@@ -51,6 +51,33 @@ function desktopCanvasSize(availableWidth: number, viewportHeight: number) {
   return { width, height };
 }
 
+/** En escritorio el lienzo editable llena el centro; el video 9:16/16:9 no se deforma. */
+function liveStageBoxStyle(device: PreviewDevice, is916: boolean): CSSProperties {
+  if (device === 'desktop') {
+    return { width: '100%', height: '100%' };
+  }
+  return {
+    aspectRatio: is916 ? '9 / 16' : '16 / 9',
+    width: is916 ? 'auto' : '100%',
+    height: is916 ? '100%' : 'auto',
+    maxWidth: '100%',
+    maxHeight: '100%',
+  };
+}
+
+function liveVideoMockStyle(device: PreviewDevice, is916: boolean): CSSProperties {
+  if (device !== 'desktop') {
+    return { width: '100%', height: '100%' };
+  }
+  return {
+    aspectRatio: is916 ? '9 / 16' : '16 / 9',
+    width: is916 ? 'auto' : '100%',
+    height: is916 ? '100%' : 'auto',
+    maxWidth: '100%',
+    maxHeight: '100%',
+  };
+}
+
 const BACKDROP_META: Record<PreviewBackdrop, { label: string; style: CSSProperties }> = {
   checker: {
     label: 'Cuadriculado',
@@ -508,21 +535,32 @@ export function GiftCatalogPreview({
               </div>
             ) : null}
 
-            <div className="relative min-h-0 min-w-0 flex-1">
-              <div className="absolute inset-0 flex items-center justify-center p-[3%]">
+            <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+              <div
+                className={`absolute inset-0 flex items-center justify-center ${
+                  device === 'desktop' ? '' : 'p-[3%]'
+                }`}
+              >
                 <div
                   className="relative overflow-hidden bg-black/20"
-                  style={{
-                    aspectRatio: is916 ? '9 / 16' : '16 / 9',
-                    width: is916 ? 'auto' : '100%',
-                    height: is916 ? '100%' : 'auto',
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                  }}
+                  style={liveStageBoxStyle(device, is916)}
                 >
-                  <div className="pointer-events-none absolute left-1/2 top-[22%] z-0 flex w-[42%] -translate-x-1/2 flex-col items-center">
-                    <div className="aspect-square w-full rounded-full bg-gradient-to-b from-zinc-600 to-zinc-800 ring-2 ring-white/10" />
-                    <div className="mt-2 h-10 w-[70%] rounded-2xl bg-zinc-800/80" />
+                  <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
+                    <div className="relative overflow-hidden" style={liveVideoMockStyle(device, is916)}>
+                      <div className="absolute left-1/2 top-[22%] z-0 flex w-[42%] -translate-x-1/2 flex-col items-center">
+                        <div className="aspect-square w-full rounded-full bg-gradient-to-b from-zinc-600 to-zinc-800 ring-2 ring-white/10" />
+                        <div className="mt-2 h-10 w-[70%] rounded-2xl bg-zinc-800/80" />
+                      </div>
+                      {gift.face && !globalArea ? (
+                        <div
+                          className="absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
+                          style={{ top: `${faceTop}%`, fontSize: `${faceSize * facePreviewScale * 1.6}rem` }}
+                          title={`Ancla: ${gift.face.anchor}`}
+                        >
+                          {gift.face.emoji || gift.emoji}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                   {!globalArea ? (
                     <GiftLayoutMedia
@@ -546,15 +584,6 @@ export function GiftCatalogPreview({
                       <div className="absolute bottom-[14%] left-[4%] h-[28%] w-[38%] rounded-md border border-dashed border-sky-300/45" />
                       <div className="absolute bottom-[4%] right-[4%] h-[36%] w-[14%] rounded-md border border-dashed border-fuchsia-300/45" />
                       <div className="absolute inset-x-0 bottom-0 h-[11%] border-t border-dashed border-white/35" />
-                    </div>
-                  ) : null}
-                  {gift.face && !globalArea ? (
-                    <div
-                      className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
-                      style={{ top: `${faceTop}%`, fontSize: `${faceSize * facePreviewScale * 1.6}rem` }}
-                      title={`Ancla: ${gift.face.anchor}`}
-                    >
-                      {gift.face.emoji || gift.emoji}
                     </div>
                   ) : null}
                 </div>
