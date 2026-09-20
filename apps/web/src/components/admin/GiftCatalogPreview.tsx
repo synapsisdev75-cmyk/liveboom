@@ -295,7 +295,8 @@ export function GiftCatalogPreview({
               value={gift.media?.volume ?? 1}
               onChange={(e) =>
                 onMediaChange?.({
-          hasAudio: true,
+                  ...(gift.media || {
+                    hasAudio: true,
                     duration: 0,
                     width: 0,
                     height: 0,
