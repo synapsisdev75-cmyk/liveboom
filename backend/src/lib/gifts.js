@@ -26,6 +26,7 @@ const GIFTS = [
   { id: 'ar_galaxia', name: 'Filtro Galaxia', emoji: '🌌', coins: 350 },
   { id: 'tambor_caribeno', name: 'Tambor Caribeño', emoji: '🥁', coins: 400 },
   { id: 'botas_llaneras', name: 'Botas Llaneras', emoji: '🥾', coins: 500 },
+  { id: 'boom_saludo_travieso', name: 'Boom Saludo Travieso', emoji: '💣', coins: 500 },
   { id: 'caballo_criollo', name: 'Caballo Criollo', emoji: '🐴', coins: 600 },
   { id: 'fiesta_latina', name: 'Fiesta Latina', emoji: '🎉', coins: 750 },
   { id: 'carnaval', name: 'Carnaval', emoji: '🎊', coins: 1000 },

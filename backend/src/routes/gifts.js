@@ -230,7 +230,9 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     typeof req.body?.recipientUid === 'string' ? req.body.recipientUid.trim() : '';
 
   if (!gift || !roomName) {
-    res.status(400).json({ error: 'giftId y roomName son obligatorios' });
+    res.status(400).json({
+      error: !gift ? 'Regalo no válido' : 'giftId y roomName son obligatorios',
+    });
     return;
   }
 
