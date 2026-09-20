@@ -371,10 +371,31 @@ async function markOrderPaid(order, txn) {
   return { duplicate: false, campaignId };
 }
 
+async function findPromoOrder(txn) {
+  if (!firestoreConfigured()) return null;
+  const reference = String(txn?.reference || txn?.sku || '').trim();
+  if (reference) {
+    const byRef = await readOrder(reference);
+    if (byRef && byRef.kind === 'promo') return byRef;
+  }
+  const paymentLinkId = txn?.payment_link_id ? String(txn.payment_link_id).trim() : '';
+  if (paymentLinkId) {
+    try {
+      const snap = await db().collection(ORDERS).where('paymentLinkId', '==', paymentLinkId).limit(1).get();
+      if (!snap.empty) {
+        const doc = snap.docs[0];
+        const row = { reference: doc.id, ...doc.data() };
+        if (row.kind === 'promo') return row;
+      }
+    } catch (error) {
+      console.warn('[promo] find by paymentLinkId', error.message);
+    }
+  }
+  return null;
+}
+
 async function trySettlePromoTransaction(txn) {
-  const reference = String(txn?.reference || '').trim();
-  if (!reference || !firestoreConfigured()) return { handled: false };
-  const order = await readOrder(reference);
+  const order = await findPromoOrder(txn);
   if (!order || order.kind !== 'promo') return { handled: false };
 
   const status = String(txn.status || '').toUpperCase();

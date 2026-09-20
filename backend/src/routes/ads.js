@@ -5,9 +5,11 @@ const { prisma, hasDatabase } = require('../lib/prisma');
 const {
   assertIntegrityPair,
   cleanWompiSecret,
+  createPaymentLink,
   createWidgetIntegritySignature,
   createWompiReference,
   getWompiTransaction,
+  isWompiMerchantActive,
 } = require('../lib/wompi');
 const { rememberOrder } = require('../lib/walletMemory');
 const { publicCatalog } = require('../lib/promoPackages');
@@ -220,11 +222,15 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       return;
     }
 
-    const amount = Number(quote.amountInCents);
+    const amount = Math.floor(Number(quote.amountInCents) || 0);
+    if (!Number.isInteger(amount) || amount <= 0) {
+      res.status(400).json({ error: 'El monto de la cotización no es válido' });
+      return;
+    }
     const reference = createWompiReference('ad');
     const currency = 'COP';
     const integritySecret = assertIntegrityPair(publicKey, process.env.WOMPI_INTEGRITY_SECRET);
-    const expirationTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const expirationTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, '.000Z');
     const integritySignature = createWidgetIntegritySignature(
       reference,
       amount,
@@ -238,6 +244,7 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
     }
 
     const uid = req.user.uid;
+    const widgetAvailable = await isWompiMerchantActive(publicKey);
     const order = await promo.createPendingOrder({
       quote,
       reference,
@@ -256,6 +263,24 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       amountInCop: amount,
       regionId: quote.regionId,
     });
+
+    let checkoutUrl = null;
+    let paymentLinkId = null;
+    let checkoutError = null;
+    try {
+      const link = await createPaymentLink({
+        name: `Publicidad ${quote.days} días`,
+        description: `Banner LiveBoom · ${quote.format === 'animated' ? 'animado' : 'estático'} · ${quote.days}d`,
+        amountInCents: amount,
+        reference,
+      });
+      checkoutUrl = link.url;
+      paymentLinkId = link.id;
+      await promo.persistOrder({ ...order, paymentLinkId });
+    } catch (linkError) {
+      checkoutError = linkError instanceof Error ? linkError.message : String(linkError);
+      console.warn('[ads/create-order] payment link:', checkoutError);
+    }
 
     if (hasDatabase && prisma) {
       try {
@@ -276,6 +301,15 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       }
     }
 
+    if (!widgetAvailable && !checkoutUrl) {
+      res.status(503).json({
+        error: 'Wompi no pudo abrir el checkout. Intenta de nuevo en unos minutos.',
+        merchantOk: false,
+        checkoutError,
+      });
+      return;
+    }
+
     res.status(201).json({
       reference,
       publicKey: cleanWompiSecret(publicKey),
@@ -284,6 +318,9 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       currency,
       integritySignature,
       expirationTime,
+      checkoutUrl,
+      widgetAvailable,
+      preferCheckout: !widgetAvailable && Boolean(checkoutUrl),
       days: quote.days,
       hours: quote.hours,
       totalCop: quote.totalCop,
@@ -292,7 +329,6 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
       packageId: quote.packageId,
       quoteId: quote.quoteId,
     });
-    void order;
   } catch (error) {
     console.error('[ads/create-order]', error);
     res.status(500).json({

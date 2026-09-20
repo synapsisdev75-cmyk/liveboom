@@ -240,31 +240,44 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
         return;
       }
 
-      openWompiWidget(order, (result) => {
-        const status = result.transaction?.status;
-        const transactionId = result.transaction?.id;
-        void api('/api/ads/complete', {
-          method: 'POST',
-          body: JSON.stringify({ reference: order.reference, transactionId }),
-        })
-          .then((paid) => {
-            const paymentStatus = String((paid as { paymentStatus?: string }).paymentStatus || '');
-            if (paymentStatus === 'paid') {
-              setNote('Pago confirmado. Tu banner queda en revisión antes de publicarse. El tiempo contratado no corre todavía.');
-              onDone?.();
-              return;
-            }
-            if (status === 'PENDING' || paymentStatus === 'pending') {
-              setNote('Pago en proceso. La campaña se activará cuando Wompi confirme, no por esta pantalla.');
-              return;
-            }
-            setNote(status ? `El pago quedó en estado ${status}.` : 'Pago no confirmado.');
+      if (order.checkoutUrl && (order.preferCheckout || order.widgetAvailable === false)) {
+        window.location.href = order.checkoutUrl;
+        return;
+      }
+
+      try {
+        openWompiWidget(order, (result) => {
+          const status = result.transaction?.status;
+          const transactionId = result.transaction?.id;
+          void api('/api/ads/complete', {
+            method: 'POST',
+            body: JSON.stringify({ reference: order.reference, transactionId }),
           })
-          .catch((err) => {
-            setNote(err instanceof Error ? err.message : 'No se pudo consultar el pago');
-          })
-          .finally(() => setBusy(false));
-      });
+            .then((paid) => {
+              const paymentStatus = String((paid as { paymentStatus?: string }).paymentStatus || '');
+              if (paymentStatus === 'paid') {
+                setNote('Pago confirmado. Tu banner queda en revisión antes de publicarse. El tiempo contratado no corre todavía.');
+                onDone?.();
+                return;
+              }
+              if (status === 'PENDING' || paymentStatus === 'pending') {
+                setNote('Pago en proceso. La campaña se activará cuando Wompi confirme, no por esta pantalla.');
+                return;
+              }
+              setNote(status ? `El pago quedó en estado ${status}.` : 'Pago no confirmado.');
+            })
+            .catch((err) => {
+              setNote(err instanceof Error ? err.message : 'No se pudo consultar el pago');
+            })
+            .finally(() => setBusy(false));
+        });
+      } catch {
+        if (order.checkoutUrl) {
+          window.location.href = order.checkoutUrl;
+          return;
+        }
+        throw new Error('No se pudo abrir el módulo de pago de Wompi');
+      }
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo iniciar el pago');
       setBusy(false);
