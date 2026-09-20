@@ -13,14 +13,15 @@ type Props = {
   type?: CoverMediaKind | null;
   isOwner?: boolean;
   onEdit?: () => void;
+  onView?: () => void;
 };
 
-export function ProfileCoverBanner({ url, type, isOwner, onEdit }: Props) {
+export function ProfileCoverBanner({ url, type, isOwner, onEdit, onView }: Props) {
   const src = String(url || '').trim();
   const motion = type === 'video' || type === 'gif' || /\.(mp4|webm|gif)(\?|$)/i.test(src);
 
   return (
-    <div className={`lb-profile-cover${src ? '' : ' is-empty'}`}>
+    <div className={`lb-profile-cover${src ? '' : ' is-empty'}${src && onView ? ' is-viewable' : ''}`}>
       {src ? (
         motion && type !== 'gif' ? (
           <video
@@ -62,11 +63,22 @@ export function ProfileCoverBanner({ url, type, isOwner, onEdit }: Props) {
           ) : null}
         </div>
       )}
+      {src && onView ? (
+        <button
+          type="button"
+          className="lb-profile-cover__view"
+          onClick={onView}
+          aria-label="Ver portada"
+        />
+      ) : null}
       {isOwner && src ? (
         <button
           type="button"
           className="lb-profile-cover__edit"
-          onClick={onEdit}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit?.();
+          }}
           aria-label="Cambiar portada"
           title="Cambiar portada"
         >

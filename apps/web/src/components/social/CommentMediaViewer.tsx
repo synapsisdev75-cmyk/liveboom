@@ -13,9 +13,10 @@ export type CommentMediaViewerItem = {
 type Props = {
   item: CommentMediaViewerItem | null;
   onClose: () => void;
+  label?: string;
 };
 
-export function CommentMediaViewer({ item, onClose }: Props) {
+export function CommentMediaViewer({ item, onClose, label }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   useBodyScrollLock(Boolean(item));
 
@@ -43,8 +44,13 @@ export function CommentMediaViewer({ item, onClose }: Props) {
 
   if (!item || typeof document === 'undefined') return null;
 
-  const label =
-    item.kind === 'video' ? 'Video del comentario' : item.kind === 'gif' ? 'GIF del comentario' : 'Foto del comentario';
+  const dialogLabel =
+    label ||
+    (item.kind === 'video'
+      ? 'Video del comentario'
+      : item.kind === 'gif'
+        ? 'GIF del comentario'
+        : 'Foto del comentario');
 
   function enterFullscreen() {
     const el = videoRef.current;
@@ -59,7 +65,7 @@ export function CommentMediaViewer({ item, onClose }: Props) {
       className="lb-comment-media-viewer"
       role="dialog"
       aria-modal="true"
-      aria-label={label}
+      aria-label={dialogLabel}
       onClick={(event) => {
         event.stopPropagation();
         if (event.target === event.currentTarget) onClose();

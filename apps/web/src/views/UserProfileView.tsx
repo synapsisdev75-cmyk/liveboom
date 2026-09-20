@@ -17,6 +17,7 @@ import { LevelAvatarFrame } from '../components/profile/LevelAvatarFrame';
 import { LevelInsignia } from '../components/profile/LevelInsignia';
 import { ProfileCoverBanner } from '../components/profile/ProfileCoverBanner';
 import { ProfileCoverEditor } from '../components/profile/ProfileCoverEditor';
+import { CommentMediaViewer, type CommentMediaViewerItem } from '../components/social/CommentMediaViewer';
 import {
   COVER_ACCEPT,
   coverKindFromMime,
@@ -127,6 +128,7 @@ export function UserProfileView() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [profileMedia, setProfileMedia] = useState<CommentMediaViewerItem | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const highlightPostRef = useRef<HTMLDivElement | null>(null);
@@ -541,6 +543,26 @@ export function UserProfileView() {
     return <div className="p-6 text-sm text-zinc-400">Cargando biblioteca…</div>;
   }
 
+  const avatarSrc = String(publicProfile.avatarUrl || '').trim();
+  const coverSrc = String(publicProfile.coverUrl || '').trim();
+
+  function openAvatarView() {
+    if (!avatarSrc) return;
+    setProfileMedia({ url: avatarSrc, kind: 'image' });
+  }
+
+  function openCoverView() {
+    if (!coverSrc) return;
+    const type = publicProfile.coverType;
+    const kind =
+      type === 'video' || /\.(mp4|webm)(\?|$)/i.test(coverSrc)
+        ? 'video'
+        : type === 'gif' || /\.gif(\?|$)/i.test(coverSrc)
+          ? 'gif'
+          : 'image';
+    setProfileMedia({ url: coverSrc, kind });
+  }
+
   return (
     <div className="lb-profile-page w-full max-w-none space-y-3 pb-[max(0.5rem,var(--lb-safe-bottom))]">
       <section
@@ -551,6 +573,7 @@ export function UserProfileView() {
           url={publicProfile.coverUrl}
           type={publicProfile.coverType}
           isOwner={publicProfile.isOwnProfile}
+          onView={coverSrc ? openCoverView : undefined}
           onEdit={() => {
             if (coverBusy) return;
             coverInputRef.current?.click();
@@ -569,7 +592,23 @@ export function UserProfileView() {
         />
         <div className="lb-profile-identity relative z-[1] px-4 pb-2.5 sm:px-6 sm:pb-3">
         <div className="lb-profile-identity__row">
-          <div className="lb-profile-identity__avatar">
+          <div
+            className={`lb-profile-identity__avatar${avatarSrc ? ' is-viewable' : ''}`}
+            {...(avatarSrc
+              ? {
+                  role: 'button' as const,
+                  tabIndex: 0,
+                  'aria-label': 'Ver foto de perfil',
+                  onClick: openAvatarView,
+                  onKeyDown: (event: { key: string; preventDefault: () => void }) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openAvatarView();
+                    }
+                  },
+                }
+              : {})}
+          >
             <LevelAvatarFrame
               levelXp={publicProfile.levelXp}
               avatarUrl={publicProfile.avatarUrl}
@@ -582,7 +621,10 @@ export function UserProfileView() {
                   type="button"
                   className="lb-profile-identity__photo-edit"
                   disabled={avatarBusy}
-                  onClick={() => avatarInputRef.current?.click()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    avatarInputRef.current?.click();
+                  }}
                   aria-label="Cambiar foto de perfil"
                   title="Cambiar foto de perfil"
                 >
@@ -1037,6 +1079,18 @@ export function UserProfileView() {
           onClose={() => setExpandVideoId(null)}
         />
       ) : null}
+
+      <CommentMediaViewer
+        item={profileMedia}
+        onClose={() => setProfileMedia(null)}
+        label={
+          profileMedia?.kind === 'video'
+            ? 'Portada del perfil'
+            : profileMedia?.url === avatarSrc
+              ? 'Foto de perfil'
+              : 'Portada del perfil'
+        }
+      />
     </div>
   );
 }
