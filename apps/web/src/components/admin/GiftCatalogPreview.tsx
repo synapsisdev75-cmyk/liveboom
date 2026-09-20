@@ -1,6 +1,18 @@
-import { useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import type { EditableGift, GiftPlacement } from '../../lib/catalogConfigFirestore';
 import { clampGiftAnimScale } from '../../lib/liveboomGifts';
+import {
+  copyGiftLayoutFormat,
+  copyGiftLayoutToAllDevices,
+  defaultGiftLayoutSlot,
+  normalizeGiftLayout,
+  patchGiftLayout,
+  type GiftDisplayArea,
+  type GiftFitMode,
+  type GiftLayoutMap,
+  type GiftLiveFormat,
+} from '../../lib/giftLayout';
+import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 
 const PLACEMENT_SHORT: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -38,11 +50,20 @@ const BACKDROP_META: Record<PreviewBackdrop, { label: string; style: CSSProperti
   dark: { label: 'Oscuro', style: { background: '#09090b' } },
 };
 
+const FIT_LABELS: Record<GiftFitMode, string> = {
+  contain: 'Contener',
+  cover: 'Llenar',
+  width: 'Ancho',
+  height: 'Alto',
+  free: 'Libre',
+};
+
 type Props = {
   gift: EditableGift;
   device: PreviewDevice;
   onDeviceChange: (device: PreviewDevice) => void;
   onAnimScaleChange?: (scale: number) => void;
+  onLayoutChange?: (layout: GiftLayoutMap) => void;
 };
 
 function faceTopPercent(gift: EditableGift): number {
@@ -63,12 +84,43 @@ function faceSizeRem(gift: EditableGift): number {
   return Math.min(5.5, Math.max(1.4, 2.2 * scale));
 }
 
+function Chip({
+  active,
+  onClick,
+  children,
+  tone = 'zinc',
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: string;
+  tone?: 'zinc' | 'fuchsia' | 'cyan';
+}) {
+  const on =
+    tone === 'fuchsia'
+      ? 'bg-fuchsia-500/25 text-fuchsia-100 ring-1 ring-fuchsia-400/40'
+      : tone === 'cyan'
+        ? 'bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-400/40'
+        : 'bg-zinc-100 text-zinc-900 ring-1 ring-white/40';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
+        active ? on : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** Previsualización del regalo en marcos móvil / tablet / escritorio. */
 export function GiftCatalogPreview({
   gift,
   device,
   onDeviceChange,
   onAnimScaleChange,
+  onLayoutChange,
 }: Props) {
   const meta = DEVICE_META[device];
   const displayW = Math.round(meta.frameW * meta.scale);
@@ -78,10 +130,26 @@ export function GiftCatalogPreview({
   const faceTop = faceTopPercent(gift);
   const faceSize = faceSizeRem(gift);
   const [backdrop, setBackdrop] = useState<PreviewBackdrop>('checker');
-  const animScale = clampGiftAnimScale(gift.animScale, gift.level);
-  const mediaBox = {
-    width: `${animScale * 100}%`,
-    height: `${animScale * 100}%`,
+  const [liveFormat, setLiveFormat] = useState<GiftLiveFormat>('portrait916');
+  const [cropMode, setCropMode] = useState(false);
+  const [safeGuides, setSafeGuides] = useState(false);
+  const [playToken, setPlayToken] = useState(0);
+  const layout = useMemo(
+    () => normalizeGiftLayout(gift.giftLayout, gift.animScale),
+    [gift.giftLayout, gift.animScale],
+  );
+  const slot = layout[device][liveFormat];
+  const is916 = liveFormat === 'portrait916';
+  const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
+
+  const commit = (next: GiftLayoutMap) => {
+    onLayoutChange?.(next);
+    const current = next[device][liveFormat];
+    onAnimScaleChange?.(clampGiftAnimScale(Math.min(1, current.scale), gift.level));
+  };
+
+  const patchSlot = (partial: Partial<typeof slot>) => {
+    commit(patchGiftLayout(layout, device, liveFormat, partial, gift.animScale));
   };
 
   return (
@@ -92,55 +160,213 @@ export function GiftCatalogPreview({
         </p>
         <div className="ml-auto flex flex-wrap gap-1">
           {(Object.keys(BACKDROP_META) as PreviewBackdrop[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setBackdrop(key)}
-              className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
-                backdrop === key
-                  ? 'bg-zinc-100 text-zinc-900 ring-1 ring-white/40'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-              }`}
-            >
+            <Chip key={key} active={backdrop === key} onClick={() => setBackdrop(key)}>
               {BACKDROP_META[key].label}
-            </button>
+            </Chip>
           ))}
           {(Object.keys(DEVICE_META) as PreviewDevice[]).map((key) => (
-            <button
+            <Chip
               key={key}
-              type="button"
+              tone="fuchsia"
+              active={device === key}
               onClick={() => onDeviceChange(key)}
-              className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
-                device === key
-                  ? 'bg-fuchsia-500/25 text-fuchsia-100 ring-1 ring-fuchsia-400/40'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-              }`}
             >
               {DEVICE_META[key].label}
-            </button>
+            </Chip>
           ))}
         </div>
       </div>
 
-      {onAnimScaleChange ? (
+      <div className="space-y-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+          Formato del LIVE
+        </p>
+        <div className="flex flex-wrap gap-1">
+          <Chip tone="cyan" active={is916} onClick={() => setLiveFormat('portrait916')}>
+            9:16 Vertical
+          </Chip>
+          <Chip tone="cyan" active={!is916} onClick={() => setLiveFormat('landscape169')}>
+            16:9 Horizontal
+          </Chip>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Área de aparición
+          </p>
+          <div className="flex flex-wrap gap-1">
+            <Chip
+              active={!globalArea}
+              onClick={() => patchSlot({ displayArea: 'live' as GiftDisplayArea, fullscreenMode: 'none' })}
+            >
+              Dentro del LIVE
+            </Chip>
+            <Chip
+              active={globalArea}
+              onClick={() => patchSlot({ displayArea: 'global', fullscreenMode: 'global', fit: 'cover' })}
+            >
+              Toda la pantalla
+            </Chip>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Ajuste</p>
+          <div className="flex flex-wrap gap-1">
+            {(Object.keys(FIT_LABELS) as GiftFitMode[]).map((fit) => (
+              <Chip
+                key={fit}
+                active={slot.fit === fit && slot.fullscreenMode === 'none'}
+                onClick={() =>
+                  patchSlot({
+                    fit,
+                    fullscreenMode: fit === 'cover' ? slot.fullscreenMode : 'none',
+                  })
+                }
+              >
+                {FIT_LABELS[fit]}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <label className="block space-y-1 text-xs text-zinc-400">
+        Escala: {Math.round(slot.scale * 100)}%
+        <input
+          type="range"
+          min={0.2}
+          max={2}
+          step={0.01}
+          value={slot.scale}
+          onChange={(e) => patchSlot({ scale: Number(e.target.value) })}
+          className="w-full accent-fuchsia-400"
+        />
+        <span className="block text-[10px] text-zinc-500">
+          20%–200% en {meta.label} · {is916 ? '9:16' : '16:9'}. Ctrl + rueda para zoom.
+        </span>
+      </label>
+
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-1 text-xs text-zinc-400">
-          Escala animación en pantalla ({Math.round(animScale * 100)}%)
+          Posición X ({Math.round(slot.x)}%)
           <input
             type="range"
-            min={0.2}
-            max={1}
-            step={0.01}
-            value={animScale}
-            onChange={(e) =>
-              onAnimScaleChange(clampGiftAnimScale(Number(e.target.value), gift.level))
-            }
-            className="w-full accent-fuchsia-400"
+            min={0}
+            max={100}
+            step={0.5}
+            value={slot.x}
+            onChange={(e) => patchSlot({ x: Number(e.target.value) })}
+            className="w-full accent-cyan-400"
           />
-          <span className="block text-[10px] text-zinc-500">
-            Aplica en móvil, tablet y escritorio al publicar. 20% = pequeño · 100% = casi pantalla
-            completa.
-          </span>
         </label>
+        <label className="block space-y-1 text-xs text-zinc-400">
+          Posición Y ({Math.round(slot.y)}%)
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={0.5}
+            value={slot.y}
+            onChange={(e) => patchSlot({ y: Number(e.target.value) })}
+            className="w-full accent-cyan-400"
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        <Chip active={false} onClick={() => patchSlot({ x: 50, y: 50 })}>
+          Centrar
+        </Chip>
+        <Chip
+          active={slot.fit === 'cover'}
+          onClick={() => patchSlot({ fit: 'cover', fullscreenMode: globalArea ? 'global' : 'live' })}
+        >
+          Llenar
+        </Chip>
+        <Chip active={slot.fit === 'contain'} onClick={() => patchSlot({ fit: 'contain', fullscreenMode: 'none' })}>
+          Ajustar
+        </Chip>
+        <Chip
+          active={slot.fullscreenMode === 'live'}
+          onClick={() => patchSlot({ displayArea: 'live', fullscreenMode: 'live', fit: 'cover' })}
+        >
+          Llenar LIVE
+        </Chip>
+        <Chip
+          active={slot.fullscreenMode === 'global'}
+          onClick={() => patchSlot({ displayArea: 'global', fullscreenMode: 'global', fit: 'cover' })}
+        >
+          Pantalla completa
+        </Chip>
+        <Chip active={cropMode} onClick={() => setCropMode((v) => !v)}>
+          Recortar
+        </Chip>
+        <Chip
+          active={false}
+          onClick={() => patchSlot(defaultGiftLayoutSlot(gift.animScale))}
+        >
+          Restablecer
+        </Chip>
+        <Chip active={safeGuides} onClick={() => setSafeGuides((v) => !v)}>
+          Área segura
+        </Chip>
+        <Chip active={false} onClick={() => setPlayToken((n) => n + 1)}>
+          Reiniciar animación
+        </Chip>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        <Chip
+          active={false}
+          onClick={() => commit(copyGiftLayoutToAllDevices(layout, device))}
+        >
+          Copiar a todos
+        </Chip>
+        <Chip
+          active={false}
+          onClick={() => commit(copyGiftLayoutFormat(layout, 'portrait916', 'landscape169'))}
+        >
+          9:16 → 16:9
+        </Chip>
+        <Chip
+          active={false}
+          onClick={() => commit(copyGiftLayoutFormat(layout, 'landscape169', 'portrait916'))}
+        >
+          16:9 → 9:16
+        </Chip>
+      </div>
+      {cropMode ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <p className="text-[10px] text-amber-200/80 sm:col-span-2">
+            Recorte activo: arrastra para encuadrar. No modifica el archivo, solo cropX/cropY.
+          </p>
+          <label className="block space-y-1 text-xs text-zinc-400">
+            Recorte X ({Math.round(slot.cropX)}%)
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={0.5}
+              value={slot.cropX}
+              onChange={(e) => patchSlot({ cropX: Number(e.target.value) })}
+              className="w-full accent-amber-400"
+            />
+          </label>
+          <label className="block space-y-1 text-xs text-zinc-400">
+            Recorte Y ({Math.round(slot.cropY)}%)
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={0.5}
+              value={slot.cropY}
+              onChange={(e) => patchSlot({ cropY: Number(e.target.value) })}
+              className="w-full accent-amber-400"
+            />
+          </label>
+        </div>
       ) : null}
 
       <div className="flex justify-center overflow-x-auto py-2">
@@ -149,65 +375,95 @@ export function GiftCatalogPreview({
           style={{ width: displayW, height: displayH }}
         >
           <div className="absolute inset-0" style={BACKDROP_META[backdrop].style} />
-          {backdrop === 'checker' ? (
-            <div className="absolute inset-0 opacity-35">
-              <div className="absolute left-1/2 top-[28%] h-[42%] w-[55%] -translate-x-1/2 rounded-full bg-fuchsia-500/20 blur-3xl" />
-            </div>
-          ) : null}
-
-          <div className="absolute left-1/2 top-[22%] flex w-[42%] -translate-x-1/2 flex-col items-center">
-            <div className="aspect-square w-full rounded-full bg-gradient-to-b from-zinc-600 to-zinc-800 ring-2 ring-white/10" />
-            <div className="mt-2 h-16 w-[70%] rounded-2xl bg-zinc-800/80" />
-          </div>
-
-          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center">
-            <div
-              className="relative flex items-center justify-center"
-              style={mediaBox}
-            >
-              <div className="pointer-events-none absolute inset-0 rounded-xl border border-dashed border-fuchsia-400/50" />
-              {mediaSrc ? (
-                isVideo ? (
-                  <video
-                    key={mediaSrc}
-                    src={mediaSrc}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    className="h-full w-full object-contain drop-shadow-lg"
-                  />
-                ) : (
-                  <img
-                    src={mediaSrc}
-                    alt=""
-                    className="h-full w-full object-contain drop-shadow-lg"
-                  />
-                )
-              ) : (
-                <span className="text-5xl drop-shadow-lg" style={{ fontSize: Math.max(36, displayW * 0.14) }}>
-                  {gift.emoji}
-                </span>
-              )}
-            </div>
-            <span className="mt-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
-              {gift.name} · {gift.coins} Blast
-            </span>
-          </div>
-
-          {gift.face ? (
-            <div
-              className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
-              style={{ top: `${faceTop}%`, fontSize: `${faceSize * meta.scale * 1.6}rem` }}
-              title={`Ancla: ${gift.face.anchor}`}
-            >
-              {gift.face.emoji || gift.emoji}
-            </div>
-          ) : null}
 
           <div className="absolute left-2 top-2 z-30 flex items-center gap-1.5 rounded-full bg-rose-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
             ● LIVE
           </div>
+
+          <div className={`absolute inset-0 z-10 flex ${device === 'desktop' ? 'flex-row' : 'flex-col'} min-h-0`}>
+            {device === 'desktop' ? (
+              <div className="flex w-[16%] shrink-0 flex-col gap-1 border-r border-white/10 bg-black/35 p-1.5">
+                <div className="h-2 rounded bg-white/20" />
+                <div className="h-2 w-3/4 rounded bg-white/10" />
+                <div className="h-2 w-2/3 rounded bg-white/10" />
+              </div>
+            ) : null}
+
+            <div className="relative min-h-0 min-w-0 flex-1">
+              <div className="absolute inset-0 flex items-center justify-center p-[3%]">
+                <div
+                  className="relative overflow-hidden bg-black/20"
+                  style={{
+                    aspectRatio: is916 ? '9 / 16' : '16 / 9',
+                    width: is916 ? 'auto' : '100%',
+                    height: is916 ? '100%' : 'auto',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                  }}
+                >
+                  <div className="pointer-events-none absolute left-1/2 top-[22%] z-0 flex w-[42%] -translate-x-1/2 flex-col items-center">
+                    <div className="aspect-square w-full rounded-full bg-gradient-to-b from-zinc-600 to-zinc-800 ring-2 ring-white/10" />
+                    <div className="mt-2 h-10 w-[70%] rounded-2xl bg-zinc-800/80" />
+                  </div>
+                  {!globalArea ? (
+                    <GiftLayoutMedia
+                      src={mediaSrc}
+                      poster={gift.image}
+                      isVideo={isVideo}
+                      emoji={gift.emoji}
+                      slot={slot}
+                      interactive
+                      cropMode={cropMode}
+                      playToken={playToken}
+                      className="absolute inset-0 z-10"
+                      onSlotChange={patchSlot}
+                    />
+                  ) : null}
+                  {safeGuides ? (
+                    <div className="pointer-events-none absolute inset-0 z-20">
+                      <div className="absolute inset-x-[6%] top-[8%] h-[9%] rounded-md border border-dashed border-amber-300/50" />
+                      <div className="absolute bottom-[14%] left-[4%] h-[28%] w-[38%] rounded-md border border-dashed border-sky-300/45" />
+                      <div className="absolute bottom-[4%] right-[4%] h-[36%] w-[14%] rounded-md border border-dashed border-fuchsia-300/45" />
+                      <div className="absolute inset-x-0 bottom-0 h-[11%] border-t border-dashed border-white/35" />
+                    </div>
+                  ) : null}
+                  {gift.face && !globalArea ? (
+                    <div
+                      className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
+                      style={{ top: `${faceTop}%`, fontSize: `${faceSize * meta.scale * 1.6}rem` }}
+                      title={`Ancla: ${gift.face.anchor}`}
+                    >
+                      {gift.face.emoji || gift.emoji}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {device === 'desktop' ? (
+              <div className="flex w-[20%] shrink-0 flex-col gap-1 border-l border-white/10 bg-black/35 p-1.5">
+                <div className="h-2 rounded bg-white/20" />
+                <div className="h-8 rounded bg-white/10" />
+                <div className="h-8 rounded bg-white/10" />
+              </div>
+            ) : null}
+          </div>
+
+          {globalArea ? (
+            <GiftLayoutMedia
+              src={mediaSrc}
+              poster={gift.image}
+              isVideo={isVideo}
+              emoji={gift.emoji}
+              slot={slot}
+              interactive
+              cropMode={cropMode}
+              playToken={playToken}
+              className="absolute inset-0 z-20"
+              onSlotChange={patchSlot}
+            />
+          ) : null}
+
           <div className="absolute bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-black/55 p-2 backdrop-blur-md">
             <div className="mb-1 flex gap-1 overflow-hidden">
               {gift.placements.slice(0, 4).map((p) => (
@@ -236,8 +492,8 @@ export function GiftCatalogPreview({
       </div>
 
       <p className="text-center text-[11px] text-zinc-500">
-        Vista aproximada en {meta.label.toLowerCase()} ({meta.frameW}×{meta.frameH}). Publica para
-        aplicar en la app.
+        {meta.label} · {is916 ? 'LIVE 9:16' : 'LIVE 16:9'} ·{' '}
+        {globalArea ? 'overlay global' : 'dentro del video'}. Publica para aplicar en la app.
       </p>
     </div>
   );

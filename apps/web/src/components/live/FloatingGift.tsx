@@ -1,9 +1,18 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { playGiftAlert } from '../../lib/alertSound';
 import { giftMotionFor } from '../../lib/giftAnimations';
 import { findLiveGift, GIFT_LEVEL_FX, clampGiftAnimScale, type GiftLevel, type LiveGift } from '../../lib/liveboomGifts';
 import { isGlobalBoomAnimation, showBoomAnimation, boomAnimationEndedEvent } from '../../lib/boomAnimations';
+import {
+  giftLayoutMediaStyle,
+  isGiftLayoutBleed,
+  resolveGiftLayoutSlot,
+  type GiftLayoutSlot,
+} from '../../lib/giftLayout';
+import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
+import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 
 export function GiftVisual({
   gift,
@@ -128,6 +137,7 @@ function GiftVideoBurst({
   combo,
   animScale = 0.72,
   fillViewport = false,
+  slot,
   onComplete,
 }: {
   src: string;
@@ -136,15 +146,21 @@ function GiftVideoBurst({
   combo?: number;
   animScale?: number;
   fillViewport?: boolean;
+  slot?: GiftLayoutSlot;
   onComplete?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const doneRef = useRef(false);
   const [ready, setReady] = useState(false);
   const scale = clampGiftAnimScale(animScale);
-  const mediaStyle = fillViewport
-    ? { background: 'transparent' as const }
-    : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
+  const bleed = slot ? isGiftLayoutBleed(slot) : fillViewport;
+  const layoutStyle = slot ? giftLayoutMediaStyle(slot) : undefined;
+  const mediaStyle = layoutStyle
+    ? { ...layoutStyle, background: 'transparent' as const }
+    : fillViewport
+      ? { background: 'transparent' as const }
+      : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
+  const useFillClass = fillViewport && !slot;
 
   const finish = () => {
     if (doneRef.current) return;
@@ -214,7 +230,11 @@ function GiftVideoBurst({
 
   return (
     <motion.div
-      className="pointer-events-none absolute inset-0 z-[60] flex flex-col items-center justify-center"
+      className={`pointer-events-none flex flex-col items-center justify-center ${
+        fillViewport || (slot && (slot.displayArea === 'global' || slot.fullscreenMode === 'global'))
+          ? 'fixed inset-0 z-[114]'
+          : 'absolute inset-0 z-[60]'
+      } ${bleed ? 'lb-gift-layout-stage--bleed' : ''}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -224,9 +244,9 @@ function GiftVideoBurst({
         <img
           src={poster}
           alt=""
-          className={`absolute inset-0 m-auto bg-transparent object-contain opacity-80 ${
-            fillViewport ? 'lb-gift-burst-video--fill' : ''
-          }`}
+          className={`absolute inset-0 m-auto bg-transparent ${
+            useFillClass ? 'lb-gift-burst-video--fill object-contain' : ''
+          } ${bleed && !useFillClass ? 'object-cover' : useFillClass ? '' : 'object-contain'}`}
           style={mediaStyle}
           draggable={false}
         />
@@ -234,8 +254,8 @@ function GiftVideoBurst({
       <video
         ref={videoRef}
         src={src}
-        className={`lb-gift-burst-video bg-transparent object-contain ${
-          fillViewport ? 'lb-gift-burst-video--fill' : ''
+        className={`lb-gift-burst-video bg-transparent ${
+          useFillClass ? 'lb-gift-burst-video--fill object-contain' : 'lb-gift-layout-media'
         }`}
         style={mediaStyle}
         playsInline
@@ -260,6 +280,58 @@ function GiftVideoBurst({
   );
 }
 
+function GiftStillBurst({
+  src,
+  emoji,
+  senderName,
+  combo,
+  slot,
+  globalArea,
+  durationMs,
+  onComplete,
+}: {
+  src?: string;
+  emoji?: string;
+  senderName?: string;
+  combo?: number;
+  slot: GiftLayoutSlot;
+  globalArea: boolean;
+  durationMs: number;
+  onComplete?: () => void;
+}) {
+  const doneRef = useRef(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      onComplete?.();
+    }, durationMs);
+    return () => window.clearTimeout(timer);
+  }, [durationMs, onComplete]);
+
+  return (
+    <motion.div
+      className={`pointer-events-none ${
+        globalArea ? 'fixed inset-0 z-[114]' : 'absolute inset-0 z-[60]'
+      } ${isGiftLayoutBleed(slot) ? 'lb-gift-layout-stage--bleed' : ''}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <GiftLayoutMedia src={src} poster={src} emoji={emoji} slot={slot} />
+      {senderName ? (
+        <span className="absolute bottom-[12%] z-[61] text-[11px] font-semibold text-cyan-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
+          {senderName}
+          {combo && combo > 1 ? (
+            <span className="ml-1 font-black text-amber-300">x{combo}</span>
+          ) : null}
+        </span>
+      ) : null}
+    </motion.div>
+  );
+}
+
 type FloatingGiftProps = {
   giftId?: string;
   senderName?: string;
@@ -270,9 +342,11 @@ type FloatingGiftProps = {
   combo?: number;
   /** Mensajes / feed: llena el viewport como en el celular. LIVE sigue usando animScale. */
   fillViewport?: boolean;
+  /** Formato real del LIVE activo (9:16 o 16:9). */
+  liveAspect?: LiveAspectRatio;
 };
 
-export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo, fillViewport = false }: FloatingGiftProps) {
+export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo, fillViewport = false, liveAspect }: FloatingGiftProps) {
   const gift = findLiveGift(giftId);
   const level = (gift?.level || 1) as GiftLevel;
   const fx = GIFT_LEVEL_FX[level];
@@ -305,8 +379,30 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
 
   if (globalAnim) return null;
 
-  if (gift?.video) {
-    return (
+  if (fillViewport) {
+    if (gift?.video) {
+      return (
+        <AnimatePresence>
+          <GiftVideoBurst
+            src={gift.video}
+            poster={gift.image}
+            senderName={senderName}
+            combo={combo}
+            animScale={clampGiftAnimScale(gift.animScale, level)}
+            fillViewport
+            onComplete={onComplete}
+          />
+        </AnimatePresence>
+      );
+    }
+  } else if (gift?.video || gift?.image) {
+    const slot = resolveGiftLayoutSlot({
+      layout: gift.giftLayout,
+      animScale: gift.animScale,
+      liveAspect: liveAspect || '9:16',
+    });
+    const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
+    const burst = gift.video ? (
       <AnimatePresence>
         <GiftVideoBurst
           src={gift.video}
@@ -314,11 +410,29 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}
-          fillViewport={fillViewport}
+          fillViewport={globalArea}
+          slot={slot}
+          onComplete={onComplete}
+        />
+      </AnimatePresence>
+    ) : (
+      <AnimatePresence>
+        <GiftStillBurst
+          src={gift.image}
+          emoji={gift.emoji}
+          senderName={senderName}
+          combo={combo}
+          slot={slot}
+          globalArea={globalArea}
+          durationMs={Math.max(1200, fx.duration * 1000)}
           onComplete={onComplete}
         />
       </AnimatePresence>
     );
+    if (globalArea && typeof document !== 'undefined') {
+      return createPortal(burst, document.body);
+    }
+    return burst;
   }
 
   return (

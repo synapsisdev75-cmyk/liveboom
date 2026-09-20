@@ -675,6 +675,7 @@ export function AdminCatalogPanel() {
               device={previewDevice}
               onDeviceChange={setPreviewDevice}
               onAnimScaleChange={(scale) => patchGift(gift.id, { animScale: scale })}
+              onLayoutChange={(giftLayout) => patchGift(gift.id, { giftLayout })}
             />
 
             <div className="rounded-xl border border-white/10 bg-black/30 p-3">

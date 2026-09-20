@@ -5361,6 +5361,7 @@ function CreatorStage({
                 left={item.left}
                 combo={item.combo}
                 lite={isSpectator}
+                liveAspect={aspectRatio}
                 onComplete={() => setFloats((current) => current.filter((gift) => gift.id !== item.id))}
               />
             ))}

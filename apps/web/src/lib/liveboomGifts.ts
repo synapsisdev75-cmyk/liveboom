@@ -1,6 +1,7 @@
 /** Catálogo oficial Liveboom — precios en coins y niveles de animación. */
 
 import type { CallFilterId } from './deepar';
+import type { GiftLayoutMap } from './giftLayout';
 
 export type GiftLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -16,11 +17,12 @@ export type LiveGift = {
   level: GiftLevel;
   /** Descripción corta de la animación (UI). */
   animation: string;
-  /**
-   * Escala de la animación en pantalla (0.2–1).
+  /** Escala de la animación en pantalla (0.2–1).
    * 1 = casi pantalla completa; se edita en Super Admin y aplica en móvil/tablet/PC.
    */
   animScale?: number;
+  /** Layout por dispositivo × formato LIVE. Si falta, se usa animScale. */
+  giftLayout?: GiftLayoutMap;
   /** Solo aparece y se puede comprar en LIVE (no posts / clips / flash). */
   liveOnly?: boolean;
   /** Filtro DeepAR aplicado en la cámara del host. */
@@ -192,6 +194,7 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
       level: remote.level,
       animation: remote.animation,
       animScale: remote.animScale,
+      giftLayout: remote.giftLayout,
       liveOnly: remote.liveOnly,
       deeparFilter: remote.deeparFilter,
     });
@@ -221,6 +224,8 @@ export function sortedLiveboomGiftCatalog(): LiveGift[] {
         coins: g.coins,
         level: g.level,
         animation: g.animation,
+        animScale: g.animScale,
+        giftLayout: g.giftLayout,
         liveOnly: g.liveOnly,
         deeparFilter: g.deeparFilter,
       }));
@@ -243,6 +248,8 @@ export function sortedLiveGiftCatalog(): LiveGift[] {
       coins: g.coins,
       level: g.level,
       animation: g.animation,
+      animScale: g.animScale,
+      giftLayout: g.giftLayout,
       liveOnly: g.liveOnly,
       deeparFilter: g.deeparFilter,
     }));
