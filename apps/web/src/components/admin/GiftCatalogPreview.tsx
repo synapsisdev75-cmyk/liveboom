@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { EditableGift, GiftPlacement } from '../../lib/catalogConfigFirestore';
 import { clampGiftAnimScale } from '../../lib/liveboomGifts';
 import {
@@ -34,16 +34,21 @@ const DEVICE_LABEL: Record<PreviewDevice, string> = {
 };
 
 function previewFrame(device: PreviewDevice, format: GiftLiveFormat) {
-  const use169 = device === 'desktop' || (device === 'tablet' && format === 'landscape169');
-  if (use169) {
-    return {
-      frameW: device === 'tablet' ? 1024 : 1280,
-      frameH: device === 'tablet' ? 576 : 720,
-      scale: device === 'tablet' ? 0.42 : 0.36,
-    };
+  if (device === 'desktop') {
+    return { frameW: 1280, frameH: 720, scale: 1 };
+  }
+  if (device === 'tablet' && format === 'landscape169') {
+    return { frameW: 1024, frameH: 576, scale: 0.42 };
   }
   if (device === 'tablet') return { frameW: 768, frameH: 1365, scale: 0.32 };
   return { frameW: 390, frameH: 693, scale: 0.52 };
+}
+
+function desktopCanvasSize(availableWidth: number, viewportHeight: number) {
+  const width = Math.max(280, Math.floor(availableWidth));
+  const maxH = Math.min(Math.round(viewportHeight * 0.56), 560);
+  const height = Math.max(180, Math.min(Math.round(width * (9 / 16)), maxH));
+  return { width, height };
 }
 
 const BACKDROP_META: Record<PreviewBackdrop, { label: string; style: CSSProperties }> = {
@@ -138,9 +143,16 @@ export function GiftCatalogPreview({
   const [liveFormat, setLiveFormat] = useState<GiftLiveFormat>(
     device === 'desktop' ? 'landscape169' : 'portrait916',
   );
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [shellW, setShellW] = useState(0);
   const meta = previewFrame(device, liveFormat);
-  const displayW = Math.round(meta.frameW * meta.scale);
-  const displayH = Math.round(meta.frameH * meta.scale);
+  const desktopSize = desktopCanvasSize(
+    shellW || 720,
+    typeof window === 'undefined' ? 720 : window.innerHeight,
+  );
+  const displayW = device === 'desktop' ? desktopSize.width : Math.round(meta.frameW * meta.scale);
+  const displayH = device === 'desktop' ? desktopSize.height : Math.round(meta.frameH * meta.scale);
+  const facePreviewScale = device === 'desktop' ? Math.min(1, displayH / 720) : meta.scale;
   const [compare, setCompare] = useState<'processed' | 'original'>('processed');
   const videoSrc = giftPlaybackSrc(
     gift.media,
@@ -166,7 +178,20 @@ export function GiftCatalogPreview({
 
   useEffect(() => {
     if (device === 'mobile') setLiveFormat('portrait916');
-    else if (device === 'desktop') setLiveFormat('landscape169');
+  }, [device]);
+
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return;
+    const measure = () => setShellW(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, [device]);
 
   const commit = (next: GiftLayoutMap) => {
@@ -206,9 +231,11 @@ export function GiftCatalogPreview({
 
       <div className="space-y-1">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          Formato de la animación
+          Formato del LIVE
         </p>
-        {device === 'tablet' ? (
+        {device === 'mobile' ? (
+          <p className="text-xs text-zinc-400">Móvil (Android / iOS) usa 9:16.</p>
+        ) : (
           <div className="flex flex-wrap gap-1">
             <Chip tone="cyan" active={is916} onClick={() => setLiveFormat('portrait916')}>
               Vertical 9:16
@@ -217,12 +244,6 @@ export function GiftCatalogPreview({
               Horizontal 16:9
             </Chip>
           </div>
-        ) : (
-          <p className="text-xs text-zinc-400">
-            {device === 'desktop'
-              ? 'Escritorio usa 16:9.'
-              : 'Móvil (Android / iOS) usa 9:16.'}
-          </p>
         )}
       </div>
 
@@ -465,9 +486,11 @@ export function GiftCatalogPreview({
         </div>
       ) : null}
 
-      <div className="flex justify-center overflow-x-auto py-2">
+      <div ref={shellRef} className={device === 'desktop' ? 'w-full max-w-full py-2' : 'flex justify-center overflow-x-auto py-2'}>
         <div
-          className="relative shrink-0 overflow-hidden rounded-[1.25rem] border border-zinc-600 bg-zinc-950 shadow-2xl shadow-black/50"
+          className={`relative overflow-hidden rounded-[1.25rem] border border-zinc-600 bg-zinc-950 shadow-2xl shadow-black/50 ${
+            device === 'desktop' ? 'mx-auto max-w-full' : 'shrink-0'
+          }`}
           style={{ width: displayW, height: displayH }}
         >
           <div className="absolute inset-0" style={BACKDROP_META[backdrop].style} />
@@ -528,7 +551,7 @@ export function GiftCatalogPreview({
                   {gift.face && !globalArea ? (
                     <div
                       className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
-                      style={{ top: `${faceTop}%`, fontSize: `${faceSize * meta.scale * 1.6}rem` }}
+                      style={{ top: `${faceTop}%`, fontSize: `${faceSize * facePreviewScale * 1.6}rem` }}
                       title={`Ancla: ${gift.face.anchor}`}
                     >
                       {gift.face.emoji || gift.emoji}
@@ -592,8 +615,8 @@ export function GiftCatalogPreview({
       </div>
 
       <p className="text-center text-[11px] text-zinc-500">
-        {DEVICE_LABEL[device]} · {is916 ? '9:16' : '16:9'} ·{' '}
-        {globalArea ? 'overlay global' : 'dentro del video'}. Publica para aplicar en la app.
+        {DEVICE_LABEL[device]} · LIVE {is916 ? '9:16' : '16:9'} ·{' '}
+        {globalArea ? 'toda la pantalla del lienzo' : 'dentro del video'}. Publica para aplicar en la app.
       </p>
     </div>
   );
