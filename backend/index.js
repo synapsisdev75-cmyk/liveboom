@@ -219,6 +219,45 @@ try {
       console.log('[liveboom] purge verificación', stats);
     },
   );
+  module.exports.processGiftAlphaQueue = onSchedule(
+    {
+      region: 'us-central1',
+      schedule: 'every 1 minutes',
+      memory: '2GiB',
+      timeoutSeconds: 540,
+      maxInstances: 1,
+      cpu: 2,
+    },
+    async () => {
+      const { processGiftAlphaQueue } = require('./src/lib/giftAlphaConvert');
+      const stats = await processGiftAlphaQueue();
+      console.log('[liveboom] gift alpha queue', stats);
+    },
+  );
 } catch (error) {
   console.warn('[liveboom] scheduler functions no disponible:', error.message);
+}
+
+try {
+  const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+  module.exports.processGiftAlphaJob = onDocumentWritten(
+    {
+      document: 'gift_alpha_jobs/{jobId}',
+      region: 'us-central1',
+      memory: '2GiB',
+      timeoutSeconds: 540,
+      cpu: 2,
+    },
+    async (event) => {
+      const before = event.data?.before?.data() || null;
+      const after = event.data?.after?.data() || null;
+      if (!after) return;
+      if (after.status !== 'queued' && after.status !== 'retry') return;
+      if (before && before.status === after.status) return;
+      const { processGiftAlphaJob } = require('./src/lib/giftAlphaConvert');
+      await processGiftAlphaJob(event.params.jobId);
+    },
+  );
+} catch (error) {
+  console.warn('[liveboom] firestore trigger gift-alpha no disponible:', error.message);
 }

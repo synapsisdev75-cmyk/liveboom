@@ -106,19 +106,111 @@ function lookupRoomName(roomName) {
   return raw;
 }
 
-router.post('/convert-alpha', requireAuth, requireSuperAdmin, async (req, res) => {
+function giftAlphaHttpStatus(code) {
+  if (code === 'INVALID_PATH' || code === 'TOO_LARGE' || code === 'INVALID_GIFT' || code === 'UNSUPPORTED') {
+    return 400;
+  }
+  if (code === 'NOT_FOUND') return 404;
+  return 500;
+}
+
+router.get('/convert-alpha/limits', requireAuth, requireSuperAdmin, (_req, res) => {
+  const { LIMITS } = require('../lib/giftAlphaConvert');
+  res.json({
+    ok: true,
+    maxBytes: LIMITS.maxBytes,
+    maxDurationSec: LIMITS.maxDurationSec,
+    maxEdge: LIMITS.maxEdge,
+  });
+});
+
+router.post('/convert-alpha/jobs', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const { convertGiftAlphaMov } = require('../lib/giftAlphaConvert');
-    const result = await convertGiftAlphaMov({
+    const { enqueueGiftAlphaJob, kickGiftAlphaJob } = require('../lib/giftAlphaConvert');
+    const job = await enqueueGiftAlphaJob({
       storagePath: typeof req.body?.storagePath === 'string' ? req.body.storagePath : '',
+      giftId: typeof req.body?.giftId === 'string' ? req.body.giftId : '',
+      createdByUid: req.user?.uid || '',
+      keepAudio: req.body?.keepAudio !== false,
+      fileName: typeof req.body?.fileName === 'string' ? req.body.fileName : '',
+      clientNonce: typeof req.body?.clientNonce === 'string' ? req.body.clientNonce : '',
     });
-    res.json({ ok: true, url: result.url, storagePath: result.storagePath });
+    res.json({ ok: true, job });
+    kickGiftAlphaJob(job.jobId);
   } catch (error) {
     const code = error && error.code ? String(error.code) : '';
-    const status =
-      code === 'INVALID_PATH' || code === 'TOO_LARGE' ? 400 : code === 'NOT_FOUND' ? 404 : 500;
+    console.error('[gifts/convert-alpha/jobs]', error);
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo iniciar la conversión del MOV',
+    });
+  }
+});
+
+router.get('/convert-alpha/jobs/:jobId', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { readJob, publicJob } = require('../lib/giftAlphaConvert');
+    const job = publicJob(await readJob(req.params.jobId));
+    if (!job) {
+      res.status(404).json({ error: 'Trabajo no encontrado' });
+      return;
+    }
+    res.json({ ok: true, job });
+  } catch (error) {
+    console.error('[gifts/convert-alpha/jobs/:id]', error);
+    res.status(500).json({ error: 'No se pudo leer el estado de conversión' });
+  }
+});
+
+router.get('/convert-alpha/gifts/:giftId', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { readJob, publicJob, safeGiftId } = require('../lib/giftAlphaConvert');
+    const { getAdminDb } = require('../lib/firestoreAdmin');
+    const giftId = safeGiftId(req.params.giftId);
+    if (!giftId) {
+      res.status(400).json({ error: 'Regalo inválido' });
+      return;
+    }
+    const ptr = await getAdminDb().collection('gift_alpha_gifts').doc(giftId).get();
+    const latestJobId = ptr.exists ? String(ptr.data()?.latestJobId || '') : '';
+    const job = latestJobId ? publicJob(await readJob(latestJobId)) : null;
+    res.json({ ok: true, job });
+  } catch (error) {
+    console.error('[gifts/convert-alpha/gifts/:id]', error);
+    res.status(500).json({ error: 'No se pudo leer la conversión del regalo' });
+  }
+});
+
+router.post('/convert-alpha/jobs/:jobId/retry', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { retryGiftAlphaJob, kickGiftAlphaJob } = require('../lib/giftAlphaConvert');
+    const job = await retryGiftAlphaJob(req.params.jobId);
+    res.json({ ok: true, job });
+    kickGiftAlphaJob(job.jobId);
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo reintentar la conversión',
+    });
+  }
+});
+
+router.post('/convert-alpha', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { enqueueGiftAlphaJob, kickGiftAlphaJob } = require('../lib/giftAlphaConvert');
+    const job = await enqueueGiftAlphaJob({
+      storagePath: typeof req.body?.storagePath === 'string' ? req.body.storagePath : '',
+      giftId: typeof req.body?.giftId === 'string' ? req.body.giftId : '',
+      createdByUid: req.user?.uid || '',
+      keepAudio: req.body?.keepAudio !== false,
+      fileName: typeof req.body?.fileName === 'string' ? req.body.fileName : '',
+      clientNonce: typeof req.body?.clientNonce === 'string' ? req.body.clientNonce : '',
+    });
+    res.json({ ok: true, jobId: job.jobId, job });
+    kickGiftAlphaJob(job.jobId);
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
     console.error('[gifts/convert-alpha]', error);
-    res.status(status).json({
+    res.status(giftAlphaHttpStatus(code)).json({
       error: error instanceof Error ? error.message : 'No se pudo convertir el MOV 4444',
     });
   }

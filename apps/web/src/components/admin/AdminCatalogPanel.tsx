@@ -18,7 +18,16 @@ import {
   GiftCatalogPreview,
   type PreviewDevice,
 } from './GiftCatalogPreview';
-import { needsAlphaMovConvert, uploadGiftAnimation } from '../../lib/giftAlphaConvert';
+import {
+  forgetGiftAlphaJob,
+  formatGiftAnimBytes,
+  giftAnimLimitsHint,
+  isGiftAnimationFile,
+  needsAlphaMovConvert,
+  resumeGiftAlphaJob,
+  uploadGiftAnimation,
+  type GiftAnimProgress,
+} from '../../lib/giftAlphaConvert';
 
 const PLACEMENT_LABELS: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -39,6 +48,7 @@ function AssetDropZone({
   isVideo,
   disabled,
   busyLabel,
+  progress,
   onFile,
 }: {
   label: string;
@@ -48,10 +58,15 @@ function AssetDropZone({
   isVideo?: boolean;
   disabled?: boolean;
   busyLabel?: string;
+  progress?: GiftAnimProgress | null;
   onFile: (file: File) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const busy =
+    Boolean(progress) && progress?.stage !== 'done' && progress?.stage !== 'failed';
+  const percent = progress?.percent;
+  const showBar = busy && (percent != null || progress?.indeterminate);
 
   function takeFiles(files: FileList | null) {
     const file = files?.[0];
@@ -64,6 +79,16 @@ function AssetDropZone({
     if (disabled) return;
     takeFiles(e.dataTransfer.files);
   }
+
+  const title = busy
+    ? progress?.label || busyLabel || 'Procesando…'
+    : progress?.stage === 'done'
+      ? 'Animación lista.'
+      : disabled
+        ? busyLabel || 'Subiendo…'
+        : isVideo
+          ? 'Subir animación'
+          : 'Subir desde el escritorio';
 
   return (
     <div className="space-y-2">
@@ -110,9 +135,31 @@ function AssetDropZone({
         ) : (
           <span className="text-2xl text-zinc-500">⬆</span>
         )}
-        <span className="text-sm font-semibold text-white">
-          {disabled ? busyLabel || 'Subiendo…' : 'Subir desde el escritorio'}
-        </span>
+        <span className="text-sm font-semibold text-white">{title}</span>
+        {progress?.fileName ? (
+          <span className="max-w-full truncate text-[11px] text-zinc-400">
+            {progress.fileName}
+            {progress.fileBytes ? ` · ${formatGiftAnimBytes(progress.fileBytes)}` : ''}
+          </span>
+        ) : null}
+        {showBar ? (
+          <div className="h-1.5 w-full max-w-[12rem] overflow-hidden rounded-full bg-zinc-800">
+            {percent != null && !progress?.indeterminate ? (
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 transition-[width]"
+                style={{ width: `${Math.max(4, Math.min(100, percent))}%` }}
+              />
+            ) : (
+              <div className="h-full w-1/3 animate-pulse rounded-full bg-cyan-400/70" />
+            )}
+          </div>
+        ) : null}
+        {progress?.warning ? (
+          <span className="text-[11px] text-amber-200">{progress.warning}</span>
+        ) : null}
+        {progress?.error ? (
+          <span className="text-[11px] text-rose-300">{progress.error}</span>
+        ) : null}
         <span className="text-[11px] text-zinc-500">{hint}</span>
       </div>
       <input
@@ -145,9 +192,11 @@ export function AdminCatalogPanel() {
   const [query, setQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [convertingAlpha, setConvertingAlpha] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [animProgress, setAnimProgress] = useState<Record<string, GiftAnimProgress | null>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile');
+  const animGenRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     if (storeGifts.length) {
@@ -180,6 +229,32 @@ export function AdminCatalogPanel() {
 
   const gift = gifts.find((g) => g.id === selectedGiftId) || gifts[0];
   const pack = packs.find((p) => p.id === selectedPackId) || packs[0];
+
+  useEffect(() => {
+    const giftId = selectedGiftId;
+    if (!giftId) return;
+    const genAtStart = animGenRef.current[giftId] || 0;
+    let cancelled = false;
+    void resumeGiftAlphaJob(giftId, (progress) => {
+      if (cancelled || (animGenRef.current[giftId] || 0) !== genAtStart) return;
+      setAnimProgress((prev) => ({ ...prev, [giftId]: progress }));
+    })
+      .then((job) => {
+        if (cancelled || !job) return;
+        if ((animGenRef.current[giftId] || 0) !== genAtStart) return;
+        if (job.status === 'done' && job.url && !job.url.startsWith('blob:')) {
+          patchGift(job.giftId, { video: job.url });
+          forgetGiftAlphaJob(job.giftId);
+          if (job.warning) setMessage(`${job.warning} Publica para aplicar.`);
+        }
+      })
+      .catch(() => {
+        /* el recuadro muestra el error si el job falló */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGiftId]);
 
   function patchGift(id: string, patch: Partial<EditableGift>) {
     setGifts((prev) =>
@@ -269,26 +344,77 @@ export function AdminCatalogPanel() {
 
   async function onUploadGiftAsset(kind: 'image' | 'video', file: File | null) {
     if (!file || !gift) return;
-    const convertMov = kind === 'video' && needsAlphaMovConvert(file);
-    setUploading(true);
-    setConvertingAlpha(convertMov);
+    if (kind === 'image') {
+      setImageUploading(true);
+      setMessage(null);
+      try {
+        const url = await uploadCatalogAsset('gifts', `${gift.id}-image`, file);
+        patchGift(gift.id, { image: url });
+        setMessage('Imagen subida. Publica para aplicar.');
+      } catch (err) {
+        setMessage(err instanceof Error ? err.message : 'Error al subir archivo');
+      } finally {
+        setImageUploading(false);
+      }
+      return;
+    }
+
+    if (!isGiftAnimationFile(file) && !needsAlphaMovConvert(file)) {
+      setMessage('Usa un WebM, MP4 o MOV ProRes 4444.');
+      return;
+    }
+
+    const targetGiftId = gift.id;
+    const gen = (animGenRef.current[targetGiftId] || 0) + 1;
+    animGenRef.current[targetGiftId] = gen;
+    const convertMov = needsAlphaMovConvert(file);
     setMessage(null);
+    setAnimProgress((prev) => ({
+      ...prev,
+      [targetGiftId]: {
+        stage: 'uploading',
+        label: convertMov ? 'Subiendo archivo…' : 'Subiendo…',
+        percent: 0,
+        indeterminate: false,
+        fileName: file.name,
+        fileBytes: file.size,
+      },
+    }));
     try {
-      const url =
-        kind === 'video'
-          ? await uploadGiftAnimation(gift.id, file)
-          : await uploadCatalogAsset('gifts', `${gift.id}-${kind}`, file);
-      patchGift(gift.id, kind === 'image' ? { image: url } : { video: url });
+      const result = await uploadGiftAnimation(targetGiftId, file, (progress) => {
+        setAnimProgress((prev) => ({ ...prev, [targetGiftId]: progress }));
+      });
+      if (animGenRef.current[targetGiftId] !== gen) return;
+      patchGift(targetGiftId, { video: result.url });
+      const warn = result.job?.warning;
       setMessage(
         convertMov
-          ? 'MOV 4444 convertido a WebM con alpha. Publica para aplicar.'
-          : `${kind === 'image' ? 'Imagen' : 'Animación'} subida. Publica para aplicar.`,
+          ? warn
+            ? `${warn} Publica para aplicar.`
+            : 'MOV convertido a WebM. Publica para aplicar.'
+          : 'Animación subida. Publica para aplicar.',
       );
+      forgetGiftAlphaJob(targetGiftId);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Error al subir archivo');
-    } finally {
-      setUploading(false);
-      setConvertingAlpha(false);
+      if (animGenRef.current[targetGiftId] !== gen) return;
+      const error = err instanceof Error ? err.message : 'Error al subir archivo';
+      setAnimProgress((prev) => ({
+        ...prev,
+        [targetGiftId]: {
+          ...(prev[targetGiftId] || {
+            stage: 'failed',
+            label: 'Error al convertir',
+            percent: null,
+            indeterminate: false,
+            fileName: file.name,
+            fileBytes: file.size,
+          }),
+          stage: 'failed',
+          label: 'Error al convertir',
+          error,
+        },
+      }));
+      setMessage(error);
     }
   }
 
@@ -502,7 +628,7 @@ export function AdminCatalogPanel() {
                   accept="image/png,image/jpeg,image/webp,image/gif"
                   hint="Arrastra o haz clic · PNG, JPG, WebP"
                   previewUrl={gift.image}
-                  disabled={uploading}
+                  disabled={imageUploading}
                   onFile={(file) => void onUploadGiftAsset('image', file)}
                 />
                 <label className="block space-y-1 text-xs text-zinc-400">
@@ -521,12 +647,11 @@ export function AdminCatalogPanel() {
               <div className="space-y-3">
                 <AssetDropZone
                   label="Animación WebM / MP4 / MOV 4444"
-                  accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov"
-                  hint="Arrastra o haz clic · MOV ProRes 4444 con alpha se convierte a WebM al instante"
+                  accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov,.MOV"
+                  hint={`Arrastra un WebM, MP4 o MOV ProRes 4444. Los MOV se convierten automáticamente a WebM. ${giftAnimLimitsHint()}.`}
                   previewUrl={gift.video}
                   isVideo
-                  disabled={uploading}
-                  busyLabel={convertingAlpha ? 'Convirtiendo MOV 4444…' : 'Subiendo…'}
+                  progress={animProgress[gift.id] || null}
                   onFile={(file) => void onUploadGiftAsset('video', file)}
                 />
                 <label className="block space-y-1 text-xs text-zinc-400">

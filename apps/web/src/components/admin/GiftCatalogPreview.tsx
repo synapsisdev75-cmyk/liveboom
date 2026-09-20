@@ -1,3 +1,4 @@
+import { useState, type CSSProperties } from 'react';
 import type { EditableGift, GiftPlacement } from '../../lib/catalogConfigFirestore';
 
 const PLACEMENT_SHORT: Record<GiftPlacement, string> = {
@@ -10,6 +11,7 @@ const PLACEMENT_SHORT: Record<GiftPlacement, string> = {
 };
 
 export type PreviewDevice = 'mobile' | 'tablet' | 'desktop';
+export type PreviewBackdrop = 'checker' | 'light' | 'dark';
 
 const DEVICE_META: Record<
   PreviewDevice,
@@ -18,6 +20,21 @@ const DEVICE_META: Record<
   mobile: { label: 'Móvil', frameW: 390, frameH: 720, scale: 0.58 },
   tablet: { label: 'Tablet', frameW: 768, frameH: 900, scale: 0.42 },
   desktop: { label: 'Escritorio', frameW: 1280, frameH: 720, scale: 0.36 },
+};
+
+const BACKDROP_META: Record<PreviewBackdrop, { label: string; style: CSSProperties }> = {
+  checker: {
+    label: 'Cuadriculado',
+    style: {
+      backgroundColor: '#d4d4d8',
+      backgroundImage:
+        'linear-gradient(45deg, #a1a1aa 25%, transparent 25%), linear-gradient(-45deg, #a1a1aa 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #a1a1aa 75%), linear-gradient(-45deg, transparent 75%, #a1a1aa 75%)',
+      backgroundSize: '16px 16px',
+      backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0',
+    },
+  },
+  light: { label: 'Claro', style: { background: '#f4f4f5' } },
+  dark: { label: 'Oscuro', style: { background: '#09090b' } },
 };
 
 type Props = {
@@ -54,6 +71,7 @@ export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
   const isVideo = Boolean(gift.video);
   const faceTop = faceTopPercent(gift);
   const faceSize = faceSizeRem(gift);
+  const [backdrop, setBackdrop] = useState<PreviewBackdrop>('checker');
 
   return (
     <div className="space-y-3 rounded-xl border border-white/10 bg-black/40 p-3">
@@ -62,6 +80,20 @@ export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
           Previsualización
         </p>
         <div className="ml-auto flex flex-wrap gap-1">
+          {(Object.keys(BACKDROP_META) as PreviewBackdrop[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setBackdrop(key)}
+              className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
+                backdrop === key
+                  ? 'bg-zinc-100 text-zinc-900 ring-1 ring-white/40'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              }`}
+            >
+              {BACKDROP_META[key].label}
+            </button>
+          ))}
           {(Object.keys(DEVICE_META) as PreviewDevice[]).map((key) => (
             <button
               key={key}
@@ -84,11 +116,13 @@ export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
           className="relative shrink-0 overflow-hidden rounded-[1.25rem] border border-zinc-600 bg-zinc-950 shadow-2xl shadow-black/50"
           style={{ width: displayW, height: displayH }}
         >
-          {/* Escena LIVE simulada */}
-          <div className="absolute inset-0 bg-gradient-to-b from-violet-950 via-zinc-900 to-black" />
-          <div className="absolute inset-0 opacity-40">
-            <div className="absolute left-1/2 top-[28%] h-[42%] w-[55%] -translate-x-1/2 rounded-full bg-fuchsia-500/20 blur-3xl" />
-          </div>
+          {/* Fondo de prueba del editor (no se graba en el video). */}
+          <div className="absolute inset-0" style={BACKDROP_META[backdrop].style} />
+          {backdrop === 'checker' ? (
+            <div className="absolute inset-0 opacity-35">
+              <div className="absolute left-1/2 top-[28%] h-[42%] w-[55%] -translate-x-1/2 rounded-full bg-fuchsia-500/20 blur-3xl" />
+            </div>
+          ) : null}
 
           {/* Silueta de host */}
           <div className="absolute left-1/2 top-[22%] flex w-[42%] -translate-x-1/2 flex-col items-center">

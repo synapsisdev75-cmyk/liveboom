@@ -9,10 +9,11 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "test": "node --test src/lib/walletEngine.test.js src/lib/moneyDecimal.test.js src/lib/payoutConversion.test.js src/lib/blastPurchase.test.js src/lib/withdrawalExcel.test.js src/lib/verification.test.js",
+    "test": "node --test src/lib/walletEngine.test.js src/lib/moneyDecimal.test.js src/lib/payoutConversion.test.js src/lib/blastPurchase.test.js src/lib/withdrawalExcel.test.js src/lib/verification.test.js src/lib/giftAlphaConvert.test.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@prisma/client": "^6.19.3",
     "agora-token": "^2.0.6",
     "cors": "^2.8.6",
