@@ -5,8 +5,10 @@ const CALL_PRICING = {
   video_1080: 32,
 };
 
-/** Valor estimado COP por Blast ganado por el receptor/creador. */
-const CREATOR_VALUE_PER_BLAST = 15;
+const { CREATOR_BLAST_COP_RATE, blastToMoneyCop } = require('./payoutConversion');
+
+/** Alias de la tasa única de BLAST ganados (payoutConversion). */
+const CREATOR_VALUE_PER_BLAST = CREATOR_BLAST_COP_RATE;
 
 /** Segundos conectados por debajo de este umbral ⇒ cobro 0. Empieza al contestar. */
 const BILLING_GRACE_SECONDS = 5;
@@ -42,7 +44,7 @@ function calculateBlastDue(connectedSeconds, callType) {
 }
 
 function creatorCopForBlast(blast) {
-  return Math.max(0, Math.floor(Number(blast) || 0)) * CREATOR_VALUE_PER_BLAST;
+  return blastToMoneyCop(blast);
 }
 
 function estimateRemainingSeconds(walletBlast, callType) {

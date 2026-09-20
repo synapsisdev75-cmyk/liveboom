@@ -21,6 +21,7 @@ import { normalizeBlastBalances } from '../lib/blastBalances';
 import {
   fetchWalletSummary,
   fetchWalletTransactions,
+  quotedCop,
   ledgerLabel,
   signedAmount,
   type WalletLedgerRow,
@@ -278,7 +279,7 @@ export function WalletView() {
   const purchased = walletSummary?.purchasedBalance ?? fallback.purchasedBlastBalance;
   const earned = walletSummary?.earnedAvailable ?? fallback.earnedBlastBalance;
   const balance = walletSummary?.totalAvailable ?? fallback.totalBlastBalance;
-  const withdrawableMoney = walletSummary?.withdrawableAmount || null;
+  const withdrawableMoney = quotedCop(walletSummary);
 
   useEffect(() => {
     if (rechargeNote?.kind !== 'pending') return;
@@ -383,11 +384,15 @@ export function WalletView() {
                   <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Recargas + ganados</p>
                 </div>
               </div>
-              {withdrawableMoney ? (
-                <p className="mt-3 text-sm font-semibold text-emerald-300">
-                  Dinero disponible para retirar{' '}
-                  {formatMoneyExact(withdrawableMoney, walletSummary?.currency || 'COP')}
-                </p>
+              {withdrawableMoney != null && withdrawableMoney > 0 ? (
+                <div className="mt-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-300/80">
+                    Dinero disponible para retirar
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-emerald-300 sm:text-base">
+                    {formatMoneyExact(withdrawableMoney, walletSummary?.currency || 'COP')}
+                  </p>
+                </div>
               ) : null}
               {rechargeNote ? (
                 <div className="mt-3 space-y-1 text-sm font-semibold text-emerald-300">
@@ -421,7 +426,7 @@ export function WalletView() {
                   onClick={() => setOpenWithdraw(true)}
                   className="inline-flex h-11 w-full items-center justify-center rounded-full border-[1.5px] border-[#10B981] bg-black/35 px-6 text-sm font-bold text-[#10B981] backdrop-blur-sm transition hover:bg-[#10B981]/10 sm:w-auto"
                 >
-                  Retirar
+                  RETIRAR
                 </button>
               </div>
             </div>

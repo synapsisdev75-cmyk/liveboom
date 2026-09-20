@@ -179,13 +179,18 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
             <p className="text-sm text-emerald-400">
               El dinero se desembolsará en tu cuenta en un plazo de 3 a 5 días hábiles.
             </p>
-            <p className="text-sm font-semibold text-[color:var(--lb-text,#fff)]">
-              Monto solicitado
-            </p>
-            <p className="text-2xl font-black tabular-nums text-emerald-400">
-              {formatMoneyExact(doneMoney, currency)}
-            </p>
-            <p className="text-sm text-zinc-400">Estado {statusLabel('REQUESTED')}</p>
+            <div>
+              <p className="text-sm font-semibold text-[color:var(--lb-text,#fff)]">
+                Monto solicitado
+              </p>
+              <p className="mt-1 text-2xl font-black tabular-nums text-emerald-400">
+                {formatMoneyExact(doneMoney, currency)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[color:var(--lb-text,#fff)]">Estado</p>
+              <p className="mt-1 text-sm text-zinc-300">{statusLabel('REQUESTED')}</p>
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -331,7 +336,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
                     onClick={() => setStep('confirm')}
                     className="min-h-11 rounded-full bg-emerald-500 px-6 text-sm font-bold uppercase tracking-wide text-zinc-950 disabled:opacity-50"
                   >
-                    Retirar
+                    RETIRAR
                   </button>
                 </div>
               </>

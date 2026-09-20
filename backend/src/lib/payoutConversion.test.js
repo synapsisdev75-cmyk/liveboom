@@ -95,4 +95,16 @@ describe('payoutConversion', () => {
     assert.equal('blastRate' in safe, false);
     assert.equal('CREATOR_BLAST_COP_RATE' in safe, false);
   });
+
+  it('congela 25840 BLAST = 387600 COP y no recalcula', () => {
+    const row = publicWithdrawalRecord({
+      id: 'wd-freeze',
+      userId: 'u1',
+      earnedBlastAmount: 25840,
+      moneyAmountCOP: 387600,
+    });
+    assert.equal(row.earnedBlastAmount, 25840);
+    assert.equal(row.moneyAmountCOP, 387600);
+    assert.equal(row.currency, 'COP');
+  });
 });

@@ -531,7 +531,10 @@ async function withdrawCoins(req, res) {
       return;
     }
     const uid = dbUser.firebaseUid || dbUser.id;
-    const coins = Math.floor(Number(req.body?.coins) || 0);
+    void req.body?.amountCOP;
+    void req.body?.moneyAmountCOP;
+    void req.body?.amount;
+    const coins = Math.floor(Number(req.body?.coins ?? req.body?.earnedBlastAmount) || 0);
     const fullName = String(req.body?.fullName || '').trim().slice(0, 120);
     const documentId = String(req.body?.documentId || '').trim().slice(0, 32);
     const payoutMethod = String(req.body?.payoutMethod || '').trim().slice(0, 40);
@@ -539,10 +542,10 @@ async function withdrawCoins(req, res) {
     const accountType = String(req.body?.accountType || 'ahorros').trim().slice(0, 20);
 
     if (!Number.isFinite(coins) || coins < MIN_WITHDRAW_COINS) {
-      const { blastToMoneyCop } = require('../lib/payoutConversion');
+      const { blastToMoneyExact } = require('../lib/payoutConversion');
       res.status(400).json({
         error: 'El monto a retirar no alcanza el mínimo autorizado.',
-        minWithdrawAmount: blastToMoneyCop(MIN_WITHDRAW_COINS),
+        minWithdrawAmount: blastToMoneyExact(MIN_WITHDRAW_COINS),
         currency: 'COP',
       });
       return;
@@ -564,49 +567,51 @@ async function withdrawCoins(req, res) {
       return;
     }
 
-    const { quoteWithdrawal, blastToMoneyCop, publicWalletSummary, stripLeakedRate } = require('../lib/payoutConversion');
+    const { quoteWithdrawal, blastToMoneyExact, publicWalletSummary, stripLeakedRate } = require('../lib/payoutConversion');
     const wallet = require('../lib/walletService');
     const summary = await wallet.getSummary(uid);
-    const quote = quoteWithdrawal(coins, summary.withdrawableBalance);
+    const quote = quoteWithdrawal(coins, summary.earnedAvailable);
     if (!quote.ok) {
       const code = quote.code;
       if (code === 'PURCHASED_NOT_WITHDRAWABLE') {
-        res.status(400).json(stripLeakedRate({
+        res.status(400).json({
           error: 'Solo puedes retirar BLAST ganados. Los BLAST comprados no se retiran.',
           code,
-          earnedBlastAvailable: summary.earnedAvailable,
           withdrawableBalance: summary.withdrawableBalance,
           withdrawableAmount: quote.withdrawableAmount,
           currency: 'COP',
-        }));
+          purchasedBalance: summary.purchasedBalance,
+        });
         return;
       }
-      res.status(400).json(stripLeakedRate({
+      res.status(400).json({
         error: 'Saldo retirable insuficiente.',
         code,
-        earnedBlastAvailable: summary.earnedAvailable,
         withdrawableBalance: summary.withdrawableBalance,
-        withdrawableAmount: blastToMoneyCop(summary.withdrawableBalance),
+        withdrawableAmount: blastToMoneyExact(summary.withdrawableBalance),
         currency: 'COP',
-      }));
+      });
       return;
     }
     if (coins < MIN_WITHDRAW_COINS) {
       res.status(400).json({
         error: 'El monto a retirar no alcanza el mínimo autorizado.',
-        minWithdrawAmount: blastToMoneyCop(MIN_WITHDRAW_COINS),
+        minWithdrawAmount: blastToMoneyExact(MIN_WITHDRAW_COINS),
         currency: 'COP',
       });
       return;
     }
 
     const moneyAmountCOP = quote.moneyAmountCOP;
+    const moneyAmountExact = String(moneyAmountCOP);
     const reference = createWompiReference('wd');
     const payout = {
       id: reference,
       reference,
       coins,
       earnedBlastAmount: coins,
+      moneyAmountCOP,
+      moneyAmountExact,
       currency: 'COP',
       fullName,
       documentId,
@@ -625,17 +630,17 @@ async function withdrawCoins(req, res) {
         ? require('../lib/walletEngine').toSummary(result.balances)
         : await wallet.getSummary(uid);
       const code = result?.code;
-      res.status(400).json(stripLeakedRate({
+      res.status(400).json({
         error:
           code === 'PURCHASED_NOT_WITHDRAWABLE'
             ? 'Solo puedes retirar BLAST ganados. Los BLAST comprados no se retiran.'
             : 'Saldo retirable insuficiente.',
         code,
-        earnedBlastAvailable: failed.earnedAvailable,
         withdrawableBalance: failed.withdrawableBalance,
-        withdrawableAmount: blastToMoneyCop(failed.withdrawableBalance),
+        withdrawableAmount: blastToMoneyExact(failed.withdrawableBalance),
         currency: 'COP',
-      }));
+        purchasedBalance: failed.purchasedBalance,
+      });
       return;
     }
 
@@ -675,8 +680,7 @@ async function withdrawCoins(req, res) {
       detail: 'Tu solicitud de retiro fue recibida correctamente. El dinero se desembolsará en tu cuenta en un plazo de 3 a 5 días hábiles.',
       earnedBlastAmount: coins,
       moneyAmountCOP,
-      moneyAmountExact: String(moneyAmountCOP),
-      withdrawableAmount: publicSummary.withdrawableAmount,
+      moneyAmountExact,
       currency: 'COP',
       status: WITHDRAWAL_STATUS.REQUESTED,
     }));

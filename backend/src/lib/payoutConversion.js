@@ -19,6 +19,7 @@ const RATE_LEAK_KEYS = new Set([
   'COIN_TO_COP',
   'CREATOR_BLAST_COP_RATE',
   'creatorBlastCopRate',
+  'INTERNAL_CREATOR_RATE_EXACT',
 ]);
 
 function earnedBlastOf(value) {
@@ -132,10 +133,14 @@ function hasLeakedRate(payload) {
 }
 
 function stripLeakedRate(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
-  const next = { ...payload };
-  for (const key of Object.keys(next)) {
-    if (RATE_LEAK_KEYS.has(key)) delete next[key];
+  if (payload == null || typeof payload !== 'object') return payload;
+  if (Array.isArray(payload)) return payload.map(stripLeakedRate);
+  const proto = Object.getPrototypeOf(payload);
+  if (proto !== Object.prototype && proto !== null) return payload;
+  const next = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (RATE_LEAK_KEYS.has(key)) continue;
+    next[key] = stripLeakedRate(value);
   }
   return next;
 }

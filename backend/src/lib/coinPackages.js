@@ -1,3 +1,4 @@
+/** Mínimo de BLAST ganados para solicitar retiro. La tasa COP vive en payoutConversion. */
 const MIN_WITHDRAW_COINS = 50;
 const MAX_PACK_COINS = 25_000;
 
@@ -101,10 +102,6 @@ function resolveCoinPackage(packageId, amountInCop) {
   return { pack };
 }
 
-function coinsToCop(coins) {
-  return require('./payoutConversion').blastToMoneyCop(coins);
-}
-
 /** Blast del paquete — rechaza montos inflados o centavos Wompi por error. */
 function blastForPackage(packageId, coins) {
   const pack = activePackages()[packageId];
@@ -119,7 +116,6 @@ module.exports = {
   MIN_WITHDRAW_COINS,
   MAX_PACK_COINS,
   resolveCoinPackage,
-  coinsToCop,
   blastForPackage,
   refreshRemotePackages,
 };

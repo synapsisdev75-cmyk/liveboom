@@ -439,8 +439,6 @@ async function requestWithdrawal({
         processedAt: null,
         payout: payout
           ? {
-              id: payout.id || null,
-              reference: payout.reference || null,
               fullName: payout.fullName || null,
               documentId: payout.documentId || null,
               payoutMethod: payout.payoutMethod || null,
@@ -461,7 +459,7 @@ async function requestWithdrawal({
     return {
       ok: true,
       balances: moved.balances,
-      extra: { withdrawalId, coins, earnedBlastAmount: coins, moneyAmountCOP, moneyAmountExact, currency: 'COP' },
+      extra: { withdrawalId, coins, earnedBlastAmount: coins, moneyAmountCOP, currency: 'COP' },
       ledger: [
         {
           userId: uid,
@@ -475,10 +473,8 @@ async function requestWithdrawal({
           metadata: {
             earnedBlastAmount: coins,
             moneyAmountCOP,
-            moneyAmountExact,
             currency: 'COP',
             status: engine.WITHDRAWAL_STATUS.REQUESTED,
-            walletRulesVersion: WALLET_RULES_VERSION,
           },
         },
       ],

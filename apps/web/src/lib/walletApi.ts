@@ -3,6 +3,7 @@ import { api } from './api';
 export type WalletSummary = {
   purchasedBalance: number;
   earnedAvailable: number;
+  earnedBlastAvailable?: number;
   earnedReserved: number;
   earnedTotal: number;
   totalAvailable: number;
@@ -12,7 +13,6 @@ export type WalletSummary = {
   currency?: string;
   minWithdrawBlast?: number;
   minWithdrawAmount?: number | string;
-  earnedBlastAvailable?: number;
 };
 
 export type WalletLedgerRow = {
@@ -33,7 +33,7 @@ export type PayoutQuote = {
   ok: boolean;
   earnedBlastAmount: number;
   moneyAmountCOP?: number;
-  moneyAmountExact?: string;
+  moneyAmountExact: string;
   withdrawableAmount?: number;
   currency: string;
 };
@@ -43,14 +43,29 @@ export type PublicWithdrawal = {
   userId: string | null;
   earnedBlastAmount: number;
   moneyAmountCOP?: number;
-  moneyAmountExact?: string;
+  moneyAmountExact: string;
   currency: string;
   status: string;
   requestedAt?: string | null;
   processedAt?: string | null;
   paymentReference?: string | null;
-  walletRulesVersion?: string;
+  walletRulesVersion?: string | null;
 };
+
+/** Lee el COP que ya calculó el backend. Nunca multiplica BLAST × tasa. */
+export function quotedCop(payload: {
+  moneyAmountCOP?: number | string | null;
+  withdrawableAmount?: number | string | null;
+  moneyAmountExact?: string | number | null;
+} | null | undefined): number | null {
+  if (!payload) return null;
+  const raw = payload.moneyAmountCOP ?? payload.withdrawableAmount ?? payload.moneyAmountExact;
+  if (raw == null || raw === '') return null;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.floor(raw));
+  const whole = String(raw).trim().split('.')[0];
+  const n = Math.floor(Number(whole || '0') || 0);
+  return Number.isFinite(n) ? Math.max(0, n) : null;
+}
 
 export async function fetchWalletSummary() {
   return api<WalletSummary>('/api/wallet/summary');
@@ -70,24 +85,6 @@ export async function fetchWalletTransactions(filter = 'all') {
 export async function fetchWalletWithdrawals() {
   const data = await api<{ withdrawals: PublicWithdrawal[] }>('/api/wallet/withdrawals');
   return data.withdrawals || [];
-}
-
-export function quotedCop(row: {
-  moneyAmountCOP?: number;
-  moneyAmountExact?: string;
-  withdrawableAmount?: number | string;
-} | null | undefined) {
-  if (!row) return null;
-  if (row.moneyAmountCOP != null && Number.isFinite(Number(row.moneyAmountCOP))) {
-    return Math.max(0, Math.floor(Number(row.moneyAmountCOP)));
-  }
-  if (row.withdrawableAmount != null && String(row.withdrawableAmount) !== '') {
-    return Math.max(0, Math.floor(Number(row.withdrawableAmount) || 0));
-  }
-  if (row.moneyAmountExact != null && String(row.moneyAmountExact) !== '') {
-    return Math.max(0, Math.floor(Number(String(row.moneyAmountExact).split('.')[0]) || 0));
-  }
-  return null;
 }
 
 export function ledgerLabel(row: WalletLedgerRow) {
