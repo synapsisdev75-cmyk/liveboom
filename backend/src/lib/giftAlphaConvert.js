@@ -16,12 +16,18 @@ const STORAGE_BUCKET =
   process.env.FIREBASE_STORAGE_BUCKET || 'liveboom-app.firebasestorage.app';
 
 const LIMITS = {
+  /** Límite para WebM/MP4 publicados (referencia API). */
   maxBytes: 80 * 1024 * 1024,
+  /**
+   * Temporal: fuentes MOV ProRes 4444 Full HD antes de comprimir a WebM.
+   * Volver a bajar cuando el export de Premiere sea más ligero.
+   */
+  maxMovBytes: 350 * 1024 * 1024,
   maxDurationSec: 30,
   maxEdge: 1080,
   maxJobsPerGift: 1,
-  ffmpegTimeoutMs: 480_000,
-  staleRunningMs: 12 * 60 * 1000,
+  ffmpegTimeoutMs: 900_000,
+  staleRunningMs: 20 * 60 * 1000,
   progressFlushMs: 1200,
 };
 
@@ -445,11 +451,11 @@ async function convertWithProgress({
     '-b:v',
     '0',
     '-crf',
-    '24',
+    '20',
     '-deadline',
     'good',
     '-cpu-used',
-    '4',
+    '2',
     '-row-mt',
     '1',
     '-threads',
@@ -615,8 +621,8 @@ async function enqueueGiftAlphaJob({ storagePath, giftId, createdByUid, keepAudi
   }
   const [meta] = await sourceFile.getMetadata();
   const size = Number(meta.size || 0);
-  if (size > LIMITS.maxBytes) {
-    const error = new Error(`El MOV supera ${Math.round(LIMITS.maxBytes / (1024 * 1024))} MB`);
+  if (size > LIMITS.maxMovBytes) {
+    const error = new Error(`El MOV supera ${Math.round(LIMITS.maxMovBytes / (1024 * 1024))} MB`);
     error.code = 'TOO_LARGE';
     throw error;
   }

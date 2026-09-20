@@ -4,7 +4,13 @@ import { auth, storage } from './firebase';
 import { uploadCatalogAsset } from './catalogConfigFirestore';
 
 export const GIFT_ANIM_LIMITS = {
+  /** WebM / MP4 listos para publicar. */
   maxBytes: 80 * 1024 * 1024,
+  /**
+   * Temporal: fuentes MOV ProRes 4444 Full HD pesan mucho antes de comprimirse a WebM.
+   * Subir de nuevo cuando el flujo de exportación sea más ligero.
+   */
+  maxMovBytes: 350 * 1024 * 1024,
   maxDurationSec: 30,
   maxEdge: 1080,
 } as const;
@@ -93,7 +99,8 @@ export function formatGiftAnimBytes(bytes: number): string {
 
 export function giftAnimLimitsHint(): string {
   const mb = Math.round(GIFT_ANIM_LIMITS.maxBytes / (1024 * 1024));
-  return `Límite: ${mb} MB · hasta ${GIFT_ANIM_LIMITS.maxDurationSec} s · máx. ${GIFT_ANIM_LIMITS.maxEdge}p`;
+  const movMb = Math.round(GIFT_ANIM_LIMITS.maxMovBytes / (1024 * 1024));
+  return `WebM/MP4: ${mb} MB · MOV 4444: ${movMb} MB · hasta ${GIFT_ANIM_LIMITS.maxDurationSec} s · máx. ${GIFT_ANIM_LIMITS.maxEdge}p`;
 }
 
 export function needsAlphaMovConvert(file: File): boolean {
@@ -247,14 +254,16 @@ export async function uploadGiftAnimation(
     });
   };
 
-  if (fileBytes > GIFT_ANIM_LIMITS.maxBytes) {
+  const isMov = needsAlphaMovConvert(file);
+  const maxAllowed = isMov ? GIFT_ANIM_LIMITS.maxMovBytes : GIFT_ANIM_LIMITS.maxBytes;
+  if (fileBytes > maxAllowed) {
     throw new ApiError(
       400,
-      `El archivo supera ${Math.round(GIFT_ANIM_LIMITS.maxBytes / (1024 * 1024))} MB`,
+      `El archivo supera ${Math.round(maxAllowed / (1024 * 1024))} MB`,
     );
   }
 
-  if (!needsAlphaMovConvert(file)) {
+  if (!isMov) {
     emit({ stage: 'uploading', percent: 0, indeterminate: false });
     const url = await uploadCatalogAsset('gifts', `${giftId}-video`, file);
     emit({ stage: 'done', percent: 100, indeterminate: false });

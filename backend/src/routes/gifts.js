@@ -119,6 +119,7 @@ router.get('/convert-alpha/limits', requireAuth, requireSuperAdmin, (_req, res) 
   res.json({
     ok: true,
     maxBytes: LIMITS.maxBytes,
+    maxMovBytes: LIMITS.maxMovBytes,
     maxDurationSec: LIMITS.maxDurationSec,
     maxEdge: LIMITS.maxEdge,
   });
