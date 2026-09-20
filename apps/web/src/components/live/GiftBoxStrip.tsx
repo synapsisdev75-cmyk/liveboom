@@ -143,7 +143,7 @@ export function GiftBoxStrip({
                     compact ? 'w-full snap-none' : 'w-[4.35rem] snap-start sm:w-[4.85rem]'
                   } ${busy ? 'is-busy' : ''}`}
                 >
-                  <GiftIcon giftId={gift.id} size={compact || floating ? 42 : 40} animated />
+                  <GiftIcon giftId={gift.id} size={compact || floating ? 42 : 40} />
                   <span className="gift-box-item__name mt-1 w-full truncate px-0.5 text-center text-[8px] font-medium leading-tight">
                     {gift.name}
                   </span>
