@@ -18,6 +18,7 @@ import {
   Users,
   Wallet,
   Languages,
+  Banknote,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -47,6 +48,7 @@ import { useAuthStore } from '../store/authStore';
 import { useUiStore } from '../store/uiStore';
 import { LanguageSelector } from '../components/i18n/LanguageSelector';
 import { LanguageControl } from '../components/i18n/LanguageControl';
+import { WithdrawalRequestsPanel } from '../components/wallet/WithdrawalRequestsPanel';
 import { bcp47For, categoryMessageKey, useT } from '../i18n';
 
 type SettingsTab =
@@ -55,6 +57,7 @@ type SettingsTab =
   | 'notificaciones'
   | 'preferencias'
   | 'billetera'
+  | 'retiros'
   | 'idioma';
 
 type EditField = 'displayName' | 'username' | null;
@@ -108,13 +111,14 @@ function formEqualsSnapshot(
   );
 }
 
-const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabLanguage'; icon: typeof User }> = [
+const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabWithdrawals' | 'settings.tabLanguage'; icon: typeof User }> = [
   { id: 'cuenta', labelKey: 'settings.tabAccount', icon: User },
   { id: 'privacidad', labelKey: 'settings.tabPrivacy', icon: Shield },
   { id: 'notificaciones', labelKey: 'settings.tabNotifications', icon: Bell },
   { id: 'preferencias', labelKey: 'settings.tabPreferences', icon: Eye },
   { id: 'idioma', labelKey: 'settings.tabLanguage', icon: Languages },
   { id: 'billetera', labelKey: 'settings.tabWallet', icon: Wallet },
+  { id: 'retiros', labelKey: 'settings.tabWithdrawals', icon: Banknote },
 ];
 
 function Card({
@@ -1071,6 +1075,12 @@ export function ProfileView() {
               {t('nav.withdraw')}
             </Link>
           </div>
+        </Card>
+      ) : null}
+
+      {tab === 'retiros' && profile ? (
+        <Card title={t('settings.tabWithdrawals')} subtitle={t('settings.withdrawalsSub')}>
+          <WithdrawalRequestsPanel />
         </Card>
       ) : null}
 
