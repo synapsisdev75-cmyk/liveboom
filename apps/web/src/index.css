@@ -6812,16 +6812,25 @@ body {
   background: transparent;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  caret-color: var(--text-primary);
+  /* Un solo caret: el nativo se oculta; el visible es .lb-emoji-caret. */
+  caret-color: transparent;
 }
 
 .publication-composer-field .caret-white,
-.lb-composer-modal .caret-white {
-  caret-color: var(--text-primary);
+.lb-composer-modal .caret-white,
+.publication-composer-field .caret-transparent,
+.lb-composer-modal .caret-transparent {
+  caret-color: transparent;
 }
 
 .publication-composer-field .lb-emoji-caret {
   background: var(--text-primary);
+  animation: lb-emoji-caret-blink 1.05s step-end infinite;
+}
+
+.publication-composer-field .publication-composer-input {
+  min-height: 0;
+  height: auto;
 }
 
 .publication-composer-field textarea::selection,

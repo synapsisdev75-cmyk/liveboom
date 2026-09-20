@@ -83,8 +83,9 @@ function publicationComposerMaxPx() {
   return Math.min(viewH * 0.38, 18 * 16);
 }
 
-function publicationComposerMinPx() {
-  return Math.min(5 * 16, (window.visualViewport?.height ?? window.innerHeight) * 0.18);
+function publicationComposerMinPx(lineHeight: number) {
+  // Una sola línea de escritura; el padding del textarea entra en scrollHeight.
+  return lineHeight;
 }
 
 function commentComposerMaxPx() {
@@ -311,7 +312,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
             ? lineHeightPx
             : resolvedGrow === 'comment'
               ? commentComposerMinPx()
-              : publicationComposerMinPx();
+              : publicationComposerMinPx(lineHeightPx);
         field.style.height = 'auto';
         const next = Math.min(Math.max(field.scrollHeight, minH), cap);
         field.style.height = `${next}px`;
@@ -629,7 +630,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       ) : null;
 
     if (multiline) {
-      const { rows = 3, ...textareaRest } = rest as TextareaHTMLAttributes<HTMLTextAreaElement>;
+      const { rows: rowsProp = 3, ...textareaRest } = rest as TextareaHTMLAttributes<HTMLTextAreaElement>;
+      const rows = resolvedGrow === 'publication' ? 1 : rowsProp;
       return (
         <div className={`relative min-w-0 ${className}`}>
           <div ref={hostRef} className={`relative min-w-0 ${fieldClassName}`}>
@@ -688,7 +690,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               spellCheck={resolvedGrow === 'comment' ? false : undefined}
               className={`${inputInner} ${caretClass} resize-none whitespace-pre-wrap break-words ${padClassName} ${
                 resolvedGrow === 'publication'
-                  ? 'publication-composer-input min-h-[4.5rem] overflow-y-auto'
+                  ? 'publication-composer-input overflow-y-auto'
                   : resolvedGrow === 'comment'
                     ? 'lb-comment-composer-field overflow-y-auto'
                     : resolvedGrow === 'message'

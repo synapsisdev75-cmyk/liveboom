@@ -1291,7 +1291,7 @@ export function CreatePostModal({
     : busy
       ? 'Subiendo…'
       : 'Publicar';
-  const composeRows = isInline ? 2 : isFlashBoom ? 2 : 3;
+  const composeRows = 1;
   const captionMax = isFlashBoom ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : undefined;
 
   const panelBody = showPanel ? (
@@ -1402,7 +1402,7 @@ export function CreatePostModal({
                 }
                 emojiSize={POST_EMOJI_SIZE}
                 growToMaxScroll
-                fieldClassName="publication-composer-field min-h-[4.5rem] w-full min-w-0 max-w-full rounded-xl"
+                fieldClassName="publication-composer-field w-full min-w-0 max-w-full rounded-xl"
                 padClassName={captionMax != null ? 'px-3 pb-7 pt-2' : 'px-3 py-2'}
                 mirrorTextClassName="publication-composer-text"
                 placeholderClassName="publication-composer-placeholder"
