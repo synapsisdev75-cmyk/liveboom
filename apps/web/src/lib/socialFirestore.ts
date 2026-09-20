@@ -2850,6 +2850,7 @@ export async function createPost(input: {
 }): Promise<{
   id: string;
   mediaUrl: string | null;
+  mediaUrls?: string[];
   storagePath: string | null;
   visibility: 'public' | 'friends' | 'private' | 'circle';
   postFormat?: 'story' | 'post';
@@ -3078,6 +3079,7 @@ export async function createPost(input: {
   return {
     id: ref.id,
     mediaUrl,
+    ...(mediaUrls?.length ? { mediaUrls } : {}),
     storagePath,
     visibility,
     postFormat,

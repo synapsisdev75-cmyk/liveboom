@@ -32,6 +32,7 @@ import {
 import type { ComposerGif } from '../../lib/composerGifs';
 import type { ComposerSticker } from '../../lib/composerStickers';
 import { postPhotoUrls } from '../../lib/mediaFrame';
+import { PUBLICATION_ALBUM_MAX } from '../../lib/publicationMedia';
 import {
   bakePhotoEdit,
   clampPan,
@@ -515,7 +516,6 @@ export function CreatePostModal({
       revokeLocalUrl(staleTrimUrl);
     }
     setTrimDraft(null);
-    setMediaFiles([]);
     setMediaFile(file);
     setAlbumUrls([nextUrl]);
     setPreviewIndex(0);
@@ -528,8 +528,10 @@ export function CreatePostModal({
     videoDurationSecRef.current = durationSec > 0 ? durationSec : 0;
 
     if (detected === 'video' || forcedKind === 'video') {
+      setMediaFiles([]);
       setKind('video');
     } else {
+      setMediaFiles([file]);
       setKind('photo');
       prefetchImageForUpload(file);
     }
@@ -637,10 +639,15 @@ export function CreatePostModal({
       );
       return;
     }
-    const picked = Array.from(files).filter((f) => mediaKindFromFile(f) === 'photo');
+    const picked = Array.from(files)
+      .filter((f) => mediaKindFromFile(f) === 'photo')
+      .slice(0, PUBLICATION_ALBUM_MAX);
     if (picked.length === 0) {
       setError('Archivo no compatible. Usa foto (JPG, PNG).');
       return;
+    }
+    if (files.length > PUBLICATION_ALBUM_MAX) {
+      setError(`Se usaron las primeras ${PUBLICATION_ALBUM_MAX} fotos.`);
     }
     revokeLocalUrl(previewUrl);
     for (const url of albumUrls) {
@@ -684,6 +691,14 @@ export function CreatePostModal({
 
   function onGalleryPhotoChange(files: FileList | null) {
     if (!files || files.length === 0) return;
+    if (
+      composeTab === 'publication' &&
+      kind === 'photo' &&
+      (albumUrls.length > 0 || Boolean(mediaFile))
+    ) {
+      appendAlbumPhotos(files);
+      return;
+    }
     if (composeTab === 'publication' && files.length > 1) {
       void onMultiPhotoChange(files);
       return;
@@ -693,6 +708,18 @@ export function CreatePostModal({
 
   function onGalleryMediaChange(files: FileList | null) {
     if (!files || files.length === 0) return;
+    const photos = Array.from(files).filter((file) => mediaKindFromFile(file) === 'photo');
+    const hasVideo = Array.from(files).some((file) => mediaKindFromFile(file) === 'video');
+    if (
+      composeTab === 'publication' &&
+      !hasVideo &&
+      photos.length > 0 &&
+      kind === 'photo' &&
+      (albumUrls.length > 0 || Boolean(mediaFile))
+    ) {
+      appendAlbumPhotos(files);
+      return;
+    }
     if (composeTab === 'publication' && files.length > 1) {
       void onMultiPhotoChange(files);
       return;
@@ -886,24 +913,41 @@ export function CreatePostModal({
       setError('Archivo no compatible. Usa foto (JPG, PNG).');
       return;
     }
-    const urls = picked.map((file) => URL.createObjectURL(file));
     if (!mediaFile && mediaFiles.length === 0 && albumUrls.length === 0) {
       void onMultiPhotoChange(files);
       return;
     }
+    const currentUrls = albumUrls.length ? albumUrls : previewUrl ? [previewUrl] : [];
+    const room = PUBLICATION_ALBUM_MAX - currentUrls.length;
+    if (room <= 0) {
+      setError(`Puedes añadir hasta ${PUBLICATION_ALBUM_MAX} fotos en una publicación.`);
+      return;
+    }
+    const accepted = picked.slice(0, room);
+    if (picked.length > accepted.length) {
+      setError(`Se añadieron ${accepted.length}. Máximo ${PUBLICATION_ALBUM_MAX} fotos.`);
+    } else {
+      setError(null);
+    }
+    const urls = accepted.map((file) => URL.createObjectURL(file));
     setMediaFiles((current) => {
-      const aligned =
-        albumUrls.length > current.length
-          ? [...current, ...Array.from({ length: albumUrls.length - current.length }, () => null)]
-          : current.length
-            ? current
-            : mediaFile
-              ? [mediaFile]
-              : [];
-      return [...aligned, ...picked];
+      const base =
+        current.length >= currentUrls.length
+          ? current.slice(0, currentUrls.length)
+          : [
+              ...current,
+              ...Array.from({ length: Math.max(0, currentUrls.length - current.length) }, () => null),
+            ];
+      if (!base[0] && mediaFile) base[0] = mediaFile;
+      return [...base, ...accepted];
     });
-    setAlbumUrls((current) => [...current, ...urls]);
+    setAlbumUrls([...currentUrls, ...urls]);
     setKind('photo');
+    const nextIndex = currentUrls.length;
+    setPreviewIndex(nextIndex);
+    setPreviewUrl(urls[0] ?? null);
+    setMediaFile(accepted[0] ?? mediaFile);
+    accepted.forEach((file) => prefetchImageForUpload(file));
   }
 
   function addOverlay(item: Omit<MediaOverlayItem, 'id' | 'x' | 'y' | 'scale' | 'rotation'> & Partial<MediaOverlayItem>) {
@@ -1137,22 +1181,29 @@ export function CreatePostModal({
           captureCount: httpFrames.length || reconstruction.result.frameUrls.length,
         };
       }
-      const createFiles = mediaFiles.filter((file): file is File => Boolean(file));
-      let albumForUpload = reconReady ? [] : createFiles;
-      if (!reconReady && publishKind === 'photo') {
-        if (createFiles.length > 1) {
-          albumForUpload = await Promise.all(
-            createFiles.map(async (file, index) => {
-              const edit = photoEdits[index] ?? DEFAULT_PHOTO_EDIT;
-              if (mediaKindFromFile(file) !== 'photo' || isDefaultPhotoEdit(edit)) return file;
-              return bakePhotoEdit(file, edit);
-            }),
-          );
-        } else if (uploadFile && mediaKindFromFile(uploadFile) === 'photo') {
-          const edit = photoEdits[previewIndex] ?? currentEdit;
-          if (!isDefaultPhotoEdit(edit)) {
-            uploadFile = await bakePhotoEdit(uploadFile, edit);
+      const displayUrls = albumUrls.length ? albumUrls : previewUrl ? [previewUrl] : [];
+      let albumForUpload: File[] = [];
+      if (!reconReady && publishKind === 'photo' && displayUrls.length > 1) {
+        albumForUpload = [];
+        for (let index = 0; index < displayUrls.length; index += 1) {
+          let file =
+            mediaFiles[index] ||
+            (index === 0 ? mediaFile || uploadFile : null) ||
+            null;
+          if (!file && displayUrls[index]) {
+            file = await fileFromMediaUrl(displayUrls[index] as string, `photo_${index + 1}.jpg`);
           }
+          if (!file) continue;
+          const edit = photoEdits[index] ?? DEFAULT_PHOTO_EDIT;
+          if (mediaKindFromFile(file) === 'photo' && !isDefaultPhotoEdit(edit)) {
+            file = await bakePhotoEdit(file, edit);
+          }
+          albumForUpload.push(file);
+        }
+      } else if (!reconReady && publishKind === 'photo' && uploadFile && mediaKindFromFile(uploadFile) === 'photo') {
+        const edit = photoEdits[previewIndex] ?? currentEdit;
+        if (!isDefaultPhotoEdit(edit)) {
+          uploadFile = await bakePhotoEdit(uploadFile, edit);
         }
       }
       if (publishKind === 'video' && uploadFile && selectedMusic) {
@@ -1252,6 +1303,7 @@ export function CreatePostModal({
         type: created.mediaUrl && publishKind === 'text' ? 'photo' : publishKind,
         caption: caption.trim().slice(0, captionMax ?? 2000) || null,
         mediaUrl: created.mediaUrl,
+        mediaUrls: created.mediaUrls,
         visibility: created.visibility,
         createdAt: created.createdAt || new Date().toISOString(),
         likes: 0,
@@ -1329,7 +1381,10 @@ export function CreatePostModal({
         accept="image/*"
         multiple
         className="hidden"
-        onChange={(event) => appendAlbumPhotos(event.target.files)}
+        onChange={(event) => {
+          appendAlbumPhotos(event.target.files);
+          event.target.value = '';
+        }}
       />
 
       {trimDraft && !isModalOpen ? (
@@ -1651,6 +1706,7 @@ export function CreatePostModal({
                           <img src={url} alt="" className="h-full w-full object-cover" />
                     </button>
                   ))}
+                      {slideCount < PUBLICATION_ALBUM_MAX ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -1664,6 +1720,7 @@ export function CreatePostModal({
                         <Plus size={14} />
                         Agregar
                       </button>
+                      ) : null}
                 </div>
                   ) : null}
                 </div>

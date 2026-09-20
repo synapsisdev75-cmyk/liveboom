@@ -7,6 +7,9 @@ import {
   type VideoOrientation,
 } from './videoAspect';
 
+/** Máximo de fotos en una Publicación (carrusel). No aplica a Boom Clip ni Flash Boom. */
+export const PUBLICATION_ALBUM_MAX = 10;
+
 export type PublicationMediaMeta = {
   width: number;
   height: number;
