@@ -382,7 +382,7 @@ export function ExploreView() {
   if (!profile) {
     return (
       <div className="grid h-full place-items-center bg-zinc-950 px-4 text-center text-sm text-zinc-400">
-        <p>
+        <p className="lb-panel max-w-md rounded-2xl border px-6 py-8">
           <Link to="/login" className="text-cyan-400 underline">
             Inicia sesión
           </Link>{' '}

@@ -1384,8 +1384,10 @@ video.lk-participant-media-video {
     0 0 22px #00f0ff;
 }
 
-input[type='date'] {
-  color-scheme: dark;
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'] {
+  color-scheme: inherit;
 }
 
 @keyframes pulse-live {

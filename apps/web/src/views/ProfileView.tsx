@@ -750,7 +750,7 @@ export function ProfileView() {
                           void saveBirthDateOnly(value);
                         }
                       }}
-                      className="mt-1 h-10 w-full min-w-0 max-w-full rounded-lg border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+                      className="mt-1 h-10 w-full min-w-0 max-w-full rounded-lg border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-500"
                     />
                     {calculatedAge != null ? (
                       <p className="mt-1 text-[11px] text-zinc-500">
@@ -1033,7 +1033,7 @@ export function ProfileView() {
               <select
                 value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-500"
               >
                 {LIVE_CATEGORIES.map((item) => (
                   <option key={item.id} value={item.id}>

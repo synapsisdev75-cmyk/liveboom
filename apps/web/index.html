@@ -6,7 +6,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#0a0a0b" />
+    <meta name="theme-color" content="#14151c" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -17,7 +17,7 @@
     />
     <title>Liveboom</title>
     <style>
-      html, body { background: var(--bg-primary, #0a0a0b); color: var(--text-primary, #fafafa); }
+      html, body { background: var(--bg-primary, #14151c); color: var(--text-primary, #fafafa); }
       html[data-lb-theme='light'], html[data-lb-theme='light'] body {
         background: var(--bg-primary, #f3f4f7);
         color: var(--text-primary, #18181b);
@@ -46,6 +46,10 @@
               if (Object.prototype.hasOwnProperty.call(css, key) && key.indexOf('--') === 0) {
                 root.style.setProperty(key, String(css[key]));
               }
+            }
+            if (css['--bg-primary']) {
+              var themeMeta = document.querySelector('meta[name="theme-color"]');
+              if (themeMeta) themeMeta.setAttribute('content', String(css['--bg-primary']));
             }
           }
         } catch (e) {

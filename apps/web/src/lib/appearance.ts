@@ -120,14 +120,15 @@ export function applyAppearanceToDocument(prefs: AppearancePrefs) {
     String(prefs.theme === 'dark' ? prefs.darkIntensity : prefs.lightIntensity),
   );
   root.style.colorScheme = prefs.theme;
-  applySemanticTokens(
-    root,
-    resolveSemanticTokens(
-      prefs.theme,
-      prefs.accent,
-      prefs.theme === 'dark' ? prefs.darkIntensity : prefs.lightIntensity,
-    ),
+  const tokens = resolveSemanticTokens(
+    prefs.theme,
+    prefs.accent,
+    prefs.theme === 'dark' ? prefs.darkIntensity : prefs.lightIntensity,
   );
+  applySemanticTokens(root, tokens);
+  const themeColor = tokens['--bg-primary'];
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && themeColor) meta.setAttribute('content', themeColor);
 }
 
 export async function fetchCloudAppearance(uid: string): Promise<AppearancePrefs | null> {

@@ -47,11 +47,11 @@ type Seed = {
 const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   default: {
     dark: {
-      bg: '#0a0a0b',
-      bg2: '#0a0b10',
-      elevated: '#131417',
-      surface: '#15161e',
-      surface2: '#1b1c26',
+      bg: '#14151c',
+      bg2: '#101218',
+      elevated: '#1c1e28',
+      surface: '#22242f',
+      surface2: '#2a2c3a',
       accent: '#ec4899',
       accent2: '#22d3ee',
     },
@@ -67,7 +67,7 @@ const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   },
   pink: {
     dark: {
-      bg: '#0d090b',
+      bg: '#161218',
       bg2: '#140c11',
       elevated: '#1a1116',
       surface: '#1e141a',
@@ -87,7 +87,7 @@ const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   },
   blue: {
     dark: {
-      bg: '#080b0e',
+      bg: '#101820',
       bg2: '#0b1218',
       elevated: '#101820',
       surface: '#12202a',
@@ -107,7 +107,7 @@ const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   },
   green: {
     dark: {
-      bg: '#080c0a',
+      bg: '#101814',
       bg2: '#0c1410',
       elevated: '#101a16',
       surface: '#13201a',
@@ -127,7 +127,7 @@ const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   },
   orange: {
     dark: {
-      bg: '#0d0a07',
+      bg: '#181410',
       bg2: '#16100b',
       elevated: '#1c1410',
       surface: '#221810',
@@ -147,7 +147,7 @@ const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   },
   red: {
     dark: {
-      bg: '#0e0909',
+      bg: '#181212',
       bg2: '#160c0c',
       elevated: '#1c1010',
       surface: '#241414',
@@ -167,7 +167,7 @@ const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   },
   gold: {
     dark: {
-      bg: '#0c0b08',
+      bg: '#181610',
       bg2: '#14130c',
       elevated: '#1a1810',
       surface: '#201c12',
@@ -187,7 +187,7 @@ const ACCENT_SEEDS: Record<AppearanceAccent, { dark: Seed; light: Seed }> = {
   },
   violet: {
     dark: {
-      bg: '#0b0910',
+      bg: '#16141e',
       bg2: '#120e18',
       elevated: '#181422',
       surface: '#1c1628',
@@ -465,6 +465,14 @@ export function tokensToCssMap(tokens: SemanticTokens): Record<string, string> {
   map['--text-on-light'] = '#18181b';
   /* Presence is a state, not a palette accent. */
   map['--status-online'] = '#20e676';
+  const darkUi = relativeLuminance(tokens['--bg-primary']) <= 0.45;
+  map['--overlay-scrim'] = darkUi ? 'rgba(0, 0, 0, 0.52)' : 'rgba(24, 24, 27, 0.4)';
+  map['--shadow-card'] = darkUi
+    ? '0 10px 28px rgba(0, 0, 0, 0.28)'
+    : '0 10px 28px rgba(24, 24, 27, 0.08)';
+  map['--shadow-modal'] = darkUi
+    ? '0 18px 48px rgba(0, 0, 0, 0.4)'
+    : '0 18px 48px rgba(24, 24, 27, 0.16)';
   return map;
 }
 

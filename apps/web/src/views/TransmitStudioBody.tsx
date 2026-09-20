@@ -241,7 +241,7 @@ export function TransmitStudioBody(props: Props) {
         <select
           value={props.category}
           onChange={(e) => props.setCategory(e.target.value)}
-          className="h-10 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+          className="h-10 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-500"
         >
           <option value="">Selecciona</option>
           {LIVE_CATEGORIES.map((item) => (
@@ -279,7 +279,7 @@ export function TransmitStudioBody(props: Props) {
             value={props.selectedMicrophoneId}
             onChange={(e) => props.onSelectMicrophone(e.target.value)}
             disabled={props.audioInputs.length === 0}
-            className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+            className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-500"
           >
             {props.audioInputs.length === 0 ? (
               <option value="">Sin micrófono</option>
@@ -298,7 +298,7 @@ export function TransmitStudioBody(props: Props) {
             value={props.selectedCameraId}
             onChange={(e) => props.onSelectCamera(e.target.value)}
             disabled={props.videoInputs.length === 0}
-            className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none [color-scheme:dark] focus:border-violet-500"
+            className="h-11 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-violet-500"
           >
             {props.videoInputs.length === 0 ? (
               <option value="">Sin cámara</option>
