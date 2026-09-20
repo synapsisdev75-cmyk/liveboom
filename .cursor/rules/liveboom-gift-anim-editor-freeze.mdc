@@ -1,0 +1,34 @@
+---
+description: Congela el motor de edición/animación de regalos; no modificar en deploys futuros sin orden explícita.
+alwaysApply: true
+---
+
+# LiveBoom: congelar motor de regalos / animaciones
+
+## No tocar sin orden explícita del usuario
+
+Estos archivos y contratos son **congelados**. Un deploy, bugfix o refactor en otro módulo **no autoriza** cambiarlos:
+
+- `apps/web/src/components/admin/GiftCatalogPreview.tsx`
+- `apps/web/src/components/admin/AdminCatalogPanel.tsx` (sección Regalos / animaciones)
+- `apps/web/src/lib/giftAlphaConvert.ts`
+- `backend/src/lib/giftAlphaConvert.js`
+- `backend/src/routes/gifts.js` (rutas `convert-alpha/*`)
+- Escala de burst: campo `animScale` en catálogo + uso en `FloatingGift` / `GiftVideoBurst`
+- Serialización `serializeEditableGift` / `normalizeGift` respecto a `animScale`, `video`, `image`, `face`
+
+## Qué está protegido
+
+1. Editor Super Admin: previsualización móvil/tablet/escritorio, escala de animación (`animScale`), upload MOV→WebM, publicar catálogo.
+2. Conversión alpha (ProRes 4444 → WebM VP9 yuva).
+3. Reproducción del regalo enviado usando la escala publicada en Firestore `config/giftsCatalog`.
+
+## Qué sí se puede hacer fuera de este freeze
+
+- Bugs de Publicaciones / Boom Clip / Flash Boom / LIVE sala **sin** reescribir el editor de regalos.
+- Cambiar CSS de otros módulos.
+- Actualizar `firestore.rules` / `storage.rules` de **otros** paths (no vaciar ni debilitar `giftsCatalog` / `config/gifts` sin orden).
+
+## Si hace falta un cambio
+
+Parar y pedir confirmación explícita: “cambiar motor de regalos / animScale / GiftCatalogPreview”. Sin esa frase, **no editar**.

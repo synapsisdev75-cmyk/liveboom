@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { playGiftAlert } from '../../lib/alertSound';
 import { giftMotionFor } from '../../lib/giftAnimations';
-import { findLiveGift, GIFT_LEVEL_FX, type GiftLevel, type LiveGift } from '../../lib/liveboomGifts';
+import { findLiveGift, GIFT_LEVEL_FX, clampGiftAnimScale, type GiftLevel, type LiveGift } from '../../lib/liveboomGifts';
 
 export function GiftVisual({
   gift,
@@ -113,17 +113,20 @@ function GiftVideoBurst({
   poster,
   senderName,
   combo,
+  animScale = 0.72,
   onComplete,
 }: {
   src: string;
   poster?: string;
   senderName?: string;
   combo?: number;
+  animScale?: number;
   onComplete?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const doneRef = useRef(false);
   const [ready, setReady] = useState(false);
+  const scale = clampGiftAnimScale(animScale);
 
   const finish = () => {
     if (doneRef.current) return;
@@ -196,14 +199,16 @@ function GiftVideoBurst({
         <img
           src={poster}
           alt=""
-          className="absolute inset-0 m-auto h-[72%] w-[72%] object-contain opacity-80"
+          className="absolute inset-0 m-auto object-contain opacity-80"
+          style={{ width: `${scale * 100}%`, height: `${scale * 100}%` }}
           draggable={false}
         />
       ) : null}
       <video
         ref={videoRef}
         src={src}
-        className="h-full w-full object-contain"
+        className="object-contain"
+        style={{ width: `${scale * 100}%`, height: `${scale * 100}%` }}
         playsInline
         autoPlay
         preload="auto"
@@ -261,6 +266,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           poster={gift.image}
           senderName={senderName}
           combo={combo}
+          animScale={clampGiftAnimScale(gift.animScale, level)}
           onComplete={onComplete}
         />
       </AnimatePresence>

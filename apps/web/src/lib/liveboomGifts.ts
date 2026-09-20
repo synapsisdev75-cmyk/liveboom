@@ -16,6 +16,11 @@ export type LiveGift = {
   level: GiftLevel;
   /** Descripción corta de la animación (UI). */
   animation: string;
+  /**
+   * Escala de la animación en pantalla (0.2–1).
+   * 1 = casi pantalla completa; se edita en Super Admin y aplica en móvil/tablet/PC.
+   */
+  animScale?: number;
   /** Solo aparece y se puede comprar en LIVE (no posts / clips / flash). */
   liveOnly?: boolean;
   /** Filtro DeepAR aplicado en la cámara del host. */
@@ -41,6 +46,14 @@ export const GIFT_LEVEL_FX: Record<
   4: { duration: 7, screenPct: 72, label: 'Premium' },
   5: { duration: 10, screenPct: 95, label: 'Legendario' },
 };
+
+/** Escala normalizada de animación en viewport (0.2–1). */
+export function clampGiftAnimScale(value: unknown, level: GiftLevel = 1): number {
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return Math.min(1, Math.max(0.2, n));
+  const fromLevel = (GIFT_LEVEL_FX[level]?.screenPct ?? 32) / 100;
+  return Math.min(1, Math.max(0.2, Math.round(fromLevel * 100) / 100));
+}
 
 export const LIVEBOOM_GIFTS: LiveGift[] = [
   // Nivel 1 — Básicos (1–40)
@@ -157,6 +170,7 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
       coins: remote.coins,
       level: remote.level,
       animation: remote.animation,
+      animScale: remote.animScale,
       liveOnly: remote.liveOnly,
       deeparFilter: remote.deeparFilter,
     };

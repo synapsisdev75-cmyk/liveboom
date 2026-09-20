@@ -284,6 +284,7 @@ export function AdminCatalogPanel() {
       coins: 10,
       level: 1,
       animation: '',
+      animScale: 0.55,
       enabled: true,
       placements: [...ALL_GIFT_PLACEMENTS],
       face: null,
@@ -673,6 +674,7 @@ export function AdminCatalogPanel() {
               gift={gift}
               device={previewDevice}
               onDeviceChange={setPreviewDevice}
+              onAnimScaleChange={(scale) => patchGift(gift.id, { animScale: scale })}
             />
 
             <div className="rounded-xl border border-white/10 bg-black/30 p-3">

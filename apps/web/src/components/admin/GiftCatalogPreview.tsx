@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import type { EditableGift, GiftPlacement } from '../../lib/catalogConfigFirestore';
+import { clampGiftAnimScale } from '../../lib/liveboomGifts';
 
 const PLACEMENT_SHORT: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -41,11 +42,11 @@ type Props = {
   gift: EditableGift;
   device: PreviewDevice;
   onDeviceChange: (device: PreviewDevice) => void;
+  onAnimScaleChange?: (scale: number) => void;
 };
 
 function faceTopPercent(gift: EditableGift): number {
   if (!gift.face) return 42;
-  // offsetY: negativo = arriba (sombrero), positivo = abajo (beso)
   const base: Record<NonNullable<EditableGift['face']>['anchor'], number> = {
     hat: 18,
     crown: 12,
@@ -63,7 +64,12 @@ function faceSizeRem(gift: EditableGift): number {
 }
 
 /** Previsualización del regalo en marcos móvil / tablet / escritorio. */
-export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
+export function GiftCatalogPreview({
+  gift,
+  device,
+  onDeviceChange,
+  onAnimScaleChange,
+}: Props) {
   const meta = DEVICE_META[device];
   const displayW = Math.round(meta.frameW * meta.scale);
   const displayH = Math.round(meta.frameH * meta.scale);
@@ -72,6 +78,11 @@ export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
   const faceTop = faceTopPercent(gift);
   const faceSize = faceSizeRem(gift);
   const [backdrop, setBackdrop] = useState<PreviewBackdrop>('checker');
+  const animScale = clampGiftAnimScale(gift.animScale, gift.level);
+  const mediaBox = {
+    width: `${animScale * 100}%`,
+    height: `${animScale * 100}%`,
+  };
 
   return (
     <div className="space-y-3 rounded-xl border border-white/10 bg-black/40 p-3">
@@ -111,12 +122,32 @@ export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
         </div>
       </div>
 
+      {onAnimScaleChange ? (
+        <label className="block space-y-1 text-xs text-zinc-400">
+          Escala animación en pantalla ({Math.round(animScale * 100)}%)
+          <input
+            type="range"
+            min={0.2}
+            max={1}
+            step={0.01}
+            value={animScale}
+            onChange={(e) =>
+              onAnimScaleChange(clampGiftAnimScale(Number(e.target.value), gift.level))
+            }
+            className="w-full accent-fuchsia-400"
+          />
+          <span className="block text-[10px] text-zinc-500">
+            Aplica en móvil, tablet y escritorio al publicar. 20% = pequeño · 100% = casi pantalla
+            completa.
+          </span>
+        </label>
+      ) : null}
+
       <div className="flex justify-center overflow-x-auto py-2">
         <div
           className="relative shrink-0 overflow-hidden rounded-[1.25rem] border border-zinc-600 bg-zinc-950 shadow-2xl shadow-black/50"
           style={{ width: displayW, height: displayH }}
         >
-          {/* Fondo de prueba del editor (no se graba en el video). */}
           <div className="absolute inset-0" style={BACKDROP_META[backdrop].style} />
           {backdrop === 'checker' ? (
             <div className="absolute inset-0 opacity-35">
@@ -124,45 +155,46 @@ export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
             </div>
           ) : null}
 
-          {/* Silueta de host */}
           <div className="absolute left-1/2 top-[22%] flex w-[42%] -translate-x-1/2 flex-col items-center">
             <div className="aspect-square w-full rounded-full bg-gradient-to-b from-zinc-600 to-zinc-800 ring-2 ring-white/10" />
             <div className="mt-2 h-16 w-[70%] rounded-2xl bg-zinc-800/80" />
           </div>
 
-          {/* Regalo flotante / video */}
-          <div className="absolute left-1/2 top-[38%] z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1">
-            {mediaSrc ? (
-              isVideo ? (
-                <video
-                  key={mediaSrc}
-                  src={mediaSrc}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="max-h-[38%] max-w-[55%] object-contain drop-shadow-lg"
-                  style={{ maxHeight: displayH * 0.32, maxWidth: displayW * 0.55 }}
-                />
+          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center">
+            <div
+              className="relative flex items-center justify-center"
+              style={mediaBox}
+            >
+              <div className="pointer-events-none absolute inset-0 rounded-xl border border-dashed border-fuchsia-400/50" />
+              {mediaSrc ? (
+                isVideo ? (
+                  <video
+                    key={mediaSrc}
+                    src={mediaSrc}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="h-full w-full object-contain drop-shadow-lg"
+                  />
+                ) : (
+                  <img
+                    src={mediaSrc}
+                    alt=""
+                    className="h-full w-full object-contain drop-shadow-lg"
+                  />
+                )
               ) : (
-                <img
-                  src={mediaSrc}
-                  alt=""
-                  className="object-contain drop-shadow-lg"
-                  style={{ maxHeight: displayH * 0.32, maxWidth: displayW * 0.55 }}
-                />
-              )
-            ) : (
-              <span className="text-5xl drop-shadow-lg" style={{ fontSize: Math.max(36, displayW * 0.14) }}>
-                {gift.emoji}
-              </span>
-            )}
-            <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                <span className="text-5xl drop-shadow-lg" style={{ fontSize: Math.max(36, displayW * 0.14) }}>
+                  {gift.emoji}
+                </span>
+              )}
+            </div>
+            <span className="mt-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
               {gift.name} · {gift.coins} Blast
             </span>
           </div>
 
-          {/* Anclaje facial */}
           {gift.face ? (
             <div
               className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
@@ -173,7 +205,6 @@ export function GiftCatalogPreview({ gift, device, onDeviceChange }: Props) {
             </div>
           ) : null}
 
-          {/* Chrome UI */}
           <div className="absolute left-2 top-2 z-30 flex items-center gap-1.5 rounded-full bg-rose-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
             ● LIVE
           </div>

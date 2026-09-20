@@ -15,6 +15,7 @@ import {
 } from './faceGiftAnchors';
 import {
   LIVEBOOM_GIFTS,
+  clampGiftAnimScale,
   giftLevelFromCoins,
   type GiftLevel,
   type LiveGift,
@@ -128,6 +129,10 @@ function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): E
     coins,
     level,
     animation: String(raw.animation || fallback?.animation || ''),
+    animScale: clampGiftAnimScale(
+      raw.animScale != null ? raw.animScale : fallback?.animScale,
+      level,
+    ),
     liveOnly: placements.length === 1 && placements[0] === 'live',
     deeparFilter: (raw.deeparFilter as LiveGift['deeparFilter']) || fallback?.deeparFilter,
     enabled: raw.enabled === false ? false : true,
@@ -230,6 +235,7 @@ export function serializeEditableGift(gift: EditableGift): Record<string, unknow
     coins: normalized.coins,
     level: normalized.level,
     animation: normalized.animation || '',
+    animScale: clampGiftAnimScale(normalized.animScale, normalized.level),
     liveOnly: Boolean(normalized.liveOnly),
     deeparFilter: normalized.deeparFilter || null,
     enabled: normalized.enabled !== false,
