@@ -540,6 +540,7 @@ async function withdrawCoins(req, res) {
     const payoutMethod = String(req.body?.payoutMethod || '').trim().slice(0, 40);
     const accountNumber = String(req.body?.accountNumber ?? '').trim().slice(0, 40);
     const accountType = String(req.body?.accountType || 'ahorros').trim().slice(0, 20);
+    const accountId = String(req.body?.accountId || '').trim();
     const { normalizeClientKey, withdrawalFingerprint, stableWithdrawalId } = require('../lib/withdrawalIdentity');
     const clientKey = normalizeClientKey(req.body?.idempotencyKey);
     if (!clientKey) {
@@ -556,24 +557,28 @@ async function withdrawCoins(req, res) {
       });
       return;
     }
-    if (!fullName || fullName.length < 3) {
-      res.status(400).json({ error: 'Indica el nombre completo del titular' });
-      return;
-    }
-    if (!documentId || documentId.length < 5) {
-      res.status(400).json({ error: 'Indica la cédula o documento' });
-      return;
-    }
-    if (!payoutMethod || payoutMethod.length < 2) {
-      res.status(400).json({ error: 'Indica el banco o medio (Nequi, Bancolombia, etc.)' });
-      return;
-    }
-    if (!accountNumber || accountNumber.length < 6) {
-      res.status(400).json({ error: 'Indica el número de cuenta o celular Nequi/Daviplata' });
-      return;
+    if (!accountId) {
+      if (!fullName || fullName.length < 3) {
+        res.status(400).json({ error: 'Indica el nombre completo del titular' });
+        return;
+      }
+      if (!documentId || documentId.length < 5) {
+        res.status(400).json({ error: 'Indica la cédula o documento' });
+        return;
+      }
+      if (!payoutMethod || payoutMethod.length < 2) {
+        res.status(400).json({ error: 'Indica el banco o medio (Nequi, Bancolombia, etc.)' });
+        return;
+      }
+      if (!accountNumber || accountNumber.length < 6) {
+        res.status(400).json({ error: 'Indica el número de cuenta o celular Nequi/Daviplata' });
+        return;
+      }
     }
 
     const wallet = require('../lib/walletService');
+    const verification = require('../lib/verificationService');
+    const confirm = require('../lib/verificationConfirm');
     const summary = await wallet.getSummary(uid);
     const quote = quoteWithdrawal(coins, summary.earnedAvailable);
     if (!quote.ok) {
@@ -608,18 +613,70 @@ async function withdrawCoins(req, res) {
       return;
     }
 
-    const moneyAmountCOP = quote.moneyAmountCOP;
-    const moneyAmountExact = String(moneyAmountCOP);
-    const withdrawalId = stableWithdrawalId(uid, clientKey);
-    const fingerprint = withdrawalFingerprint({
-      userId: uid,
-      coins,
+    const verified = await verification.requireVerifiedPayout(uid, {
       fullName,
       documentId,
       payoutMethod,
       accountNumber,
       accountType,
+      accountId,
     });
+    if (!verified.ok) {
+      res.status(403).json({
+        error:
+          verified.code === 'ACCOUNT_UNVERIFIED'
+            ? 'La cuenta de cobro no está verificada.'
+            : verified.code === 'HOLDER_MISMATCH'
+              ? 'El titular no coincide con la identidad verificada.'
+              : 'Para solicitar tu retiro, necesitamos verificar tu identidad y la cuenta donde recibirás tus ganancias.',
+        code: verified.code,
+        canWithdraw: false,
+      });
+      return;
+    }
+
+    const resolvedName = verified.snapshot.legalName;
+    const resolvedDoc = verified.snapshot.documentNumber;
+    const resolvedMethod = verified.account.bank;
+    const resolvedType = verified.account.accountType;
+    const resolvedNumber = verified.account.accountNumber;
+    const fingerprint = withdrawalFingerprint({
+      userId: uid,
+      coins,
+      fullName: resolvedName,
+      documentId: resolvedDoc,
+      payoutMethod: resolvedMethod,
+      accountNumber: resolvedNumber,
+      accountType: resolvedType,
+    });
+    const consumed = await confirm.consumeConfirm({
+      confirmId: req.body?.confirmId,
+      code: req.body?.confirmCode,
+      userId: uid,
+      coins,
+      accountId: verified.accountId,
+      fingerprint,
+    });
+    if (!consumed.ok) {
+      const messages = {
+        CONFIRM_MISSING: 'Confirma el retiro con el código de LiveBoom.',
+        CONFIRM_USED: 'Ese código ya se usó. Genera uno nuevo.',
+        CONFIRM_EXPIRED: 'El código venció. Genera uno nuevo.',
+        CONFIRM_STALE: 'Cambió el importe o el destino. Confirma de nuevo.',
+        CONFIRM_LOCKED: 'Demasiados intentos. Genera un código nuevo.',
+        CONFIRM_INVALID: 'Código incorrecto.',
+        CONFIRM_MISMATCH: 'El código no corresponde a tu sesión.',
+      };
+      res.status(400).json({
+        error: messages[consumed.code] || 'No se pudo confirmar el retiro.',
+        code: consumed.code,
+      });
+      return;
+    }
+
+    const moneyAmountCOP = quote.moneyAmountCOP;
+    const moneyAmountExact = String(moneyAmountCOP);
+    const withdrawalId = stableWithdrawalId(uid, clientKey);
     const payout = {
       id: withdrawalId,
       reference: withdrawalId,
@@ -628,11 +685,12 @@ async function withdrawCoins(req, res) {
       moneyAmountCOP,
       moneyAmountExact,
       currency: 'COP',
-      fullName,
-      documentId,
-      payoutMethod,
-      accountNumber,
-      accountType,
+      fullName: resolvedName,
+      documentId: resolvedDoc,
+      payoutMethod: resolvedMethod,
+      accountNumber: resolvedNumber,
+      accountType: resolvedType,
+      verification: verified.snapshot,
     };
     const result = await wallet.requestWithdrawal({
       userId: uid,
@@ -640,9 +698,10 @@ async function withdrawCoins(req, res) {
       idempotencyKey: `WITHDRAWAL_REQUEST:${uid}:${clientKey}`,
       fingerprint,
       snapshot: {
-        displayName: dbUser.displayName || fullName,
+        displayName: dbUser.displayName || resolvedName,
         email: req.user?.email || dbUser.email || '',
         username: dbUser.handle || dbUser.username || '',
+        verification: verified.snapshot,
       },
       payout,
     });

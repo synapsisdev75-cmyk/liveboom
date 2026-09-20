@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Banknote, Download, RefreshCw } from 'lucide-react';
 import { formatMoneyExact } from '../../lib/moneyDisplay';
 import {
@@ -204,6 +205,12 @@ export function AdminWithdrawalsPanel() {
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Actualizar
           </button>
+          <Link
+            to="/superadmin/withdrawal-verifications"
+            className="inline-flex min-h-11 items-center rounded-xl border border-fuchsia-500/40 px-4 py-2 text-sm text-fuchsia-100 hover:border-fuchsia-400"
+          >
+            Expedientes de verificación
+          </Link>
         </div>
       </div>
 

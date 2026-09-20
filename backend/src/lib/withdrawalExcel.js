@@ -40,10 +40,29 @@ function applyRow(ws, excelRow, mapped) {
 
 function clearRow(ws, excelRow) {
   const row = ws.getRow(excelRow);
-  for (let col = 1; col <= 13; col += 1) {
+  for (let col = 1; col <= 18; col += 1) {
     row.getCell(col).value = null;
   }
   row.commit();
+}
+
+const EXTRA_HEADERS = [
+  [14, 'Titular verificado'],
+  [15, 'ID de verificación'],
+  [16, 'Identidad verificada al solicitar'],
+  [17, 'Cuenta verificada al solicitar'],
+  [18, 'Fecha de verificación'],
+];
+
+function ensureVerificationColumns(ws) {
+  EXTRA_HEADERS.forEach(([col, title]) => {
+    ws.getRow(HEADER_ROW).getCell(col).value = title;
+  });
+  const table = ws.getTable('TablaRetiros');
+  if (table?.table?.columns && table.table.columns.length < 18) {
+    const extra = EXTRA_HEADERS.map(([, name]) => ({ name }));
+    table.table.columns = table.table.columns.concat(extra.slice(0, 18 - table.table.columns.length));
+  }
 }
 
 function resizeTable(ws, count) {
@@ -76,6 +95,7 @@ async function fillWorkbook(records, { generatedAtLabel } = {}) {
   await wb.xlsx.readFile(TEMPLATE_PATH);
   const ws = wb.getWorksheet('Retiros');
   if (!ws) throw new Error('Falta la hoja Retiros en la plantilla');
+  ensureVerificationColumns(ws);
 
   const sorted = [...(records || [])].sort((a, b) => {
     const ta = Date.parse(a.requestedAt || a.createdAt || 0) || 0;
@@ -131,6 +151,11 @@ async function fillWorkbook(records, { generatedAtLabel } = {}) {
       'Fecha de pago',
       'Referencia de pago',
       'Observaciones',
+      'Titular verificado',
+      'ID de verificación',
+      'Identidad verificada al solicitar',
+      'Cuenta verificada al solicitar',
+      'Fecha de verificación',
     ];
     chunks[i].forEach((row, index) => {
       extra.getRow(2 + index).values = rowValues(recordToExcelRow(row));

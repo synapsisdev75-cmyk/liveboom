@@ -75,7 +75,7 @@ function tableRefForCount(count) {
   if (last >= EXCEL_MAX_ROWS) {
     throw new Error('EXCEL_ROW_LIMIT');
   }
-  return `A${HEADER_ROW}:M${last}`;
+  return `A${HEADER_ROW}:R${last}`;
 }
 
 function needsSplit(count) {
@@ -99,6 +99,12 @@ function recordToExcelRow(row) {
   }
   if (flags.includes('MISSING_EMAIL')) notes.push('Revisar: correo ausente');
   if (flags.includes('MISSING_NAME')) notes.push('Revisar: nombre ausente');
+  const verification =
+    (row?.verification && typeof row.verification === 'object' ? row.verification : null) ||
+    (snapshot.verification && typeof snapshot.verification === 'object' ? snapshot.verification : null) ||
+    (payout.verification && typeof payout.verification === 'object' ? payout.verification : null) ||
+    {};
+  const yesNo = (value) => (value ? 'Sí' : 'No');
   const paid = excelStatusLabel(row?.status) === 'Pagado';
   return {
     id: excelText(row?.withdrawalId || row?.id || ''),
@@ -114,6 +120,13 @@ function recordToExcelRow(row) {
     paidAt: paid ? formatBogota(row?.paidAt || row?.processedAt) : '',
     disbursementReference: paid ? excelText(row?.disbursementReference || '') : '',
     observations: excelText(notes.filter(Boolean).join(' · ')),
+    verifiedHolder: excelText(verification.legalName || ''),
+    verificationId: excelText(verification.caseId || ''),
+    identityVerifiedAtRequest: yesNo(verification.identityVerified),
+    accountVerifiedAtRequest: yesNo(verification.accountVerified),
+    verifiedAt: excelText(
+      formatBogota(verification.identityVerifiedAtMs || verification.accountVerifiedAtMs || ''),
+    ),
   };
 }
 
@@ -164,6 +177,11 @@ function rowValues(mapped) {
     mapped.paidAt,
     mapped.disbursementReference,
     mapped.observations,
+    mapped.verifiedHolder,
+    mapped.verificationId,
+    mapped.identityVerifiedAtRequest,
+    mapped.accountVerifiedAtRequest,
+    mapped.verifiedAt,
   ];
 }
 

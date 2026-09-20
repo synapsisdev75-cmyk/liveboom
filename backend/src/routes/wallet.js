@@ -93,6 +93,101 @@ router.get('/withdrawals', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/withdrawals/prepare', requireAuth, async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+    const coins = Math.floor(Number(req.body?.coins ?? req.body?.earnedBlastAmount) || 0);
+    const fullName = String(req.body?.fullName || '').trim().slice(0, 120);
+    const documentId = String(req.body?.documentId || '').trim().slice(0, 32);
+    const payoutMethod = String(req.body?.payoutMethod || '').trim().slice(0, 40);
+    const accountNumber = String(req.body?.accountNumber ?? '').trim().slice(0, 40);
+    const accountType = String(req.body?.accountType || 'ahorros').trim().slice(0, 20);
+    const accountId = String(req.body?.accountId || '').trim();
+    const verification = require('../lib/verificationService');
+    const confirm = require('../lib/verificationConfirm');
+    const { quoteWithdrawal, publicWalletSummary } = require('../lib/payoutConversion');
+    const { withdrawalFingerprint } = require('../lib/withdrawalIdentity');
+
+    const verified = await verification.requireVerifiedPayout(uid, {
+      fullName,
+      documentId,
+      payoutMethod,
+      accountNumber,
+      accountType,
+      accountId,
+    });
+    if (!verified.ok) {
+      const error =
+        verified.code === 'ACCOUNT_UNVERIFIED'
+          ? 'La cuenta de cobro no está verificada.'
+          : verified.code === 'HOLDER_MISMATCH'
+            ? 'El titular no coincide con la identidad verificada.'
+            : 'Para solicitar tu retiro, necesitamos verificar tu identidad y la cuenta donde recibirás tus ganancias.';
+      res.status(403).json({ error, code: verified.code, canWithdraw: false });
+      return;
+    }
+
+    const summary = await wallet.getSummary(uid);
+    const quote = quoteWithdrawal(coins, summary.earnedAvailable);
+    if (!quote.ok) {
+      res.status(400).json({
+        error:
+          quote.code === 'PURCHASED_NOT_WITHDRAWABLE'
+            ? 'Solo puedes retirar BLAST ganados.'
+            : quote.code === 'BELOW_MINIMUM'
+              ? 'El monto a retirar no alcanza el mínimo autorizado.'
+              : 'Monto inválido',
+        code: quote.code,
+      });
+      return;
+    }
+
+    const resolvedName = verified.snapshot.legalName;
+    const resolvedDoc = verified.snapshot.documentNumber;
+    const resolvedMethod = verified.account.bank;
+    const resolvedType = verified.account.accountType;
+    const resolvedNumber = verified.account.accountNumber;
+    const fingerprint = withdrawalFingerprint({
+      userId: uid,
+      coins,
+      fullName: resolvedName,
+      documentId: resolvedDoc,
+      payoutMethod: resolvedMethod,
+      accountNumber: resolvedNumber,
+      accountType: resolvedType,
+    });
+    const issued = await confirm.issueConfirm({
+      userId: uid,
+      coins,
+      accountId: verified.accountId,
+      fingerprint,
+    });
+    sendPublic(res, {
+      confirmId: issued.confirmId,
+      expiresAtMs: issued.expiresAtMs,
+      code: issued.code,
+      delivery: 'app',
+      earnedBlastAmount: coins,
+      moneyAmountCOP: quote.moneyAmountCOP,
+      moneyAmountExact: String(quote.moneyAmountCOP),
+      currency: 'COP',
+      legalName: resolvedName,
+      holderName: resolvedName,
+      bank: resolvedMethod,
+      accountType: resolvedType,
+      accountNumberMasked: verified.account.accountNumberMasked,
+      accountId: verified.accountId,
+      caseId: verified.caseId,
+      summary: publicWalletSummary(summary),
+      note: 'Código de un solo uso de LiveBoom. Caduca en 10 minutos y queda ligado a este importe y destino.',
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo preparar la confirmación',
+    });
+  }
+});
+
 router.get('/admin/withdrawals/report', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const { downloadCurrentReport } = require('../lib/withdrawalReport');

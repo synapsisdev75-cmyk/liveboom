@@ -821,6 +821,17 @@ service cloud.firestore {
       }
     }
 
+    match /wallet_verification_cases/{caseId} {
+      allow read, write: if false;
+      match /{sub=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /wallet_withdraw_confirms/{confirmId} {
+      allow read, write: if false;
+    }
+
     match /reports/{reportId} {
       allow read: if isSuperAdmin()
         || (signedIn() && resource.data.reporterUserId == request.auth.uid);

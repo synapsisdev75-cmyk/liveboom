@@ -32,6 +32,7 @@ import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
 import { WithdrawModal } from '../components/wallet/WithdrawModal';
 import { formatMoneyExact } from '../lib/moneyDisplay';
+import { fetchVerificationCase, statusLabel as verificationStatusLabel, type VerificationCase } from '../lib/verificationApi';
 import {
   BLAST_RECHARGE_DECLINED,
   BLAST_RECHARGE_PENDING,
@@ -51,6 +52,48 @@ function packageBadge(pack: ResolvedCoinPackage) {
   if (pack.popular) return 'POPULAR';
   if (pack.bestValue) return 'MEJOR VALOR';
   return null;
+}
+
+function VerificationWalletCard() {
+  const [row, setRow] = useState<VerificationCase | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchVerificationCase()
+      .then((next) => {
+        if (!cancelled) setRow(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-3">
+      <p className="inline-flex items-center gap-2 text-sm font-bold text-cyan-200">
+        <Shield size={15} /> Verificación para retiros
+      </p>
+      <p className="mt-2 text-sm text-zinc-300">
+        Identidad: {verificationStatusLabel(row?.identityStatus)}
+      </p>
+      <p className="text-sm text-zinc-300">
+        Cuenta bancaria: {verificationStatusLabel(row?.accountStatus)}
+      </p>
+      {!row?.canWithdraw ? (
+        <p className="mt-2 text-sm text-amber-100">
+          {row?.message ||
+            'Para solicitar tu retiro, necesitamos verificar tu identidad y la cuenta donde recibirás tus ganancias.'}
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-emerald-200">{row.message}</p>
+      )}
+      <Link
+        to="/wallet/withdraw/verification"
+        className="mt-3 inline-flex min-h-11 items-center rounded-full bg-emerald-500 px-4 text-sm font-bold text-zinc-950"
+      >
+        {row?.action?.label || 'Completar verificación'}
+      </Link>
+    </div>
+  );
 }
 
 function BlastArt({ artUrl, blast }: { artUrl: string; blast: number }) {
@@ -422,6 +465,7 @@ export function WalletView() {
                   RETIRAR
                 </button>
               </div>
+              <VerificationWalletCard />
             </div>
           </section>
 

@@ -37,12 +37,12 @@ describe('withdrawal excel + idempotency', () => {
   });
 
   it('la tabla crece por registros reales, no por tope de 500', () => {
-    assert.equal(tableRefForCount(1), 'A8:M9');
-    assert.equal(tableRefForCount(500), 'A8:M508');
-    assert.equal(tableRefForCount(501), 'A8:M509');
-    assert.equal(tableRefForCount(1001), 'A8:M1009');
-    assert.equal(tableRefForCount(2001), 'A8:M2009');
-    assert.equal(tableRefForCount(3001), 'A8:M3009');
+    assert.equal(tableRefForCount(1), 'A8:R9');
+    assert.equal(tableRefForCount(500), 'A8:R508');
+    assert.equal(tableRefForCount(501), 'A8:R509');
+    assert.equal(tableRefForCount(1001), 'A8:R1009');
+    assert.equal(tableRefForCount(2001), 'A8:R2009');
+    assert.equal(tableRefForCount(3001), 'A8:R3009');
   });
 
   it('usa snapshot histórico y COP congelado, sin tasa', () => {
@@ -62,6 +62,35 @@ describe('withdrawal excel + idempotency', () => {
     assert.equal(mapped.accountNumber, '00123');
     assert.equal(mapped.status, 'Pendiente');
     assert.equal(hasLeakedRate(mapped), false);
+    assert.equal(mapped.verificationId, '');
+    assert.equal(mapped.identityVerifiedAtRequest, 'No');
+  });
+
+  it('conserva el titular legal del snapshot de verificación, no el apodo', () => {
+    const mapped = recordToExcelRow({
+      withdrawalId: 'wd_ver',
+      earnedBlastAmount: 21000,
+      moneyAmountCOP: 315000,
+      status: 'REQUESTED',
+      requestedAt: '2026-09-19T20:00:00.000Z',
+      snapshot: {
+        displayName: 'BoomStar',
+        email: 'ana@test.com',
+        verification: {
+          caseId: 'wv_u1',
+          legalName: 'Ana Pérez',
+          identityVerified: true,
+          accountVerified: true,
+          identityVerifiedAtMs: Date.parse('2026-09-18T12:00:00.000Z'),
+        },
+      },
+      payout: { payoutMethod: 'Nequi', fullName: 'Ana Pérez' },
+    });
+    assert.equal(mapped.name, 'BoomStar');
+    assert.equal(mapped.verifiedHolder, 'Ana Pérez');
+    assert.equal(mapped.verificationId, 'wv_u1');
+    assert.equal(mapped.identityVerifiedAtRequest, 'Sí');
+    assert.equal(mapped.accountVerifiedAtRequest, 'Sí');
   });
 
   it('por pagar no incluye rechazados ni anulados', () => {
@@ -159,7 +188,7 @@ describe('withdrawal excel + idempotency', () => {
     await wb.xlsx.load(built.buffer);
     const ws = wb.getWorksheet('Retiros');
     const table = ws.getTable('TablaRetiros');
-    assert.equal(table.table.tableRef, 'A8:M10');
+    assert.equal(table.table.tableRef, 'A8:R10');
     assert.equal(ws.getCell('A9').value, 'wd_one');
     assert.equal(String(ws.getCell('H9').value), '00123456789012345');
     assert.equal(ws.getCell('J10').value, 'Pagado');

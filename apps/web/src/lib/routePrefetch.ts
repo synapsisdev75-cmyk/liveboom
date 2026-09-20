@@ -21,6 +21,7 @@ const loaders: Record<string, Loader> = {
   '/transmitir': () => import('../views/TransmitView'),
   '/stream': () => import('../views/LiveRoom'),
   '/super-admin': () => import('../views/SuperAdminView'),
+  '/wallet/withdraw/verification': () => import('../views/WithdrawalVerificationView'),
   '/legal': () => import('../views/LegalView'),
 };
 

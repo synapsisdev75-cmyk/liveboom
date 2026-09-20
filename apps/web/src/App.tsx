@@ -67,6 +67,11 @@ const GroupsView = lazy(() =>
 const SuperAdminView = lazy(() =>
   import('./views/SuperAdminView').then((m) => ({ default: m.SuperAdminView })),
 );
+const WithdrawalVerificationView = lazy(() =>
+  import('./views/WithdrawalVerificationView').then((m) => ({
+    default: m.WithdrawalVerificationView,
+  })),
+);
 
 function RouteFallback() {
   return (
@@ -144,6 +149,8 @@ export default function App() {
             <Route path="espacio-gaming" element={<GamingSpaceView />} />
             <Route path="u/:username" element={<UserProfileView />} />
             <Route path="billetera" element={<WalletView />} />
+            <Route path="wallet/withdraw/verification" element={<WithdrawalVerificationView />} />
+            <Route path="billetera/retiro/verificacion" element={<WithdrawalVerificationView />} />
             <Route path="perfil" element={<ProfileRedirectView />} />
             <Route path="perfil/editar" element={<ProfileView />} />
             <Route path="buscar" element={<SearchView />} />
@@ -152,6 +159,22 @@ export default function App() {
             <Route path="transmitir" element={<TransmitView />} />
             <Route
               path="super-admin"
+              element={
+                <SuperAdminRoute>
+                  <SuperAdminView />
+                </SuperAdminRoute>
+              }
+            />
+            <Route
+              path="super-admin/verificaciones-retiro"
+              element={
+                <SuperAdminRoute>
+                  <SuperAdminView />
+                </SuperAdminRoute>
+              }
+            />
+            <Route
+              path="superadmin/withdrawal-verifications"
               element={
                 <SuperAdminRoute>
                   <SuperAdminView />

@@ -471,6 +471,7 @@ async function requestWithdrawal({
           observations: '',
           fingerprint: fingerprint || null,
           snapshot,
+          verification: snapshotInput?.verification || payout?.verification || null,
           reviewFlags,
           payout: payout
             ? {
@@ -479,6 +480,7 @@ async function requestWithdrawal({
                 payoutMethod: payout.payoutMethod || null,
                 accountNumber: payout.accountNumber == null ? null : String(payout.accountNumber),
                 accountType: payout.accountType || null,
+                verification: payout.verification || null,
               }
             : null,
           walletRulesVersion: WALLET_RULES_VERSION,

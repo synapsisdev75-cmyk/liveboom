@@ -83,6 +83,14 @@
         { "fieldPath": "processed", "order": "ASCENDING" },
         { "fieldPath": "updatedAtMs", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "wallet_verification_cases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsAdmin", "order": "ASCENDING" },
+        { "fieldPath": "updatedAtMs", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

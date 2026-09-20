@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
 import { AdminCatalogPanel } from '../components/admin/AdminCatalogPanel';
 import { AdminVaultSecurityPanel } from '../components/admin/AdminVaultSecurityPanel';
 import { AdminWithdrawalsPanel } from '../components/admin/AdminWithdrawalsPanel';
+import { AdminVerificationPanel } from '../components/admin/AdminVerificationPanel';
 import { CommunityHeaderEditor } from '../components/admin/CommunityHeaderEditor';
 import { isOwnerEmail } from '../lib/superAdmin';
 import { useSuperAdminVaultStore } from '../store/superAdminVaultStore';
@@ -21,7 +22,15 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { useLevelsConfigStore } from '../store/levelsConfigStore';
 
-type AdminTab = 'levels' | 'users' | 'messages' | 'community' | 'catalog' | 'withdrawals' | 'security';
+type AdminTab =
+  | 'levels'
+  | 'users'
+  | 'messages'
+  | 'community'
+  | 'catalog'
+  | 'withdrawals'
+  | 'verifications'
+  | 'security';
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -91,7 +100,18 @@ export function SuperAdminView() {
   const lockVault = useSuperAdminVaultStore((s) => s.lock);
   const owner = isOwnerEmail(profile?.email);
 
-  const [tab, setTab] = useState<AdminTab>('users');
+  const location = useLocation();
+  const [tab, setTab] = useState<AdminTab>(() =>
+    /withdrawal-verifications|verificaciones-retiro/.test(location.pathname)
+      ? 'verifications'
+      : 'users',
+  );
+
+  useEffect(() => {
+    if (/withdrawal-verifications|verificaciones-retiro/.test(location.pathname)) {
+      setTab('verifications');
+    }
+  }, [location.pathname]);
   const [draft, setDraft] = useState<LevelsConfigDoc>(() => buildDefaultConfig());
   const [selectedTier, setSelectedTier] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -220,6 +240,7 @@ export function SuperAdminView() {
             { id: 'levels' as const, label: 'Niveles / Marcos' },
             { id: 'community' as const, label: 'Comunidad' },
             { id: 'withdrawals' as const, label: 'Solicitud de retiros' },
+            { id: 'verifications' as const, label: 'Verificación de retiros' },
             ...(owner ? [{ id: 'security' as const, label: 'Seguridad' }] : []),
           ] as { id: AdminTab; label: string }[]
         ).map(({ id, label }) => (
@@ -249,6 +270,7 @@ export function SuperAdminView() {
       {tab === 'catalog' ? <AdminCatalogPanel /> : null}
       {tab === 'community' ? <CommunityHeaderEditor /> : null}
       {tab === 'withdrawals' ? <AdminWithdrawalsPanel /> : null}
+      {tab === 'verifications' ? <AdminVerificationPanel /> : null}
       {tab === 'security' && owner ? <AdminVaultSecurityPanel /> : null}
 
       {tab === 'levels' ? (

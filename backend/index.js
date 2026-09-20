@@ -109,6 +109,7 @@ mount('/api/reconstructions', () => require('./src/routes/reconstructions'));
 mount('/api/translate', () => require('./src/routes/translate'));
 mount('/api/push', () => require('./src/routes/push'));
 mount('/api/wallet', () => require('./src/routes/wallet'));
+mount('/api/verification', () => require('./src/routes/verification'));
 
 app.use((error, _req, res, _next) => {
   console.error('[liveboom] error no controlado', error);
@@ -202,6 +203,20 @@ try {
       const { reconcileStalePending } = require('./src/lib/blastPurchaseService');
       const stats = await reconcileStalePending(25);
       console.log('[liveboom] reconcile compras', stats);
+    },
+  );
+  module.exports.purgeVerificationEvidence = onSchedule(
+    {
+      region: 'us-central1',
+      schedule: 'every sunday 05:00',
+      timeZone: 'America/Bogota',
+      memory: '512MiB',
+      timeoutSeconds: 180,
+    },
+    async () => {
+      const { purgeExpiredEvidence } = require('./src/lib/verificationService');
+      const stats = await purgeExpiredEvidence({ limit: 25 });
+      console.log('[liveboom] purge verificación', stats);
     },
   );
 } catch (error) {
