@@ -827,6 +827,20 @@ video.lk-participant-media-video {
   border-radius: 999px;
 }
 
+.lb-chat-thread-scroll {
+  display: flex;
+  flex-direction: column-reverse;
+  min-height: 0;
+  overflow-anchor: none;
+}
+
+.lb-chat-thread-scroll__inner {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 100%;
+}
+
 .lb-live-chat-identity--inline {
   display: flex;
   min-width: 0;

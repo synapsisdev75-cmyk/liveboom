@@ -1291,7 +1291,11 @@ export function listenMessages(
   viewerUid: string,
   onChange: (messages: ChatMessage[]) => void,
 ): Unsubscribe {
-  const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'), limit(200));
+  const q = query(
+    collection(db, 'chats', chatId, 'messages'),
+    orderBy('createdAt', 'desc'),
+    limit(200),
+  );
   return onSnapshot(q, (snap) => {
     const list: ChatMessage[] = [];
     for (const item of snap.docs) {
@@ -1365,6 +1369,7 @@ export function listenMessages(
             : null,
       });
     }
+    list.reverse();
     onChange(list);
   });
 }

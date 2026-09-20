@@ -685,6 +685,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const bottomRef = useRef<HTMLDivElement>(null);
   const holdTimerRef = useRef(0);
   const lastMsgCount = useRef(0);
+  const threadScrollKey = useRef('');
   const fileRef = useRef<HTMLInputElement>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
@@ -1056,12 +1057,41 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     void markMessagesRead(chatId, profile.firebaseUid, messages);
   }, [chatId, profile?.firebaseUid, docVisible, messages]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, activeUid]);
-
-  const scrollChatToBottom = useCallback((smooth = true) => {
+  useLayoutEffect(() => {
     const el = chatScrollRef.current;
+    if (!el) return;
+    const key = String(chatId || activeUid || '');
+    if (!key) return;
+    if (messages.length === 0) {
+      threadScrollKey.current = '';
+      return;
+    }
+
+    const pinLatest = () => {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end', inline: 'nearest' });
+      if (el.classList.contains('lb-chat-thread-scroll')) {
+        el.scrollTop = 0;
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+
+    const firstOpen = threadScrollKey.current !== key;
+    if (firstOpen) {
+      pinLatest();
+      threadScrollKey.current = key;
+      const timers = [32, 80, 160, 360, 800].map((ms) => window.setTimeout(pinLatest, ms));
+      return () => timers.forEach((id) => window.clearTimeout(id));
+    }
+    if (el.scrollTop < 120) pinLatest();
+  }, [messages, chatId, activeUid]);
+
+  const scrollChatToBottom = useCallback((smooth = false) => {
+    const el = chatScrollRef.current;
+    if (el?.classList.contains('lb-chat-thread-scroll')) {
+      el.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+      return;
+    }
     if (el) {
       el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
       return;
@@ -2118,12 +2148,13 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         <div id="lb-chat-call-host" ref={callHostRef} className="lb-chat-call-host" />
         <div
           ref={chatScrollRef}
-          className="chat-scroll flex-1 space-y-3 overflow-y-auto px-4 py-4"
+          className="chat-scroll lb-chat-thread-scroll flex-1 overflow-y-auto px-4 py-4"
           style={{
             paddingLeft: 'max(1rem, var(--lb-safe-left))',
             paddingRight: 'max(1rem, var(--lb-safe-right))',
           }}
         >
+          <div className="lb-chat-thread-scroll__inner space-y-3">
           {messages.filter((item) => !clearedAtMs || Date.parse(item.createdAt) >= clearedAtMs).length === 0 ? (
             <p className="py-10 text-center text-xs leading-relaxed text-zinc-500">
               No hay mensajes todavía.
@@ -2527,6 +2558,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
             })
           )}
           <div ref={bottomRef} />
+          </div>
         </div>
 
         <ChatTypingIndicator active={Boolean(peerTyping && docVisible && activeUid)} />
