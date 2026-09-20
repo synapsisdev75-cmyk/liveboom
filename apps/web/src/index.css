@@ -1222,6 +1222,44 @@ video.lk-participant-media-video {
   box-shadow: none;
 }
 
+.lb-global-boom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 114;
+  pointer-events: none;
+  background: transparent;
+}
+
+.lb-global-boom-overlay__anim {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: clamp(11.25rem, 55vw, 20.5rem);
+  max-width: min(65vw, 26.25rem);
+  max-height: min(72dvh, 26.25rem);
+  height: auto;
+  object-fit: contain;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+@media (min-width: 768px) {
+  .lb-global-boom-overlay__anim {
+    width: clamp(13.75rem, 38vw, 24rem);
+    max-width: min(45vw, 26.25rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .lb-global-boom-overlay__anim {
+    width: clamp(17.5rem, 22vw, 26.25rem);
+    max-width: 26.25rem;
+  }
+}
+
 @media (min-width: 640px) {
   .gift-box-item {
     min-height: 5.35rem;

@@ -138,6 +138,16 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
   },
   { id: 'tambor_caribeno', name: 'Tambor Caribeño', emoji: '🥁', image: '/gifts/tambor_caribeno.png', coins: 400, level: 2, animation: 'Tres golpes con ondas' },
   { id: 'botas_llaneras', name: 'Botas Llaneras', emoji: '🥾', image: '/gifts/botas_llaneras.png', coins: 500, level: 2, animation: 'Zapateo con polvo brillante' },
+  {
+    id: 'boom_saludo_travieso',
+    name: 'Boom Saludo Travieso',
+    emoji: '💣',
+    image: '/gifts/boom_saludo_travieso.png',
+    video: '/assets/animations/boom_saludo_travieso.webm',
+    coins: 500,
+    level: 2,
+    animation: 'Bombita 3D saluda al centro de la pantalla',
+  },
   { id: 'caballo_criollo', name: 'Caballo Criollo', emoji: '🐴', image: '/gifts/caballo_criollo.png', coins: 600, level: 2, animation: 'Trote y polvo al centro' },
   // Nivel 3 — Especiales (750–5000)
   { id: 'fiesta_latina', name: 'Fiesta Latina', emoji: '🎉', image: '/gifts/fiesta_latina.png', coins: 750, level: 3, animation: 'Confeti, serpentinas y luces de golpe' },

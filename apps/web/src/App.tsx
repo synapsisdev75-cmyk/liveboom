@@ -15,6 +15,7 @@ import { useLocaleStore } from './store/localeStore';
 import { idlePrefetchRoutes } from './lib/routePrefetch';
 import { prepareNativeLiveWebView, ensureNativeEssentialPermissions } from './lib/nativeLiveMedia';
 import { registerPushNotifications } from './lib/pushNotifications';
+import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
 
 const HomeView = lazy(() =>
   import('./views/HomeView').then((m) => ({ default: m.HomeView })),
@@ -185,6 +186,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <GlobalBoomAnimationOverlay />
       <CallOverlay />
       <CookieBanner />
     </BrowserRouter>

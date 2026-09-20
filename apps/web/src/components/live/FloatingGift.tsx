@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { playGiftAlert } from '../../lib/alertSound';
 import { giftMotionFor } from '../../lib/giftAnimations';
 import { findLiveGift, GIFT_LEVEL_FX, clampGiftAnimScale, type GiftLevel, type LiveGift } from '../../lib/liveboomGifts';
+import { isGlobalBoomAnimation, showBoomAnimation, boomAnimationEndedEvent } from '../../lib/boomAnimations';
 
 export function GiftVisual({
   gift,
@@ -271,12 +272,27 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
     : Array.from({ length: Math.min(motionSpec.particleCount, 12) }, (_, i) => i);
   const sizePx = Math.round(42 + Math.min(fx.screenPct, 55) * 0.9);
   const x = Math.min(78, Math.max(18, left));
+  const globalAnim = isGlobalBoomAnimation(giftId);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    // Si el regalo trae video con audio propio, no sumar beep sintético.
-    if (gift?.video) return;
+    if (gift?.video || globalAnim) return;
     playGiftAlert(level, giftId);
-  }, [level, giftId, gift?.video]);
+  }, [level, giftId, gift?.video, globalAnim]);
+
+  useEffect(() => {
+    if (!globalAnim || !giftId) return;
+    showBoomAnimation(giftId);
+    const onEnd = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id === giftId) onCompleteRef.current?.();
+    };
+    window.addEventListener(boomAnimationEndedEvent(), onEnd);
+    return () => window.removeEventListener(boomAnimationEndedEvent(), onEnd);
+  }, [giftId, globalAnim]);
+
+  if (globalAnim) return null;
 
   if (gift?.video) {
     return (
