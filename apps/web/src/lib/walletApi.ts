@@ -23,6 +23,8 @@ export type WalletLedgerRow = {
   filterGroup?: string;
   status?: string;
   createdAtMs?: number;
+  packageId?: string | null;
+  referenceType?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -69,7 +71,8 @@ export function ledgerLabel(row: WalletLedgerRow) {
   const type = String(row.transactionType || '');
   switch (type) {
     case 'RECHARGE':
-      return 'Recarga';
+      if (String(row.status || '').toLowerCase() === 'pending') return 'Recarga en proceso';
+      return 'BLAST comprados';
     case 'EARNING_GIFT':
       return 'Regalo recibido';
     case 'EARNING_CALL':
@@ -82,8 +85,13 @@ export function ledgerLabel(row: WalletLedgerRow) {
       return 'LIVE privado';
     case 'EARNING_SUBSCRIPTION':
       return 'Suscripción';
-    case 'SPEND':
+    case 'SPEND': {
+      const reason = String(row.referenceType || '').toLowerCase();
+      if (reason.includes('gift')) return 'Regalo enviado';
+      if (reason.includes('call')) return 'Llamada';
+      if (reason.includes('live')) return 'LIVE';
       return 'Gasto';
+    }
     case 'WITHDRAWAL_REQUEST':
       return 'Retiro solicitado';
     case 'WITHDRAWAL_PAID':

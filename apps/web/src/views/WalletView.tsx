@@ -7,6 +7,7 @@ import {
   Gem,
   Gift,
   History,
+  Loader2,
   Shield,
   Zap,
 } from 'lucide-react';
@@ -80,7 +81,10 @@ export function WalletView() {
   const [showHistory, setShowHistory] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'recharge' | 'earning' | 'spend' | 'withdrawal'>('all');
   const [ledger, setLedger] = useState<WalletLedgerRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
+  const historyRef = useRef<HTMLElement>(null);
   const [rechargeNote, setRechargeNote] = useState<{
     kind: 'success' | 'pending' | 'declined';
     coins?: number;
@@ -102,20 +106,30 @@ export function WalletView() {
   }
 
   async function refreshHistory(filter = historyFilter) {
+    setHistoryLoading(true);
+    setHistoryError(null);
     try {
       const rows = await fetchWalletTransactions(filter);
       setLedger(rows);
-    } catch {
-      setLedger([]);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : 'No se pudo cargar el historial');
+    } finally {
+      setHistoryLoading(false);
     }
   }
 
   useEffect(() => {
-    if (profile) {
-      void refreshWallet();
-      if (showHistory) void refreshHistory();
-    }
+    if (profile) void refreshWallet();
   }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (profile && showHistory) void refreshHistory(historyFilter);
+  }, [profile?.firebaseUid, showHistory, historyFilter]);
+
+  useEffect(() => {
+    if (!showHistory) return;
+    historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [showHistory]);
 
   useEffect(() => {
     const purchasedNow = fallback.purchasedBlastBalance;
@@ -189,8 +203,10 @@ export function WalletView() {
             });
           }
           setRechargeNote({ kind: 'success', coins: Number(paid.coins) || 0 });
+          setShowHistory(true);
         }
         await refreshWallet();
+        void refreshHistory();
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';
         if (msg.includes('no fue aprobado')) {
@@ -295,15 +311,16 @@ export function WalletView() {
         </div>
         <button
           type="button"
+          aria-expanded={showHistory}
           onClick={() => {
-            setShowHistory((v) => {
-              const next = !v;
-              if (next) void refreshHistory();
-              return next;
-            });
+            setShowHistory((v) => !v);
             void refreshWallet();
           }}
-          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#14151c] px-3 py-2 text-xs font-semibold text-zinc-300 transition hover:border-white/20 hover:text-white sm:px-3.5"
+          className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition sm:px-3.5 ${
+            showHistory
+              ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-100'
+              : 'border-white/10 bg-[#14151c] text-zinc-300 hover:border-white/20 hover:text-white'
+          }`}
         >
           <History size={14} />
           <span className="sm:hidden">Historial</span>
@@ -408,6 +425,116 @@ export function WalletView() {
               </div>
             </div>
           </section>
+
+          {showHistory ? (
+            <section
+              ref={historyRef}
+              className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
+                <button
+                  type="button"
+                  onClick={() => void refreshHistory(historyFilter)}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold text-cyan-300"
+                >
+                  {historyLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Actualizar
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(
+                  [
+                    ['all', 'Todos'],
+                    ['recharge', 'Recargas'],
+                    ['earning', 'Ganancias'],
+                    ['spend', 'Gastos'],
+                    ['withdrawal', 'Retiros'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setHistoryFilter(id)}
+                    className={`min-h-11 rounded-full px-3.5 text-xs font-semibold ${
+                      historyFilter === id
+                        ? 'bg-cyan-500/20 text-cyan-200'
+                        : 'bg-black/30 text-zinc-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {historyError ? (
+                <p className="mt-3 text-sm text-fuchsia-300">{historyError}</p>
+              ) : null}
+              {historyLoading && ledger.length === 0 ? (
+                <p className="mt-3 flex items-center gap-2 text-sm text-zinc-400">
+                  <Loader2 size={16} className="animate-spin" />
+                  Cargando movimientos…
+                </p>
+              ) : ledger.length === 0 ? (
+                <p className="mt-3 text-sm text-zinc-500">
+                  Aún no hay movimientos en este filtro.
+                </p>
+              ) : (
+                <ul className="mt-3 max-h-[min(28rem,60dvh)] space-y-2 overflow-y-auto">
+                  {ledger.slice(0, 40).map((item) => {
+                    const signed = signedAmount(item);
+                    const group =
+                      item.filterGroup === 'recharge'
+                        ? 'RECARGAS'
+                        : item.filterGroup === 'earning'
+                          ? 'GANANCIAS'
+                          : item.filterGroup === 'spend'
+                            ? 'GASTOS'
+                            : item.filterGroup === 'withdrawal'
+                              ? 'RETIROS'
+                              : 'MOVIMIENTO';
+                    const status = String(item.status || '').toUpperCase();
+                    const statusLabel =
+                      status === 'PENDING' || status === 'REQUESTED'
+                        ? 'En proceso'
+                        : status === 'PROCESSING'
+                          ? 'En revisión'
+                          : status === 'PAID'
+                            ? 'Pagado'
+                            : status === 'REJECTED'
+                              ? 'Rechazado'
+                              : '';
+                    return (
+                      <li
+                        key={item.id}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-xl bg-black/30 px-3 py-2.5 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                            {group}
+                            {statusLabel ? ` · ${statusLabel}` : ''}
+                          </p>
+                          <p className="font-medium text-white">{ledgerLabel(item)}</p>
+                          <p className="text-xs text-zinc-500">
+                            {item.createdAtMs
+                              ? new Date(item.createdAtMs).toLocaleString('es-CO')
+                              : ''}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 font-bold ${
+                            signed >= 0 ? 'text-emerald-400' : 'text-fuchsia-400'
+                          }`}
+                        >
+                          {signed >= 0 ? '+' : ''}
+                          {signed.toLocaleString('es-CO')} BLAST
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          ) : null}
 
           <section>
             <div className="mb-1 flex items-center gap-2">
@@ -526,85 +653,6 @@ export function WalletView() {
               Pagos procesados de forma segura con Wompi (PSE, tarjetas y billeteras).
             </p>
           </section>
-
-          {showHistory ? (
-            <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
-              <h2 className="text-sm font-semibold text-zinc-200">{t('wallet.transactions')}</h2>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(
-                  [
-                    ['all', 'Todos'],
-                    ['recharge', 'Recargas'],
-                    ['earning', 'Ganancias'],
-                    ['spend', 'Gastos'],
-                    ['withdrawal', 'Retiros'],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => {
-                      setHistoryFilter(id);
-                      void refreshHistory(id);
-                    }}
-                    className={`min-h-10 rounded-full px-3.5 text-xs font-semibold ${
-                      historyFilter === id
-                        ? 'bg-cyan-500/20 text-cyan-200'
-                        : 'bg-black/30 text-zinc-400'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {ledger.length === 0 ? (
-                <p className="mt-3 text-sm text-zinc-500">
-                  Aún no hay movimientos en este filtro.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {ledger.slice(0, 40).map((item) => {
-                    const signed = signedAmount(item);
-                    const group = item.filterGroup === 'recharge'
-                      ? 'RECARGAS'
-                      : item.filterGroup === 'earning'
-                        ? 'GANANCIAS'
-                        : item.filterGroup === 'spend'
-                          ? 'GASTOS'
-                          : item.filterGroup === 'withdrawal'
-                            ? 'RETIROS'
-                            : 'MOVIMIENTO';
-                    return (
-                      <li
-                        key={item.id}
-                        className="flex items-center justify-between rounded-xl bg-black/30 px-3 py-2.5 text-sm"
-                      >
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-                            {group}
-                          </p>
-                          <p className="font-medium text-white">{ledgerLabel(item)}</p>
-                          <p className="text-xs text-zinc-500">
-                            {item.createdAtMs
-                              ? new Date(item.createdAtMs).toLocaleString('es-CO')
-                              : ''}
-                          </p>
-                        </div>
-                        <span
-                          className={
-                            signed >= 0 ? 'font-bold text-emerald-400' : 'font-bold text-fuchsia-400'
-                          }
-                        >
-                          {signed >= 0 ? '+' : ''}
-                          {signed.toLocaleString('es-CO')} BLAST
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          ) : null}
         </>
       ) : (
         <section className="rounded-3xl border border-white/[0.08] bg-[#12131a] p-8 text-center">
@@ -627,6 +675,8 @@ export function WalletView() {
           onClose={() => {
             setOpenTopup(false);
             setInitialPack(undefined);
+            void refreshWallet();
+            if (showHistory) void refreshHistory();
           }}
         />
       ) : null}

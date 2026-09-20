@@ -590,42 +590,187 @@ async function rejectWithdrawal({ userId, amount, withdrawalId, idempotencyKey, 
   });
 }
 
+function createdAtMsOf(data) {
+  const n = Number(data?.createdAtMs || data?.creditedAtMs || data?.approvedAtMs || 0);
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  const ts = data?.createdAt;
+  if (ts && typeof ts.toMillis === 'function') return ts.toMillis();
+  if (ts && typeof ts.toDate === 'function') return ts.toDate().getTime();
+  const iso = Date.parse(String(data?.requestedAt || data?.createdAt || ''));
+  return Number.isFinite(iso) ? iso : 0;
+}
+
+function publicLedgerRow(row) {
+  const type = String(row.transactionType || 'ADJUSTMENT');
+  const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  return {
+    id: String(row.id || ''),
+    transactionType: type,
+    bucket: row.bucket || null,
+    amount: Math.max(0, Math.floor(Number(row.amount) || 0)),
+    direction: row.direction || null,
+    filterGroup: String(row.filterGroup || engine.filterGroupForType(type)),
+    status: String(row.status || 'completed'),
+    createdAtMs: createdAtMsOf(row),
+    packageId: meta.packageId || row.packageId || null,
+    referenceType: row.referenceType || meta.referenceType || null,
+  };
+}
+
+async function readDocs(query, label) {
+  try {
+    const snap = await query.get();
+    return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.warn('[wallet] getTransactions', label, error.message);
+    return [];
+  }
+}
+
 async function getTransactions(userId, { filter, limit } = {}) {
   const uid = String(userId || '').trim();
   const take = Math.min(80, Math.max(1, Math.floor(Number(limit) || 40)));
   const group = String(filter || 'all').toLowerCase();
-  if (firestoreConfigured()) {
+  const byId = new Map();
+  const seen = new Set();
+
+  function addRow(row) {
+    const pub = publicLedgerRow(row);
+    if (!pub.id || pub.amount <= 0) return;
+    const ref = String(row.referenceId || pub.id || '').trim();
+    const keys = [pub.id];
+    if (ref && ref !== pub.id) keys.push(`${pub.transactionType}:${ref}`);
+    if (pub.transactionType === engine.TX.RECHARGE) {
+      keys.push(`recharge:${ref}`, `RECHARGE:${ref}`);
+    }
+    if (String(pub.transactionType).startsWith('WITHDRAWAL')) {
+      keys.push(`withdrawal:${ref}`);
+    }
+    if (keys.some((key) => seen.has(key))) return;
+    keys.forEach((key) => seen.add(key));
+    const prev = byId.get(pub.id);
+    if (!prev || pub.createdAtMs >= prev.createdAtMs) byId.set(pub.id, pub);
+  }
+
+  if (firestoreConfigured() && uid) {
     try {
       const db = getAdminDb();
-      const snap = await db
-        .collection('users')
-        .doc(uid)
-        .collection('walletLedger')
-        .orderBy('createdAtMs', 'desc')
-        .limit(80)
-        .get();
-      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const filtered =
-        !group || group === 'all' || group === 'todos'
-          ? rows
-          : rows.filter((row) => String(row.filterGroup || '') === group);
-      return filtered.slice(0, take);
+      const userLedger = db.collection('users').doc(uid).collection('walletLedger');
+      const [
+        ledgerOrdered,
+        rootLedger,
+        ordersByUid,
+        ordersByUser,
+        userWithdrawals,
+        rootWithdrawals,
+      ] = await Promise.all([
+        readDocs(userLedger.orderBy('createdAtMs', 'desc').limit(100), 'userLedger.orderBy'),
+        readDocs(db.collection('wallet_ledger').where('userId', '==', uid).limit(100), 'wallet_ledger'),
+        readDocs(db.collection('paymentOrders').where('uid', '==', uid).limit(100), 'paymentOrders.uid'),
+        readDocs(db.collection('paymentOrders').where('userId', '==', uid).limit(100), 'paymentOrders.userId'),
+        readDocs(
+          db.collection('users').doc(uid).collection('walletWithdrawals').limit(50),
+          'userWithdrawals',
+        ),
+        readDocs(
+          db.collection('wallet_withdrawals').where('userId', '==', uid).limit(50),
+          'wallet_withdrawals',
+        ),
+      ]);
+
+      const ledgerRows = ledgerOrdered.length
+        ? ledgerOrdered
+        : await readDocs(userLedger.limit(100), 'userLedger');
+      ledgerRows.forEach(addRow);
+      rootLedger.forEach(addRow);
+
+      const ordersById = new Map();
+      for (const order of [...ordersByUid, ...ordersByUser]) {
+        if (order?.id) ordersById.set(String(order.id), order);
+      }
+      for (const order of ordersById.values()) {
+        const status = String(order.status || '').toUpperCase();
+        const credited = status === 'CREDITED' || status === 'COMPLETED';
+        const pending = status === 'PENDING' || status === 'APPROVED';
+        if (!credited && !pending) continue;
+        const amount = Math.max(
+          0,
+          Math.floor(Number(order.blastAmount || order.coins) || 0),
+        );
+        addRow({
+          id: `recharge:${order.id}`,
+          transactionType: engine.TX.RECHARGE,
+          bucket: engine.BUCKET.PURCHASED,
+          amount,
+          direction: engine.DIRECTION.CREDIT,
+          filterGroup: engine.FILTER_GROUP.RECHARGE,
+          status: credited ? 'completed' : 'pending',
+          createdAtMs: createdAtMsOf(order),
+          packageId: order.packageId || null,
+          referenceType: 'recharge',
+          referenceId: order.id,
+        });
+      }
+
+      const withdrawalsById = new Map();
+      for (const wd of [...userWithdrawals, ...rootWithdrawals]) {
+        if (wd?.id) withdrawalsById.set(String(wd.id), wd);
+      }
+      for (const wd of withdrawalsById.values()) {
+        const status = engine.normalizeWithdrawalStatus(wd.status);
+        const amount = Math.max(
+          0,
+          Math.floor(Number(wd.earnedBlastAmount || wd.coins || wd.amount) || 0),
+        );
+        addRow({
+          id: `withdrawal:${wd.id}`,
+          transactionType:
+            status === engine.WITHDRAWAL_STATUS.PAID
+              ? engine.TX.WITHDRAWAL_PAID
+              : status === engine.WITHDRAWAL_STATUS.REJECTED
+                ? engine.TX.WITHDRAWAL_REJECTED
+                : engine.TX.WITHDRAWAL_REQUEST,
+          bucket: engine.BUCKET.EARNED,
+          amount,
+          direction:
+            status === engine.WITHDRAWAL_STATUS.REJECTED
+              ? engine.DIRECTION.CREDIT
+              : engine.DIRECTION.DEBIT,
+          filterGroup: engine.FILTER_GROUP.WITHDRAWAL,
+          status,
+          createdAtMs: createdAtMsOf(wd),
+          referenceType: 'withdrawal',
+          referenceId: wd.id,
+        });
+      }
     } catch (error) {
       console.warn('[wallet] getTransactions:', error.message);
     }
   }
-  return walletMemory.listWithdrawals(uid).map((w) => ({
-    id: w.id,
-    userId: uid,
-    transactionType: engine.TX.WITHDRAWAL_REQUEST,
-    bucket: engine.BUCKET.EARNED,
-    amount: w.coins,
-    direction: engine.DIRECTION.DEBIT,
-    filterGroup: engine.FILTER_GROUP.WITHDRAWAL,
-    status: w.status,
-    createdAtMs: Date.parse(w.createdAt) || Date.now(),
-    metadata: w,
-  }));
+
+  if (!byId.size) {
+    walletMemory.listWithdrawals(uid).forEach((w) => {
+      addRow({
+        id: w.id,
+        transactionType: engine.TX.WITHDRAWAL_REQUEST,
+        bucket: engine.BUCKET.EARNED,
+        amount: w.coins,
+        direction: engine.DIRECTION.DEBIT,
+        filterGroup: engine.FILTER_GROUP.WITHDRAWAL,
+        status: w.status,
+        createdAtMs: Date.parse(w.createdAt) || Date.now(),
+        referenceType: 'withdrawal',
+        referenceId: w.id,
+      });
+    });
+  }
+
+  const rows = [...byId.values()].sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+  const filtered =
+    !group || group === 'all' || group === 'todos'
+      ? rows
+      : rows.filter((row) => String(row.filterGroup || '') === group);
+  return filtered.slice(0, take);
 }
 
 async function listWithdrawals(userId) {
@@ -634,21 +779,25 @@ async function listWithdrawals(userId) {
   if (firestoreConfigured()) {
     try {
       const db = getAdminDb();
-      const snap = await db
+      let snap = await db
         .collection('users')
         .doc(uid)
         .collection('walletWithdrawals')
-        .orderBy('createdAtMs', 'desc')
         .limit(40)
         .get();
+      if (snap.empty) {
+        snap = await db.collection('wallet_withdrawals').where('userId', '==', uid).limit(40).get();
+      }
       if (!snap.empty) {
-        return snap.docs.map((d) => {
-          const raw = { id: d.id, ...d.data() };
-          return publicWithdrawalRecord({
-            ...raw,
-            status: engine.normalizeWithdrawalStatus(raw.status),
-          });
-        });
+        return snap.docs
+          .map((d) => {
+            const raw = { id: d.id, ...d.data() };
+            return publicWithdrawalRecord({
+              ...raw,
+              status: engine.normalizeWithdrawalStatus(raw.status),
+            });
+          })
+          .sort((a, b) => Date.parse(b.requestedAt || 0) - Date.parse(a.requestedAt || 0));
       }
     } catch (error) {
       console.warn('[wallet] listWithdrawals:', error.message);

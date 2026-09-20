@@ -144,7 +144,12 @@ router.post('/withdrawals/:id/reject', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/:firebaseUid', async (req, res) => {
+router.get('/:firebaseUid', async (req, res, next) => {
+  const reserved = new Set(['transactions', 'summary', 'withdrawals', 'payout-quote']);
+  if (reserved.has(String(req.params.firebaseUid || ''))) {
+    next();
+    return;
+  }
   try {
     const uid = String(req.params.firebaseUid || '').trim();
     const summary = await wallet.getSummary(uid);
