@@ -67,16 +67,27 @@ function GiftAnimThumb({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const tryPlay = () => {
+      el.muted = true;
+      void el.play().catch(() => undefined);
+    };
     const io = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;
-        if (entry.isIntersecting) void el.play().catch(() => undefined);
+        if (entry.isIntersecting) tryPlay();
         else el.pause();
       },
-      { threshold: 0.15 },
+      { threshold: 0.01 },
     );
     io.observe(el);
-    return () => io.disconnect();
+    tryPlay();
+    el.addEventListener('loadeddata', tryPlay);
+    el.addEventListener('canplay', tryPlay);
+    return () => {
+      io.disconnect();
+      el.removeEventListener('loadeddata', tryPlay);
+      el.removeEventListener('canplay', tryPlay);
+    };
   }, [src]);
 
   return (
@@ -87,7 +98,8 @@ function GiftAnimThumb({
       muted
       loop
       playsInline
-      preload="metadata"
+      autoPlay
+      preload="auto"
       className={`inline-block shrink-0 object-contain ${className}`}
       style={{ width: size, height: size, background: 'transparent' }}
       aria-label={alt}

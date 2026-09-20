@@ -69,7 +69,7 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
     top: number;
     width: number;
     height: number;
-  } | null>(null);
+  } | null>(() => (typeof window === 'undefined' ? null : fitGiftPanelCentered()));
 
   useBodyScrollLock(open);
 
@@ -101,10 +101,7 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
   }, [open, onClose]);
 
   useLayoutEffect(() => {
-    if (!open) {
-      setCoords(null);
-      return;
-    }
+    if (!open) return;
     updatePosition();
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
@@ -138,7 +135,7 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
           width: coords?.width ?? PREFERRED_W,
           height: coords?.height ?? 320,
           maxHeight: coords?.height,
-          visibility: coords ? 'visible' : 'hidden',
+          visibility: 'visible',
           background: 'var(--lb-surface)',
           borderColor: 'var(--lb-line)',
           color: 'var(--lb-text)',

@@ -157,11 +157,22 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
 
 import { runtimeAllLiveGifts, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
 
+function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
+  const local = LIVEBOOM_GIFTS.find((item) => item.id === gift.id);
+  if (!local) return gift;
+  return {
+    ...gift,
+    image: gift.image || local.image,
+    video: gift.video || local.video,
+  };
+}
+
 export function findLiveGift(giftId: string | undefined | null): LiveGift | null {
   if (!giftId) return null;
+  const local = LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
   const remote = runtimeFindGift(giftId);
   if (remote) {
-    return {
+    return withDefaultGiftMedia({
       id: remote.id,
       name: remote.name,
       emoji: remote.emoji,
@@ -173,9 +184,9 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
       animScale: remote.animScale,
       liveOnly: remote.liveOnly,
       deeparFilter: remote.deeparFilter,
-    };
+    });
   }
-  return LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
+  return local;
 }
 
 export function isDeeparLiveGift(giftId: string | undefined | null): boolean {
@@ -191,7 +202,7 @@ export function sortedLiveboomGiftCatalog(): LiveGift[] {
     const map = new Map<string, LiveGift>();
     for (const g of [...remote, ...fromClip, ...fromFlash]) {
       if (g.deeparFilter) continue;
-      map.set(g.id, {
+      map.set(g.id, withDefaultGiftMedia({
         id: g.id,
         name: g.name,
         emoji: g.emoji,
@@ -202,7 +213,7 @@ export function sortedLiveboomGiftCatalog(): LiveGift[] {
         animation: g.animation,
         liveOnly: g.liveOnly,
         deeparFilter: g.deeparFilter,
-      });
+      }));
     }
     return [...map.values()].sort((a, b) => a.coins - b.coins);
   }
@@ -213,7 +224,7 @@ export function sortedLiveboomGiftCatalog(): LiveGift[] {
 export function sortedLiveGiftCatalog(): LiveGift[] {
   const remote = runtimeAllLiveGifts();
   if (remote.length) {
-    return remote.map((g) => ({
+    return remote.map((g) => withDefaultGiftMedia({
       id: g.id,
       name: g.name,
       emoji: g.emoji,
