@@ -4,7 +4,6 @@ const { FieldValue } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
 const { getAdminDb, firestoreConfigured } = require('./firestoreAdmin');
 const { safeGiftId } = require('./giftAlphaConvert');
-const { giftHasActiveBgJob } = require('./giftBgRemove');
 
 const STORAGE_BUCKET =
   process.env.FIREBASE_STORAGE_BUCKET || 'liveboom-app.firebasestorage.app';
@@ -42,10 +41,27 @@ function isExclusivePath(objectPath, giftId) {
   return name.startsWith(`${giftId}-`);
 }
 
-async function giftHasActiveAlphaJob(giftId) {
-  const snap = await getAdminDb().collection('gift_alpha_gifts').doc(giftId).get();
-  const status = String(snap.data()?.status || '');
-  return status === 'queued' || status === 'retry' || status === 'running';
+async function deleteStoragePrefix(bucket, prefix, deletedPaths) {
+  const [files] = await bucket.getFiles({ prefix });
+  for (const file of files || []) {
+    try {
+      await file.delete({ ignoreNotFound: true });
+      deletedPaths.push(file.name);
+    } catch (error) {
+      console.warn('[gift-delete] storage', file.name, error.message);
+    }
+  }
+}
+
+async function cancelGiftJobs(db, giftId) {
+  await db.collection('gift_alpha_gifts').doc(giftId).set(
+    { status: 'cancelled', stage: 'failed', updatedAtMs: Date.now() },
+    { merge: true },
+  );
+  await db.collection('gift_bg_gifts').doc(giftId).set(
+    { status: 'cancelled', stage: 'failed', updatedAtMs: Date.now() },
+    { merge: true },
+  );
 }
 
 async function isGiftDeleted(giftId) {
@@ -62,23 +78,15 @@ async function deleteGiftPermanently({ giftId, adminUserId, adminEmail }) {
   const gid = safeGiftId(giftId);
   if (!gid) throw Object.assign(new Error('Regalo inválido'), { code: 'INVALID_GIFT' });
 
-  if (await giftHasActiveBgJob(gid) || await giftHasActiveAlphaJob(gid)) {
-    throw Object.assign(
-      new Error('El regalo se está procesando. Espera a que termine antes de eliminarlo.'),
-      { code: 'BUSY' },
-    );
-  }
-
   const db = getAdminDb();
+  await cancelGiftJobs(db, gid);
+
   const catalogRef = db.doc(CATALOG_PATH);
   const catalogSnap = await catalogRef.get();
   const catalog = catalogSnap.exists ? catalogSnap.data() || {} : {};
   const gifts = Array.isArray(catalog.gifts) ? catalog.gifts : [];
-  const target = gifts.find((g) => String(g?.id || '') === gid);
-  if (!target) {
-    throw Object.assign(new Error('El regalo no está en el catálogo'), { code: 'NOT_FOUND' });
-  }
-  if (gifts.length <= 1) {
+  const target = gifts.find((g) => String(g?.id || '') === gid) || null;
+  if (target && gifts.length <= 1) {
     throw Object.assign(new Error('Debe quedar al menos un regalo en el catálogo.'), { code: 'LAST_GIFT' });
   }
 
@@ -108,25 +116,28 @@ async function deleteGiftPermanently({ giftId, adminUserId, adminEmail }) {
       console.warn('[gift-delete] storage', objectPath, error.message);
     }
   }
+  await deleteStoragePrefix(bucket, `admin/private/gifts/${gid}/`, deletedPaths);
 
-  const version = Math.max(1, Math.floor(Number(catalog.version) || 1) + 1);
-  await catalogRef.set(
-    {
-      ...catalog,
-      gifts: remaining,
-      version,
-      updatedBy: adminEmail || adminUserId || 'admin',
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+  if (target) {
+    const version = Math.max(1, Math.floor(Number(catalog.version) || 1) + 1);
+    await catalogRef.set(
+      {
+        ...catalog,
+        gifts: remaining,
+        version,
+        updatedBy: adminEmail || adminUserId || 'admin',
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  }
 
   const snapshot = {
     giftId: gid,
-    giftName: String(target.name || gid),
-    coins: Number(target.coins) || 0,
-    emoji: String(target.emoji || '🎁'),
-    blast: Number(target.coins) || 0,
+    giftName: String(target?.name || gid),
+    coins: Number(target?.coins) || 0,
+    emoji: String(target?.emoji || '🎁'),
+    blast: Number(target?.coins) || 0,
   };
 
   await db.collection(TOMBSTONES).doc(gid).set({
@@ -142,7 +153,7 @@ async function deleteGiftPermanently({ giftId, adminUserId, adminEmail }) {
     deletedAt: FieldValue.serverTimestamp(),
   });
 
-  return { ok: true, giftId: gid, version, deletedPaths };
+  return { ok: true, giftId: gid, version: target ? Math.max(1, Math.floor(Number(catalog.version) || 1) + 1) : Number(catalog.version) || 1, deletedPaths };
 }
 
 module.exports = {

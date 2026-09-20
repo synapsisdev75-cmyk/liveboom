@@ -151,17 +151,11 @@ function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): E
 export function mergeGiftsCatalog(doc: GiftsCatalogDoc | null): EditableGift[] {
   const base = buildDefaultGiftsCatalog().gifts;
   if (!doc?.gifts?.length) return base;
-  const byId = new Map(doc.gifts.map((g) => [g.id, g]));
-  const merged = base.map((gift) => {
-    const override = byId.get(gift.id);
-    if (!override) return gift;
-    return normalizeGift(override as unknown as Record<string, unknown>, gift) || gift;
-  });
+  const byDefault = new Map(base.map((gift) => [gift.id, gift]));
+  const merged: EditableGift[] = [];
   for (const gift of doc.gifts) {
-    if (!merged.some((g) => g.id === gift.id)) {
-      const next = normalizeGift(gift as unknown as Record<string, unknown>);
-      if (next) merged.push(next);
-    }
+    const next = normalizeGift(gift as unknown as Record<string, unknown>, byDefault.get(gift.id));
+    if (next) merged.push(next);
   }
   return merged;
 }

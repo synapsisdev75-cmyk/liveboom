@@ -170,7 +170,7 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
   { id: 'dios_del_live', name: 'Dios del Live', emoji: '⚡', coins: 500000, level: 5, animation: 'Escena total — vino a facturar' },
 ];
 
-import { runtimeAllLiveGifts, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
+import { runtimeAllLiveGifts, runtimeCatalogLoaded, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
 
 function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
   const local = LIVEBOOM_GIFTS.find((item) => item.id === gift.id);
@@ -184,7 +184,6 @@ function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
 
 export function findLiveGift(giftId: string | undefined | null): LiveGift | null {
   if (!giftId) return null;
-  const local = LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
   const remote = runtimeFindGift(giftId);
   if (remote) {
     return withDefaultGiftMedia({
@@ -203,7 +202,8 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
       deeparFilter: remote.deeparFilter,
     });
   }
-  return local;
+  if (runtimeCatalogLoaded()) return null;
+  return LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
 }
 
 export function isDeeparLiveGift(giftId: string | undefined | null): boolean {

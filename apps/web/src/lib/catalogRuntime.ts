@@ -26,6 +26,10 @@ export function setRuntimeGiftCatalog(next: RuntimeGift[] | null) {
   gifts = next;
 }
 
+export function runtimeCatalogLoaded(): boolean {
+  return gifts != null;
+}
+
 export function setRuntimeCoinPackages(next: RuntimePack[] | null) {
   packs = next;
 }

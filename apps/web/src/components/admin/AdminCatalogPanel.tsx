@@ -343,7 +343,6 @@ export function AdminCatalogPanel() {
   async function confirmPermanentDelete() {
     if (!gift) return;
     const giftId = gift.id;
-    const published = storeGifts.some((row) => row.id === giftId);
     const next = gifts.filter((g) => g.id !== giftId);
     if (!next.length) {
       setDeleteError('Debe quedar al menos un regalo en el catálogo.');
@@ -353,17 +352,11 @@ export function AdminCatalogPanel() {
     setDeleteError(null);
     setMessage(null);
     try {
-      if (published) {
-        await deleteGiftPermanentlyApi(giftId);
-      }
+      await deleteGiftPermanentlyApi(giftId);
       setGifts(next);
       setSelectedGiftId(next[0]?.id || '');
       setDeleteOpen(false);
-      setMessage(
-        published
-          ? 'Regalo eliminado permanentemente del catálogo.'
-          : 'Regalo borrador eliminado.',
-      );
+      setMessage('Regalo eliminado de todos lados.');
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar el regalo');
     } finally {

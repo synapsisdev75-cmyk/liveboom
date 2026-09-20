@@ -7,10 +7,9 @@ export const GIFT_ANIM_LIMITS = {
   /** WebM / MP4 listos para publicar. */
   maxBytes: 80 * 1024 * 1024,
   /**
-   * Temporal: fuentes MOV ProRes 4444 Full HD pesan mucho antes de comprimirse a WebM.
-   * Subir de nuevo cuando el flujo de exportación sea más ligero.
+   * Fuentes MOV ProRes 4444 Full HD antes de comprimirse a WebM.
    */
-  maxMovBytes: 350 * 1024 * 1024,
+  maxMovBytes: 650 * 1024 * 1024,
   maxDurationSec: 30,
   maxEdge: 1080,
 } as const;

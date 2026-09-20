@@ -309,7 +309,7 @@ service firebase.storage {
         && (
           (
             fileName.matches('.*\\.mov$')
-            && request.resource.size < 350 * 1024 * 1024
+            && request.resource.size < 650 * 1024 * 1024
           )
           || (
             (fileName.matches('.*\\.webm$') || fileName.matches('.*\\.mp4$'))

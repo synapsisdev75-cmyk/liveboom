@@ -19,10 +19,9 @@ const LIMITS = {
   /** Límite para WebM/MP4 publicados (referencia API). */
   maxBytes: 80 * 1024 * 1024,
   /**
-   * Temporal: fuentes MOV ProRes 4444 Full HD antes de comprimir a WebM.
-   * Volver a bajar cuando el export de Premiere sea más ligero.
+   * Fuentes MOV ProRes 4444 Full HD antes de comprimir a WebM.
    */
-  maxMovBytes: 350 * 1024 * 1024,
+  maxMovBytes: 650 * 1024 * 1024,
   maxDurationSec: 30,
   maxEdge: 1080,
   maxJobsPerGift: 1,
