@@ -9,6 +9,7 @@ import {
   giftLayoutDeviceFromViewport,
   giftLayoutMediaStyle,
   giftLiveFormatFromAspect,
+  giftPlaybackLiveFormat,
   isGiftLayoutBleed,
   normalizeGiftLayout,
   patchGiftLayout,
@@ -59,9 +60,14 @@ function testCopy() {
 function testDetect() {
   assert(giftLiveFormatFromAspect('9:16') === 'portrait916', '9:16');
   assert(giftLiveFormatFromAspect('16:9') === 'landscape169', '16:9');
-  assert(giftLayoutDeviceFromViewport(360) === 'mobile', '360 mobile');
-  assert(giftLayoutDeviceFromViewport(820) === 'tablet', '820 tablet');
-  assert(giftLayoutDeviceFromViewport(1440) === 'desktop', '1440 desktop');
+  assert(giftLayoutDeviceFromViewport(360, 800) === 'mobile', '360 mobile');
+  assert(giftLayoutDeviceFromViewport(820, 1180) === 'tablet', '820 tablet portrait');
+  assert(giftLayoutDeviceFromViewport(1440, 900) === 'desktop', '1440 desktop');
+  assert(giftPlaybackLiveFormat('mobile', 'portrait') === 'portrait916', 'phone 9:16');
+  assert(giftPlaybackLiveFormat('mobile', 'landscape') === 'portrait916', 'phone stays 9:16');
+  assert(giftPlaybackLiveFormat('tablet', 'portrait') === 'portrait916', 'tablet portrait 9:16');
+  assert(giftPlaybackLiveFormat('tablet', 'landscape') === 'landscape169', 'tablet landscape 16:9');
+  assert(giftPlaybackLiveFormat('desktop', 'portrait') === 'landscape169', 'desktop 16:9');
 }
 
 function testResolveAndBleed() {

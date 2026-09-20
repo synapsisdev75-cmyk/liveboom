@@ -468,7 +468,7 @@ export function AdminCatalogPanel() {
             processedAsset: null,
             backgroundRemoved: false,
             processingStatus: 'ready',
-            hasAudio: true,
+            hasAudio: result.job?.hasAudio !== false,
           },
         });
         const warn = result.job?.warning;
@@ -583,7 +583,7 @@ export function AdminCatalogPanel() {
           processedAsset: null,
           backgroundRemoved: false,
           processingStatus: 'ready',
-          hasAudio: true,
+          hasAudio: job.hasAudio !== false,
         },
       });
       forgetGiftAlphaJob(targetGiftId);

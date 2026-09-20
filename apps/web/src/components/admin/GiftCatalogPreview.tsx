@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { EditableGift, GiftPlacement } from '../../lib/catalogConfigFirestore';
 import { clampGiftAnimScale } from '../../lib/liveboomGifts';
 import {
@@ -27,14 +27,24 @@ const PLACEMENT_SHORT: Record<GiftPlacement, string> = {
 export type PreviewDevice = 'mobile' | 'tablet' | 'desktop';
 export type PreviewBackdrop = 'checker' | 'light' | 'dark';
 
-const DEVICE_META: Record<
-  PreviewDevice,
-  { label: string; frameW: number; frameH: number; scale: number }
-> = {
-  mobile: { label: 'Móvil', frameW: 390, frameH: 720, scale: 0.58 },
-  tablet: { label: 'Tablet', frameW: 768, frameH: 900, scale: 0.42 },
-  desktop: { label: 'Escritorio', frameW: 1280, frameH: 720, scale: 0.36 },
+const DEVICE_LABEL: Record<PreviewDevice, string> = {
+  mobile: 'Móvil',
+  tablet: 'Tablet',
+  desktop: 'Escritorio',
 };
+
+function previewFrame(device: PreviewDevice, format: GiftLiveFormat) {
+  const use169 = device === 'desktop' || (device === 'tablet' && format === 'landscape169');
+  if (use169) {
+    return {
+      frameW: device === 'tablet' ? 1024 : 1280,
+      frameH: device === 'tablet' ? 576 : 720,
+      scale: device === 'tablet' ? 0.42 : 0.36,
+    };
+  }
+  if (device === 'tablet') return { frameW: 768, frameH: 1365, scale: 0.32 };
+  return { frameW: 390, frameH: 693, scale: 0.52 };
+}
 
 const BACKDROP_META: Record<PreviewBackdrop, { label: string; style: CSSProperties }> = {
   checker: {
@@ -125,7 +135,10 @@ export function GiftCatalogPreview({
   onLayoutChange,
   onMediaChange,
 }: Props) {
-  const meta = DEVICE_META[device];
+  const [liveFormat, setLiveFormat] = useState<GiftLiveFormat>(
+    device === 'desktop' ? 'landscape169' : 'portrait916',
+  );
+  const meta = previewFrame(device, liveFormat);
   const displayW = Math.round(meta.frameW * meta.scale);
   const displayH = Math.round(meta.frameH * meta.scale);
   const [compare, setCompare] = useState<'processed' | 'original'>('processed');
@@ -139,7 +152,6 @@ export function GiftCatalogPreview({
   const faceTop = faceTopPercent(gift);
   const faceSize = faceSizeRem(gift);
   const [backdrop, setBackdrop] = useState<PreviewBackdrop>('checker');
-  const [liveFormat, setLiveFormat] = useState<GiftLiveFormat>('portrait916');
   const [cropMode, setCropMode] = useState(false);
   const [safeGuides, setSafeGuides] = useState(false);
   const [playToken, setPlayToken] = useState(0);
@@ -151,6 +163,11 @@ export function GiftCatalogPreview({
   const slot = layout[device][liveFormat];
   const is916 = liveFormat === 'portrait916';
   const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
+
+  useEffect(() => {
+    if (device === 'mobile') setLiveFormat('portrait916');
+    else if (device === 'desktop') setLiveFormat('landscape169');
+  }, [device]);
 
   const commit = (next: GiftLayoutMap) => {
     onLayoutChange?.(next);
@@ -174,14 +191,14 @@ export function GiftCatalogPreview({
               {BACKDROP_META[key].label}
             </Chip>
           ))}
-          {(Object.keys(DEVICE_META) as PreviewDevice[]).map((key) => (
+          {(Object.keys(DEVICE_LABEL) as PreviewDevice[]).map((key) => (
             <Chip
               key={key}
               tone="fuchsia"
               active={device === key}
               onClick={() => onDeviceChange(key)}
             >
-              {DEVICE_META[key].label}
+              {DEVICE_LABEL[key]}
             </Chip>
           ))}
         </div>
@@ -189,16 +206,24 @@ export function GiftCatalogPreview({
 
       <div className="space-y-1">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          Formato del LIVE
+          Formato de la animación
         </p>
-        <div className="flex flex-wrap gap-1">
-          <Chip tone="cyan" active={is916} onClick={() => setLiveFormat('portrait916')}>
-            9:16 Vertical
-          </Chip>
-          <Chip tone="cyan" active={!is916} onClick={() => setLiveFormat('landscape169')}>
-            16:9 Horizontal
-          </Chip>
-        </div>
+        {device === 'tablet' ? (
+          <div className="flex flex-wrap gap-1">
+            <Chip tone="cyan" active={is916} onClick={() => setLiveFormat('portrait916')}>
+              Vertical 9:16
+            </Chip>
+            <Chip tone="cyan" active={!is916} onClick={() => setLiveFormat('landscape169')}>
+              Horizontal 16:9
+            </Chip>
+          </div>
+        ) : (
+          <p className="text-xs text-zinc-400">
+            {device === 'desktop'
+              ? 'Escritorio usa 16:9.'
+              : 'Móvil (Android / iOS) usa 9:16.'}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -254,7 +279,7 @@ export function GiftCatalogPreview({
           className="w-full accent-fuchsia-400"
         />
         <span className="block text-[10px] text-zinc-500">
-          20%–200% en {meta.label} · {is916 ? '9:16' : '16:9'}. Ctrl + rueda para zoom.
+          20%–200% en {DEVICE_LABEL[device]} · {is916 ? '9:16' : '16:9'}. Ctrl + rueda para zoom.
         </span>
       </label>
 
@@ -270,8 +295,7 @@ export function GiftCatalogPreview({
               value={gift.media?.volume ?? 1}
               onChange={(e) =>
                 onMediaChange?.({
-                  ...(gift.media || {
-                    hasAudio: true,
+          hasAudio: true,
                     duration: 0,
                     width: 0,
                     height: 0,
@@ -567,7 +591,7 @@ export function GiftCatalogPreview({
       </div>
 
       <p className="text-center text-[11px] text-zinc-500">
-        {meta.label} · {is916 ? 'LIVE 9:16' : 'LIVE 16:9'} ·{' '}
+        {DEVICE_LABEL[device]} · {is916 ? '9:16' : '16:9'} ·{' '}
         {globalArea ? 'overlay global' : 'dentro del video'}. Publica para aplicar en la app.
       </p>
     </div>

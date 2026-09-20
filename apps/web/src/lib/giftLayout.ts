@@ -97,10 +97,53 @@ export function serializeGiftLayout(layout: GiftLayoutMap | undefined, animScale
   return normalizeGiftLayout(layout, animScale);
 }
 
-export function giftLayoutDeviceFromViewport(width = typeof window === 'undefined' ? 1280 : window.innerWidth): GiftLayoutDevice {
-  if (width < 768) return 'mobile';
-  if (width < 1024) return 'tablet';
+export function giftLayoutDeviceFromViewport(
+  width = typeof window === 'undefined' ? 1280 : window.innerWidth,
+  height?: number,
+): GiftLayoutDevice {
+  const w = Number(width) || 1280;
+  const h =
+    height == null
+      ? typeof window === 'undefined'
+        ? 0
+        : window.innerHeight
+      : Number(height) || 0;
+  const short = h > 0 ? Math.min(w, h) : w;
+  const hasWindow = typeof window !== 'undefined' && typeof window.matchMedia === 'function';
+  if (hasWindow) {
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    if (short < 600) return 'mobile';
+    if (coarse && short <= 1100) return 'tablet';
+    if (w < 768) return 'mobile';
+    if (w < 1024) return 'tablet';
+    return 'desktop';
+  }
+  if (w < 768) return 'mobile';
+  if (w < 1024) return 'tablet';
   return 'desktop';
+}
+
+export function giftViewerOrientation(
+  width = typeof window === 'undefined' ? 1280 : window.innerWidth,
+  height = typeof window === 'undefined' ? 720 : window.innerHeight,
+): 'portrait' | 'landscape' {
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    if (window.matchMedia('(orientation: landscape)').matches) return 'landscape';
+    if (window.matchMedia('(orientation: portrait)').matches) return 'portrait';
+  }
+  return Number(width) >= Number(height) ? 'landscape' : 'portrait';
+}
+
+/** Móvil y tablet vertical: 9:16. Escritorio o tablet horizontal: 16:9. */
+export function giftPlaybackLiveFormat(
+  device?: GiftLayoutDevice,
+  orientation?: 'portrait' | 'landscape',
+): GiftLiveFormat {
+  const d = device || giftLayoutDeviceFromViewport();
+  const o = orientation || giftViewerOrientation();
+  if (d === 'desktop') return 'landscape169';
+  if (d === 'tablet' && o === 'landscape') return 'landscape169';
+  return 'portrait916';
 }
 
 export function giftLiveFormatFromAspect(ratio: string | undefined | null): GiftLiveFormat {
@@ -116,7 +159,9 @@ export function resolveGiftLayoutSlot(input: {
 }): GiftLayoutSlot {
   const map = normalizeGiftLayout(input.layout, input.animScale);
   const device = input.device || giftLayoutDeviceFromViewport();
-  const format = input.liveFormat || giftLiveFormatFromAspect(input.liveAspect);
+  const format =
+    input.liveFormat ||
+    (input.liveAspect ? giftLiveFormatFromAspect(input.liveAspect) : giftPlaybackLiveFormat(device));
   return map[device][format];
 }
 

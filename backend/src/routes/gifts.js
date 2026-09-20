@@ -113,7 +113,8 @@ function giftAlphaHttpStatus(code) {
     code === 'INVALID_GIFT' ||
     code === 'UNSUPPORTED' ||
     code === 'CONFIRM' ||
-    code === 'LAST_GIFT'
+    code === 'LAST_GIFT' ||
+    code === 'AUDIO'
   ) {
     return 400;
   }

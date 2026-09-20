@@ -6,7 +6,9 @@ import { giftMotionFor } from '../../lib/giftAnimations';
 import { findLiveGift, GIFT_LEVEL_FX, clampGiftAnimScale, type GiftLevel, type LiveGift } from '../../lib/liveboomGifts';
 import { isGlobalBoomAnimation, showBoomAnimation, boomAnimationEndedEvent } from '../../lib/boomAnimations';
 import {
+  giftLayoutDeviceFromViewport,
   giftLayoutMediaStyle,
+  giftPlaybackLiveFormat,
   isGiftLayoutBleed,
   resolveGiftLayoutSlot,
   type GiftLayoutSlot,
@@ -358,7 +360,7 @@ type FloatingGiftProps = {
   liveAspect?: LiveAspectRatio;
 };
 
-export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo, fillViewport = false, liveAspect }: FloatingGiftProps) {
+export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo, fillViewport = false, liveAspect: _liveAspect }: FloatingGiftProps) {
   const gift = findLiveGift(giftId);
   const level = (gift?.level || 1) as GiftLevel;
   const fx = GIFT_LEVEL_FX[level];
@@ -410,10 +412,12 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       );
     }
   } else if (gift?.video || gift?.image) {
+    const device = giftLayoutDeviceFromViewport();
     const slot = resolveGiftLayoutSlot({
       layout: gift.giftLayout,
       animScale: gift.animScale,
-      liveAspect: liveAspect || '9:16',
+      device,
+      liveFormat: giftPlaybackLiveFormat(device),
     });
     const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
     const burst = gift.video ? (

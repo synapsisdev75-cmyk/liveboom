@@ -5,6 +5,8 @@ const {
   safeGiftSourcePath,
   pixFmtHasAlpha,
   probeReportsAlpha,
+  probeHasAudio,
+  streamIsAudio,
   classifyProRes,
   inspectProbe,
   parseFfmpegProgress,
@@ -56,6 +58,21 @@ describe('conversión MOV ProRes 4444 → WebM', () => {
     );
   });
 
+  it('detecta pista de audio aunque el códec sea PCM de ProRes', () => {
+    assert.equal(streamIsAudio({ codec_type: 'audio', codec_name: 'pcm_s24le' }), true);
+    assert.equal(streamIsAudio({ codec_type: 'video', codec_name: 'prores' }), false);
+    assert.equal(
+      probeHasAudio({
+        streams: [
+          { codec_type: 'video', codec_name: 'vp9' },
+          { codec_type: 'audio', codec_name: 'opus' },
+        ],
+      }),
+      true,
+    );
+    assert.equal(probeHasAudio({ streams: [{ codec_type: 'video', codec_name: 'vp9' }] }), false);
+  });
+
   it('distingue ProRes 4444 y 4444 XQ por etiqueta y perfil', () => {
     assert.equal(classifyProRes({ codec_name: 'prores', codec_tag_string: 'ap4h' }).profile, '4444');
     assert.equal(classifyProRes({ codec_name: 'prores', codec_tag_string: 'ap4x' }).profile, '4444XQ');
@@ -82,7 +99,25 @@ describe('conversión MOV ProRes 4444 → WebM', () => {
     });
     assert.equal(withAlpha.isProRes4444, true);
     assert.equal(withAlpha.hasAlphaChannel, true);
+    assert.equal(withAlpha.hasAudio, false);
     assert.equal(withAlpha.error, null);
+
+    const withPcmAudio = inspectProbe({
+      format: { format_name: 'mov', duration: '2' },
+      streams: [
+        {
+          codec_type: 'video',
+          codec_name: 'prores',
+          codec_tag_string: 'ap4h',
+          pix_fmt: 'yuva444p10le',
+          width: 720,
+          height: 720,
+          duration: '2',
+        },
+        { codec_type: 'audio', codec_name: 'pcm_s24le', duration: '2' },
+      ],
+    });
+    assert.equal(withPcmAudio.hasAudio, true);
 
     const named4444ButNoAlpha = inspectProbe({
       format: { format_name: 'mov', duration: '1' },

@@ -200,11 +200,23 @@ function classifyProRes(stream) {
   return { ok: false, profile: profile || tag || 'prores', label: profile || tag || 'ProRes' };
 }
 
+function streamIsAudio(stream) {
+  if (!stream || typeof stream !== 'object') return false;
+  if (String(stream.codec_type || '') === 'audio') return true;
+  const name = String(stream.codec_name || '').toLowerCase();
+  return /^(aac|opus|mp3|pcm|flac|alac|ac3|eac3|vorbis|mp2|wmav)/.test(name);
+}
+
+function probeHasAudio(probe) {
+  const streams = Array.isArray(probe?.streams) ? probe.streams : [];
+  return streams.some(streamIsAudio);
+}
+
 function inspectProbe(probe) {
   const format = probe && typeof probe === 'object' ? probe.format || {} : {};
   const streams = Array.isArray(probe?.streams) ? probe.streams : [];
   const video = streams.find((s) => s && s.codec_type === 'video') || null;
-  const audio = streams.find((s) => s && s.codec_type === 'audio') || null;
+  const audio = streams.find(streamIsAudio) || null;
   const formatName = String(format.format_name || '').toLowerCase();
   const containerOk = /mov|mp4|quicktime/.test(formatName);
   const durationSec = Number(video?.duration || format.duration || 0);
@@ -302,7 +314,8 @@ function publicJob(doc) {
     height: doc.height || 0,
     sourceBytes: doc.sourceBytes || 0,
     fileName: doc.fileName || null,
-    keepAudio: Boolean(doc.keepAudio),
+    keepAudio: doc.keepAudio !== false,
+    hasAudio: doc.hasAudio == null ? null : Boolean(doc.hasAudio),
   };
 }
 
@@ -435,6 +448,55 @@ function scaleFilter(width, height) {
   return `scale='min(${maxEdge},iw)':'min(${maxEdge},ih)':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2`;
 }
 
+async function muxAudioOntoWebm(ffmpegPath, videoPath, audioSourcePath, destPath) {
+  const attempts = [
+    ['-c:a', 'libopus', '-b:a', '128k', '-ac', '2', '-ar', '48000', '-application', 'audio'],
+    ['-c:a', 'libopus', '-b:a', '96k', '-ac', '1', '-ar', '48000'],
+  ];
+  let lastError = new Error('No se pudo copiar el audio al WebM.');
+  for (const audioArgs of attempts) {
+    const muxed = `${destPath}.mux-try.webm`;
+    try {
+      await runTool(
+        ffmpegPath,
+        [
+          '-hide_banner',
+          '-nostdin',
+          '-y',
+          '-i',
+          videoPath,
+          '-i',
+          audioSourcePath,
+          '-map',
+          '0:v:0',
+          '-map',
+          '1:a:0',
+          '-c:v',
+          'copy',
+          ...audioArgs,
+          '-f',
+          'webm',
+          muxed,
+        ],
+        { timeoutMs: 180_000 },
+      );
+      const probe = await probeFile(muxed);
+      if (!probeHasAudio(probe)) {
+        throw new Error('El mux no dejó pista de audio.');
+      }
+      fs.renameSync(muxed, destPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      fs.rmSync(muxed, { force: true });
+    }
+  }
+  throw Object.assign(
+    new Error(lastError instanceof Error ? lastError.message : 'No se pudo conservar el audio.'),
+    { code: 'AUDIO' },
+  );
+}
+
 async function convertWithProgress({
   ffmpegPath,
   tmpIn,
@@ -449,8 +511,9 @@ async function convertWithProgress({
   const scale = scaleFilter(inspect.width, inspect.height);
   if (scale) vfParts.push(scale);
   vfParts.push(hasAlpha ? 'format=yuva420p' : 'format=yuv420p');
+  const wantAudio = keepAudio !== false && Boolean(inspect.hasAudio);
   const videoOnly = `${tmpOut}.vonly.webm`;
-  const videoTarget = keepAudio && inspect.hasAudio ? videoOnly : tmpOut;
+  const videoTarget = wantAudio ? videoOnly : tmpOut;
 
   const args = [
     '-hide_banner',
@@ -503,41 +566,8 @@ async function convertWithProgress({
     });
     onProgress?.({ percent: 99, indeterminate: false, ended: true });
 
-    if (keepAudio && inspect.hasAudio) {
-      try {
-        const muxed = `${tmpOut}.mux.webm`;
-        await runTool(
-          ffmpegPath,
-          [
-            '-hide_banner',
-            '-nostdin',
-            '-y',
-            '-i',
-            videoOnly,
-            '-i',
-            tmpIn,
-            '-map',
-            '0:v:0',
-            '-map',
-            '1:a:0?',
-            '-c:v',
-            'copy',
-            '-c:a',
-            'libopus',
-            '-b:a',
-            '96k',
-            '-shortest',
-            '-f',
-            'webm',
-            muxed,
-          ],
-          { timeoutMs: 180_000 },
-        );
-        fs.renameSync(muxed, tmpOut);
-      } catch (muxError) {
-        console.warn('[gift-alpha] mux audio falló, se guarda solo video', muxError.message);
-        fs.copyFileSync(videoOnly, tmpOut);
-      }
+    if (wantAudio) {
+      await muxAudioOntoWebm(ffmpegPath, videoOnly, tmpIn, tmpOut);
     }
   } finally {
     fs.rmSync(videoOnly, { force: true });
@@ -545,7 +575,7 @@ async function convertWithProgress({
   }
 }
 
-async function verifyWebm({ ffmpegPath, tmpOut, inspect, expectAlpha }) {
+async function verifyWebm({ ffmpegPath, tmpOut, inspect, expectAlpha, expectAudio }) {
   const probe = await probeFile(tmpOut);
   const out = inspectProbe({
     ...probe,
@@ -568,6 +598,12 @@ async function verifyWebm({ ffmpegPath, tmpOut, inspect, expectAlpha }) {
   const outDur = Number(video.duration || probe.format?.duration || 0);
   if (srcDur > 0.4 && outDur > 0 && Math.abs(outDur - srcDur) > Math.max(1.2, srcDur * 0.25)) {
     throw Object.assign(new Error('La duración del WebM no coincide con el original.'), { code: 'VERIFY' });
+  }
+
+  if (expectAudio) {
+    if (!probeHasAudio(probe)) {
+      throw Object.assign(new Error('La conversión no conservó el audio original.'), { code: 'AUDIO' });
+    }
   }
 
   const decoderHint = codec === 'vp8' ? ['-c:v', 'libvpx'] : ['-c:v', 'libvpx-vp9'];
@@ -828,6 +864,7 @@ async function processGiftAlphaJob(jobId) {
         tmpOut,
         inspect,
         expectAlpha,
+        expectAudio: job.keepAudio !== false && inspect.hasAudio,
       });
     } catch (verifyError) {
       if (!(expectAlpha && verifyError && verifyError.code === 'VERIFY' && /alfa/i.test(String(verifyError.message)))) {
@@ -855,6 +892,7 @@ async function processGiftAlphaJob(jobId) {
         tmpOut,
         inspect,
         expectAlpha,
+        expectAudio: job.keepAudio !== false && inspect.hasAudio,
       });
     }
     if (verified.warning) warning = verified.warning;
@@ -911,6 +949,7 @@ async function processGiftAlphaJob(jobId) {
       error: null,
       hasAlpha: Boolean(expectAlpha),
       alphaUsable: Boolean(expectAlpha && !verified.warning),
+      hasAudio: job.keepAudio === false ? false : Boolean(inspect.hasAudio),
     });
     return publicJob(await readJob(id));
   } catch (error) {
@@ -930,6 +969,118 @@ async function processGiftAlphaJob(jobId) {
   }
 }
 
+const RESTORE = 'gift_audio_restore';
+const CATALOG_PATH = 'config/giftsCatalog';
+
+function storagePathFromGiftUrl(url) {
+  const raw = String(url || '');
+  const match = raw.match(/\/o\/([^?]+)/);
+  if (!match) return null;
+  const decoded = decodeURIComponent(match[1]);
+  if (decoded.includes('..') || decoded.includes('\\')) return null;
+  if (!decoded.startsWith('config/gifts/') && !decoded.startsWith('admin/private/gifts/')) return null;
+  return decoded;
+}
+
+async function findGiftOriginalMov(bucket, giftId) {
+  const prefixes = [`admin/private/gifts/${giftId}/`, `config/gifts/${giftId}-video-`];
+  for (const prefix of prefixes) {
+    const [files] = await bucket.getFiles({ prefix });
+    const movs = (files || [])
+      .filter((file) => file && /\.mov$/i.test(file.name))
+      .sort((a, b) => String(b.name).localeCompare(String(a.name)));
+    if (movs[0]) return movs[0];
+  }
+  return null;
+}
+
+async function restoreOneSilentGiftAudio() {
+  if (!firestoreConfigured()) return { skipped: true };
+  const ffmpegPath = ffmpegBin();
+  if (!ffmpegPath) return { skipped: true, reason: 'no-ffmpeg' };
+  const db = getAdminDb();
+  const catalogSnap = await db.doc(CATALOG_PATH).get();
+  const gifts = Array.isArray(catalogSnap.data()?.gifts) ? catalogSnap.data().gifts : [];
+  const bucket = getAdminBucket();
+
+  for (const gift of gifts) {
+    const gid = safeGiftId(gift?.id);
+    if (!gid) continue;
+    const markerRef = db.collection(RESTORE).doc(gid);
+    const prev = await markerRef.get();
+    const prevData = prev.exists ? prev.data() || {} : {};
+    const status = String(prevData.status || '');
+    const attempts = Number(prevData.attempts || 0);
+    if (status === 'ok' || status === 'skip' || attempts >= 3) continue;
+
+    const videoUrl = gift.video || gift.media?.processedAsset || gift.media?.originalAsset || '';
+    const webmPath = storagePathFromGiftUrl(videoUrl);
+    if (!webmPath || !/\.webm$/i.test(webmPath)) {
+      await markerRef.set({ status: 'skip', reason: 'no-webm', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
+      continue;
+    }
+
+    const tmpId = randomUUID();
+    const tmpWebm = path.join(os.tmpdir(), `gift-audio-${tmpId}.webm`);
+    const tmpMov = path.join(os.tmpdir(), `gift-audio-${tmpId}.mov`);
+    const tmpOut = path.join(os.tmpdir(), `gift-audio-${tmpId}.out.webm`);
+    try {
+      await bucket.file(webmPath).download({ destination: tmpWebm });
+      const webmProbe = await probeFile(tmpWebm);
+      if (probeHasAudio(webmProbe)) {
+        await markerRef.set({ status: 'ok', reason: 'already-has-audio', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
+        continue;
+      }
+      const movFile = await findGiftOriginalMov(bucket, gid);
+      if (!movFile) {
+        await markerRef.set({ status: 'skip', reason: 'no-original-mov', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
+        continue;
+      }
+      await movFile.download({ destination: tmpMov });
+      const movProbe = await probeFile(tmpMov);
+      if (!probeHasAudio(movProbe)) {
+        await markerRef.set({ status: 'skip', reason: 'original-silent', attempts: attempts + 1, updatedAtMs: Date.now() }, { merge: true });
+        continue;
+      }
+      await muxAudioOntoWebm(ffmpegPath, tmpWebm, tmpMov, tmpOut);
+      const [meta] = await bucket.file(webmPath).getMetadata();
+      const existingToken =
+        (meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens) || randomUUID();
+      await bucket.upload(tmpOut, {
+        destination: webmPath,
+        metadata: {
+          contentType: 'video/webm',
+          cacheControl: 'public,max-age=3600',
+          metadata: {
+            ...((meta && meta.metadata) || {}),
+            firebaseStorageDownloadTokens: existingToken,
+            audioRestored: '1',
+          },
+        },
+      });
+      await markerRef.set(
+        { status: 'ok', reason: 'restored', path: webmPath, attempts: attempts + 1, updatedAtMs: Date.now() },
+        { merge: true },
+      );
+      console.log('[gift-alpha] audio restored', gid, webmPath);
+      return { restored: gid, path: webmPath };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[gift-alpha] audio restore', gid, message);
+      await markerRef.set(
+        { status: 'retry', reason: message.slice(0, 300), attempts: attempts + 1, updatedAtMs: Date.now() },
+        { merge: true },
+      );
+      return { restored: false, giftId: gid, error: message };
+    } finally {
+      fs.rmSync(tmpWebm, { force: true });
+      fs.rmSync(tmpMov, { force: true });
+      fs.rmSync(tmpOut, { force: true });
+    }
+  }
+  return { restored: 0, done: true };
+}
+
 async function processGiftAlphaQueue() {
   if (!firestoreConfigured()) return { skipped: true };
   const db = getAdminDb();
@@ -941,7 +1092,15 @@ async function processGiftAlphaQueue() {
     ...queued.docs.map((d) => d.id),
     ...stale.map((d) => d.id),
   ];
-  if (!ids.length) return { ok: true, processed: 0 };
+  if (!ids.length) {
+    try {
+      const restored = await restoreOneSilentGiftAudio();
+      return { ok: true, processed: 0, ...restored };
+    } catch (error) {
+      console.warn('[gift-alpha] audio restore queue', error.message);
+      return { ok: true, processed: 0, restoreError: error.message };
+    }
+  }
   const jobId = ids[0];
   try {
     await processGiftAlphaJob(jobId);
@@ -995,6 +1154,8 @@ module.exports = {
   pixFmtHasAlpha,
   streamReportsAlpha,
   probeReportsAlpha,
+  probeHasAudio,
+  streamIsAudio,
   classifyProRes,
   inspectProbe,
   parseFfmpegProgress,

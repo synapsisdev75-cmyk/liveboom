@@ -45,6 +45,8 @@ export type GiftAlphaJob = {
   height?: number;
   sourceBytes?: number;
   fileName?: string | null;
+  keepAudio?: boolean;
+  hasAudio?: boolean | null;
 };
 
 export type GiftAnimProgress = {
