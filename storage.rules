@@ -342,6 +342,10 @@ service firebase.storage {
       allow write: if false;
     }
 
+    match /admin/private/{allPaths=**} {
+      allow read, write: if false;
+    }
+
     match /{allPaths=**} {
       allow read: if false;
       allow write: if false;

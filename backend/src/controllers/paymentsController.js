@@ -538,8 +538,14 @@ async function withdrawCoins(req, res) {
     const fullName = String(req.body?.fullName || '').trim().slice(0, 120);
     const documentId = String(req.body?.documentId || '').trim().slice(0, 32);
     const payoutMethod = String(req.body?.payoutMethod || '').trim().slice(0, 40);
-    const accountNumber = String(req.body?.accountNumber || '').trim().slice(0, 40);
+    const accountNumber = String(req.body?.accountNumber ?? '').trim().slice(0, 40);
     const accountType = String(req.body?.accountType || 'ahorros').trim().slice(0, 20);
+    const { normalizeClientKey, withdrawalFingerprint, stableWithdrawalId } = require('../lib/withdrawalIdentity');
+    const clientKey = normalizeClientKey(req.body?.idempotencyKey);
+    if (!clientKey) {
+      res.status(400).json({ error: 'Reintenta la solicitud. Falta la clave de idempotencia.' });
+      return;
+    }
 
     const { quoteWithdrawal, blastToMoneyExact, publicWalletSummary, stripLeakedRate, MIN_WITHDRAW_COINS, MIN_WITHDRAW_COP } = require('../lib/payoutConversion');
     if (!Number.isFinite(coins) || coins < MIN_WITHDRAW_COINS) {
@@ -604,10 +610,19 @@ async function withdrawCoins(req, res) {
 
     const moneyAmountCOP = quote.moneyAmountCOP;
     const moneyAmountExact = String(moneyAmountCOP);
-    const reference = createWompiReference('wd');
+    const withdrawalId = stableWithdrawalId(uid, clientKey);
+    const fingerprint = withdrawalFingerprint({
+      userId: uid,
+      coins,
+      fullName,
+      documentId,
+      payoutMethod,
+      accountNumber,
+      accountType,
+    });
     const payout = {
-      id: reference,
-      reference,
+      id: withdrawalId,
+      reference: withdrawalId,
       coins,
       earnedBlastAmount: coins,
       moneyAmountCOP,
@@ -622,9 +637,22 @@ async function withdrawCoins(req, res) {
     const result = await wallet.requestWithdrawal({
       userId: uid,
       amount: coins,
-      idempotencyKey: `WITHDRAWAL_REQUEST:${reference}`,
+      idempotencyKey: `WITHDRAWAL_REQUEST:${uid}:${clientKey}`,
+      fingerprint,
+      snapshot: {
+        displayName: dbUser.displayName || fullName,
+        email: req.user?.email || dbUser.email || '',
+        username: dbUser.handle || dbUser.username || '',
+      },
       payout,
     });
+    if (result?.code === 'IDEMPOTENCY_CONFLICT') {
+      res.status(409).json({
+        error: 'Esta clave ya se usó con otros datos. Confirma de nuevo el retiro.',
+        code: result.code,
+      });
+      return;
+    }
     if (!result?.ok) {
       const failed = result?.balances
         ? require('../lib/walletEngine').toSummary(result.balances)
@@ -651,7 +679,8 @@ async function withdrawCoins(req, res) {
       ...payout,
       status: WITHDRAWAL_STATUS.REQUESTED,
       requestedAt: new Date().toISOString(),
-      paymentReference: reference,
+      paymentReference: withdrawalId,
+      withdrawalId,
     });
 
     if (hasDatabase && prisma) {
@@ -664,7 +693,7 @@ async function withdrawCoins(req, res) {
             type: 'withdraw',
             status: 'pending',
             packageId: 'withdraw',
-            reference,
+            reference: withdrawalId,
             currency: 'COP',
           },
         });
@@ -673,7 +702,7 @@ async function withdrawCoins(req, res) {
       }
     }
 
-    res.status(201).json(stripLeakedRate({
+    res.status(result?.duplicate ? 200 : 201).json(stripLeakedRate({
       withdrawal: record,
       ...publicSummary,
       message: 'Retiro solicitado',

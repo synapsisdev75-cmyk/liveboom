@@ -92,6 +92,38 @@ function writeLedgerEntries(tx, db, entries) {
   return (entries || []).map((entry) => writeLedgerEntry(tx, db, entry));
 }
 
+function enqueueWithdrawalOutbox(tx, db, payload) {
+  const { outboxEventId } = require('./withdrawalIdentity');
+  const withdrawalId = String(payload.withdrawalId || '').trim();
+  if (!withdrawalId || !tx || !db) return;
+  const updatedAtMs = Number(payload.updatedAtMs) || Date.now();
+  const status = String(payload.status || '');
+  const eventId = outboxEventId(withdrawalId, updatedAtMs, status);
+  tx.set(
+    db.collection('wallet_withdrawal_outbox').doc(eventId),
+    {
+      eventId,
+      withdrawalId,
+      status,
+      updatedAtMs,
+      processed: false,
+      attempts: 0,
+      createdAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  tx.set(
+    db.doc('config/withdrawalReport'),
+    {
+      pending: true,
+      lastEventAtMs: updatedAtMs,
+      lastError: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
 module.exports = {
   FILTER_GROUP,
   idempotencyDocId,
@@ -102,6 +134,7 @@ module.exports = {
   storeIdempotency,
   writeLedgerEntry,
   writeLedgerEntries,
+  enqueueWithdrawalOutbox,
   toSummary,
 };
 module.exports.default = module.exports;

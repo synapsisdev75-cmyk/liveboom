@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { formatMoneyExact, statusLabel } from '../../lib/moneyDisplay';
 import { fetchPayoutQuote, fetchWalletSummary, quotedCop } from '../../lib/walletApi';
@@ -67,6 +67,8 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [doneMoney, setDoneMoney] = useState<number | string | null>(null);
+  const idempotencyKeyRef = useRef('');
+  const boundPayloadRef = useRef('');
 
   useEffect(() => {
     if (!loaded) return;
@@ -102,6 +104,15 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
 
   const displayMoney = quoteMoney || availableMoney;
 
+  function clientIdempotencyKey() {
+    const sig = [coinsNum, fullName.trim(), documentId.trim(), payoutMethod, accountNumber, accountType].join('|');
+    if (!idempotencyKeyRef.current || boundPayloadRef.current !== sig) {
+      idempotencyKeyRef.current = crypto.randomUUID();
+      boundPayloadRef.current = sig;
+    }
+    return idempotencyKeyRef.current;
+  }
+
   async function submit() {
     setBusy(true);
     setNote(null);
@@ -126,6 +137,7 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
           payoutMethod,
           accountNumber,
           accountType,
+          idempotencyKey: clientIdempotencyKey(),
         }),
       });
       if (result.purchasedBlastBalance != null || result.earnedBlastBalance != null) {
@@ -318,7 +330,8 @@ export function WithdrawModal({ onClose, onDone, initialCoins }: Props) {
                     Número de cuenta / celular
                     <input
                       value={accountNumber}
-                      onChange={(event) => setAccountNumber(event.target.value)}
+                      onChange={(event) => setAccountNumber(event.target.value.slice(0, 40))}
+                      autoComplete="off"
                       className="mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-sm text-white outline-none"
                     />
                   </label>

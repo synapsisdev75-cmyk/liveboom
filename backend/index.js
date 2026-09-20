@@ -174,6 +174,23 @@ try {
 
 try {
   const { onSchedule } = require('firebase-functions/v2/scheduler');
+  module.exports.syncWithdrawalReport = onSchedule(
+    {
+      region: 'us-central1',
+      schedule: 'every 1 minutes',
+      memory: '1GiB',
+      timeoutSeconds: 180,
+    },
+    async () => {
+      const { processWithdrawalReportQueue } = require('./src/lib/withdrawalReport');
+      const stats = await processWithdrawalReportQueue();
+      console.log('[liveboom] reporte retiros', {
+        ok: stats?.ok,
+        skipped: stats?.skipped,
+        rowCount: stats?.rowCount || 0,
+      });
+    },
+  );
   module.exports.reconcileBlastPurchases = onSchedule(
     {
       region: 'us-central1',

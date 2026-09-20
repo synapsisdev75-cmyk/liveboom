@@ -93,20 +93,88 @@ router.get('/withdrawals', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/admin/withdrawals/report', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { downloadCurrentReport } = require('../lib/withdrawalReport');
+    const file = await downloadCurrentReport();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.filename.replace(/"/g, '')}"`,
+    );
+    res.setHeader('X-Report-Pending', file.meta.pending ? '1' : '0');
+    res.setHeader('X-Report-Generated-At', String(file.meta.generatedAtMs || ''));
+    res.send(file.buffer);
+  } catch (error) {
+    const status = error?.code === 'REPORT_MISSING' || error?.code === 'REPORT_PENDING' ? 409 : 500;
+    res.status(status).json({
+      error: error instanceof Error ? error.message : 'No se pudo descargar el Excel',
+    });
+  }
+});
+
 router.get('/admin/withdrawals', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
-    const rows = await wallet.listAllWithdrawals({ limit: 80 });
+    const { readReportMeta } = require('../lib/withdrawalReport');
+    const cursor = req.query.cursor ? String(req.query.cursor) : null;
+    const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit) || 30)));
+    const listed = await wallet.listAllWithdrawals({ limit, cursor });
+    const withdrawals = Array.isArray(listed) ? listed : listed.withdrawals || [];
+    const nextCursor = Array.isArray(listed) ? null : listed.nextCursor || null;
+    const report = await readReportMeta();
     sendPublic(res, {
-      withdrawals: rows.map((row) =>
+      withdrawals: withdrawals.map((row) =>
         adminWithdrawalRecord({
           ...row,
           status: normalizeWithdrawalStatus(row.status),
         }),
       ),
+      nextCursor,
+      report,
     });
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'No se pudieron listar las solicitudes',
+    });
+  }
+});
+
+router.post('/admin/withdrawals/:id/status', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const email = req.user?.email;
+    const result = await wallet.updateWithdrawalAdmin({
+      withdrawalId: req.params.id,
+      status: req.body?.status,
+      observations: req.body?.observations,
+      disbursementReference: req.body?.disbursementReference,
+      actorEmail: email,
+      adminOverride: true,
+    });
+    if (!result.ok) {
+      const status =
+        result.code === 'FORBIDDEN'
+          ? 403
+          : result.code === 'NOT_FOUND'
+            ? 404
+            : 400;
+      res.status(status).json({
+        error:
+          result.code === 'PAYMENT_REFERENCE_REQUIRED'
+            ? 'Indica la referencia real del desembolso para marcar Pagado.'
+            : result.code === 'ALREADY_PAID'
+              ? 'Este retiro ya fue marcado como pagado.'
+              : result.code || 'No se pudo actualizar',
+        code: result.code,
+      });
+      return;
+    }
+    sendPublic(res, { ok: true, summary: result.summary ? publicWalletSummary(result.summary) : null });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo actualizar el retiro',
     });
   }
 });
@@ -123,12 +191,22 @@ router.post('/withdrawals/:id/confirm', requireAuth, async (req, res) => {
       res.status(404).json({ error: 'Retiro no encontrado' });
       return;
     }
+    const disbursementReference = String(req.body?.disbursementReference || '').trim();
+    if (!disbursementReference) {
+      res.status(400).json({
+        error: 'Indica la referencia real del desembolso para marcar Pagado.',
+        code: 'PAYMENT_REFERENCE_REQUIRED',
+      });
+      return;
+    }
     const result = await wallet.confirmWithdrawal({
       userId: withdrawal.userId,
       amount: withdrawal.earnedBlastAmount || withdrawal.coins,
       withdrawalId: withdrawal.id,
       actorEmail: email,
       adminOverride: true,
+      disbursementReference,
+      observations: req.body?.observations,
     });
     if (!result.ok) {
       res.status(400).json({ error: result.code || 'No se pudo confirmar' });

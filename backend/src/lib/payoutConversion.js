@@ -165,7 +165,13 @@ function adminWithdrawalRecord(row) {
   return {
     ...pub,
     payout: adminPayoutSnapshot(row.payout),
-    user: adminUserSnapshot(row.user),
+    user: adminUserSnapshot(row.snapshot || row.user),
+    snapshot: adminUserSnapshot(row.snapshot),
+    observations: row.observations || '',
+    disbursementReference: row.disbursementReference || null,
+    paidAt: row.paidAt || null,
+    reviewFlags: Array.isArray(row.reviewFlags) ? row.reviewFlags : [],
+    updatedAtMs: row.updatedAtMs || null,
   };
 }
 

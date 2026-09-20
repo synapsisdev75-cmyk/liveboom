@@ -75,6 +75,28 @@
         { "fieldPath": "postFormat", "order": "ASCENDING" },
         { "fieldPath": "storyExpiresAtMs", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "wallet_withdrawals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdAtMs", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "wallet_withdrawals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdAtMs", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "wallet_withdrawal_outbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "processed", "order": "ASCENDING" },
+        { "fieldPath": "updatedAtMs", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

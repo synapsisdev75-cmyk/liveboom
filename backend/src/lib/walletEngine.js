@@ -45,6 +45,7 @@ const FILTER_GROUP = {
 
 const WITHDRAWAL_STATUS = {
   REQUESTED: 'REQUESTED',
+  APPROVED: 'APPROVED',
   PROCESSING: 'PROCESSING',
   PAID: 'PAID',
   REJECTED: 'REJECTED',
@@ -54,12 +55,15 @@ const WITHDRAWAL_STATUS = {
 function normalizeWithdrawalStatus(status) {
   const s = String(status || '').trim().toUpperCase();
   if (s === 'PENDING' || s === 'REQUESTED') return WITHDRAWAL_STATUS.REQUESTED;
+  if (s === 'APPROVED' || s === 'APROBADO') return WITHDRAWAL_STATUS.APPROVED;
   if (s === 'PROCESSING' || s === 'IN_PROCESS' || s === 'EN PROCESO') {
     return WITHDRAWAL_STATUS.PROCESSING;
   }
   if (s === 'PAID' || s === 'COMPLETED' || s === 'COMPLETE') return WITHDRAWAL_STATUS.PAID;
   if (s === 'REJECTED') return WITHDRAWAL_STATUS.REJECTED;
-  if (s === 'CANCELLED' || s === 'CANCELED') return WITHDRAWAL_STATUS.CANCELLED;
+  if (s === 'CANCELLED' || s === 'CANCELED' || s === 'ANULADO') {
+    return WITHDRAWAL_STATUS.CANCELLED;
+  }
   return WITHDRAWAL_STATUS.REQUESTED;
 }
 

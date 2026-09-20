@@ -1,4 +1,5 @@
-import { api } from './api';
+import { api, ApiError, getApiBase } from './api';
+import { auth } from './firebase';
 
 export type WalletSummary = {
   purchasedBalance: number;
@@ -69,6 +70,26 @@ export type AdminWithdrawalUser = {
 export type AdminWithdrawal = PublicWithdrawal & {
   payout?: AdminWithdrawalPayout | null;
   user?: AdminWithdrawalUser | null;
+  snapshot?: AdminWithdrawalUser | null;
+  observations?: string | null;
+  disbursementReference?: string | null;
+  paidAt?: string | null;
+  reviewFlags?: string[];
+  updatedAtMs?: number | null;
+};
+
+export type WithdrawalReportMeta = {
+  pending?: boolean;
+  generatedAtMs?: number | null;
+  generatedAtLabel?: string | null;
+  lastError?: string | null;
+  rowCount?: number;
+  summary?: {
+    count?: number;
+    totalCop?: number;
+    pagado?: number;
+    porPagar?: number;
+  } | null;
 };
 
 /** Lee el COP que ya calculó el backend. Nunca multiplica BLAST × tasa. */
@@ -106,14 +127,34 @@ export async function fetchWalletWithdrawals() {
   return data.withdrawals || [];
 }
 
-export async function fetchAdminWithdrawals() {
-  const data = await api<{ withdrawals: AdminWithdrawal[] }>('/api/wallet/admin/withdrawals');
-  return data.withdrawals || [];
+export async function fetchAdminWithdrawals(cursor?: string | null) {
+  const params = new URLSearchParams({ limit: '30' });
+  if (cursor) params.set('cursor', cursor);
+  return api<{
+    withdrawals: AdminWithdrawal[];
+    nextCursor: string | null;
+    report?: WithdrawalReportMeta | null;
+  }>(`/api/wallet/admin/withdrawals?${params.toString()}`);
 }
 
-export async function confirmAdminWithdrawal(id: string) {
+export async function patchAdminWithdrawal(
+  id: string,
+  body: {
+    status?: string;
+    observations?: string;
+    disbursementReference?: string;
+  },
+) {
+  return api<{ ok: boolean }>(`/api/wallet/admin/withdrawals/${encodeURIComponent(id)}/status`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function confirmAdminWithdrawal(id: string, disbursementReference: string) {
   return api<{ ok: boolean }>(`/api/wallet/withdrawals/${encodeURIComponent(id)}/confirm`, {
     method: 'POST',
+    body: JSON.stringify({ disbursementReference }),
   });
 }
 
@@ -121,6 +162,24 @@ export async function rejectAdminWithdrawal(id: string) {
   return api<{ ok: boolean }>(`/api/wallet/withdrawals/${encodeURIComponent(id)}/reject`, {
     method: 'POST',
   });
+}
+
+export async function downloadAdminWithdrawalReport() {
+  const user = auth.currentUser;
+  if (!user) throw new ApiError(401, 'No hay sesión de Firebase');
+  const jwt = await user.getIdToken();
+  const response = await fetch(`${getApiBase()}/api/wallet/admin/withdrawals/report`, {
+    headers: { Authorization: `Bearer ${jwt}` },
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(response.status, data.error || 'No se pudo descargar el Excel');
+  }
+  const blob = await response.blob();
+  const header = response.headers.get('Content-Disposition') || '';
+  const match = header.match(/filename="([^"]+)"/);
+  return { blob, filename: match?.[1] || 'LiveBoom-Control-Retiros.xlsx' };
 }
 
 export function ledgerLabel(row: WalletLedgerRow) {

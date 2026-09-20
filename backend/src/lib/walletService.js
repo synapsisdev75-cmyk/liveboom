@@ -49,8 +49,9 @@ async function getSummary(userId) {
   return engine.toSummary(walletMemory.getBalances(uid));
 }
 
-async function runMutation(uid, idempotencyKey, mutator) {
+async function runMutation(uid, idempotencyKey, mutator, options = {}) {
   const userId = String(uid || '').trim();
+  const fingerprint = options.fingerprint ? String(options.fingerprint) : '';
   if (!userId) {
     return { ok: false, code: 'NO_USER' };
   }
@@ -60,7 +61,11 @@ async function runMutation(uid, idempotencyKey, mutator) {
       const memKey = `idemp:${idempotencyKey}`;
       if (!runMutation._mem) runMutation._mem = new Map();
       if (runMutation._mem.has(memKey)) {
-        return { ok: true, duplicate: true, ...runMutation._mem.get(memKey) };
+        const existing = runMutation._mem.get(memKey);
+        if (fingerprint && existing.fingerprint && existing.fingerprint !== fingerprint) {
+          return { ok: false, code: 'IDEMPOTENCY_CONFLICT' };
+        }
+        return { ok: true, duplicate: true, ...existing };
       }
     }
     const current = engine.normalizeBlastBalances(walletMemory.getBalances(userId));
@@ -74,6 +79,8 @@ async function runMutation(uid, idempotencyKey, mutator) {
       runMutation._mem.set(`idemp:${idempotencyKey}`, {
         summary: result.summary,
         balances: result.balances,
+        extra: result.extra || null,
+        fingerprint: fingerprint || null,
       });
     }
     return result;
@@ -83,6 +90,10 @@ async function runMutation(uid, idempotencyKey, mutator) {
   const out = await db.runTransaction(async (tx) => {
     const claimed = await wf.claimIdempotency(tx, db, idempotencyKey);
     if (claimed.duplicate) {
+      const existingFp = claimed.existing?.fingerprint || claimed.existing?.extra?.fingerprint;
+      if (fingerprint && existingFp && existingFp !== fingerprint) {
+        return { ok: false, code: 'IDEMPOTENCY_CONFLICT' };
+      }
       return {
         ok: true,
         duplicate: true,
@@ -104,6 +115,7 @@ async function runMutation(uid, idempotencyKey, mutator) {
     wf.storeIdempotency(tx, claimed.ref, {
       userId,
       key: idempotencyKey || null,
+      fingerprint: fingerprint || null,
       summary,
       extra: result.extra || null,
     });
@@ -410,6 +422,8 @@ async function requestWithdrawal({
   amount,
   idempotencyKey,
   payout,
+  snapshot: snapshotInput,
+  fingerprint,
 }) {
   const coins = engine.floorNonNeg(amount);
   if (!coins) return { ok: false, code: 'INVALID_AMOUNT' };
@@ -419,67 +433,104 @@ async function requestWithdrawal({
   const moneyAmountCOP = blastToMoneyCop(coins);
   const moneyAmountExact = String(moneyAmountCOP);
 
-  const result = await runMutation(uid, idempotencyKey, ({ tx, db, current }) => {
-    const moved = engine.applyRequestWithdrawal(current, coins);
-    if (!moved.ok) return moved;
-    if (tx && db && withdrawalId) {
-      const requestedAt = new Date().toISOString();
-      const wd = {
-        id: withdrawalId,
-        withdrawalId,
-        userId: uid,
-        coins,
-        earnedBlastAmount: coins,
-        moneyAmountCOP,
-        moneyAmountExact,
-        currency: 'COP',
-        status: engine.WITHDRAWAL_STATUS.REQUESTED,
-        paymentReference: withdrawalId,
-        requestedAt,
-        processedAt: null,
-        payout: payout
-          ? {
-              fullName: payout.fullName || null,
-              documentId: payout.documentId || null,
-              payoutMethod: payout.payoutMethod || null,
-              accountNumber: payout.accountNumber || null,
-              accountType: payout.accountType || null,
-            }
-          : null,
-        walletRulesVersion: WALLET_RULES_VERSION,
-        createdAtMs: Date.now(),
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      tx.set(db.collection('wallet_withdrawals').doc(withdrawalId), wd, { merge: true });
-      tx.set(db.collection('users').doc(uid).collection('walletWithdrawals').doc(withdrawalId), wd, {
-        merge: true,
-      });
-    }
-    return {
-      ok: true,
-      balances: moved.balances,
-      extra: { withdrawalId, coins, earnedBlastAmount: coins, moneyAmountCOP, currency: 'COP' },
-      ledger: [
-        {
+  const result = await runMutation(
+    uid,
+    idempotencyKey,
+    ({ tx, db, current, userSnap }) => {
+      const moved = engine.applyRequestWithdrawal(current, coins);
+      if (!moved.ok) return moved;
+      if (tx && db && withdrawalId) {
+        const requestedAt = new Date().toISOString();
+        const updatedAtMs = Date.now();
+        const userData = userSnap && userSnap.exists ? userSnap.data() || {} : {};
+        const snapshot = {
+          displayName: String(snapshotInput?.displayName || userData.displayName || payout?.fullName || '').trim(),
+          email: String(snapshotInput?.email || userData.email || '').trim(),
+          username: String(snapshotInput?.username || userData.username || '')
+            .replace(/^@/, '')
+            .trim(),
+        };
+        const reviewFlags = [];
+        if (!snapshot.displayName) reviewFlags.push('MISSING_NAME');
+        if (!snapshot.email) reviewFlags.push('MISSING_EMAIL');
+        const wd = {
+          id: withdrawalId,
+          withdrawalId,
           userId: uid,
-          transactionType: engine.TX.WITHDRAWAL_REQUEST,
-          bucket: engine.BUCKET.EARNED,
-          amount: coins,
-          direction: engine.DIRECTION.DEBIT,
-          idempotencyKey,
-          referenceType: 'withdrawal',
-          referenceId: withdrawalId || null,
-          metadata: {
-            earnedBlastAmount: coins,
-            moneyAmountCOP,
-            currency: 'COP',
-            status: engine.WITHDRAWAL_STATUS.REQUESTED,
-          },
+          coins,
+          earnedBlastAmount: coins,
+          moneyAmountCOP,
+          moneyAmountExact,
+          currency: 'COP',
+          status: engine.WITHDRAWAL_STATUS.REQUESTED,
+          paymentReference: withdrawalId,
+          disbursementReference: null,
+          requestedAt,
+          processedAt: null,
+          paidAt: null,
+          observations: '',
+          fingerprint: fingerprint || null,
+          snapshot,
+          reviewFlags,
+          payout: payout
+            ? {
+                fullName: payout.fullName || null,
+                documentId: payout.documentId || null,
+                payoutMethod: payout.payoutMethod || null,
+                accountNumber: payout.accountNumber == null ? null : String(payout.accountNumber),
+                accountType: payout.accountType || null,
+              }
+            : null,
+          walletRulesVersion: WALLET_RULES_VERSION,
+          statusRevision: 1,
+          createdAtMs: updatedAtMs,
+          updatedAtMs,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        tx.set(db.collection('wallet_withdrawals').doc(withdrawalId), wd, { merge: true });
+        tx.set(db.collection('users').doc(uid).collection('walletWithdrawals').doc(withdrawalId), wd, {
+          merge: true,
+        });
+        wf.enqueueWithdrawalOutbox(tx, db, {
+          withdrawalId,
+          status: engine.WITHDRAWAL_STATUS.REQUESTED,
+          updatedAtMs,
+        });
+      }
+      return {
+        ok: true,
+        balances: moved.balances,
+        extra: {
+          withdrawalId,
+          coins,
+          earnedBlastAmount: coins,
+          moneyAmountCOP,
+          currency: 'COP',
+          fingerprint: fingerprint || null,
         },
-      ],
-    };
-  });
+        ledger: [
+          {
+            userId: uid,
+            transactionType: engine.TX.WITHDRAWAL_REQUEST,
+            bucket: engine.BUCKET.EARNED,
+            amount: coins,
+            direction: engine.DIRECTION.DEBIT,
+            idempotencyKey,
+            referenceType: 'withdrawal',
+            referenceId: withdrawalId || null,
+            metadata: {
+              earnedBlastAmount: coins,
+              moneyAmountCOP,
+              currency: 'COP',
+              status: engine.WITHDRAWAL_STATUS.REQUESTED,
+            },
+          },
+        ],
+      };
+    },
+    { fingerprint },
+  );
 
   if (result?.ok) {
     walletMemory.addWithdrawal(uid, {
@@ -496,6 +547,8 @@ async function requestWithdrawal({
       paymentReference: withdrawalId,
       walletRulesVersion: WALLET_RULES_VERSION,
     });
+    const { kickReportSync } = require('./withdrawalReport');
+    kickReportSync();
   }
   return result;
 }
@@ -507,6 +560,8 @@ async function confirmWithdrawal({
   idempotencyKey,
   actorEmail,
   adminOverride,
+  disbursementReference,
+  observations,
 }) {
   if (!adminOverride && actorEmail && !isOwnerEmail(actorEmail)) {
     return { ok: false, code: 'FORBIDDEN' };
@@ -520,24 +575,28 @@ async function confirmWithdrawal({
       const moved = engine.applyConfirmWithdrawal(current, coins);
       if (!moved.ok) return moved;
       if (tx && db && withdrawalId) {
-        tx.set(
-          db.collection('wallet_withdrawals').doc(String(withdrawalId)),
-          {
-            status: engine.WITHDRAWAL_STATUS.PAID,
-            processedAt: new Date().toISOString(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
+        const updatedAtMs = Date.now();
+        const paidAt = new Date().toISOString();
+        const patch = {
+          status: engine.WITHDRAWAL_STATUS.PAID,
+          processedAt: paidAt,
+          paidAt,
+          disbursementReference: disbursementReference ? String(disbursementReference).slice(0, 80) : null,
+          updatedAtMs,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (observations != null) patch.observations = String(observations).slice(0, 500);
+        tx.set(db.collection('wallet_withdrawals').doc(String(withdrawalId)), patch, { merge: true });
         tx.set(
           db.collection('users').doc(uid).collection('walletWithdrawals').doc(String(withdrawalId)),
-          {
-            status: engine.WITHDRAWAL_STATUS.PAID,
-            processedAt: new Date().toISOString(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
+          patch,
           { merge: true },
         );
+        wf.enqueueWithdrawalOutbox(tx, db, {
+          withdrawalId,
+          status: engine.WITHDRAWAL_STATUS.PAID,
+          updatedAtMs,
+        });
       }
       return {
         ok: true,
@@ -557,6 +616,8 @@ async function confirmWithdrawal({
       };
     },
   );
+  const { kickReportSync } = require('./withdrawalReport');
+  if (result?.ok) kickReportSync();
   return result;
 }
 
@@ -568,6 +629,8 @@ async function rejectWithdrawal({
   actorEmail,
   actorUid,
   adminOverride,
+  finalStatus,
+  observations,
 }) {
   const uid = String(userId || '').trim();
   const self = actorUid && String(actorUid) === uid;
@@ -575,46 +638,58 @@ async function rejectWithdrawal({
     return { ok: false, code: 'FORBIDDEN' };
   }
   const coins = engine.floorNonNeg(amount);
-  return runMutation(uid, idempotencyKey || `WITHDRAWAL_REJECTED:${withdrawalId}`, ({ tx, db, current }) => {
-    const moved = engine.applyRejectWithdrawal(current, coins);
-    if (!moved.ok) return moved;
-    if (tx && db && withdrawalId) {
-        tx.set(
-          db.collection('wallet_withdrawals').doc(String(withdrawalId)),
-          {
-            status: engine.WITHDRAWAL_STATUS.REJECTED,
-            processedAt: new Date().toISOString(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
+  const status =
+    engine.normalizeWithdrawalStatus(finalStatus || engine.WITHDRAWAL_STATUS.REJECTED) ===
+    engine.WITHDRAWAL_STATUS.CANCELLED
+      ? engine.WITHDRAWAL_STATUS.CANCELLED
+      : engine.WITHDRAWAL_STATUS.REJECTED;
+  const result = await runMutation(
+    uid,
+    idempotencyKey || `WITHDRAWAL_${status}:${withdrawalId}`,
+    ({ tx, db, current }) => {
+      const moved = engine.applyRejectWithdrawal(current, coins);
+      if (!moved.ok) return moved;
+      if (tx && db && withdrawalId) {
+        const updatedAtMs = Date.now();
+        const processedAt = new Date().toISOString();
+        const patch = {
+          status,
+          processedAt,
+          updatedAtMs,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (observations != null) patch.observations = String(observations).slice(0, 500);
+        tx.set(db.collection('wallet_withdrawals').doc(String(withdrawalId)), patch, { merge: true });
         tx.set(
           db.collection('users').doc(uid).collection('walletWithdrawals').doc(String(withdrawalId)),
-          {
-            status: engine.WITHDRAWAL_STATUS.REJECTED,
-            processedAt: new Date().toISOString(),
-            updatedAt: FieldValue.serverTimestamp(),
-          },
+          patch,
           { merge: true },
         );
-    }
-    return {
-      ok: true,
-      balances: moved.balances,
-      ledger: [
-        {
-          userId: uid,
-          transactionType: engine.TX.WITHDRAWAL_REJECTED,
-          bucket: engine.BUCKET.EARNED,
-          amount: coins,
-          direction: engine.DIRECTION.CREDIT,
-          idempotencyKey: idempotencyKey || `WITHDRAWAL_REJECTED:${withdrawalId}`,
-          referenceType: 'withdrawal',
-          referenceId: withdrawalId || null,
-        },
-      ],
-    };
-  });
+        wf.enqueueWithdrawalOutbox(tx, db, { withdrawalId, status, updatedAtMs });
+      }
+      return {
+        ok: true,
+        balances: moved.balances,
+        ledger: [
+          {
+            userId: uid,
+            transactionType: engine.TX.WITHDRAWAL_REJECTED,
+            bucket: engine.BUCKET.EARNED,
+            amount: coins,
+            direction: engine.DIRECTION.CREDIT,
+            idempotencyKey: idempotencyKey || `WITHDRAWAL_${status}:${withdrawalId}`,
+            referenceType: 'withdrawal',
+            referenceId: withdrawalId || null,
+          },
+        ],
+      };
+    },
+  );
+  if (result?.ok) {
+    const { kickReportSync } = require('./withdrawalReport');
+    kickReportSync();
+  }
+  return result;
 }
 
 function createdAtMsOf(data) {
@@ -854,31 +929,32 @@ function asIso(value) {
   return null;
 }
 
-async function listAllWithdrawals({ limit = 80 } = {}) {
-  const take = Math.min(120, Math.max(1, Math.floor(Number(limit) || 80)));
+async function listAllWithdrawals({ limit = 30, cursor = null } = {}) {
+  const take = Math.min(50, Math.max(1, Math.floor(Number(limit) || 30)));
   const { adminWithdrawalRecord } = require('./payoutConversion');
-  if (!firestoreConfigured()) return [];
+  if (!firestoreConfigured()) return { withdrawals: [], nextCursor: null };
   try {
     const db = getAdminDb();
     let snap;
     try {
-      snap = await db
-        .collection('wallet_withdrawals')
-        .orderBy('createdAtMs', 'desc')
-        .limit(take)
-        .get();
+      let query = db.collection('wallet_withdrawals').orderBy('createdAtMs', 'desc').limit(take + 1);
+      if (cursor) query = query.startAfter(Number(cursor));
+      snap = await query.get();
     } catch {
-      snap = await db.collection('wallet_withdrawals').limit(take).get();
+      snap = await db.collection('wallet_withdrawals').limit(take + 1).get();
     }
-    if (snap.empty) return [];
+    if (snap.empty) return { withdrawals: [], nextCursor: null };
 
-    const rawRows = snap.docs.map((d) => {
+    const docs = snap.docs.slice(0, take);
+    const rawRows = docs.map((d) => {
       const data = d.data() || {};
       return {
         id: d.id,
         ...data,
+        createdAtMs: Number(data.createdAtMs) || Date.parse(asIso(data.requestedAt) || '') || 0,
         requestedAt: asIso(data.requestedAt) || asIso(data.createdAt),
         processedAt: asIso(data.processedAt),
+        paidAt: asIso(data.paidAt),
         status: engine.normalizeWithdrawalStatus(data.status),
       };
     });
@@ -902,22 +978,108 @@ async function listAllWithdrawals({ limit = 80 } = {}) {
       }),
     );
 
-    return rawRows
-      .map((row) =>
-        adminWithdrawalRecord({
-          ...row,
-          user: usersById[String(row.userId || '')] || null,
-        }),
-      )
-      .sort((a, b) => {
-        const tb = Date.parse(b.requestedAt || 0) || 0;
-        const ta = Date.parse(a.requestedAt || 0) || 0;
-        return tb - ta;
-      });
+    const withdrawals = rawRows.map((row) =>
+      adminWithdrawalRecord({
+        ...row,
+        snapshot: row.snapshot || null,
+        user: row.snapshot || usersById[String(row.userId || '')] || null,
+        reviewFlags: row.snapshot ? row.reviewFlags || [] : ['PROFILE_NOT_FROZEN'],
+      }),
+    );
+    const hasMore = snap.docs.length > take;
+    const last = rawRows[rawRows.length - 1];
+    return {
+      withdrawals,
+      nextCursor: hasMore && last?.createdAtMs ? String(last.createdAtMs) : null,
+    };
   } catch (error) {
     console.warn('[wallet] listAllWithdrawals:', error.message);
-    return [];
+    return { withdrawals: [], nextCursor: null };
   }
+}
+
+async function updateWithdrawalAdmin({
+  withdrawalId,
+  status,
+  observations,
+  disbursementReference,
+  actorEmail,
+  adminOverride,
+}) {
+  if (!adminOverride && actorEmail && !isOwnerEmail(actorEmail)) {
+    return { ok: false, code: 'FORBIDDEN' };
+  }
+  const current = await readWithdrawal(withdrawalId);
+  if (!current) return { ok: false, code: 'NOT_FOUND' };
+  const from = engine.normalizeWithdrawalStatus(current.status);
+  const next = status ? engine.normalizeWithdrawalStatus(status) : from;
+  const terminal = from === engine.WITHDRAWAL_STATUS.PAID;
+  const closed =
+    from === engine.WITHDRAWAL_STATUS.REJECTED || from === engine.WITHDRAWAL_STATUS.CANCELLED;
+
+  if (next === engine.WITHDRAWAL_STATUS.PAID) {
+    if (!String(disbursementReference || '').trim()) {
+      return { ok: false, code: 'PAYMENT_REFERENCE_REQUIRED' };
+    }
+    return confirmWithdrawal({
+      userId: current.userId,
+      amount: current.earnedBlastAmount || current.coins,
+      withdrawalId: current.id,
+      actorEmail,
+      adminOverride: true,
+      disbursementReference,
+      observations,
+    });
+  }
+  if (next === engine.WITHDRAWAL_STATUS.REJECTED || next === engine.WITHDRAWAL_STATUS.CANCELLED) {
+    if (terminal) return { ok: false, code: 'ALREADY_PAID' };
+    return rejectWithdrawal({
+      userId: current.userId,
+      amount: current.earnedBlastAmount || current.coins,
+      withdrawalId: current.id,
+      actorEmail,
+      adminOverride: true,
+      finalStatus: next,
+      observations,
+    });
+  }
+  if (next === engine.WITHDRAWAL_STATUS.APPROVED || next === engine.WITHDRAWAL_STATUS.PROCESSING) {
+    if (terminal) return { ok: false, code: 'ALREADY_PAID' };
+    if (closed) return { ok: false, code: 'TERMINAL' };
+  }
+
+  if (!firestoreConfigured()) {
+    return { ok: true, withdrawal: current };
+  }
+  const { kickReportSync } = require('./withdrawalReport');
+  const db = getAdminDb();
+  const updatedAtMs = Date.now();
+  const patch = {
+    updatedAtMs,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (status) patch.status = next;
+  if (observations != null) patch.observations = String(observations).slice(0, 500);
+  if (disbursementReference != null) {
+    patch.disbursementReference = String(disbursementReference).slice(0, 80);
+  }
+  await db.runTransaction(async (tx) => {
+    tx.set(db.collection('wallet_withdrawals').doc(String(withdrawalId)), patch, { merge: true });
+    if (current.userId) {
+      tx.set(
+        db.collection('users').doc(String(current.userId)).collection('walletWithdrawals').doc(String(withdrawalId)),
+        patch,
+        { merge: true },
+      );
+    }
+    wf.enqueueWithdrawalOutbox(tx, db, {
+      withdrawalId,
+      status: patch.status || from,
+      updatedAtMs,
+    });
+  });
+  kickReportSync();
+  return { ok: true, withdrawal: { ...current, ...patch, updatedAt: undefined } };
 }
 
 async function readWithdrawal(withdrawalId) {
@@ -952,6 +1114,7 @@ module.exports = {
   getTransactions,
   listWithdrawals,
   listAllWithdrawals,
+  updateWithdrawalAdmin,
   readWithdrawal,
   applyInOpenTransaction,
   isOwnerEmail,
