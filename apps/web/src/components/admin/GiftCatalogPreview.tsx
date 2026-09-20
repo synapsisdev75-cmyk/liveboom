@@ -13,6 +13,7 @@ import {
   type GiftLiveFormat,
 } from '../../lib/giftLayout';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
+import { clampGiftVolume, giftPlaybackSrc, type GiftMediaInfo } from '../../lib/giftMedia';
 
 const PLACEMENT_SHORT: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -64,6 +65,7 @@ type Props = {
   onDeviceChange: (device: PreviewDevice) => void;
   onAnimScaleChange?: (scale: number) => void;
   onLayoutChange?: (layout: GiftLayoutMap) => void;
+  onMediaChange?: (media: GiftMediaInfo) => void;
 };
 
 function faceTopPercent(gift: EditableGift): number {
@@ -121,12 +123,19 @@ export function GiftCatalogPreview({
   onDeviceChange,
   onAnimScaleChange,
   onLayoutChange,
+  onMediaChange,
 }: Props) {
   const meta = DEVICE_META[device];
   const displayW = Math.round(meta.frameW * meta.scale);
   const displayH = Math.round(meta.frameH * meta.scale);
-  const mediaSrc = gift.video || gift.image;
-  const isVideo = Boolean(gift.video);
+  const [compare, setCompare] = useState<'processed' | 'original'>('processed');
+  const videoSrc = giftPlaybackSrc(
+    gift.media,
+    gift.video,
+    gift.media?.backgroundRemoved && compare === 'original' ? 'original' : 'active',
+  );
+  const mediaSrc = videoSrc || gift.image;
+  const isVideo = Boolean(videoSrc);
   const faceTop = faceTopPercent(gift);
   const faceSize = faceSizeRem(gift);
   const [backdrop, setBackdrop] = useState<PreviewBackdrop>('checker');
@@ -134,6 +143,7 @@ export function GiftCatalogPreview({
   const [cropMode, setCropMode] = useState(false);
   const [safeGuides, setSafeGuides] = useState(false);
   const [playToken, setPlayToken] = useState(0);
+  const [previewMuted, setPreviewMuted] = useState(true);
   const layout = useMemo(
     () => normalizeGiftLayout(gift.giftLayout, gift.animScale),
     [gift.giftLayout, gift.animScale],
@@ -247,6 +257,67 @@ export function GiftCatalogPreview({
           20%–200% en {meta.label} · {is916 ? '9:16' : '16:9'}. Ctrl + rueda para zoom.
         </span>
       </label>
+
+      {isVideo ? (
+        <div className="space-y-2">
+          <label className="block space-y-1 text-xs text-zinc-400">
+            Volumen del regalo: {Math.round((gift.media?.volume ?? 1) * 100)}%
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={gift.media?.volume ?? 1}
+              onChange={(e) =>
+                onMediaChange?.({
+                  ...(gift.media || {
+                    hasAudio: true,
+                    duration: 0,
+                    width: 0,
+                    height: 0,
+                    fps: 0,
+                    codec: '',
+                    originalAsset: gift.video || null,
+                    processedAsset: null,
+                    backgroundRemoved: false,
+                    volume: 1,
+                    processingStatus: 'ready',
+                  }),
+                  volume: clampGiftVolume(e.target.value),
+                })
+              }
+              className="w-full accent-emerald-400"
+            />
+          </label>
+          <div className="flex flex-wrap gap-1">
+            <Chip
+              active={!previewMuted}
+              onClick={() => {
+                setPreviewMuted(false);
+                setPlayToken((n) => n + 1);
+              }}
+            >
+              Probar audio
+            </Chip>
+            <Chip active={previewMuted} onClick={() => setPreviewMuted(true)}>
+              Silenciar preview
+            </Chip>
+            {gift.media?.backgroundRemoved && gift.media.processedAsset ? (
+              <>
+                <Chip active={compare === 'original'} onClick={() => setCompare('original')}>
+                  Original
+                </Chip>
+                <Chip active={compare === 'processed'} onClick={() => setCompare('processed')}>
+                  Sin fondo
+                </Chip>
+              </>
+            ) : null}
+          </div>
+          <p className="text-[10px] text-zinc-500">
+            Silenciar el preview no quita la pista. {gift.media?.hasAudio ? 'Este video tiene audio.' : 'Sin pista de audio detectada.'}
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-1 text-xs text-zinc-400">
@@ -415,6 +486,8 @@ export function GiftCatalogPreview({
                       interactive
                       cropMode={cropMode}
                       playToken={playToken}
+                      muted={previewMuted}
+                      volume={gift.media?.volume ?? 1}
                       className="absolute inset-0 z-10"
                       onSlotChange={patchSlot}
                     />
@@ -459,6 +532,8 @@ export function GiftCatalogPreview({
               interactive
               cropMode={cropMode}
               playToken={playToken}
+              muted={previewMuted}
+              volume={gift.media?.volume ?? 1}
               className="absolute inset-0 z-20"
               onSlotChange={patchSlot}
             />

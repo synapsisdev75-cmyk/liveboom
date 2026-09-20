@@ -21,6 +21,7 @@ import {
   type LiveGift,
 } from './liveboomGifts';
 import { normalizeGiftLayout, serializeGiftLayout } from './giftLayout';
+import { normalizeGiftMedia, serializeGiftMedia } from './giftMedia';
 
 export type GiftPlacement = 'live' | 'post' | 'boom_clip' | 'flashboom' | 'call' | 'chat';
 
@@ -138,6 +139,7 @@ function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): E
       raw.giftLayout != null ? raw.giftLayout : fallback?.giftLayout,
       raw.animScale != null ? raw.animScale : fallback?.animScale,
     ),
+    media: normalizeGiftMedia(raw.media != null ? raw.media : fallback?.media),
     liveOnly: placements.length === 1 && placements[0] === 'live',
     deeparFilter: (raw.deeparFilter as LiveGift['deeparFilter']) || fallback?.deeparFilter,
     enabled: raw.enabled === false ? false : true,
@@ -242,6 +244,7 @@ export function serializeEditableGift(gift: EditableGift): Record<string, unknow
     animation: normalized.animation || '',
     animScale: clampGiftAnimScale(normalized.animScale, normalized.level),
     giftLayout: serializeGiftLayout(normalized.giftLayout, normalized.animScale),
+    media: serializeGiftMedia(normalized.media),
     liveOnly: Boolean(normalized.liveOnly),
     deeparFilter: normalized.deeparFilter || null,
     enabled: normalized.enabled !== false,

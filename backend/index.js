@@ -274,3 +274,27 @@ try {
 } catch (error) {
   console.warn('[liveboom] firestore trigger gift-alpha no disponible:', error.message);
 }
+
+try {
+  const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+  module.exports.processGiftBgJob = onDocumentWritten(
+    {
+      document: 'gift_bg_jobs/{jobId}',
+      region: 'us-central1',
+      memory: '2GiB',
+      timeoutSeconds: 540,
+      cpu: 2,
+    },
+    async (event) => {
+      const before = event.data?.before?.data() || null;
+      const after = event.data?.after?.data() || null;
+      if (!after) return;
+      if (after.status !== 'queued' && after.status !== 'retry') return;
+      if (before && before.status === after.status) return;
+      const { processGiftBgJob } = require('./src/lib/giftBgRemove');
+      await processGiftBgJob(event.params.jobId);
+    },
+  );
+} catch (error) {
+  console.warn('[liveboom] firestore trigger gift-bg no disponible:', error.message);
+}

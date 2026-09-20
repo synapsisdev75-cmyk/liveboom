@@ -28,6 +28,13 @@ import {
   uploadGiftAnimation,
   type GiftAnimProgress,
 } from '../../lib/giftAlphaConvert';
+import {
+  deleteGiftPermanentlyApi,
+  giftStoragePathFromUrl,
+  startGiftBackgroundRemove,
+  uploadGiftSource,
+} from '../../lib/giftMediaApi';
+import { defaultGiftMedia, type GiftMediaInfo } from '../../lib/giftMedia';
 
 const PLACEMENT_LABELS: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -196,6 +203,10 @@ export function AdminCatalogPanel() {
   const [animProgress, setAnimProgress] = useState<Record<string, GiftAnimProgress | null>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteWord, setDeleteWord] = useState('');
+  const [bgBusy, setBgBusy] = useState(false);
+  const [adjustMode, setAdjustMode] = useState(false);
   const animGenRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
@@ -294,15 +305,55 @@ export function AdminCatalogPanel() {
     setMessage('Regalo agregado en borrador. Publica para guardar.');
   }
 
-  function removeGift(id: string) {
-    if (gifts.length <= 1) {
-      setMessage('Debe quedar al menos un regalo en el catálogo.');
+  function duplicateGift(id: string) {
+    const row = gifts.find((g) => g.id === id);
+    if (!row) return;
+    const nextId = `regalo_${Date.now().toString(36)}`.replace(/[^a-z0-9_]/g, '_').slice(0, 40);
+    const copy: EditableGift = {
+      ...row,
+      id: nextId,
+      name: `${row.name} copia`,
+      face: row.face ? { ...row.face } : null,
+      media: row.media ? { ...row.media } : defaultGiftMedia(),
+    };
+    setGifts((prev) => [...prev, copy]);
+    setSelectedGiftId(nextId);
+    setMessage('Copia creada en borrador. Publica para guardar.');
+  }
+
+  async function confirmPermanentDelete() {
+    if (!gift) return;
+    const published = storeGifts.some((row) => row.id === gift.id);
+    const needsWord = published || gift.enabled !== false || Boolean(gift.video || gift.image);
+    if (needsWord && deleteWord.trim().toUpperCase() !== 'ELIMINAR') {
+      setMessage('Escribe ELIMINAR para confirmar.');
       return;
     }
-    const next = gifts.filter((g) => g.id !== id);
-    setGifts(next);
-    if (selectedGiftId === id) setSelectedGiftId(next[0]?.id || '');
-    setMessage('Regalo quitado del borrador. Publica para aplicar.');
+    setSaving(true);
+    setMessage(null);
+    try {
+      if (published) {
+        await deleteGiftPermanentlyApi(gift.id, needsWord ? 'ELIMINAR' : '');
+      }
+      const next = gifts.filter((g) => g.id !== gift.id);
+      if (!next.length) {
+        setMessage('Debe quedar al menos un regalo en el catálogo.');
+        return;
+      }
+      setGifts(next);
+      setSelectedGiftId(next[0]?.id || '');
+      setDeleteOpen(false);
+      setDeleteWord('');
+      setMessage(
+        published
+          ? 'Regalo eliminado permanentemente del catálogo.'
+          : 'Regalo borrador eliminado.',
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'No se pudo eliminar el regalo');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function togglePlacement(id: string, placement: GiftPlacement) {
@@ -316,6 +367,13 @@ export function AdminCatalogPanel() {
   }
 
   async function publishGifts() {
+    const busy = gifts.find(
+      (row) => row.media?.processingStatus === 'processing' || row.media?.processingStatus === 'uploading',
+    );
+    if (busy || bgBusy) {
+      setMessage('Espera a que termine el procesamiento antes de publicar.');
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
@@ -382,20 +440,63 @@ export function AdminCatalogPanel() {
       },
     }));
     try {
-      const result = await uploadGiftAnimation(targetGiftId, file, (progress) => {
-        setAnimProgress((prev) => ({ ...prev, [targetGiftId]: progress }));
-      });
-      if (animGenRef.current[targetGiftId] !== gen) return;
-      patchGift(targetGiftId, { video: result.url });
-      const warn = result.job?.warning;
-      setMessage(
-        convertMov
-          ? warn
-            ? `${warn} Publica para aplicar.`
-            : 'MOV convertido a WebM. Publica para aplicar.'
-          : 'Animación subida. Publica para aplicar.',
-      );
-      forgetGiftAlphaJob(targetGiftId);
+      if (convertMov) {
+        const result = await uploadGiftAnimation(targetGiftId, file, (progress) => {
+          setAnimProgress((prev) => ({ ...prev, [targetGiftId]: progress }));
+        });
+        if (animGenRef.current[targetGiftId] !== gen) return;
+        patchGift(targetGiftId, {
+          video: result.url,
+          media: {
+            ...(gift.media || defaultGiftMedia()),
+            originalAsset: result.url,
+            processedAsset: null,
+            backgroundRemoved: false,
+            processingStatus: 'ready',
+            hasAudio: true,
+          },
+        });
+        const warn = result.job?.warning;
+        setMessage(
+          warn ? `${warn} Publica para aplicar.` : 'MOV convertido a WebM. Publica para aplicar.',
+        );
+        forgetGiftAlphaJob(targetGiftId);
+      } else {
+        const result = await uploadGiftSource(targetGiftId, file, (percent) => {
+          setAnimProgress((prev) => ({
+            ...prev,
+            [targetGiftId]: {
+              stage: 'uploading',
+              label: `Subiendo archivo… ${percent}%`,
+              percent,
+              indeterminate: false,
+              fileName: file.name,
+              fileBytes: file.size,
+            },
+          }));
+        });
+        if (animGenRef.current[targetGiftId] !== gen) return;
+        patchGift(targetGiftId, {
+          video: result.url,
+          media: result.media,
+        });
+        setAnimProgress((prev) => ({
+          ...prev,
+          [targetGiftId]: {
+            stage: 'done',
+            label: result.media.hasAudio ? 'Video con audio listo.' : 'Video listo.',
+            percent: 100,
+            indeterminate: false,
+            fileName: file.name,
+            fileBytes: file.size,
+          },
+        }));
+        setMessage(
+          result.media.hasAudio
+            ? 'Animación subida con audio completo. Publica para aplicar.'
+            : 'Animación subida. Publica para aplicar.',
+        );
+      }
     } catch (err) {
       if (animGenRef.current[targetGiftId] !== gen) return;
       const error = err instanceof Error ? err.message : 'Error al subir archivo';
@@ -416,6 +517,84 @@ export function AdminCatalogPanel() {
         },
       }));
       setMessage(error);
+    }
+  }
+
+  async function removeBackground(mode: 'auto' | 'adjust', similarity?: number, blend?: number) {
+    if (!gift?.video) {
+      setMessage('Sube un video para quitar el fondo.');
+      return;
+    }
+    const storagePath =
+      giftStoragePathFromUrl(gift.media?.originalAsset || gift.video) ||
+      giftStoragePathFromUrl(gift.video);
+    if (!storagePath) {
+      setMessage('Sube el video al catálogo para quitar fondo (no aplica a archivos /gifts del sitio).');
+      return;
+    }
+    setBgBusy(true);
+    setMessage(null);
+    patchGift(gift.id, {
+      media: {
+        ...(gift.media || defaultGiftMedia()),
+        originalAsset: gift.media?.originalAsset || gift.video,
+        processingStatus: 'processing',
+      },
+    });
+    try {
+      const job = await startGiftBackgroundRemove(gift.id, storagePath, {
+        mode,
+        similarity,
+        blend,
+        onProgress: (next) => {
+          setAnimProgress((prev) => ({
+            ...prev,
+            [gift.id]: {
+              stage: next.stage === 'failed' ? 'failed' : next.stage === 'done' ? 'done' : 'converting',
+              label:
+                next.stage === 'converting'
+                  ? `Procesando fondo… ${next.progressPercent ?? ''}`.trim()
+                  : next.stage === 'done'
+                    ? 'Fondo listo.'
+                    : 'Procesando fondo…',
+              percent: next.progressPercent,
+              indeterminate: Boolean(next.indeterminate) || next.progressPercent == null,
+              warning: next.warning,
+              error: next.error,
+            },
+          }));
+        },
+      });
+      if (!job.url) throw new Error('No se pudo quitar el fondo. El archivo original sigue disponible.');
+      if (job.hasAudio === false && gift.media?.hasAudio) {
+        throw new Error('El WebM procesado quedó mudo. El original sigue disponible.');
+      }
+      const nextMedia: GiftMediaInfo = {
+        ...(gift.media || defaultGiftMedia()),
+        originalAsset: gift.media?.originalAsset || gift.video,
+        processedAsset: job.url,
+        backgroundRemoved: true,
+        hasAudio: Boolean(job.hasAudio || gift.media?.hasAudio),
+        duration: job.durationSec || gift.media?.duration || 0,
+        width: job.width || gift.media?.width || 0,
+        height: job.height || gift.media?.height || 0,
+        fps: job.fps || gift.media?.fps || 0,
+        codec: job.codec || 'vp9',
+        processingStatus: 'ready',
+      };
+      patchGift(gift.id, { video: job.url, media: nextMedia });
+      setMessage(job.warning ? `${job.warning} Publica para aplicar.` : 'Fondo quitado. Publica para aplicar.');
+    } catch (err) {
+      patchGift(gift.id, {
+        media: {
+          ...(gift.media || defaultGiftMedia()),
+          originalAsset: gift.media?.originalAsset || gift.video,
+          processingStatus: 'error',
+        },
+      });
+      setMessage(err instanceof Error ? err.message : 'No se pudo quitar el fondo. El archivo original sigue disponible.');
+    } finally {
+      setBgBusy(false);
     }
   }
 
@@ -537,10 +716,20 @@ export function AdminCatalogPanel() {
               </label>
               <button
                 type="button"
-                onClick={() => removeGift(gift.id)}
-                className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/20"
+                onClick={() => duplicateGift(gift.id)}
+                className="rounded-xl border border-white/15 bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-700"
               >
-                Borrar
+                Duplicar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteWord('');
+                  setDeleteOpen(true);
+                }}
+                className="rounded-xl border border-rose-500/50 bg-rose-600/20 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-600/35"
+              >
+                Borrar permanentemente
               </button>
             </div>
 
@@ -653,6 +842,7 @@ export function AdminCatalogPanel() {
                   previewUrl={gift.video}
                   isVideo
                   progress={animProgress[gift.id] || null}
+                  disabled={bgBusy}
                   onFile={(file) => void onUploadGiftAsset('video', file)}
                 />
                 <label className="block space-y-1 text-xs text-zinc-400">
@@ -667,6 +857,77 @@ export function AdminCatalogPanel() {
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
                   />
                 </label>
+                <div className="space-y-2 rounded-xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Quitar fondo
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      disabled={bgBusy || !gift.video}
+                      onClick={() => void removeBackground('auto')}
+                      className="min-h-11 rounded-lg bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/30 disabled:opacity-40"
+                    >
+                      {bgBusy ? 'Procesando fondo…' : 'Quitar fondo'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={bgBusy || !gift.video}
+                      onClick={() => setAdjustMode((v) => !v)}
+                      className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
+                        adjustMode ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-800 text-zinc-300'
+                      }`}
+                    >
+                      Ajustar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!gift.media?.originalAsset}
+                      onClick={() => {
+                        const media = gift.media || defaultGiftMedia();
+                        patchGift(gift.id, {
+                          video: media.originalAsset || gift.video,
+                          media: { ...media, backgroundRemoved: false, processingStatus: 'ready' },
+                        });
+                        setMessage('Se restauró el archivo original.');
+                      }}
+                      className="min-h-11 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200"
+                    >
+                      Restaurar original
+                    </button>
+                  </div>
+                  {adjustMode ? (
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        disabled={bgBusy}
+                        onClick={() => void removeBackground('adjust', 0.09, 0.08)}
+                        className="rounded-lg bg-zinc-800 px-3 py-2 text-[11px] font-semibold text-zinc-200"
+                      >
+                        Conservar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={bgBusy}
+                        onClick={() => void removeBackground('adjust', 0.26, 0.08)}
+                        className="rounded-lg bg-zinc-800 px-3 py-2 text-[11px] font-semibold text-zinc-200"
+                      >
+                        Borrar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={bgBusy}
+                        onClick={() => void removeBackground('adjust', 0.16, 0.22)}
+                        className="rounded-lg bg-zinc-800 px-3 py-2 text-[11px] font-semibold text-zinc-200"
+                      >
+                        Suavizar borde
+                      </button>
+                    </div>
+                  ) : null}
+                  <p className="text-[10px] text-zinc-500">
+                    Solo el fondo visual. El audio se conserva en WebM VP9 + alpha + Opus.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -676,6 +937,7 @@ export function AdminCatalogPanel() {
               onDeviceChange={setPreviewDevice}
               onAnimScaleChange={(scale) => patchGift(gift.id, { animScale: scale })}
               onLayoutChange={(giftLayout) => patchGift(gift.id, { giftLayout })}
+              onMediaChange={(media) => patchGift(gift.id, { media })}
             />
 
             <div className="rounded-xl border border-white/10 bg-black/30 p-3">
@@ -774,6 +1036,47 @@ export function AdminCatalogPanel() {
               )}
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {deleteOpen && gift ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md space-y-3 rounded-2xl border border-rose-500/30 bg-zinc-950 p-4">
+            <h3 className="text-base font-bold text-white">¿Eliminar este regalo permanentemente?</h3>
+            <p className="text-sm text-zinc-300">
+              Esta acción eliminará el regalo y sus recursos asociados y no se puede deshacer.
+            </p>
+            {gift.enabled !== false || gift.video || gift.image ? (
+              <label className="block space-y-1 text-xs text-zinc-400">
+                Escribe ELIMINAR para confirmar
+                <input
+                  value={deleteWord}
+                  onChange={(e) => setDeleteWord(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
+                />
+              </label>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteOpen(false);
+                  setDeleteWord('');
+                }}
+                className="min-h-11 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-200"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void confirmPermanentDelete()}
+                className="min-h-11 rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+              >
+                Eliminar permanentemente
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

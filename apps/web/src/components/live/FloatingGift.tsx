@@ -13,6 +13,7 @@ import {
 } from '../../lib/giftLayout';
 import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
+import { giftPlaybackDurationMs } from '../../lib/giftMedia';
 
 export function GiftVisual({
   gift,
@@ -138,6 +139,8 @@ function GiftVideoBurst({
   animScale = 0.72,
   fillViewport = false,
   slot,
+  volume = 1,
+  durationMs,
   onComplete,
 }: {
   src: string;
@@ -147,6 +150,8 @@ function GiftVideoBurst({
   animScale?: number;
   fillViewport?: boolean;
   slot?: GiftLayoutSlot;
+  volume?: number;
+  durationMs?: number;
   onComplete?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -173,17 +178,24 @@ function GiftVideoBurst({
     if (!video) return;
 
     let durationTimer = 0;
-    // Siempre cerrar: evita aguacate/coco pegados si canplaythrough no llega.
-    const hardCapTimer = window.setTimeout(finish, 15000);
+    const capMs = durationMs && durationMs > 400 ? durationMs : 32_000;
+    const hardCapTimer = window.setTimeout(finish, capMs);
 
     const startPlayback = () => {
       if (doneRef.current) return;
       setReady(true);
+      video.volume = Math.min(1, Math.max(0, volume));
       video.muted = true;
       const playPromise = video.play();
       void Promise.resolve(playPromise)
         .then(() => {
           video.muted = false;
+          video.volume = Math.min(1, Math.max(0, volume));
+          return video.play();
+        })
+        .catch(() => {
+          video.muted = false;
+          video.volume = Math.min(1, Math.max(0, volume));
           return video.play();
         })
         .catch(() => {
@@ -195,9 +207,9 @@ function GiftVideoBurst({
           finish();
         });
       window.clearTimeout(durationTimer);
-      const durationMs =
-        Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : 9000;
-      durationTimer = window.setTimeout(finish, durationMs + 600);
+      const fromEl =
+        Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 + 800 : capMs;
+      durationTimer = window.setTimeout(finish, Math.min(32_000, Math.max(fromEl, capMs)));
     };
 
     const onCanPlay = () => startPlayback();
@@ -226,7 +238,7 @@ function GiftVideoBurst({
       window.clearTimeout(durationTimer);
       finish();
     };
-  }, [src]);
+  }, [src, volume, durationMs]);
 
   return (
     <motion.div
@@ -389,8 +401,10 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
             senderName={senderName}
             combo={combo}
             animScale={clampGiftAnimScale(gift.animScale, level)}
-            fillViewport
-            onComplete={onComplete}
+          fillViewport
+          volume={gift.media?.volume ?? 1}
+          durationMs={giftPlaybackDurationMs(gift.media)}
+          onComplete={onComplete}
           />
         </AnimatePresence>
       );
@@ -412,6 +426,8 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           animScale={clampGiftAnimScale(gift.animScale, level)}
           fillViewport={globalArea}
           slot={slot}
+          volume={gift.media?.volume ?? 1}
+          durationMs={giftPlaybackDurationMs(gift.media)}
           onComplete={onComplete}
         />
       </AnimatePresence>

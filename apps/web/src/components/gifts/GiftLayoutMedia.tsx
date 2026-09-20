@@ -17,6 +17,8 @@ type Props = {
   cropMode?: boolean;
   playToken?: number;
   loop?: boolean;
+  muted?: boolean;
+  volume?: number;
   className?: string;
   onEnded?: () => void;
   onSlotChange?: (patch: Partial<GiftLayoutSlot>) => void;
@@ -32,6 +34,8 @@ export function GiftLayoutMedia({
   cropMode = false,
   playToken = 0,
   loop = true,
+  muted = true,
+  volume = 1,
   className = '',
   onEnded,
   onSlotChange,
@@ -141,12 +145,17 @@ export function GiftLayoutMedia({
           poster={poster}
           autoPlay
           loop={loop}
-          muted
+          muted={muted}
           playsInline
           className={mediaClass}
           style={style}
           draggable={false}
           onEnded={onEnded}
+          ref={(el) => {
+            if (!el) return;
+            el.volume = Math.min(1, Math.max(0, volume));
+            if (!muted) void el.play().catch(() => undefined);
+          }}
         />
       ) : src ? (
         <img src={src} alt="" className={mediaClass} style={style} draggable={false} />

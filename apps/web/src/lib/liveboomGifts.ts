@@ -2,6 +2,7 @@
 
 import type { CallFilterId } from './deepar';
 import type { GiftLayoutMap } from './giftLayout';
+import type { GiftMediaInfo } from './giftMedia';
 
 export type GiftLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -23,6 +24,8 @@ export type LiveGift = {
   animScale?: number;
   /** Layout por dispositivo × formato LIVE. Si falta, se usa animScale. */
   giftLayout?: GiftLayoutMap;
+  /** Original + procesado, audio y volumen. */
+  media?: GiftMediaInfo;
   /** Solo aparece y se puede comprar en LIVE (no posts / clips / flash). */
   liveOnly?: boolean;
   /** Filtro DeepAR aplicado en la cámara del host. */
@@ -195,6 +198,7 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
       animation: remote.animation,
       animScale: remote.animScale,
       giftLayout: remote.giftLayout,
+      media: remote.media,
       liveOnly: remote.liveOnly,
       deeparFilter: remote.deeparFilter,
     });
@@ -226,6 +230,7 @@ export function sortedLiveboomGiftCatalog(): LiveGift[] {
         animation: g.animation,
         animScale: g.animScale,
         giftLayout: g.giftLayout,
+        media: g.media,
         liveOnly: g.liveOnly,
         deeparFilter: g.deeparFilter,
       }));
@@ -250,6 +255,7 @@ export function sortedLiveGiftCatalog(): LiveGift[] {
       animation: g.animation,
       animScale: g.animScale,
       giftLayout: g.giftLayout,
+      media: g.media,
       liveOnly: g.liveOnly,
       deeparFilter: g.deeparFilter,
     }));

@@ -107,9 +107,17 @@ function lookupRoomName(roomName) {
 }
 
 function giftAlphaHttpStatus(code) {
-  if (code === 'INVALID_PATH' || code === 'TOO_LARGE' || code === 'INVALID_GIFT' || code === 'UNSUPPORTED') {
+  if (
+    code === 'INVALID_PATH' ||
+    code === 'TOO_LARGE' ||
+    code === 'INVALID_GIFT' ||
+    code === 'UNSUPPORTED' ||
+    code === 'CONFIRM' ||
+    code === 'LAST_GIFT'
+  ) {
     return 400;
   }
+  if (code === 'BUSY') return 409;
   if (code === 'NOT_FOUND') return 404;
   return 500;
 }
@@ -195,6 +203,92 @@ router.post('/convert-alpha/jobs/:jobId/retry', requireAuth, requireSuperAdmin, 
   }
 });
 
+router.post('/media/inspect', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { inspectStorageMedia } = require('../lib/giftBgRemove');
+    const media = await inspectStorageMedia(
+      typeof req.body?.storagePath === 'string' ? req.body.storagePath : '',
+    );
+    res.json({ ok: true, media });
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo inspeccionar el video',
+    });
+  }
+});
+
+router.post('/bg-remove/jobs', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { enqueueGiftBgJob, kickGiftBgJob } = require('../lib/giftBgRemove');
+    const job = await enqueueGiftBgJob({
+      storagePath: typeof req.body?.storagePath === 'string' ? req.body.storagePath : '',
+      giftId: typeof req.body?.giftId === 'string' ? req.body.giftId : '',
+      createdByUid: req.user?.uid || '',
+      fileName: typeof req.body?.fileName === 'string' ? req.body.fileName : '',
+      clientNonce: typeof req.body?.clientNonce === 'string' ? req.body.clientNonce : '',
+      mode: req.body?.mode === 'adjust' ? 'adjust' : 'auto',
+      similarity: req.body?.similarity,
+      blend: req.body?.blend,
+    });
+    res.json({ ok: true, job });
+    kickGiftBgJob(job.jobId);
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    console.error('[gifts/bg-remove/jobs]', error);
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo iniciar quitar fondo',
+    });
+  }
+});
+
+router.get('/bg-remove/jobs/:jobId', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { readJob, publicJob } = require('../lib/giftBgRemove');
+    const job = publicJob(await readJob(req.params.jobId));
+    if (!job) {
+      res.status(404).json({ error: 'Trabajo no encontrado' });
+      return;
+    }
+    res.json({ ok: true, job });
+  } catch (error) {
+    res.status(500).json({ error: 'No se pudo leer el estado de quitar fondo' });
+  }
+});
+
+router.post('/bg-remove/jobs/:jobId/retry', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { retryGiftBgJob, kickGiftBgJob } = require('../lib/giftBgRemove');
+    const job = await retryGiftBgJob(req.params.jobId);
+    res.json({ ok: true, job });
+    kickGiftBgJob(job.jobId);
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo reintentar quitar fondo',
+    });
+  }
+});
+
+router.post('/catalog/:giftId/delete', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { deleteGiftPermanently } = require('../lib/giftCatalogDelete');
+    const result = await deleteGiftPermanently({
+      giftId: req.params.giftId,
+      adminUserId: req.user?.uid || '',
+      adminEmail: req.user?.email || '',
+      confirmWord: typeof req.body?.confirmWord === 'string' ? req.body.confirmWord : '',
+    });
+    res.json(result);
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    console.error('[gifts/catalog/delete]', error);
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo eliminar el regalo',
+    });
+  }
+});
+
 router.post('/convert-alpha', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const { enqueueGiftAlphaJob, kickGiftAlphaJob } = require('../lib/giftAlphaConvert');
@@ -222,6 +316,11 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const roomName = lookupRoomName(
     typeof req.body?.roomName === 'string' ? req.body.roomName.trim() : '',
   );
+  const { isGiftDeleted } = require('../lib/giftCatalogDelete');
+  if (await isGiftDeleted(giftId)) {
+    res.status(400).json({ error: 'Regalo no válido' });
+    return;
+  }
   const gift = findGift(giftId);
   const rawMult = Math.floor(Number(req.body?.multiplier) || 1);
   const multiplier = [1, 2, 4, 8].includes(rawMult) ? rawMult : 1;
@@ -280,6 +379,10 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       referenceId: payload.id,
       metadata: {
         giftId: gift.id,
+        giftName: gift.name,
+        coins: gift.coins,
+        blast: totalCoins,
+        emoji: gift.emoji,
         roomName,
         multiplier,
         clientId: payload.id,
