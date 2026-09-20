@@ -124,7 +124,7 @@ function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): E
     name: String(raw.name || fallback?.name || id),
     emoji: String(raw.emoji || fallback?.emoji || '🎁'),
     image: raw.image != null ? String(raw.image) : fallback?.image,
-    video: raw.video != null ? String(raw.video) : fallback?.video,
+    video: String(raw.video || '').trim() || fallback?.video,
     coins,
     level,
     animation: String(raw.animation || fallback?.animation || ''),

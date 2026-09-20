@@ -1204,6 +1204,15 @@ video.lk-participant-media-video {
   min-height: 5rem;
 }
 
+.gift-box-item video {
+  display: block;
+  background: transparent;
+  object-fit: cover;
+  object-position: center 38%;
+  pointer-events: none;
+  border-radius: 0.4rem;
+}
+
 @media (min-width: 640px) {
   .gift-box-item {
     min-height: 5.35rem;
@@ -8396,6 +8405,75 @@ a.lb-entity:active,
     border-radius: 0.75rem;
     background: transparent;
   }
+}
+
+.lb-comment-media-viewer.is-profile.has-crops {
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-bottom: max(1.1rem, var(--lb-safe-bottom, 0px));
+}
+
+.lb-comment-media-viewer.is-profile.has-crops .lb-comment-media-viewer__stage {
+  width: min(94vw, calc(88dvh - 5.5rem), 64rem);
+  height: min(94vw, calc(88dvh - 5.5rem), 64rem);
+  max-width: min(94vw, calc(88dvh - 5.5rem), 64rem);
+  max-height: min(94vw, calc(88dvh - 5.5rem), 64rem);
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+
+.lb-comment-media-viewer.is-profile.has-crops .lb-comment-media-viewer__media {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.lb-comment-media-viewer.is-profile.is-crop-square .lb-comment-media-viewer__media {
+  border-radius: 0.85rem;
+}
+
+.lb-comment-media-viewer.is-profile.is-crop-round .lb-comment-media-viewer__media {
+  border-radius: 50%;
+}
+
+.lb-comment-media-viewer__crops {
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.82);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.lb-comment-media-viewer__crop {
+  display: inline-flex;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0 0.95rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #d4d4d8;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lb-comment-media-viewer__crop.is-on {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 @media (max-width: 430px) {

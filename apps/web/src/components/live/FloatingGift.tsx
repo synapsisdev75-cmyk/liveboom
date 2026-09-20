@@ -8,11 +8,24 @@ export function GiftVisual({
   gift,
   size = 16,
   className = '',
+  animated = false,
 }: {
   gift: LiveGift | null | undefined;
   size?: number;
   className?: string;
+  animated?: boolean;
 }) {
+  if (animated && gift?.video) {
+    return (
+      <GiftAnimThumb
+        src={gift.video}
+        poster={gift.image}
+        alt={gift.name}
+        size={size}
+        className={className}
+      />
+    );
+  }
   if (gift?.image) {
     return (
       <img
@@ -36,15 +49,63 @@ export function GiftVisual({
   );
 }
 
+function GiftAnimThumb({
+  src,
+  poster,
+  alt,
+  size,
+  className,
+}: {
+  src: string;
+  poster?: string;
+  alt: string;
+  size: number;
+  className: string;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+        if (entry.isIntersecting) void el.play().catch(() => undefined);
+        else el.pause();
+      },
+      { threshold: 0.15 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [src]);
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      poster={poster}
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      className={`inline-block shrink-0 object-contain ${className}`}
+      style={{ width: size, height: size, background: 'transparent' }}
+      aria-label={alt}
+    />
+  );
+}
+
 export function GiftIcon({
   giftId,
   size = 16,
+  animated = false,
 }: {
   giftId?: string;
   size?: number;
+  animated?: boolean;
 }) {
   const gift = findLiveGift(giftId);
-  return <GiftVisual gift={gift} size={size} />;
+  return <GiftVisual gift={gift} size={size} animated={animated} />;
 }
 
 function GiftVideoBurst({

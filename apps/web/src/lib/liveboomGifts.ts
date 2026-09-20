@@ -44,19 +44,19 @@ export const GIFT_LEVEL_FX: Record<
 
 export const LIVEBOOM_GIFTS: LiveGift[] = [
   // Nivel 1 — Básicos (1–40)
-  { id: 'besito', name: 'Besito', emoji: '💋', image: '/gifts/besito.png', coins: 1, level: 1, animation: 'Face Mesh: beso en labios + rastro' },
-  { id: 'corazon_latino', name: 'Corazón Latino', emoji: '❤️', image: '/gifts/corazon_latino.png', coins: 2, level: 1, animation: 'Face Mesh: pulso cerca de la cara' },
-  { id: 'cafecito', name: 'Cafecito', emoji: '☕', image: '/gifts/cafecito.png', coins: 5, level: 1, animation: 'Taza con vapor en forma de corazón' },
-  { id: 'arepita', name: 'Arepita', emoji: '🫓', image: '/gifts/arepita.png', coins: 8, level: 1, animation: 'Gira como moneda y brillo dorado' },
-  { id: 'empanadita', name: 'Empanadita', emoji: '🥟', image: '/gifts/empanadita.png', coins: 10, level: 1, animation: 'Vuelta rápida y migas brillantes' },
+  { id: 'besito', name: 'Besito', emoji: '💋', image: '/gifts/besito.png', video: '/gifts/besito.webm', coins: 1, level: 1, animation: 'Face Mesh: beso en labios + rastro' },
+  { id: 'corazon_latino', name: 'Corazón Latino', emoji: '❤️', image: '/gifts/corazon_latino.png', video: '/gifts/corazon_latino.webm', coins: 2, level: 1, animation: 'Face Mesh: pulso cerca de la cara' },
+  { id: 'cafecito', name: 'Cafecito', emoji: '☕', image: '/gifts/cafecito.png', video: '/gifts/cafecito.webm', coins: 5, level: 1, animation: 'Taza con vapor en forma de corazón' },
+  { id: 'arepita', name: 'Arepita', emoji: '🫓', image: '/gifts/arepita.png', video: '/gifts/arepita.webm', coins: 8, level: 1, animation: 'Gira como moneda y brillo dorado' },
+  { id: 'empanadita', name: 'Empanadita', emoji: '🥟', image: '/gifts/empanadita.png', video: '/gifts/empanadita.webm', coins: 10, level: 1, animation: 'Vuelta rápida y migas brillantes' },
   { id: 'flor_tropical', name: 'Flor Tropical', emoji: '🌺', image: '/gifts/flor_tropical.png', video: '/gifts/flor_tropical.webm', coins: 15, level: 1, animation: 'Face Mesh: flor anclada a la frente' },
-  { id: 'maracas', name: 'Maracas', emoji: '🪇', image: '/gifts/maracas.png', coins: 20, level: 1, animation: 'Agitación rítmica chispeante' },
+  { id: 'maracas', name: 'Maracas', emoji: '🪇', image: '/gifts/maracas.png', video: '/gifts/maracas.webm', coins: 20, level: 1, animation: 'Agitación rítmica chispeante' },
   { id: 'aguacate', name: 'Aguacate', emoji: '🥑', image: '/gifts/aguacate.png', video: '/gifts/aguacate.webm', coins: 25, level: 1, animation: 'Animación especial al caer' },
-  { id: 'pina_tropical', name: 'Piña Tropical', emoji: '🍍', image: '/gifts/pina_tropical.png', coins: 30, level: 1, animation: 'Gira y explota en destellos' },
+  { id: 'pina_tropical', name: 'Piña Tropical', emoji: '🍍', image: '/gifts/pina_tropical.png', video: '/gifts/pina_tropical.webm', coins: 30, level: 1, animation: 'Gira y explota en destellos' },
   { id: 'coco_caribeno', name: 'Coco Caribeño', emoji: '🥥', image: '/gifts/coco_caribeno.png', video: '/gifts/coco_caribeno.webm', coins: 40, level: 1, animation: 'Animación WebM con sonido al enviar' },
   // Nivel 2 — Populares (50–600)
-  { id: 'cafe_colombiano', name: 'Café Colombiano', emoji: '☕', image: '/gifts/cafe_colombiano.png', coins: 50, level: 2, animation: 'Taza elegante y vapor de montaña' },
-  { id: 'arepa_venezolana', name: 'Arepa Venezolana', emoji: '🫓', image: '/gifts/arepa_venezolana.png', coins: 75, level: 2, animation: 'Bandeja dorada y brillo cálido' },
+  { id: 'cafe_colombiano', name: 'Café Colombiano', emoji: '☕', image: '/gifts/cafe_colombiano.png', video: '/gifts/cafe_colombiano.webm', coins: 50, level: 2, animation: 'Taza elegante y vapor de montaña' },
+  { id: 'arepa_venezolana', name: 'Arepa Venezolana', emoji: '🫓', image: '/gifts/arepa_venezolana.png', video: '/gifts/arepa_venezolana.webm', coins: 75, level: 2, animation: 'Bandeja dorada y brillo cálido' },
   // DeepAR — solo LIVE
   {
     id: 'ar_lentes',
@@ -89,7 +89,7 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
     liveOnly: true,
     deeparFilter: 'dalmatian',
   },
-  { id: 'sombrero_vueltiao', name: 'Sombrero Vueltiao', emoji: '🎩', image: '/gifts/sombrero_vueltiao.png', coins: 150, level: 2, animation: 'Face Mesh: espiral anclada a la cabeza' },
+  { id: 'sombrero_vueltiao', name: 'Sombrero Vueltiao', emoji: '🎩', image: '/gifts/sombrero_vueltiao.png', video: '/gifts/sombrero_vueltiao.webm', coins: 150, level: 2, animation: 'Face Mesh: espiral anclada a la cabeza' },
   {
     id: 'ar_koala',
     name: 'Filtro Koala',
@@ -110,9 +110,9 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
     liveOnly: true,
     deeparFilter: 'lion',
   },
-  { id: 'cuatro_venezolano', name: 'Cuatro Venezolano', emoji: '🎸', image: '/gifts/cuatro_venezolano.png', coins: 200, level: 2, animation: 'Notas y ondas sonoras' },
-  { id: 'tucan_tropical', name: 'Tucán Tropical', emoji: '🦜', image: '/gifts/tucan_tropical.png', coins: 250, level: 2, animation: 'Face Mesh: posado sobre la cabeza' },
-  { id: 'guacamaya', name: 'Guacamaya', emoji: '🦜', image: '/gifts/guacamaya.png', coins: 300, level: 2, animation: 'Face Mesh: plumas ancladas a la cabeza' },
+  { id: 'cuatro_venezolano', name: 'Cuatro Venezolano', emoji: '🎸', image: '/gifts/cuatro_venezolano.png', video: '/gifts/cuatro_venezolano.webm', coins: 200, level: 2, animation: 'Notas y ondas sonoras' },
+  { id: 'tucan_tropical', name: 'Tucán Tropical', emoji: '🦜', image: '/gifts/tucan_tropical.png', video: '/gifts/tucan_tropical.webm', coins: 250, level: 2, animation: 'Face Mesh: posado sobre la cabeza' },
+  { id: 'guacamaya', name: 'Guacamaya', emoji: '🦜', image: '/gifts/guacamaya.png', video: '/gifts/guacamaya.webm', coins: 300, level: 2, animation: 'Face Mesh: plumas ancladas a la cabeza' },
   {
     id: 'ar_galaxia',
     name: 'Filtro Galaxia',

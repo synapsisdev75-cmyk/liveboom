@@ -1084,6 +1084,7 @@ export function UserProfileView() {
         item={profileMedia}
         onClose={() => setProfileMedia(null)}
         variant="profile"
+        cropShapes={profileMedia?.kind === 'image' && profileMedia.url === avatarSrc}
         label={
           profileMedia?.kind === 'video'
             ? 'Portada del perfil'
