@@ -136,6 +136,39 @@ function publicWithdrawalRecord(row) {
   };
 }
 
+function adminPayoutSnapshot(payout) {
+  if (!payout || typeof payout !== 'object') return null;
+  const fullName = String(payout.fullName || '').trim() || null;
+  const documentId = String(payout.documentId || '').trim() || null;
+  const payoutMethod = String(payout.payoutMethod || '').trim() || null;
+  const accountNumber = String(payout.accountNumber || '').trim() || null;
+  const accountType = String(payout.accountType || '').trim() || null;
+  if (!fullName && !documentId && !payoutMethod && !accountNumber) return null;
+  return { fullName, documentId, payoutMethod, accountNumber, accountType };
+}
+
+function adminUserSnapshot(user) {
+  if (!user || typeof user !== 'object') return null;
+  const displayName = String(user.displayName || '').trim() || null;
+  const username = String(user.username || user.handle || '')
+    .replace(/^@/, '')
+    .trim() || null;
+  const email = String(user.email || '').trim() || null;
+  if (!displayName && !username && !email) return null;
+  return { displayName, username, email };
+}
+
+/** Panel Super Admin: datos para pagar, sin tasa interna. */
+function adminWithdrawalRecord(row) {
+  const pub = publicWithdrawalRecord(row);
+  if (!pub || typeof pub !== 'object') return pub;
+  return {
+    ...pub,
+    payout: adminPayoutSnapshot(row.payout),
+    user: adminUserSnapshot(row.user),
+  };
+}
+
 function hasLeakedRate(payload) {
   if (!payload || typeof payload !== 'object') return false;
   return Object.keys(payload).some((key) => RATE_LEAK_KEYS.has(key));
@@ -168,6 +201,7 @@ module.exports = {
   quoteWithdrawal,
   publicWalletSummary,
   publicWithdrawalRecord,
+  adminWithdrawalRecord,
   hasLeakedRate,
   stripLeakedRate,
 };

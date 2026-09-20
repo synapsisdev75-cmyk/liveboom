@@ -52,6 +52,25 @@ export type PublicWithdrawal = {
   walletRulesVersion?: string | null;
 };
 
+export type AdminWithdrawalPayout = {
+  fullName?: string | null;
+  documentId?: string | null;
+  payoutMethod?: string | null;
+  accountNumber?: string | null;
+  accountType?: string | null;
+};
+
+export type AdminWithdrawalUser = {
+  displayName?: string | null;
+  username?: string | null;
+  email?: string | null;
+};
+
+export type AdminWithdrawal = PublicWithdrawal & {
+  payout?: AdminWithdrawalPayout | null;
+  user?: AdminWithdrawalUser | null;
+};
+
 /** Lee el COP que ya calculó el backend. Nunca multiplica BLAST × tasa. */
 export function quotedCop(payload: {
   moneyAmountCOP?: number | string | null;
@@ -85,6 +104,23 @@ export async function fetchWalletTransactions(filter = 'all') {
 export async function fetchWalletWithdrawals() {
   const data = await api<{ withdrawals: PublicWithdrawal[] }>('/api/wallet/withdrawals');
   return data.withdrawals || [];
+}
+
+export async function fetchAdminWithdrawals() {
+  const data = await api<{ withdrawals: AdminWithdrawal[] }>('/api/wallet/admin/withdrawals');
+  return data.withdrawals || [];
+}
+
+export async function confirmAdminWithdrawal(id: string) {
+  return api<{ ok: boolean }>(`/api/wallet/withdrawals/${encodeURIComponent(id)}/confirm`, {
+    method: 'POST',
+  });
+}
+
+export async function rejectAdminWithdrawal(id: string) {
+  return api<{ ok: boolean }>(`/api/wallet/withdrawals/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+  });
 }
 
 export function ledgerLabel(row: WalletLedgerRow) {

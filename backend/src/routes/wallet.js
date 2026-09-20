@@ -5,12 +5,19 @@ const {
   publicWalletSummary,
   quoteWithdrawal,
   publicWithdrawalRecord,
+  adminWithdrawalRecord,
   stripLeakedRate,
 } = require('../lib/payoutConversion');
 const { normalizeWithdrawalStatus } = require('../lib/walletEngine');
+const superAdminMod = require('../middleware/requireSuperAdmin');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
+const requireSuperAdmin = asFn(superAdminMod);
+const isSuperAdminEmail =
+  typeof superAdminMod.isSuperAdminEmail === 'function'
+    ? superAdminMod.isSuperAdminEmail
+    : async () => false;
 
 function sendPublic(res, payload) {
   res.json(stripLeakedRate(payload));
@@ -86,10 +93,28 @@ router.get('/withdrawals', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/admin/withdrawals', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const rows = await wallet.listAllWithdrawals({ limit: 80 });
+    sendPublic(res, {
+      withdrawals: rows.map((row) =>
+        adminWithdrawalRecord({
+          ...row,
+          status: normalizeWithdrawalStatus(row.status),
+        }),
+      ),
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudieron listar las solicitudes',
+    });
+  }
+});
+
 router.post('/withdrawals/:id/confirm', requireAuth, async (req, res) => {
   try {
     const email = req.user?.email;
-    if (!wallet.isOwnerEmail(email)) {
+    if (!(await isSuperAdminEmail(email))) {
       res.status(403).json({ error: 'No autorizado' });
       return;
     }
@@ -103,6 +128,7 @@ router.post('/withdrawals/:id/confirm', requireAuth, async (req, res) => {
       amount: withdrawal.earnedBlastAmount || withdrawal.coins,
       withdrawalId: withdrawal.id,
       actorEmail: email,
+      adminOverride: true,
     });
     if (!result.ok) {
       res.status(400).json({ error: result.code || 'No se pudo confirmar' });
@@ -125,12 +151,14 @@ router.post('/withdrawals/:id/reject', requireAuth, async (req, res) => {
     }
     const uid = req.user?.uid;
     const email = req.user?.email;
+    const admin = await isSuperAdminEmail(email);
     const result = await wallet.rejectWithdrawal({
       userId: withdrawal.userId,
       amount: withdrawal.earnedBlastAmount || withdrawal.coins,
       withdrawalId: withdrawal.id,
       actorEmail: email,
       actorUid: uid,
+      adminOverride: admin,
     });
     if (!result.ok) {
       const status = result.code === 'FORBIDDEN' ? 403 : 400;
@@ -146,7 +174,7 @@ router.post('/withdrawals/:id/reject', requireAuth, async (req, res) => {
 });
 
 router.get('/:firebaseUid', async (req, res, next) => {
-  const reserved = new Set(['transactions', 'summary', 'withdrawals', 'payout-quote']);
+  const reserved = new Set(['transactions', 'summary', 'withdrawals', 'payout-quote', 'admin']);
   if (reserved.has(String(req.params.firebaseUid || ''))) {
     next();
     return;

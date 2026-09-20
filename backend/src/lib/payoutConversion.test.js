@@ -121,4 +121,33 @@ describe('payoutConversion', () => {
     assert.equal(row.moneyAmountCOP, 387600);
     assert.equal(row.currency, 'COP');
   });
+
+  it('adminWithdrawalRecord incluye payout y oculta tasa', () => {
+    const { adminWithdrawalRecord } = require('./payoutConversion');
+    const row = adminWithdrawalRecord({
+      id: 'wd-admin',
+      userId: 'u1',
+      earnedBlastAmount: 21000,
+      moneyAmountCOP: 315000,
+      internalRate: 15,
+      blastRate: 15,
+      payout: {
+        fullName: 'Ana Pérez',
+        documentId: '123',
+        payoutMethod: 'Nequi',
+        accountNumber: '3001234567',
+        accountType: 'ahorros',
+        coinToCop: 15,
+      },
+      user: { displayName: 'Ana', username: 'ana', email: 'ana@test.com' },
+    });
+    assert.equal(row.moneyAmountCOP, 315000);
+    assert.equal(row.payout.payoutMethod, 'Nequi');
+    assert.equal(row.payout.accountNumber, '3001234567');
+    assert.equal(row.user.username, 'ana');
+    assert.equal('internalRate' in row, false);
+    assert.equal('blastRate' in row, false);
+    assert.equal('coinToCop' in row.payout, false);
+    assert.equal(hasLeakedRate(row), false);
+  });
 });

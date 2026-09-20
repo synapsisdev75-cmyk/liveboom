@@ -500,8 +500,15 @@ async function requestWithdrawal({
   return result;
 }
 
-async function confirmWithdrawal({ userId, amount, withdrawalId, idempotencyKey, actorEmail }) {
-  if (actorEmail && !isOwnerEmail(actorEmail)) {
+async function confirmWithdrawal({
+  userId,
+  amount,
+  withdrawalId,
+  idempotencyKey,
+  actorEmail,
+  adminOverride,
+}) {
+  if (!adminOverride && actorEmail && !isOwnerEmail(actorEmail)) {
     return { ok: false, code: 'FORBIDDEN' };
   }
   const uid = String(userId || '').trim();
@@ -553,10 +560,18 @@ async function confirmWithdrawal({ userId, amount, withdrawalId, idempotencyKey,
   return result;
 }
 
-async function rejectWithdrawal({ userId, amount, withdrawalId, idempotencyKey, actorEmail, actorUid }) {
+async function rejectWithdrawal({
+  userId,
+  amount,
+  withdrawalId,
+  idempotencyKey,
+  actorEmail,
+  actorUid,
+  adminOverride,
+}) {
   const uid = String(userId || '').trim();
   const self = actorUid && String(actorUid) === uid;
-  if (!self && actorEmail && !isOwnerEmail(actorEmail)) {
+  if (!self && !adminOverride && actorEmail && !isOwnerEmail(actorEmail)) {
     return { ok: false, code: 'FORBIDDEN' };
   }
   const coins = engine.floorNonNeg(amount);
@@ -823,6 +838,88 @@ async function listWithdrawals(userId) {
   );
 }
 
+function asIso(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value.toDate === 'function') {
+    try {
+      return value.toDate().toISOString();
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === 'object' && typeof value._seconds === 'number') {
+    return new Date(value._seconds * 1000).toISOString();
+  }
+  return null;
+}
+
+async function listAllWithdrawals({ limit = 80 } = {}) {
+  const take = Math.min(120, Math.max(1, Math.floor(Number(limit) || 80)));
+  const { adminWithdrawalRecord } = require('./payoutConversion');
+  if (!firestoreConfigured()) return [];
+  try {
+    const db = getAdminDb();
+    let snap;
+    try {
+      snap = await db
+        .collection('wallet_withdrawals')
+        .orderBy('createdAtMs', 'desc')
+        .limit(take)
+        .get();
+    } catch {
+      snap = await db.collection('wallet_withdrawals').limit(take).get();
+    }
+    if (snap.empty) return [];
+
+    const rawRows = snap.docs.map((d) => {
+      const data = d.data() || {};
+      return {
+        id: d.id,
+        ...data,
+        requestedAt: asIso(data.requestedAt) || asIso(data.createdAt),
+        processedAt: asIso(data.processedAt),
+        status: engine.normalizeWithdrawalStatus(data.status),
+      };
+    });
+
+    const uids = [...new Set(rawRows.map((row) => String(row.userId || '').trim()).filter(Boolean))];
+    const usersById = {};
+    await Promise.all(
+      uids.map(async (uid) => {
+        try {
+          const userSnap = await db.collection('users').doc(uid).get();
+          if (!userSnap.exists) return;
+          const data = userSnap.data() || {};
+          usersById[uid] = {
+            displayName: data.displayName || null,
+            username: data.username || data.handle || null,
+            email: data.email || null,
+          };
+        } catch (error) {
+          console.warn('[wallet] listAllWithdrawals user', uid, error.message);
+        }
+      }),
+    );
+
+    return rawRows
+      .map((row) =>
+        adminWithdrawalRecord({
+          ...row,
+          user: usersById[String(row.userId || '')] || null,
+        }),
+      )
+      .sort((a, b) => {
+        const tb = Date.parse(b.requestedAt || 0) || 0;
+        const ta = Date.parse(a.requestedAt || 0) || 0;
+        return tb - ta;
+      });
+  } catch (error) {
+    console.warn('[wallet] listAllWithdrawals:', error.message);
+    return [];
+  }
+}
+
 async function readWithdrawal(withdrawalId) {
   const id = String(withdrawalId || '').trim();
   if (!id) return null;
@@ -854,6 +951,7 @@ module.exports = {
   rejectWithdrawal,
   getTransactions,
   listWithdrawals,
+  listAllWithdrawals,
   readWithdrawal,
   applyInOpenTransaction,
   isOwnerEmail,

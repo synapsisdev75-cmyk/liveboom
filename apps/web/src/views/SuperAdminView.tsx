@@ -4,6 +4,7 @@ import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
 import { AdminCatalogPanel } from '../components/admin/AdminCatalogPanel';
 import { AdminVaultSecurityPanel } from '../components/admin/AdminVaultSecurityPanel';
+import { AdminWithdrawalsPanel } from '../components/admin/AdminWithdrawalsPanel';
 import { CommunityHeaderEditor } from '../components/admin/CommunityHeaderEditor';
 import { isOwnerEmail } from '../lib/superAdmin';
 import { useSuperAdminVaultStore } from '../store/superAdminVaultStore';
@@ -20,7 +21,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { useLevelsConfigStore } from '../store/levelsConfigStore';
 
-type AdminTab = 'levels' | 'users' | 'messages' | 'community' | 'catalog' | 'security';
+type AdminTab = 'levels' | 'users' | 'messages' | 'community' | 'catalog' | 'withdrawals' | 'security';
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -218,6 +219,7 @@ export function SuperAdminView() {
             { id: 'catalog' as const, label: 'Regalos / Blast' },
             { id: 'levels' as const, label: 'Niveles / Marcos' },
             { id: 'community' as const, label: 'Comunidad' },
+            { id: 'withdrawals' as const, label: 'Solicitud de retiros' },
             ...(owner ? [{ id: 'security' as const, label: 'Seguridad' }] : []),
           ] as { id: AdminTab; label: string }[]
         ).map(({ id, label }) => (
@@ -225,7 +227,7 @@ export function SuperAdminView() {
             key={id}
             type="button"
             onClick={() => setTab(id)}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+            className={`min-h-11 rounded-xl px-4 py-2 text-sm font-semibold transition ${
               tab === id
                 ? 'bg-fuchsia-500/20 text-fuchsia-100 ring-1 ring-fuchsia-400/40'
                 : 'bg-zinc-800/60 text-zinc-400 hover:text-zinc-200'
@@ -246,6 +248,7 @@ export function SuperAdminView() {
       {tab === 'messages' ? <AdminMessagesPanel /> : null}
       {tab === 'catalog' ? <AdminCatalogPanel /> : null}
       {tab === 'community' ? <CommunityHeaderEditor /> : null}
+      {tab === 'withdrawals' ? <AdminWithdrawalsPanel /> : null}
       {tab === 'security' && owner ? <AdminVaultSecurityPanel /> : null}
 
       {tab === 'levels' ? (

@@ -26,7 +26,7 @@ function requireSuperAdmin(req, res, next) {
   Promise.resolve(isSuperAdminEmail(email))
     .then((ok) => {
       if (!ok) {
-        res.status(403).json({ error: 'Solo super-admin puede convertir animaciones' });
+        res.status(403).json({ error: 'Solo super-admin puede realizar esta acción' });
         return;
       }
       next();
@@ -41,4 +41,5 @@ function requireSuperAdmin(req, res, next) {
 
 module.exports = requireSuperAdmin;
 module.exports.requireSuperAdmin = requireSuperAdmin;
+module.exports.isSuperAdminEmail = isSuperAdminEmail;
 module.exports.default = requireSuperAdmin;
