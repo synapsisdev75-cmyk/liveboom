@@ -545,6 +545,7 @@ export function UserProfileView() {
 
   const avatarSrc = String(publicProfile.avatarUrl || '').trim();
   const coverSrc = String(publicProfile.coverUrl || '').trim();
+  const coverType = publicProfile.coverType;
 
   function openAvatarView() {
     if (!avatarSrc) return;
@@ -553,11 +554,10 @@ export function UserProfileView() {
 
   function openCoverView() {
     if (!coverSrc) return;
-    const type = publicProfile.coverType;
     const kind =
-      type === 'video' || /\.(mp4|webm)(\?|$)/i.test(coverSrc)
+      coverType === 'video' || /\.(mp4|webm)(\?|$)/i.test(coverSrc)
         ? 'video'
-        : type === 'gif' || /\.gif(\?|$)/i.test(coverSrc)
+        : coverType === 'gif' || /\.gif(\?|$)/i.test(coverSrc)
           ? 'gif'
           : 'image';
     setProfileMedia({ url: coverSrc, kind });
