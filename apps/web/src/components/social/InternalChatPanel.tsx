@@ -1167,7 +1167,10 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     for (const message of messages) {
       if (!message.giftId || message.mine || seenGiftAnimRef.current.has(message.id)) continue;
       seenGiftAnimRef.current.add(message.id);
-      animateGiftInChat(message.giftId);
+      animateGiftInChat(
+        message.giftId,
+        activeFriend?.displayName || activeFriend?.username || activeFriend?.handle || undefined,
+      );
     }
   }, [chatId, messages]);
 

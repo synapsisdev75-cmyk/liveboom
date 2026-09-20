@@ -1207,10 +1207,19 @@ video.lk-participant-media-video {
 .gift-box-item video {
   display: block;
   background: transparent;
-  object-fit: cover;
-  object-position: center 38%;
+  object-fit: contain;
+  object-position: center;
   pointer-events: none;
-  border-radius: 0.4rem;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.lb-gift-burst-video {
+  background: transparent !important;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
 }
 
 @media (min-width: 640px) {

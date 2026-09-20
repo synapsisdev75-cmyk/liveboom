@@ -100,7 +100,7 @@ function GiftAnimThumb({
       playsInline
       autoPlay
       preload="auto"
-      className={`inline-block shrink-0 object-contain ${className}`}
+      className={`inline-block shrink-0 bg-transparent object-contain ${className}`}
       style={{ width: size, height: size, background: 'transparent' }}
       aria-label={alt}
     />
@@ -157,14 +157,21 @@ function GiftVideoBurst({
     const startPlayback = () => {
       if (doneRef.current) return;
       setReady(true);
-      video.muted = false;
-      void video.play().catch(() => {
-        video.muted = true;
-        void video.play().catch((error) => {
+      video.muted = true;
+      const playPromise = video.play();
+      void Promise.resolve(playPromise)
+        .then(() => {
+          video.muted = false;
+          return video.play();
+        })
+        .catch(() => {
+          video.muted = true;
+          return video.play();
+        })
+        .catch((error) => {
           console.warn('[gift-video] play failed', error);
           finish();
         });
-      });
       window.clearTimeout(durationTimer);
       const durationMs =
         Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : 9000;
@@ -211,17 +218,18 @@ function GiftVideoBurst({
         <img
           src={poster}
           alt=""
-          className="absolute inset-0 m-auto object-contain opacity-80"
-          style={{ width: `${scale * 100}%`, height: `${scale * 100}%` }}
+          className="absolute inset-0 m-auto bg-transparent object-contain opacity-80"
+          style={{ width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' }}
           draggable={false}
         />
       ) : null}
       <video
         ref={videoRef}
         src={src}
-        className="object-contain"
-        style={{ width: `${scale * 100}%`, height: `${scale * 100}%` }}
+        className="lb-gift-burst-video bg-transparent object-contain"
+        style={{ width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' }}
         playsInline
+        muted
         autoPlay
         preload="auto"
         onEnded={finish}
