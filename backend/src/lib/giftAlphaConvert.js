@@ -1104,8 +1104,10 @@ async function patchCatalogGiftAudio(db, giftId, { videoUrl, replaceVideo = fals
       changed = true;
       const media = gift.media && typeof gift.media === 'object' ? { ...gift.media } : {};
       media.hasAudio = true;
+      const localVideo = !gift.video || String(gift.video).startsWith('/');
       const canReplace =
-        Boolean(replaceVideo && videoUrl) && (!gift.video || Boolean(storagePathFromGiftUrl(gift.video)));
+        Boolean(replaceVideo && videoUrl) &&
+        (localVideo || Boolean(storagePathFromGiftUrl(gift.video)));
       if (canReplace) media.originalAsset = media.originalAsset || videoUrl;
       return {
         ...gift,
@@ -1128,8 +1130,8 @@ async function restoreGiftAudioFromStorage({ ffmpegPath, bucket, db, gift, force
   const prevReason = String(prevData.reason || '');
   if (
     !force &&
-    (status === 'ok' ||
-      status === 'bundled' ||
+    (status === 'bundled' ||
+      (status === 'ok' && prevReason !== 'already-has-audio') ||
       (status === 'skip' &&
         ['no-original-audio', 'nothing-to-restore', 'original-silent', 'invalid-webm'].includes(prevReason)))
   ) {
@@ -1234,12 +1236,17 @@ async function restoreGiftAudioFromStorage({ ffmpegPath, bucket, db, gift, force
     }
 
     if (!restoredPaths.length && already.length) {
-      await patchCatalogGiftAudio(db, gid, { videoUrl: null, replaceVideo: false });
+      const good = already[0];
+      const [meta] = await bucket.file(good).getMetadata();
+      const token =
+        (meta && meta.metadata && meta.metadata.firebaseStorageDownloadTokens) || randomUUID();
+      const videoUrl = downloadUrlFor(bucket.name, good, token);
+      await patchCatalogGiftAudio(db, gid, { videoUrl, replaceVideo: true });
       await markerRef.set(
-        { status: 'ok', reason: 'already-has-audio', path: already[0], attempts: Number(prevData.attempts || 0) + 1, updatedAtMs: Date.now() },
+        { status: 'ok', reason: 'catalog-audio', path: good, attempts: Number(prevData.attempts || 0) + 1, updatedAtMs: Date.now() },
         { merge: true },
       );
-      return { giftId: gid, skipped: true, reason: 'already-has-audio' };
+      return { giftId: gid, restored: true, reason: 'already-has-audio', paths: [good] };
     }
     if (!restoredPaths.length) {
       await markerRef.set(
