@@ -50,6 +50,18 @@ function amountsMatch(orderAmount, paidAmount) {
   return false;
 }
 
+function paymentLinkMatches(order, txn) {
+  const orderLink = String(order?.paymentLinkId || '').trim();
+  const txnLink = String(txn?.payment_link_id || '').trim();
+  return Boolean(orderLink && txnLink && orderLink === txnLink);
+}
+
+function transactionIdMatches(order, txn) {
+  const orderTxn = String(order?.wompiTransactionId || order?.wompiTxnId || '').trim();
+  const txnId = String(txn?.id || '').trim();
+  return Boolean(orderTxn && txnId && orderTxn === txnId);
+}
+
 /**
  * Decisión pura (testeable) antes de tocar saldos.
  * @param {{ order: object|null, txn: object, expectedUid?: string|null }}
@@ -74,7 +86,10 @@ function evaluateWompiSettlement({ order, txn, expectedUid }) {
     return { action: 'reject', code: 'FORBIDDEN' };
   }
   if (reference && orderRef && reference !== orderRef) {
-    return { action: 'reject', code: 'REFERENCE_MISMATCH', expected: orderRef, received: reference };
+    // Checkout por link: Wompi a menudo pone su propia reference, no el sku LB-BLAST.
+    if (!paymentLinkMatches(order, txn) && !transactionIdMatches(order, txn)) {
+      return { action: 'reject', code: 'REFERENCE_MISMATCH', expected: orderRef, received: reference };
+    }
   }
 
   if (isCreditedStatus(order.status) && status === 'APPROVED') {
@@ -182,5 +197,7 @@ module.exports = {
   applyVoidCompensation,
   isCreditedStatus,
   isPendingStatus,
+  paymentLinkMatches,
+  transactionIdMatches,
 };
 module.exports.default = module.exports;

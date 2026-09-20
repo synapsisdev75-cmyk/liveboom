@@ -51,6 +51,7 @@ function purchasePatch(decision, txn, extra = {}) {
 async function findOrder(txn) {
   const reference = String(txn?.reference || txn?.sku || '').trim();
   const paymentLinkId = txn?.payment_link_id ? String(txn.payment_link_id) : '';
+  const txnId = String(txn?.id || '').trim();
   if (reference) {
     const byRef = await readPaymentOrder(reference);
     if (byRef) return byRef;
@@ -59,20 +60,23 @@ async function findOrder(txn) {
     const byLink = await findPaymentOrderByLinkId(paymentLinkId);
     if (byLink) return byLink;
   }
-  if (reference && firestoreConfigured()) {
+  if (!firestoreConfigured()) return null;
+  const db = getAdminDb();
+  const lookups = [];
+  if (txnId) lookups.push(['wompiTransactionId', txnId]);
+  if (reference) {
+    lookups.push(['wompiReference', reference]);
+    lookups.push(['wompiExternalReference', reference]);
+  }
+  for (const [field, value] of lookups) {
     try {
-      const db = getAdminDb();
-      const q = await db
-        .collection('paymentOrders')
-        .where('wompiReference', '==', reference)
-        .limit(1)
-        .get();
+      const q = await db.collection('paymentOrders').where(field, '==', value).limit(1).get();
       if (!q.empty) {
         const doc = q.docs[0];
         return { id: doc.id, ...doc.data() };
       }
     } catch (error) {
-      console.warn('[blastPurchase] findOrder wompiReference', error.message);
+      console.warn('[blastPurchase] findOrder', field, error.message);
     }
   }
   return null;
@@ -108,10 +112,18 @@ async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
   }
 
   const order = await findOrder(txn);
+  if (order) {
+    if (txn?.id) order.wompiTransactionId = String(txn.id);
+    if (txn?.reference) order.wompiExternalReference = String(txn.reference);
+    if (txn?.payment_link_id && !order.paymentLinkId) {
+      order.paymentLinkId = String(txn.payment_link_id);
+    }
+  }
   if (order?.id && txn?.id) {
     try {
       await markPurchase(order.id, {
         wompiTransactionId: String(txn.id),
+        wompiExternalReference: String(txn.reference || ''),
         source: source || 'wompi',
       });
     } catch (error) {
@@ -134,10 +146,12 @@ async function settleWompiTransaction(txn, { expectedUid, source } = {}) {
   }
   if (decision.action === 'reject') {
     if (order?.id) {
+      const keepPending = decision.code === 'REFERENCE_MISMATCH';
       await markPurchase(order.id, {
-        status: PURCHASE_STATUS.ERROR,
+        status: keepPending ? PURCHASE_STATUS.PENDING : PURCHASE_STATUS.ERROR,
         rejectCode: decision.code,
         wompiTransactionId: txn.id || null,
+        wompiExternalReference: txn.reference || null,
         source: source || 'wompi',
       });
     }
@@ -354,9 +368,10 @@ async function reconcileStalePending(limit = 20) {
   const take = Math.min(40, Math.max(1, limit));
   const pending = await db.collection('paymentOrders').where('status', '==', 'pending').limit(take).get();
   const pendingUpper = await db.collection('paymentOrders').where('status', '==', 'PENDING').limit(take).get();
+  const errored = await db.collection('paymentOrders').where('status', '==', 'ERROR').limit(take).get();
   const seen = new Set();
   const docs = [];
-  for (const doc of [...pending.docs, ...pendingUpper.docs]) {
+  for (const doc of [...pending.docs, ...pendingUpper.docs, ...errored.docs]) {
     if (seen.has(doc.id)) continue;
     seen.add(doc.id);
     docs.push(doc);

@@ -171,7 +171,10 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
           const txn =
             result.transaction ||
             (result as { data?: { transaction?: { id?: string; status?: string } } }).data
-              ?.transaction;
+              ?.transaction ||
+            (result.id && result.status
+              ? { id: result.id, status: result.status }
+              : null);
           const status = String(txn?.status || '').toUpperCase();
           const txnId = String(txn?.id || '').trim();
           if (status === 'APPROVED') {

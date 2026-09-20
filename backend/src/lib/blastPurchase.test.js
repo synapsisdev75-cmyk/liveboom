@@ -139,6 +139,20 @@ describe('blastPurchase Wompi', () => {
       }).code,
       'REFERENCE_MISMATCH',
     );
+    const viaLink = evaluateWompiSettlement({
+      order: { ...ORDER, paymentLinkId: 'link_abc' },
+      txn: txn({
+        reference: 'SAuDc6_1789862818_HpPOBub8L',
+        payment_link_id: 'link_abc',
+      }),
+    });
+    assert.equal(viaLink.action, 'credit');
+    assert.equal(viaLink.blast, 200);
+    const viaTxnId = evaluateWompiSettlement({
+      order: { ...ORDER, wompiTransactionId: 'wompi-tx-1' },
+      txn: txn({ reference: 'SAuDc6_otra' }),
+    });
+    assert.equal(viaTxnId.action, 'credit');
     assert.equal(
       evaluateWompiSettlement({ order: ORDER, txn: null }).code,
       'INVALID_EVENT',
