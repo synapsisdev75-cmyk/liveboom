@@ -7,7 +7,7 @@ const { randomUUID } = require('crypto');
 const { FieldValue } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
 const { firestoreConfigured, getAdminDb } = require('./firestoreAdmin');
-const { packageById, packageByDays, quoteAmountCop, PRICE_VERSION } = require('./promoPackages');
+const { packageById, packageByDays, quoteAmountCop, PRICE_VERSION, publicCatalog, normalizeCatalog } = require('./promoPackages');
 const { sniffKind, inspectImageMeta, MAX_BYTES } = require('./promoInspect');
 const { normalizeParams, projectTable, DEFAULT_PARAMS } = require('./promoProjection');
 

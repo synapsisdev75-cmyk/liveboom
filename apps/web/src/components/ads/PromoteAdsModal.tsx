@@ -1,4 +1,4 @@
-import { MapPin, Megaphone, Radio, Upload, X } from 'lucide-react';
+import { MapPin, Megaphone, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import {
@@ -109,7 +109,6 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     })),
   );
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [wompiReady, setWompiReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -124,13 +123,9 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
   const perDay = promoCopPerDay(days, format);
 
   useEffect(() => {
-    void api<{
-      packages: ServerPackage[];
-      wompiConfigured?: boolean;
-    }>('/api/ads/packages')
+    void api<{ packages: ServerPackage[] }>('/api/ads/packages')
       .then((res) => {
         if (res.packages?.length) setPackages(res.packages);
-        setWompiReady(Boolean(res.wompiConfigured));
       })
       .catch(() => undefined);
   }, []);
@@ -227,27 +222,6 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     }
   }
 
-  async function simulatePay() {
-    if (!profile || !quote) return;
-    setBusy(true);
-    setNote(null);
-    try {
-      const paid = await api<{ hours: number; amountPaidCop: number }>('/api/ads/simulate', {
-        method: 'POST',
-        body: JSON.stringify({ quoteId: quote.quoteId }),
-      });
-      setNote(
-        `Publicidad de prueba activada (${formatPromoCop(paid.amountPaidCop || quote.totalCop)}). En compras reales el anuncio espera revisión.`,
-      );
-      onDone?.();
-      window.setTimeout(onClose, 1400);
-    } catch (err) {
-      setNote(err instanceof Error ? err.message : 'No se pudo activar la publicidad');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function payWithWompi() {
     if (!profile || !quote) return;
     setBusy(true);
@@ -261,7 +235,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
         },
       );
       if (order.mock) {
-        setNote('Wompi no está configurado. Usa la activación de prueba.');
+        setNote('Wompi no está disponible. Intenta de nuevo en unos minutos.');
         setBusy(false);
         return;
       }
@@ -454,7 +428,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
           {note ? (
             <p
               className={`text-sm ${
-                note.includes('confirmado') || note.includes('activada') || note.includes('prueba')
+                note.includes('confirmado') || note.includes('proceso')
                   ? 'text-emerald-400'
                   : 'text-fuchsia-400'
               }`}
@@ -466,22 +440,11 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
           <button
             type="button"
             disabled={payLocked}
-            onClick={() => void simulatePay()}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-4 text-sm font-bold text-zinc-950 disabled:opacity-60"
+            onClick={() => void payWithWompi()}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-400 px-4 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
-            <Radio size={16} />
-            {busy ? 'Activando…' : `Activar de prueba · ${formatPromoCop(totalCop)}`}
+            {busy ? 'Abriendo Wompi…' : 'Pagar'}
           </button>
-          {wompiReady ? (
-            <button
-              type="button"
-              disabled={payLocked}
-              onClick={() => void payWithWompi()}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-zinc-900 px-4 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              Pagar con Wompi · {formatPromoCop(totalCop)}
-            </button>
-          ) : null}
           <p className="flex items-start gap-1.5 text-[11px] text-zinc-500">
             <MapPin size={12} className="mt-0.5 shrink-0" />
             El recargo animado se aplica una sola vez. Una pantalla de Wompi no publica el anuncio: espera confirmación y revisión.
