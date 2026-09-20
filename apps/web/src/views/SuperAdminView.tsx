@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
 import { AdminCatalogPanel } from '../components/admin/AdminCatalogPanel';
+import { AdminAdsPanel } from '../components/admin/AdminAdsPanel';
 import { AdminVaultSecurityPanel } from '../components/admin/AdminVaultSecurityPanel';
 import { AdminWithdrawalsPanel } from '../components/admin/AdminWithdrawalsPanel';
 import { AdminVerificationPanel } from '../components/admin/AdminVerificationPanel';
@@ -28,6 +29,7 @@ type AdminTab =
   | 'messages'
   | 'community'
   | 'catalog'
+  | 'ads'
   | 'withdrawals'
   | 'verifications'
   | 'security';
@@ -237,6 +239,7 @@ export function SuperAdminView() {
             { id: 'users' as const, label: 'Usuarios / XP' },
             { id: 'messages' as const, label: 'Mensajes' },
             { id: 'catalog' as const, label: 'Regalos / Blast' },
+            { id: 'ads' as const, label: 'Publicidad' },
             { id: 'levels' as const, label: 'Niveles / Marcos' },
             { id: 'community' as const, label: 'Comunidad' },
             { id: 'withdrawals' as const, label: 'Solicitud de retiros' },
@@ -268,6 +271,7 @@ export function SuperAdminView() {
       {tab === 'users' ? <AdminUsersPanel /> : null}
       {tab === 'messages' ? <AdminMessagesPanel /> : null}
       {tab === 'catalog' ? <AdminCatalogPanel /> : null}
+      {tab === 'ads' ? <AdminAdsPanel /> : null}
       {tab === 'community' ? <CommunityHeaderEditor /> : null}
       {tab === 'withdrawals' ? <AdminWithdrawalsPanel /> : null}
       {tab === 'verifications' ? <AdminVerificationPanel /> : null}

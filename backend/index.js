@@ -234,6 +234,19 @@ try {
       console.log('[liveboom] gift alpha queue', stats);
     },
   );
+  module.exports.expirePromoCampaigns = onSchedule(
+    {
+      region: 'us-central1',
+      schedule: 'every 1 minutes',
+      memory: '256MiB',
+      timeoutSeconds: 60,
+    },
+    async () => {
+      const { expireDueCampaigns } = require('./src/lib/promoCampaigns');
+      const stats = await expireDueCampaigns();
+      if (stats?.expired) console.log('[liveboom] ads expire', stats);
+    },
+  );
 } catch (error) {
   console.warn('[liveboom] scheduler functions no disponible:', error.message);
 }

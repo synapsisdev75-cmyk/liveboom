@@ -588,16 +588,33 @@ service cloud.firestore {
 
     match /promotions/{promoId} {
       allow read: if true;
-      allow create: if signedIn()
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        && request.resource.data.title.size() <= 80
-        && request.resource.data.regionId is string
-        && request.resource.data.coinsPaid is number
-        && request.resource.data.expiresAtMs is number;
-      allow update, delete: if signedIn()
-        && resource.data.ownerUid == request.auth.uid;
+      allow create: if false;
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['title', 'linkUrl', 'mediaUrl', 'kind'])
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.expiresAtMs == resource.data.expiresAtMs
+        && request.resource.data.coinsPaid == resource.data.coinsPaid;
+      allow delete: if false;
+    }
+
+    match /ad_quotes/{id} {
+      allow read, write: if false;
+    }
+    match /ad_orders/{id} {
+      allow read, write: if false;
+    }
+    match /ad_metric_dedup/{id} {
+      allow read, write: if false;
+    }
+    match /config/adPackages {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /config/adRevenueProjection {
+      allow read: if isUnlockedSuperAdmin();
+      allow write: if false;
     }
 
     match /hashtags/{tag} {

@@ -32,6 +32,14 @@ export type PromotionAd = {
   coinsPaid: number;
   expiresAtMs: number;
   active: boolean;
+  format?: string | null;
+  packageId?: string | null;
+  paymentStatus?: string | null;
+  reviewStatus?: string | null;
+  publishStatus?: string | null;
+  startsAtMs?: number | null;
+  impressions?: number;
+  clicks?: number;
 };
 
 function mapAd(id: string, data: Record<string, unknown>): PromotionAd {
@@ -47,10 +55,26 @@ function mapAd(id: string, data: Record<string, unknown>): PromotionAd {
     ownerUsername: String(data.ownerUsername || ''),
     ownerDisplayName: String(data.ownerDisplayName || data.ownerUsername || ''),
     ownerAvatarUrl: (data.ownerAvatarUrl as string | null) ?? null,
-    coinsPaid: Number(data.coinsPaid || 0),
+    coinsPaid: Number(data.amountPaidCop || data.coinsPaid || 0),
     expiresAtMs: Number(data.expiresAtMs || 0),
     active: data.active !== false,
+    format: data.format ? String(data.format) : null,
+    packageId: data.packageId ? String(data.packageId) : null,
+    paymentStatus: data.paymentStatus ? String(data.paymentStatus) : null,
+    reviewStatus: data.reviewStatus ? String(data.reviewStatus) : null,
+    publishStatus: data.publishStatus ? String(data.publishStatus) : null,
+    startsAtMs: data.startsAtMs == null ? null : Number(data.startsAtMs),
+    impressions: Number(data.impressions || 0),
+    clicks: Number(data.clicks || 0),
   };
+}
+
+export function isPromotionDeliverable(ad: PromotionAd, now = Date.now()) {
+  if (!ad.active) return false;
+  if (ad.expiresAtMs <= now) return false;
+  if (ad.paymentStatus && !['paid', 'simulated'].includes(ad.paymentStatus)) return false;
+  if (ad.reviewStatus && ad.reviewStatus !== 'approved') return false;
+  return true;
 }
 
 export function listenActivePromotions(
@@ -66,7 +90,7 @@ export function listenActivePromotions(
       const region = String(regionId || '').trim();
       const ads = snap.docs
         .map((item) => mapAd(item.id, item.data() as Record<string, unknown>))
-        .filter((ad) => ad.expiresAtMs > now)
+        .filter((ad) => isPromotionDeliverable(ad, now))
         .filter((ad) => {
           if (!region || region === 'nacional') return true;
           return ad.regionId === region || ad.regionId === 'nacional';
@@ -127,11 +151,9 @@ export function listenMyPromotions(
   return onSnapshot(
     q,
     (snap) => {
-      const now = Date.now();
       const ads = snap.docs
         .map((item) => mapAd(item.id, item.data() as Record<string, unknown>))
-        .filter((ad) => ad.active && ad.expiresAtMs > now)
-        .sort((a, b) => b.expiresAtMs - a.expiresAtMs);
+        .sort((a, b) => Number(b.startsAtMs || b.expiresAtMs) - Number(a.startsAtMs || a.expiresAtMs));
       onChange(ads);
     },
     () => onChange([]),
@@ -167,7 +189,7 @@ export async function listActivePromotions(regionId?: string) {
   const region = String(regionId || '').trim();
   return snap.docs
     .map((item) => mapAd(item.id, item.data() as Record<string, unknown>))
-    .filter((ad) => ad.expiresAtMs > now)
+    .filter((ad) => isPromotionDeliverable(ad, now))
     .filter((ad) => {
       if (!region || region === 'nacional') return true;
       return ad.regionId === region || ad.regionId === 'nacional';

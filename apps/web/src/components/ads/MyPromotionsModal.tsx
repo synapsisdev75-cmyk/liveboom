@@ -6,16 +6,14 @@ import {
   PROMO_BANNER_SIZE_LABEL,
   PROMO_BANNER_WIDTH,
   PROMO_KINDS,
+  formatPromoCop,
   regionLabel,
   type PromoKind,
 } from '../../lib/promoRegions';
-import {
-  deactivatePromotion,
-  type PromotionAd,
-  updatePromotion,
-} from '../../lib/promotionsFirestore';
+import { api } from '../../lib/api';
+import { type PromotionAd, updatePromotion } from '../../lib/promotionsFirestore';
 import { isPromotionVideoUrl } from '../../lib/promotionLinks';
-import { dataUrlToBlob, uploadUserMedia } from '../../lib/storage';
+import { uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
 
 type Props = {
@@ -70,7 +68,11 @@ export function MyPromotionsModal({ ads, onClose }: Props) {
     setBusy(true);
     setNote(null);
     try {
-      if (file.type.startsWith('image/')) {
+      if (file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name)) {
+        if (editing?.paymentStatus && editing.format === 'static') {
+          throw new Error('Una campaña pagada como estática no puede cambiarse a video. Contrata un paquete animado.');
+        }
+      } else if (file.type.startsWith('image/')) {
         const url = URL.createObjectURL(file);
         const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
           const img = new Image();
@@ -85,14 +87,7 @@ export function MyPromotionsModal({ ads, onClose }: Props) {
           throw new Error(`El banner debe ser ${PROMO_BANNER_SIZE_LABEL} px.`);
         }
       }
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
-        reader.readAsDataURL(file);
-      });
-      const blob = await dataUrlToBlob(dataUrl);
-      const uploaded = await uploadUserMedia(profile.firebaseUid, blob, `promo-${Date.now()}`, 'public');
+      const uploaded = await uploadUserMedia(profile.firebaseUid, file, `promo-${Date.now()}`, 'public');
       setMediaUrl(uploaded.url);
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo subir el medio');
@@ -125,7 +120,7 @@ export function MyPromotionsModal({ ads, onClose }: Props) {
     setBusy(true);
     setNote(null);
     try {
-      await deactivatePromotion(editing.id);
+      await api(`/api/ads/campaigns/${encodeURIComponent(editing.id)}/end`, { method: 'POST' });
       setNote('Publicidad finalizada.');
       if (ads.length <= 1) window.setTimeout(onClose, 800);
     } catch (err) {
@@ -181,6 +176,9 @@ export function MyPromotionsModal({ ads, onClose }: Props) {
               <div className="mt-4 grid gap-3">
                 <p className="text-[11px] text-zinc-500">
                   {regionLabel(editing.regionId)} · {formatExpiry(editing.expiresAtMs)}
+                  {editing.paymentStatus ? ` · pago ${editing.paymentStatus}` : ''}
+                  {editing.reviewStatus ? ` · revisión ${editing.reviewStatus}` : ''}
+                  {` · ${formatPromoCop(editing.coinsPaid)}`}
                 </p>
                 <label className="grid gap-1 text-sm">
                   <span className="text-zinc-400">Título</span>

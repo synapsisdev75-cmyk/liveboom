@@ -3,29 +3,41 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import {
   CO_REGIONS,
-  PROMO_BANNER_HEIGHT,
   PROMO_BANNER_SIZE_LABEL,
-  PROMO_BANNER_WIDTH,
+  PROMO_MAX_ANIMATED_SEC,
   PROMO_PACKAGES,
   PROMO_KINDS,
   formatPromoCop,
   promoCopPerDay,
   promoPackageByDays,
+  promoPriceCop,
   regionLabel,
+  type PromoBannerFormat,
   type PromoKind,
   type PromoPackageId,
 } from '../../lib/promoRegions';
-import { createPromotion } from '../../lib/promotionsFirestore';
-import { dataUrlToBlob, uploadUserMedia } from '../../lib/storage';
+import { isPromotionVideoUrl } from '../../lib/promotionLinks';
+import { uploadUserMedia } from '../../lib/storage';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
 import { useAuthStore } from '../../store/authStore';
 
-type PromoPackageOption = {
+type ServerPackage = {
   id: string;
   days: number;
-  priceCop: number;
   label: string;
-  pricePerDayCop?: number;
+  staticCop: number;
+  animatedCop: number;
+};
+
+type Quote = {
+  quoteId: string;
+  packageId: string;
+  days: number;
+  hours: number;
+  format: PromoBannerFormat;
+  totalCop: number;
+  amountInCents: number;
+  warning?: string | null;
 };
 
 type Props = {
@@ -34,17 +46,72 @@ type Props = {
   onDone?: () => void;
 };
 
+function readImageDimensions(file: File) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudieron leer las dimensiones de la imagen'));
+    };
+    img.src = url;
+  });
+}
+
+function readVideoMeta(file: File) {
+  return new Promise<{ width: number; height: number; durationSec: number }>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadedmetadata = () => {
+      const meta = {
+        width: video.videoWidth || 0,
+        height: video.videoHeight || 0,
+        durationSec: Number.isFinite(video.duration) ? video.duration : 0,
+      };
+      URL.revokeObjectURL(url);
+      resolve(meta);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudieron leer los metadatos del video'));
+    };
+    video.src = url;
+  });
+}
+
 export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
   const profile = useAuthStore((s) => s.profile);
   const [kind, setKind] = useState<PromoKind>('live');
   const [title, setTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
+  const [storagePath, setStoragePath] = useState('');
+  const [mime, setMime] = useState('');
+  const [width, setWidth] = useState(0);
+  const [height, setHeight] = useState(0);
+  const [durationSec, setDurationSec] = useState(0);
   const [regionId, setRegionId] = useState(defaultRegionId || 'nacional');
   const [packageId, setPackageId] = useState<PromoPackageId>('3d');
-  const [packages, setPackages] = useState<PromoPackageOption[]>([...PROMO_PACKAGES]);
+  const [packages, setPackages] = useState<ServerPackage[]>(
+    PROMO_PACKAGES.map((p) => ({
+      id: p.id,
+      days: p.days,
+      label: p.label,
+      staticCop: p.staticCop,
+      animatedCop: p.animatedCop,
+    })),
+  );
+  const [quote, setQuote] = useState<Quote | null>(null);
   const [wompiReady, setWompiReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [quoting, setQuoting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   const selectedPackage = useMemo(
@@ -52,11 +119,15 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     [packageId, packages],
   );
   const days = selectedPackage.days;
-  const perDay = useMemo(() => promoCopPerDay(days), [days]);
-  const totalCop = useMemo(() => selectedPackage.priceCop, [selectedPackage]);
+  const format: PromoBannerFormat = quote?.format || 'static';
+  const totalCop = quote?.totalCop ?? promoPriceCop(days, format);
+  const perDay = promoCopPerDay(days, format);
 
   useEffect(() => {
-    void api<{ packages: PromoPackageOption[]; wompiConfigured?: boolean }>('/api/ads/packages')
+    void api<{
+      packages: ServerPackage[];
+      wompiConfigured?: boolean;
+    }>('/api/ads/packages')
       .then((res) => {
         if (res.packages?.length) setPackages(res.packages);
         setWompiReady(Boolean(res.wompiConfigured));
@@ -81,44 +152,74 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     }
   }, [kind, profile?.handle]);
 
-  function readImageDimensions(file: File) {
-    return new Promise<{ width: number; height: number }>((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve({ width: img.naturalWidth, height: img.naturalHeight });
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('No se pudieron leer las dimensiones de la imagen'));
-      };
-      img.src = url;
-    });
-  }
+  useEffect(() => {
+    if (!profile) return;
+    let cancelled = false;
+    setQuoting(true);
+    const timer = window.setTimeout(() => {
+      void api<{ quote: Quote }>('/api/ads/quotes', {
+        method: 'POST',
+        body: JSON.stringify({
+          packageId,
+          days,
+          regionId,
+          regionLabel: regionLabel(regionId),
+          kind,
+          title,
+          linkUrl,
+          mediaUrl,
+          storagePath,
+          mime,
+          width,
+          height,
+          durationSec,
+        }),
+      })
+        .then((res) => {
+          if (!cancelled) {
+            setQuote(res.quote);
+            setNote(res.quote.warning || null);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setQuote(null);
+            setNote(err instanceof Error ? err.message : 'No se pudo cotizar');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setQuoting(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [profile?.firebaseUid, packageId, days, regionId, kind, title, linkUrl, mediaUrl, storagePath, mime, width, height, durationSec]);
 
   async function onPickFile(file?: File | null) {
     if (!file || !profile) return;
     setBusy(true);
     setNote(null);
     try {
-      if (file.type.startsWith('image/')) {
-        const { width, height } = await readImageDimensions(file);
-        if (width !== PROMO_BANNER_WIDTH || height !== PROMO_BANNER_HEIGHT) {
-          throw new Error(
-            `El banner debe medir ${PROMO_BANNER_SIZE_LABEL} px (formato 3:1). Tu archivo es ${width} × ${height} px.`,
-          );
-        }
+      const isVideo =
+        file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name);
+      const meta = isVideo ? await readVideoMeta(file) : { ...(await readImageDimensions(file)), durationSec: 0 };
+      if (isVideo && meta.durationSec > PROMO_MAX_ANIMATED_SEC + 0.35) {
+        throw new Error(`La animación o video no puede superar ${PROMO_MAX_ANIMATED_SEC} s.`);
       }
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
-        reader.readAsDataURL(file);
-      });
-      const blob = await dataUrlToBlob(dataUrl);
-      const uploaded = await uploadUserMedia(profile.firebaseUid, blob, `promo-${Date.now()}`, 'public');
+      const uploaded = await uploadUserMedia(
+        profile.firebaseUid,
+        file,
+        `promo-${Date.now()}-${file.name || 'banner'}`,
+        'public',
+      );
       setMediaUrl(uploaded.url);
+      setStoragePath(uploaded.storagePath);
+      setMime(file.type || '');
+      setWidth(meta.width);
+      setHeight(meta.height);
+      setDurationSec(meta.durationSec);
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo subir el medio');
     } finally {
@@ -126,46 +227,20 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     }
   }
 
-  async function activateAfterPay(hours: number, amountPaidCop: number) {
-    if (!profile) return;
-    const cleanTitle = title.trim() || PROMO_KINDS.find((k) => k.id === kind)?.label || 'Promoción';
-    await createPromotion({
-      kind,
-      title: cleanTitle,
-      mediaUrl: mediaUrl.trim(),
-      linkUrl: linkUrl.trim() || `/u/${encodeURIComponent(profile.handle)}`,
-      regionId,
-      regionLabel: regionLabel(regionId),
-      ownerUid: profile.firebaseUid,
-      ownerUsername: profile.handle,
-      ownerDisplayName: profile.displayName || profile.handle,
-      ownerAvatarUrl: profile.avatarUrl,
-      coinsPaid: amountPaidCop,
-      hours,
-    });
-  }
-
   async function simulatePay() {
-    if (!profile) return;
+    if (!profile || !quote) return;
     setBusy(true);
     setNote(null);
     try {
-      let hours = days * 24;
-      let amountPaidCop = totalCop;
-      try {
-        const paid = await api<{ hours: number; amountPaidCop: number }>('/api/ads/simulate', {
-          method: 'POST',
-          body: JSON.stringify({ packageId, days, regionId }),
-        });
-        hours = paid.hours || hours;
-        amountPaidCop = paid.amountPaidCop || amountPaidCop;
-      } catch {
-        // Sin API: activar directo en Firestore para pruebas.
-      }
-      await activateAfterPay(hours, amountPaidCop);
-      setNote('Publicidad activada (pago simulado).');
+      const paid = await api<{ hours: number; amountPaidCop: number }>('/api/ads/simulate', {
+        method: 'POST',
+        body: JSON.stringify({ quoteId: quote.quoteId }),
+      });
+      setNote(
+        `Publicidad de prueba activada (${formatPromoCop(paid.amountPaidCop || quote.totalCop)}). En compras reales el anuncio espera revisión.`,
+      );
       onDone?.();
-      window.setTimeout(onClose, 1200);
+      window.setTimeout(onClose, 1400);
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo activar la publicidad');
     } finally {
@@ -174,49 +249,55 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
   }
 
   async function payWithWompi() {
-    if (!profile) return;
+    if (!profile || !quote) return;
     setBusy(true);
     setNote(null);
     try {
-      const order = await api<
-        WompiOrder & { days: number; hours: number; totalCop: number }
-      >('/api/ads/create-order', {
-        method: 'POST',
-        body: JSON.stringify({ packageId, days, regionId }),
-      });
+      const order = await api<WompiOrder & { mock?: boolean; hours: number; totalCop: number }>(
+        '/api/ads/create-order',
+        {
+          method: 'POST',
+          body: JSON.stringify({ quoteId: quote.quoteId }),
+        },
+      );
+      if (order.mock) {
+        setNote('Wompi no está configurado. Usa la activación de prueba.');
+        setBusy(false);
+        return;
+      }
 
       openWompiWidget(order, (result) => {
         const status = result.transaction?.status;
-        if (status === 'APPROVED') {
-          void api<{ days: number; hours: number; amountPaidCop: number }>('/api/ads/complete', {
-            method: 'POST',
-            body: JSON.stringify({ reference: order.reference }),
-          })
-            .then(async (paid) => {
-              await activateAfterPay(paid.hours || order.hours, paid.amountPaidCop || order.totalCop);
-              setNote('Pago aprobado. Tu publicidad ya está activa.');
+        const transactionId = result.transaction?.id;
+        void api('/api/ads/complete', {
+          method: 'POST',
+          body: JSON.stringify({ reference: order.reference, transactionId }),
+        })
+          .then((paid) => {
+            const paymentStatus = String((paid as { paymentStatus?: string }).paymentStatus || '');
+            if (paymentStatus === 'paid') {
+              setNote('Pago confirmado. Tu banner queda en revisión antes de publicarse. El tiempo contratado no corre todavía.');
               onDone?.();
-              window.setTimeout(onClose, 1200);
-            })
-            .catch((err) => {
-              setNote(err instanceof Error ? err.message : 'Pago ok, pero no se activó el anuncio');
-            })
-            .finally(() => setBusy(false));
-          return;
-        }
-        if (status === 'PENDING') {
-          setNote('Pago en proceso. Cuando Wompi confirme, vuelve a publicar o contacta soporte.');
-          setBusy(false);
-          return;
-        }
-        setNote(status ? `El pago quedó en estado ${status}.` : 'Pago cancelado.');
-        setBusy(false);
+              return;
+            }
+            if (status === 'PENDING' || paymentStatus === 'pending') {
+              setNote('Pago en proceso. La campaña se activará cuando Wompi confirme, no por esta pantalla.');
+              return;
+            }
+            setNote(status ? `El pago quedó en estado ${status}.` : 'Pago no confirmado.');
+          })
+          .catch((err) => {
+            setNote(err instanceof Error ? err.message : 'No se pudo consultar el pago');
+          })
+          .finally(() => setBusy(false));
       });
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo iniciar el pago');
       setBusy(false);
     }
   }
+
+  const payLocked = busy || quoting || !quote || !profile;
 
   return (
     <div
@@ -233,7 +314,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
             </p>
             <h2 className="mt-1 text-lg font-bold text-white">Configurar y comprar publicidad</h2>
             <p className="mt-1 text-xs text-zinc-400">
-              Tu anuncio aparece en el panel Publicidad. Por ahora puedes activarlo en modo prueba sin Wompi.
+              Precio fijo por días. El formato lo decide el archivo. La compra entra a la rotación, no es exclusiva.
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-zinc-500 hover:text-white" aria-label="Cerrar">
@@ -293,11 +374,47 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
             </select>
           </label>
 
+          <div className="rounded-xl border border-amber-400/25 bg-zinc-900/70 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-200">
+              Dimensiones maestras
+            </p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {PROMO_BANNER_SIZE_LABEL} px <span className="text-zinc-400">(formato 3:1 · máx. {PROMO_MAX_ANIMATED_SEC} s)</span>
+            </p>
+            <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 bg-zinc-950/60 px-3 py-3 text-sm text-zinc-300">
+              <Upload size={16} />
+              {mediaUrl ? 'Cambiar banner' : 'Subir PNG, JPG, WebP, GIF, MP4 o WebM'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,.png,.jpg,.jpeg,.webp,.gif,.mp4,.webm"
+                className="hidden"
+                onChange={(e) => void onPickFile(e.target.files?.[0])}
+              />
+            </label>
+          </div>
+
+          {mediaUrl ? (
+            <div className="overflow-hidden rounded-xl border border-white/10">
+              <p className="bg-zinc-900/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Vista previa · {format === 'animated' ? 'Animado / video' : 'Estático'}
+              </p>
+              {isPromotionVideoUrl(mediaUrl) ? (
+                <video src={mediaUrl} className="aspect-[3/1] w-full bg-black object-contain" muted playsInline controls />
+              ) : (
+                <img src={mediaUrl} alt="" className="aspect-[3/1] w-full bg-black object-contain" />
+              )}
+            </div>
+          ) : null}
+
           <div className="rounded-2xl border border-white/10 bg-zinc-900/80 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Paquete</p>
+            <p className="mt-1 text-[11px] text-zinc-400">
+              Formato detectado: <span className="font-semibold text-white">{format === 'animated' ? 'animado / video (+25 %)' : 'estático'}</span>
+            </p>
             <div className="mt-2 grid gap-2">
               {packages.map((pkg) => {
                 const active = pkg.id === packageId;
+                const price = format === 'animated' ? pkg.animatedCop : pkg.staticCop;
                 return (
                   <button
                     key={pkg.id}
@@ -312,68 +429,34 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
                     <span>
                       <span className="block text-sm font-bold text-white">{pkg.label}</span>
                       <span className="block text-[10px] text-zinc-500">
-                        {formatPromoCop(Math.round(pkg.priceCop / pkg.days))} / día
+                        {formatPromoCop(price / pkg.days)} / día (informativo)
                       </span>
                     </span>
-                    <span className="text-sm font-bold text-amber-300">{formatPromoCop(pkg.priceCop)}</span>
+                    <span className="text-sm font-bold text-amber-300">{formatPromoCop(price)}</span>
                   </button>
                 );
               })}
             </div>
             <div className="mt-3 flex items-end justify-between gap-2 border-t border-white/5 pt-3">
               <div>
-                <p className="text-[11px] text-zinc-500">Duración seleccionada</p>
+                <p className="text-[11px] text-zinc-500">Duración contratada</p>
                 <p className="text-lg font-black text-white">
-                  {days} {days === 1 ? 'día' : 'días'}
+                  {days} {days === 1 ? 'día' : 'días'} · {days * 24} h
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-[11px] text-zinc-500">{formatPromoCop(perDay)} / día</p>
-                <p className="text-lg font-bold text-amber-300">{formatPromoCop(totalCop)}</p>
+                <p className="text-lg font-bold text-amber-300">{quoting ? 'Cotizando…' : formatPromoCop(totalCop)}</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-amber-400/25 bg-zinc-900/70 p-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-200">
-              Dimensiones obligatorias
-            </p>
-            <p className="mt-1 text-sm font-semibold text-white">
-              {PROMO_BANNER_SIZE_LABEL} px <span className="text-zinc-400">(formato 3:1)</span>
-            </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
-              Usa esta medida exacta para tu imagen o video banner. Así se verá completo en el panel y al
-              expandir.
-            </p>
-            <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 bg-zinc-950/60 px-3 py-3 text-sm text-zinc-300">
-              <Upload size={16} />
-              {mediaUrl ? 'Cambiar imagen / video' : 'Subir imagen o video (opcional)'}
-              <input
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={(e) => void onPickFile(e.target.files?.[0])}
-              />
-            </label>
-          </div>
-
-          {mediaUrl ? (
-            <div className="mt-3 overflow-hidden rounded-xl border border-white/10">
-              <p className="bg-zinc-900/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                Vista previa del banner · {PROMO_BANNER_SIZE_LABEL} px
-              </p>
-              {/\.(mp4|webm)(\?|$)/i.test(mediaUrl) ? (
-                <video src={mediaUrl} className="aspect-[3/1] w-full object-contain bg-black" muted playsInline controls />
-              ) : (
-                <img src={mediaUrl} alt="" className="aspect-[3/1] w-full object-contain bg-black" />
-              )}
-            </div>
-          ) : null}
-
           {note ? (
             <p
               className={`text-sm ${
-                note.includes('aprobado') || note.includes('activa') ? 'text-emerald-400' : 'text-fuchsia-400'
+                note.includes('confirmado') || note.includes('activada') || note.includes('prueba')
+                  ? 'text-emerald-400'
+                  : 'text-fuchsia-400'
               }`}
             >
               {note}
@@ -382,28 +465,26 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
 
           <button
             type="button"
-            disabled={busy || !profile}
+            disabled={payLocked}
             onClick={() => void simulatePay()}
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-4 text-sm font-bold text-zinc-950 disabled:opacity-60"
           >
             <Radio size={16} />
-            {busy ? 'Activando…' : `Activar publicidad (prueba) · ${formatPromoCop(totalCop)}`}
+            {busy ? 'Activando…' : `Activar de prueba · ${formatPromoCop(totalCop)}`}
           </button>
           {wompiReady ? (
             <button
               type="button"
-              disabled={busy || !profile}
+              disabled={payLocked}
               onClick={() => void payWithWompi()}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-zinc-900 px-4 text-sm font-semibold text-white disabled:opacity-60"
             >
-              Pagar con Wompi
+              Pagar con Wompi · {formatPromoCop(totalCop)}
             </button>
           ) : null}
           <p className="flex items-start gap-1.5 text-[11px] text-zinc-500">
             <MapPin size={12} className="mt-0.5 shrink-0" />
-            {wompiReady
-              ? 'Puedes probar con activación simulada o pagar con Wompi cuando quieras.'
-              : 'Modo prueba: el pago está simulado hasta conectar Wompi. Tu anuncio se publica al instante.'}
+            El recargo animado se aplica una sola vez. Una pantalla de Wompi no publica el anuncio: espera confirmación y revisión.
           </p>
         </div>
       </div>

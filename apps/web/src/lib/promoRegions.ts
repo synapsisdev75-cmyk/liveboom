@@ -36,17 +36,22 @@ export type PromoKind = (typeof PROMO_KINDS)[number]['id'];
 
 /** Paquetes de publicidad (duración fija + precio COP). Mantener sincronizado con `backend/src/lib/promoPackages.js`. */
 export const PROMO_PACKAGES = [
-  { id: '1d', days: 1, priceCop: 19_900, label: '1 día' },
-  { id: '3d', days: 3, priceCop: 49_900, label: '3 días' },
-  { id: '7d', days: 7, priceCop: 99_900, label: '7 días' },
-  { id: '15d', days: 15, priceCop: 179_900, label: '15 días' },
-  { id: '30d', days: 30, priceCop: 299_900, label: '30 días' },
+  { id: '1d', days: 1, staticCop: 24_900, animatedCop: 31_125, label: '1 día' },
+  { id: '3d', days: 3, staticCop: 59_900, animatedCop: 74_875, label: '3 días' },
+  { id: '7d', days: 7, staticCop: 119_900, animatedCop: 149_875, label: '7 días' },
+  { id: '15d', days: 15, staticCop: 219_900, animatedCop: 274_875, label: '15 días' },
+  { id: '30d', days: 30, staticCop: 399_900, animatedCop: 499_875, label: '30 días' },
 ] as const;
+
+export const PROMO_ANIMATED_MONTHLY_REF = 499_900;
+
+export type PromoBannerFormat = 'static' | 'animated';
 
 /** Banner publicitario 3:1 — referencia obligatoria para imagen y video. */
 export const PROMO_BANNER_WIDTH = 2172;
 export const PROMO_BANNER_HEIGHT = 724;
 export const PROMO_BANNER_SIZE_LABEL = `${PROMO_BANNER_WIDTH} × ${PROMO_BANNER_HEIGHT}`;
+export const PROMO_MAX_ANIMATED_SEC = 20;
 
 export type PromoPackageId = (typeof PROMO_PACKAGES)[number]['id'];
 
@@ -62,19 +67,25 @@ export function promoPackageById(id: string) {
   return PROMO_PACKAGES.find((p) => p.id === id) ?? PROMO_PACKAGES[0];
 }
 
-/** Precio efectivo por día del paquete seleccionado (solo informativo). */
-export function promoCopPerDay(days: number, _regionId?: string) {
+export function promoPriceCop(days: number, format: PromoBannerFormat = 'static') {
   const pkg = promoPackageByDays(days);
-  return Math.round(pkg.priceCop / pkg.days);
+  return format === 'animated' ? pkg.animatedCop : pkg.staticCop;
+}
+
+/** Precio efectivo por día del paquete seleccionado (solo informativo). */
+export function promoCopPerDay(days: number, format: PromoBannerFormat = 'static') {
+  const pkg = promoPackageByDays(days);
+  const total = promoPriceCop(days, format);
+  return total / pkg.days;
 }
 
 /** Centavos COP para Wompi (1 COP = 100 cents). */
-export function promoAmountInCents(days: number, _regionId?: string) {
-  return promoPackageByDays(days).priceCop * 100;
+export function promoAmountInCents(days: number, format: PromoBannerFormat = 'static') {
+  return promoPriceCop(days, format) * 100;
 }
 
-export function promoTotalCop(days: number, _regionId?: string) {
-  return promoPackageByDays(days).priceCop;
+export function promoTotalCop(days: number, format: PromoBannerFormat = 'static') {
+  return promoPriceCop(days, format);
 }
 
 export function formatPromoCop(amount: number) {

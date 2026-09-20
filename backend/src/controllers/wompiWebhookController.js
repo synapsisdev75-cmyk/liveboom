@@ -57,6 +57,18 @@ async function handleWompiWebhook(req, res) {
     }
 
     if (firestoreConfigured()) {
+      const { trySettlePromoTransaction } = require('../lib/promoCampaigns');
+      const promoResult = await trySettlePromoTransaction(txn);
+      if (promoResult?.handled) {
+        res.status(200).json({
+          ok: !promoResult.error,
+          source: 'promo',
+          duplicate: Boolean(promoResult.duplicate),
+          pending: Boolean(promoResult.pending),
+          error: promoResult.error || null,
+        });
+        return;
+      }
       const result = await settleWompiTransaction(txn, { source: 'webhook' });
       if (result?.error === 'AMOUNT_MISMATCH' || result?.error === 'CURRENCY_MISMATCH' || result?.error === 'REFERENCE_MISMATCH' || result?.error === 'PACKAGE_TAMPERED') {
         console.error('[webhooks/wompi] validación', result.error, txn.reference);
