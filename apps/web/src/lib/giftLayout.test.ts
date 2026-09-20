@@ -3,18 +3,24 @@
  * Ejecutar: npx tsx apps/web/src/lib/giftLayout.test.ts
  */
 import {
+  copyGiftLayoutActiveToDevices,
   copyGiftLayoutFormat,
   copyGiftLayoutToAllDevices,
   defaultGiftLayoutSlot,
   giftLayoutDeviceFromViewport,
   giftLayoutMediaStyle,
+  giftLayoutVariantFor,
   giftLiveFormatFromAspect,
   giftPlaybackLiveFormat,
   isGiftLayoutBleed,
   normalizeGiftLayout,
   patchGiftLayout,
+  patchGiftLayoutCell,
+  resetGiftLayoutCell,
+  resolveGiftLayoutCell,
   resolveGiftLayoutSlot,
   serializeGiftLayout,
+  setGiftLayoutPreferredArea,
 } from './giftLayout.ts';
 
 function assert(cond: unknown, msg: string) {
@@ -121,6 +127,128 @@ function testScaleClamp() {
   almost(low.scale, 0.2, 'min 20%');
 }
 
+function testVariantsIndependent() {
+  let layout = normalizeGiftLayout(undefined, 0.72);
+  layout = patchGiftLayoutCell(
+    layout,
+    { variant: 'chat', device: 'desktop', area: 'viewport' },
+    { x: 12, y: 80, scale: 0.4 },
+  );
+  layout = patchGiftLayoutCell(
+    layout,
+    { variant: 'live_9_16', device: 'desktop', area: 'content' },
+    { x: 88, y: 18, scale: 1.1 },
+  );
+  layout = patchGiftLayoutCell(
+    layout,
+    { variant: 'publicaciones', device: 'mobile', area: 'content' },
+    { x: 30, y: 60, scale: 0.55 },
+  );
+  const chat = resolveGiftLayoutCell({
+    layout,
+    variant: 'chat',
+    device: 'desktop',
+    area: 'viewport',
+  });
+  const live = resolveGiftLayoutCell({
+    layout,
+    variant: 'live_9_16',
+    device: 'desktop',
+    area: 'content',
+  });
+  const post = resolveGiftLayoutCell({
+    layout,
+    variant: 'publicaciones',
+    device: 'mobile',
+    area: 'content',
+  });
+  almost(chat.slot.x, 12, 'chat x');
+  almost(live.slot.x, 88, 'live x independent');
+  almost(post.slot.scale, 0.55, 'post scale independent');
+  assert(chat.source === 'exact', 'chat exact');
+  assert(giftLayoutVariantFor('live', { liveFormat: 'portrait916' }) === 'live_9_16', 'live variant');
+  assert(giftLayoutVariantFor('call', { callKind: 'voice' }) === 'llamadas_voz', 'voice variant');
+}
+
+function testPreferredAreaKeepsBoth() {
+  let layout = normalizeGiftLayout(undefined, 0.72);
+  layout = patchGiftLayoutCell(
+    layout,
+    { variant: 'live_9_16', device: 'desktop', area: 'content' },
+    { x: 20, y: 20, scale: 0.5 },
+  );
+  layout = setGiftLayoutPreferredArea(layout, {
+    variant: 'live_9_16',
+    device: 'desktop',
+    area: 'viewport',
+  });
+  layout = patchGiftLayoutCell(
+    layout,
+    { variant: 'live_9_16', device: 'desktop', area: 'viewport' },
+    { x: 90, y: 10, scale: 0.9 },
+  );
+  const content = resolveGiftLayoutCell({
+    layout,
+    variant: 'live_9_16',
+    device: 'desktop',
+    area: 'content',
+  });
+  const viewport = resolveGiftLayoutCell({
+    layout,
+    variant: 'live_9_16',
+    device: 'desktop',
+    area: 'viewport',
+  });
+  almost(content.slot.x, 20, 'content kept');
+  almost(viewport.slot.x, 90, 'viewport independent');
+  assert(viewport.area === 'viewport', 'preferred viewport');
+}
+
+function testResetAndCopyDoNotLeak() {
+  let layout = normalizeGiftLayout(undefined, 0.72);
+  layout = patchGiftLayoutCell(
+    layout,
+    { variant: 'chat', device: 'mobile', area: 'content' },
+    { x: 15, scale: 0.8 },
+  );
+  layout = patchGiftLayoutCell(
+    layout,
+    { variant: 'boom_clip', device: 'mobile', area: 'content' },
+    { x: 70, scale: 1.2 },
+  );
+  layout = copyGiftLayoutActiveToDevices(layout, 'chat', 'mobile');
+  almost(layout.variants?.chat?.devices?.desktop?.areas.content?.x || 0, 15, 'copy chat to desktop');
+  almost(layout.variants?.boom_clip?.devices?.mobile?.areas.content?.x || 0, 70, 'boom clip untouched');
+  layout = resetGiftLayoutCell(layout, { variant: 'chat', device: 'desktop', area: 'content' });
+  const after = resolveGiftLayoutCell({
+    layout,
+    variant: 'chat',
+    device: 'desktop',
+    area: 'content',
+  });
+  assert(after.source !== 'exact', 'desktop chat reset');
+  almost(layout.variants?.chat?.devices?.mobile?.areas.content?.x || 0, 15, 'mobile chat kept');
+}
+
+function testLegacyRoundtripKeepsVariants() {
+  let layout = patchGiftLayoutCell(
+    undefined,
+    { variant: 'flash_boom', device: 'tablet', area: 'viewport' },
+    { y: 22, scale: 0.66, fit: 'width' },
+  );
+  const saved = serializeGiftLayout(layout);
+  const loaded = normalizeGiftLayout(saved);
+  almost(loaded.variants?.flash_boom?.devices?.tablet?.areas.viewport?.y || 0, 22, 'variant persisted');
+  const slot = resolveGiftLayoutSlot({
+    layout: loaded,
+    variant: 'flash_boom',
+    device: 'tablet',
+    area: 'viewport',
+  });
+  almost(slot.y, 22, 'resolve after load');
+  assert(slot.fit === 'width', 'fit persisted');
+}
+
 testDefaults();
 testIndependentSlots();
 testCopy();
@@ -129,4 +257,8 @@ testResolveAndBleed();
 testContainDoesNotStretch();
 testRoundtrip();
 testScaleClamp();
+testVariantsIndependent();
+testPreferredAreaKeepsBoth();
+testResetAndCopyDoNotLeak();
+testLegacyRoundtripKeepsVariants();
 console.log('giftLayout tests ok');

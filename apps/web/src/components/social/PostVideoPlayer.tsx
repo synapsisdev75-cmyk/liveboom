@@ -897,6 +897,7 @@ export function PostVideoPlayer({
               onGiftsOpenChange={setGiftsOpen}
               anchor="media"
               layout={expandedRailLayout}
+              giftLayoutContext={storyMode ? 'flash_boom' : reelFeed ? 'boom_clip' : 'publicaciones'}
             />
           }
         >

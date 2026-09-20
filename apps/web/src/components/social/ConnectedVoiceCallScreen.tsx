@@ -181,7 +181,11 @@ export function ConnectedVoiceCallScreen({
           <button
             type="button"
             className="lb-video-connected-btn is-gift"
-            onClick={() => window.dispatchEvent(new CustomEvent('liveboom:open-chat-gifts'))}
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('liveboom:open-chat-gifts', { detail: { layoutContext: 'llamadas_voz' } }),
+              )
+            }
             aria-label="Regalos"
           >
             <Gift size={18} />

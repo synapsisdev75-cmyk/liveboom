@@ -8,10 +8,14 @@ import { isGlobalBoomAnimation, showBoomAnimation, boomAnimationEndedEvent } fro
 import {
   giftLayoutDeviceFromViewport,
   giftLayoutMediaStyle,
+  giftLayoutVariantFor,
+  giftLiveFormatFromAspect,
   giftPlaybackLiveFormat,
   isGiftLayoutBleed,
+  isGiftLayoutVariantId,
   resolveGiftLayoutSlot,
   type GiftLayoutSlot,
+  type GiftLayoutVariantId,
 } from '../../lib/giftLayout';
 import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
@@ -354,13 +358,15 @@ type FloatingGiftProps = {
   /** Menos partículas/FX para espectadores bajo carga. */
   lite?: boolean;
   combo?: number;
-  /** Mensajes / feed: llena el viewport como en el celular. LIVE sigue usando animScale. */
+  /** Mensajes / feed: si no hay layoutContext, llena el viewport como antes. */
   fillViewport?: boolean;
   /** Formato real del LIVE activo (9:16 o 16:9). */
   liveAspect?: LiveAspectRatio;
+  /** Variante de colocación publicada (LIVE, chat, clip, etc.). */
+  layoutContext?: GiftLayoutVariantId;
 };
 
-export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo, fillViewport = false, liveAspect: _liveAspect }: FloatingGiftProps) {
+export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, combo, fillViewport = false, liveAspect, layoutContext }: FloatingGiftProps) {
   const gift = findLiveGift(giftId);
   const level = (gift?.level || 1) as GiftLevel;
   const fx = GIFT_LEVEL_FX[level];
@@ -393,31 +399,22 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
 
   if (globalAnim) return null;
 
-  if (fillViewport) {
-    if (gift?.video) {
-      return (
-        <AnimatePresence>
-          <GiftVideoBurst
-            src={gift.video}
-            poster={gift.image}
-            senderName={senderName}
-            combo={combo}
-            animScale={clampGiftAnimScale(gift.animScale, level)}
-          fillViewport
-          volume={gift.media?.volume ?? 1}
-          durationMs={giftPlaybackDurationMs(gift.media)}
-          onComplete={onComplete}
-          />
-        </AnimatePresence>
-      );
-    }
-  } else if (gift?.video || gift?.image) {
-    const device = giftLayoutDeviceFromViewport();
+  const device = giftLayoutDeviceFromViewport();
+  const variant =
+    layoutContext && isGiftLayoutVariantId(layoutContext)
+      ? layoutContext
+      : liveAspect
+        ? giftLayoutVariantFor('live', { liveAspect })
+        : undefined;
+  const useLayout = Boolean(variant) || !fillViewport;
+
+  if (useLayout && (gift?.video || gift?.image)) {
     const slot = resolveGiftLayoutSlot({
       layout: gift.giftLayout,
       animScale: gift.animScale,
       device,
-      liveFormat: giftPlaybackLiveFormat(device),
+      liveFormat: liveAspect ? giftLiveFormatFromAspect(liveAspect) : giftPlaybackLiveFormat(device),
+      variant,
     });
     const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
     const burst = gift.video ? (
@@ -453,6 +450,24 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       return createPortal(burst, document.body);
     }
     return burst;
+  }
+
+  if (fillViewport && gift?.video) {
+    return (
+      <AnimatePresence>
+        <GiftVideoBurst
+          src={gift.video}
+          poster={gift.image}
+          senderName={senderName}
+          combo={combo}
+          animScale={clampGiftAnimScale(gift.animScale, level)}
+          fillViewport
+          volume={gift.media?.volume ?? 1}
+          durationMs={giftPlaybackDurationMs(gift.media)}
+          onComplete={onComplete}
+        />
+      </AnimatePresence>
+    );
   }
 
   return (

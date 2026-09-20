@@ -1008,8 +1008,12 @@ async function trySpeakerSink(room: ReturnType<typeof useMaybeRoomContext>) {
   }
 }
 
-function openCallGifts() {
-  window.dispatchEvent(new CustomEvent('liveboom:open-chat-gifts'));
+function openCallGifts(kind: 'voice' | 'video' = 'video') {
+  window.dispatchEvent(
+    new CustomEvent('liveboom:open-chat-gifts', {
+      detail: { layoutContext: kind === 'voice' ? 'llamadas_voz' : 'llamadas_video' },
+    }),
+  );
 }
 
 function cameraVideoConstraints(
@@ -1494,7 +1498,7 @@ export function CallInCallBar({
     <button
       type="button"
       className="lb-call-ctrl"
-      onClick={() => (onOpenGifts ? onOpenGifts() : openCallGifts())}
+      onClick={() => (onOpenGifts ? onOpenGifts() : openCallGifts(voiceUi ? 'voice' : 'video'))}
       aria-label="Regalos"
     >
       <Gift size={18} />

@@ -222,6 +222,7 @@ export function AdminCatalogPanel() {
   const [animProgress, setAnimProgress] = useState<Record<string, GiftAnimProgress | null>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>('mobile');
+  const [previewPlacement, setPreviewPlacement] = useState<GiftPlacement>('live');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [bgBusy, setBgBusy] = useState(false);
@@ -885,25 +886,50 @@ export function AdminCatalogPanel() {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Ubicaciones donde aparece
               </p>
+              <p className="mb-2 text-[10px] text-zinc-500">
+                La casilla habilita el regalo. El nombre abre la previsualización de esa pantalla.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {ALL_GIFT_PLACEMENTS.map((placement) => {
                   const on = gift.placements.includes(placement);
+                  const previewing = previewPlacement === placement;
                   return (
-                    <button
+                    <div
                       key={placement}
-                      type="button"
-                      onClick={() => togglePlacement(gift.id, placement)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                        on
-                          ? 'bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-400/40'
-                          : 'bg-zinc-800 text-zinc-500'
+                      className={`flex min-h-11 items-center gap-1.5 rounded-full px-2 py-1 ${
+                        previewing
+                          ? 'bg-cyan-500/20 ring-1 ring-cyan-400/50'
+                          : on
+                            ? 'bg-zinc-800 ring-1 ring-white/10'
+                            : 'bg-zinc-900'
                       }`}
                     >
-                      {PLACEMENT_LABELS[placement]}
-                    </button>
+                      <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-cyan-400"
+                          checked={on}
+                          onChange={() => togglePlacement(gift.id, placement)}
+                          aria-label={`Habilitar ${PLACEMENT_LABELS[placement]}`}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewPlacement(placement)}
+                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                          previewing ? 'text-cyan-100' : on ? 'text-zinc-100' : 'text-zinc-500'
+                        }`}
+                      >
+                        {PLACEMENT_LABELS[placement]}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
+              <p className="mt-2 text-[10px] text-zinc-400">
+                Previsualizando {PLACEMENT_LABELS[previewPlacement]}
+                {gift.placements.includes(previewPlacement) ? '' : ' · no habilitada aún'}
+              </p>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1030,6 +1056,7 @@ export function AdminCatalogPanel() {
             <GiftCatalogPreview
               gift={gift}
               device={previewDevice}
+              previewPlacement={previewPlacement}
               onDeviceChange={setPreviewDevice}
               onAnimScaleChange={(scale) => patchGift(gift.id, { animScale: scale })}
               onLayoutChange={(giftLayout) => patchGift(gift.id, { giftLayout })}

@@ -469,7 +469,11 @@ export function VoiceCallMiniBar({
         type="button"
         className="lb-voice-mini__gift"
         data-no-drag
-        onClick={() => window.dispatchEvent(new CustomEvent('liveboom:open-chat-gifts'))}
+        onClick={() =>
+          window.dispatchEvent(
+            new CustomEvent('liveboom:open-chat-gifts', { detail: { layoutContext: 'llamadas_voz' } }),
+          )
+        }
         aria-label="Regalos"
       >
         <Gift size={14} />

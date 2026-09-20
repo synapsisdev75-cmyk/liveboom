@@ -385,6 +385,7 @@ export function PostPhotoViewer({
                 onGiftsOpenChange={setGiftsOpen}
                 anchor="media"
                 layout={useLandscapeAside ? 'aside' : 'corner'}
+                giftLayoutContext={storyMode ? 'flash_boom' : 'publicaciones'}
               />
             ) : null
           }

@@ -2,18 +2,23 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { EditableGift, GiftPlacement } from '../../lib/catalogConfigFirestore';
 import { clampGiftAnimScale } from '../../lib/liveboomGifts';
 import {
+  copyGiftLayoutActiveToDevices,
   copyGiftLayoutFormat,
-  copyGiftLayoutToAllDevices,
-  defaultGiftLayoutSlot,
+  GIFT_LAYOUT_VARIANT_LABEL,
+  giftLayoutVariantFor,
   normalizeGiftLayout,
-  patchGiftLayout,
-  type GiftDisplayArea,
+  patchGiftLayoutCell,
+  resetGiftLayoutCell,
+  resolveGiftLayoutCell,
+  setGiftLayoutPreferredArea,
   type GiftFitMode,
+  type GiftLayoutArea,
   type GiftLayoutMap,
   type GiftLiveFormat,
 } from '../../lib/giftLayout';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 import { clampGiftVolume, giftPlaybackSrc, type GiftMediaInfo } from '../../lib/giftMedia';
+import { GiftContextStage } from './GiftContextStage';
 
 const PLACEMENT_SHORT: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -51,33 +56,6 @@ function desktopCanvasSize(availableWidth: number, viewportHeight: number) {
   return { width, height };
 }
 
-/** En escritorio el lienzo editable llena el centro; el video 9:16/16:9 no se deforma. */
-function liveStageBoxStyle(device: PreviewDevice, is916: boolean): CSSProperties {
-  if (device === 'desktop') {
-    return { width: '100%', height: '100%' };
-  }
-  return {
-    aspectRatio: is916 ? '9 / 16' : '16 / 9',
-    width: is916 ? 'auto' : '100%',
-    height: is916 ? '100%' : 'auto',
-    maxWidth: '100%',
-    maxHeight: '100%',
-  };
-}
-
-function liveVideoMockStyle(device: PreviewDevice, is916: boolean): CSSProperties {
-  if (device !== 'desktop') {
-    return { width: '100%', height: '100%' };
-  }
-  return {
-    aspectRatio: is916 ? '9 / 16' : '16 / 9',
-    width: is916 ? 'auto' : '100%',
-    height: is916 ? '100%' : 'auto',
-    maxWidth: '100%',
-    maxHeight: '100%',
-  };
-}
-
 const BACKDROP_META: Record<PreviewBackdrop, { label: string; style: CSSProperties }> = {
   checker: {
     label: 'Cuadriculado',
@@ -104,6 +82,7 @@ const FIT_LABELS: Record<GiftFitMode, string> = {
 type Props = {
   gift: EditableGift;
   device: PreviewDevice;
+  previewPlacement: GiftPlacement;
   onDeviceChange: (device: PreviewDevice) => void;
   onAnimScaleChange?: (scale: number) => void;
   onLayoutChange?: (layout: GiftLayoutMap) => void;
@@ -162,6 +141,7 @@ function Chip({
 export function GiftCatalogPreview({
   gift,
   device,
+  previewPlacement,
   onDeviceChange,
   onAnimScaleChange,
   onLayoutChange,
@@ -170,9 +150,16 @@ export function GiftCatalogPreview({
   const [liveFormat, setLiveFormat] = useState<GiftLiveFormat>(
     device === 'desktop' ? 'landscape169' : 'portrait916',
   );
+  const [callKind, setCallKind] = useState<'voice' | 'video'>('video');
   const shellRef = useRef<HTMLDivElement>(null);
   const [shellW, setShellW] = useState(0);
-  const meta = previewFrame(device, liveFormat);
+  const frameFormat =
+    previewPlacement === 'live'
+      ? liveFormat
+      : device === 'desktop'
+        ? 'landscape169'
+        : 'portrait916';
+  const meta = previewFrame(device, frameFormat);
   const desktopSize = desktopCanvasSize(
     shellW || 720,
     typeof window === 'undefined' ? 720 : window.innerHeight,
@@ -190,7 +177,7 @@ export function GiftCatalogPreview({
   const isVideo = Boolean(videoSrc);
   const faceTop = faceTopPercent(gift);
   const faceSize = faceSizeRem(gift);
-  const [backdrop, setBackdrop] = useState<PreviewBackdrop>('checker');
+  const [backdrop, setBackdrop] = useState<PreviewBackdrop>('dark');
   const [cropMode, setCropMode] = useState(false);
   const [safeGuides, setSafeGuides] = useState(false);
   const [playToken, setPlayToken] = useState(0);
@@ -199,9 +186,27 @@ export function GiftCatalogPreview({
     () => normalizeGiftLayout(gift.giftLayout, gift.animScale),
     [gift.giftLayout, gift.animScale],
   );
-  const slot = layout[device][liveFormat];
+  const variant = giftLayoutVariantFor(previewPlacement, { liveFormat, callKind });
+  const resolved = resolveGiftLayoutCell({
+    layout,
+    animScale: gift.animScale,
+    variant,
+    device,
+    liveFormat: previewPlacement === 'live' ? liveFormat : undefined,
+  });
+  const slot = resolved.slot;
+  const area: GiftLayoutArea = resolved.area;
+  const globalArea = area === 'viewport';
   const is916 = liveFormat === 'portrait916';
-  const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
+  const enabledHere = gift.placements.includes(previewPlacement);
+  const sourceLabel =
+    resolved.source === 'exact'
+      ? 'Ajuste específico de esta combinación'
+      : resolved.source === 'legacy'
+        ? 'Usando el ajuste anterior del regalo (aún no hay uno propio)'
+        : resolved.source === 'variant' || resolved.source === 'area'
+          ? 'Usando valores heredados. Al mover el regalo se crea un ajuste propio.'
+          : 'Usando el valor predeterminado del sistema';
 
   useEffect(() => {
     if (device === 'mobile') setLiveFormat('portrait916');
@@ -223,13 +228,31 @@ export function GiftCatalogPreview({
 
   const commit = (next: GiftLayoutMap) => {
     onLayoutChange?.(next);
-    const current = next[device][liveFormat];
+    const current = resolveGiftLayoutCell({
+      layout: next,
+      animScale: gift.animScale,
+      variant,
+      device,
+      area,
+    }).slot;
     onAnimScaleChange?.(clampGiftAnimScale(Math.min(1, current.scale), gift.level));
   };
 
   const patchSlot = (partial: Partial<typeof slot>) => {
-    commit(patchGiftLayout(layout, device, liveFormat, partial, gift.animScale));
+    commit(patchGiftLayoutCell(layout, { variant, device, area }, partial, gift.animScale));
   };
+
+  const setArea = (nextArea: GiftLayoutArea) => {
+    commit(setGiftLayoutPreferredArea(layout, { variant, device, area: nextArea }, gift.animScale));
+  };
+
+  const areaContentLabel = previewPlacement === 'live' ? 'Dentro del LIVE' : 'Dentro del contenido';
+  const areaViewportLabel = 'Toda la pantalla';
+  const editingLine = `Editando: ${PLACEMENT_SHORT[previewPlacement]} · ${DEVICE_LABEL[device]}${
+    previewPlacement === 'live' ? ` · ${is916 ? '9:16' : '16:9'}` : ''
+  }${previewPlacement === 'call' ? ` · ${callKind === 'voice' ? 'Voz' : 'Video'}` : ''} · ${
+    globalArea ? areaViewportLabel : areaContentLabel
+  }`;
 
   return (
     <div className="space-y-3 rounded-xl border border-white/10 bg-black/40 p-3">
@@ -256,23 +279,51 @@ export function GiftCatalogPreview({
         </div>
       </div>
 
-      <div className="space-y-1">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-          Formato del LIVE
-        </p>
-        {device === 'mobile' ? (
-          <p className="text-xs text-zinc-400">Móvil (Android / iOS) usa 9:16.</p>
-        ) : (
+      <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+        <p className="text-[11px] font-semibold text-white">{editingLine}</p>
+        <p className="text-[10px] text-zinc-400">{sourceLabel}</p>
+        {!enabledHere ? (
+          <p className="mt-1 text-[10px] font-semibold text-amber-200">
+            Esta ubicación todavía no está habilitada para publicación.
+          </p>
+        ) : null}
+      </div>
+
+      {previewPlacement === 'live' ? (
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Formato del LIVE
+          </p>
+          {device === 'mobile' ? (
+            <p className="text-xs text-zinc-400">Móvil (Android / iOS) usa 9:16.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              <Chip tone="cyan" active={is916} onClick={() => setLiveFormat('portrait916')}>
+                Vertical 9:16
+              </Chip>
+              <Chip tone="cyan" active={!is916} onClick={() => setLiveFormat('landscape169')}>
+                Horizontal 16:9
+              </Chip>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {previewPlacement === 'call' ? (
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Tipo de llamada
+          </p>
           <div className="flex flex-wrap gap-1">
-            <Chip tone="cyan" active={is916} onClick={() => setLiveFormat('portrait916')}>
-              Vertical 9:16
+            <Chip tone="cyan" active={callKind === 'voice'} onClick={() => setCallKind('voice')}>
+              Voz
             </Chip>
-            <Chip tone="cyan" active={!is916} onClick={() => setLiveFormat('landscape169')}>
-              Horizontal 16:9
+            <Chip tone="cyan" active={callKind === 'video'} onClick={() => setCallKind('video')}>
+              Video
             </Chip>
           </div>
-        )}
-      </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
@@ -280,17 +331,11 @@ export function GiftCatalogPreview({
             Área de aparición
           </p>
           <div className="flex flex-wrap gap-1">
-            <Chip
-              active={!globalArea}
-              onClick={() => patchSlot({ displayArea: 'live' as GiftDisplayArea, fullscreenMode: 'none' })}
-            >
-              Dentro del LIVE
+            <Chip active={!globalArea} onClick={() => setArea('content')}>
+              {areaContentLabel}
             </Chip>
-            <Chip
-              active={globalArea}
-              onClick={() => patchSlot({ displayArea: 'global', fullscreenMode: 'global', fit: 'cover' })}
-            >
-              Toda la pantalla
+            <Chip active={globalArea} onClick={() => setArea('viewport')}>
+              {areaViewportLabel}
             </Chip>
           </div>
         </div>
@@ -327,7 +372,7 @@ export function GiftCatalogPreview({
           className="w-full accent-fuchsia-400"
         />
         <span className="block text-[10px] text-zinc-500">
-          20%–200% en {DEVICE_LABEL[device]} · {is916 ? '9:16' : '16:9'}. Ctrl + rueda para zoom.
+          20%–200% en {GIFT_LAYOUT_VARIANT_LABEL[variant]} · {DEVICE_LABEL[device]}. Ctrl + rueda para zoom.
         </span>
       </label>
 
@@ -432,15 +477,35 @@ export function GiftCatalogPreview({
         <Chip active={slot.fit === 'contain'} onClick={() => patchSlot({ fit: 'contain', fullscreenMode: 'none' })}>
           Ajustar
         </Chip>
+        {previewPlacement === 'live' ? (
+          <Chip
+            active={!globalArea && slot.fullscreenMode === 'live'}
+            onClick={() => {
+              commit(
+                patchGiftLayoutCell(
+                  setGiftLayoutPreferredArea(layout, { variant, device, area: 'content' }, gift.animScale),
+                  { variant, device, area: 'content' },
+                  { displayArea: 'live', fullscreenMode: 'live', fit: 'cover' },
+                  gift.animScale,
+                ),
+              );
+            }}
+          >
+            Llenar LIVE
+          </Chip>
+        ) : null}
         <Chip
-          active={slot.fullscreenMode === 'live'}
-          onClick={() => patchSlot({ displayArea: 'live', fullscreenMode: 'live', fit: 'cover' })}
-        >
-          Llenar LIVE
-        </Chip>
-        <Chip
-          active={slot.fullscreenMode === 'global'}
-          onClick={() => patchSlot({ displayArea: 'global', fullscreenMode: 'global', fit: 'cover' })}
+          active={globalArea && slot.fullscreenMode === 'global'}
+          onClick={() => {
+            commit(
+              patchGiftLayoutCell(
+                setGiftLayoutPreferredArea(layout, { variant, device, area: 'viewport' }, gift.animScale),
+                { variant, device, area: 'viewport' },
+                { displayArea: 'global', fullscreenMode: 'global', fit: 'cover' },
+                gift.animScale,
+              ),
+            );
+          }}
         >
           Pantalla completa
         </Chip>
@@ -449,7 +514,7 @@ export function GiftCatalogPreview({
         </Chip>
         <Chip
           active={false}
-          onClick={() => patchSlot(defaultGiftLayoutSlot(gift.animScale))}
+          onClick={() => commit(resetGiftLayoutCell(layout, { variant, device, area }, gift.animScale))}
         >
           Restablecer
         </Chip>
@@ -464,22 +529,26 @@ export function GiftCatalogPreview({
       <div className="flex flex-wrap gap-1">
         <Chip
           active={false}
-          onClick={() => commit(copyGiftLayoutToAllDevices(layout, device))}
+          onClick={() => commit(copyGiftLayoutActiveToDevices(layout, variant, device))}
         >
           Copiar a todos
         </Chip>
-        <Chip
-          active={false}
-          onClick={() => commit(copyGiftLayoutFormat(layout, 'portrait916', 'landscape169'))}
-        >
-          9:16 → 16:9
-        </Chip>
-        <Chip
-          active={false}
-          onClick={() => commit(copyGiftLayoutFormat(layout, 'landscape169', 'portrait916'))}
-        >
-          16:9 → 9:16
-        </Chip>
+        {previewPlacement === 'live' ? (
+          <>
+            <Chip
+              active={false}
+              onClick={() => commit(copyGiftLayoutFormat(layout, 'portrait916', 'landscape169'))}
+            >
+              9:16 → 16:9
+            </Chip>
+            <Chip
+              active={false}
+              onClick={() => commit(copyGiftLayoutFormat(layout, 'landscape169', 'portrait916'))}
+            >
+              16:9 → 9:16
+            </Chip>
+          </>
+        ) : null}
       </div>
       {cropMode ? (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -522,82 +591,41 @@ export function GiftCatalogPreview({
         >
           <div className="absolute inset-0" style={BACKDROP_META[backdrop].style} />
 
-          <div className="absolute left-2 top-2 z-30 flex items-center gap-1.5 rounded-full bg-rose-600/90 px-2 py-0.5 text-[9px] font-bold text-white">
-            ● LIVE
-          </div>
-
-          <div className={`absolute inset-0 z-10 flex ${device === 'desktop' ? 'flex-row' : 'flex-col'} min-h-0`}>
-            {device === 'desktop' ? (
-              <div className="flex w-[16%] shrink-0 flex-col gap-1 border-r border-white/10 bg-black/35 p-1.5">
-                <div className="h-2 rounded bg-white/20" />
-                <div className="h-2 w-3/4 rounded bg-white/10" />
-                <div className="h-2 w-2/3 rounded bg-white/10" />
-              </div>
-            ) : null}
-
-            <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-              <div
-                className={`absolute inset-0 flex items-center justify-center ${
-                  device === 'desktop' ? '' : 'p-[3%]'
-                }`}
-              >
-                <div
-                  className="relative overflow-hidden bg-black/20"
-                  style={liveStageBoxStyle(device, is916)}
-                >
-                  <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
-                    <div className="relative overflow-hidden" style={liveVideoMockStyle(device, is916)}>
-                      <div className="absolute left-1/2 top-[22%] z-0 flex w-[42%] -translate-x-1/2 flex-col items-center">
-                        <div className="aspect-square w-full rounded-full bg-gradient-to-b from-zinc-600 to-zinc-800 ring-2 ring-white/10" />
-                        <div className="mt-2 h-10 w-[70%] rounded-2xl bg-zinc-800/80" />
-                      </div>
-                      {gift.face && !globalArea ? (
-                        <div
-                          className="absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
-                          style={{ top: `${faceTop}%`, fontSize: `${faceSize * facePreviewScale * 1.6}rem` }}
-                          title={`Ancla: ${gift.face.anchor}`}
-                        >
-                          {gift.face.emoji || gift.emoji}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                  {!globalArea ? (
-                    <GiftLayoutMedia
-                      src={mediaSrc}
-                      poster={gift.image}
-                      isVideo={isVideo}
-                      emoji={gift.emoji}
-                      slot={slot}
-                      interactive
-                      cropMode={cropMode}
-                      playToken={playToken}
-                      muted={previewMuted}
-                      volume={gift.media?.volume ?? 1}
-                      className="absolute inset-0 z-10"
-                      onSlotChange={patchSlot}
-                    />
-                  ) : null}
-                  {safeGuides ? (
-                    <div className="pointer-events-none absolute inset-0 z-20">
-                      <div className="absolute inset-x-[6%] top-[8%] h-[9%] rounded-md border border-dashed border-amber-300/50" />
-                      <div className="absolute bottom-[14%] left-[4%] h-[28%] w-[38%] rounded-md border border-dashed border-sky-300/45" />
-                      <div className="absolute bottom-[4%] right-[4%] h-[36%] w-[14%] rounded-md border border-dashed border-fuchsia-300/45" />
-                      <div className="absolute inset-x-0 bottom-0 h-[11%] border-t border-dashed border-white/35" />
+          <GiftContextStage
+            placement={previewPlacement}
+            device={device}
+            liveFormat={liveFormat}
+            callKind={callKind}
+            contentGift={
+              !globalArea ? (
+                <>
+                  {gift.face && previewPlacement === 'live' ? (
+                    <div
+                      className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2"
+                      style={{ top: `${faceTop}%`, fontSize: `${faceSize * facePreviewScale * 1.6}rem` }}
+                      title={`Ancla: ${gift.face.anchor}`}
+                    >
+                      {gift.face.emoji || gift.emoji}
                     </div>
                   ) : null}
-                </div>
-              </div>
-            </div>
-
-            {device === 'desktop' ? (
-              <div className="flex w-[20%] shrink-0 flex-col gap-1 border-l border-white/10 bg-black/35 p-1.5">
-                <div className="h-2 rounded bg-white/20" />
-                <div className="h-8 rounded bg-white/10" />
-                <div className="h-8 rounded bg-white/10" />
-              </div>
-            ) : null}
-          </div>
+                  <GiftLayoutMedia
+                    src={mediaSrc}
+                    poster={gift.image}
+                    isVideo={isVideo}
+                    emoji={gift.emoji}
+                    slot={slot}
+                    interactive
+                    cropMode={cropMode}
+                    playToken={playToken}
+                    muted={previewMuted}
+                    volume={gift.media?.volume ?? 1}
+                    className="absolute inset-0 z-10"
+                    onSlotChange={patchSlot}
+                  />
+                </>
+              ) : null
+            }
+          />
 
           {globalArea ? (
             <GiftLayoutMedia
@@ -616,36 +644,20 @@ export function GiftCatalogPreview({
             />
           ) : null}
 
-          <div className="absolute bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-black/55 p-2 backdrop-blur-md">
-            <div className="mb-1 flex gap-1 overflow-hidden">
-              {gift.placements.slice(0, 4).map((p) => (
-                <span
-                  key={p}
-                  className="rounded bg-cyan-500/20 px-1.5 py-0.5 text-[8px] font-semibold text-cyan-100"
-                >
-                  {PLACEMENT_SHORT[p]}
-                </span>
-              ))}
+          {safeGuides ? (
+            <div className="pointer-events-none absolute inset-0 z-30">
+              <div className="absolute inset-x-[6%] top-[8%] h-[9%] rounded-md border border-dashed border-amber-300/50" />
+              <div className="absolute bottom-[14%] left-[4%] h-[28%] w-[38%] rounded-md border border-dashed border-sky-300/45" />
+              <div className="absolute bottom-[4%] right-[4%] h-[36%] w-[14%] rounded-md border border-dashed border-fuchsia-300/45" />
+              <div className="absolute inset-x-0 bottom-0 h-[11%] border-t border-dashed border-white/35" />
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-fuchsia-500/30 text-lg ring-1 ring-fuchsia-400/40">
-                {gift.emoji}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] font-semibold text-white">{gift.name}</p>
-                <p className="truncate text-[9px] text-zinc-400">Nivel {gift.level} · catálogo</p>
-              </div>
-              <span className="rounded-lg bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-2 py-1 text-[9px] font-bold text-white">
-                Enviar
-              </span>
-            </div>
-          </div>
+          ) : null}
         </div>
       </div>
 
       <p className="text-center text-[11px] text-zinc-500">
-        {DEVICE_LABEL[device]} · LIVE {is916 ? '9:16' : '16:9'} ·{' '}
-        {globalArea ? 'toda la pantalla del lienzo' : 'dentro del video'}. Publica para aplicar en la app.
+        {GIFT_LAYOUT_VARIANT_LABEL[variant]} · {DEVICE_LABEL[device]} ·{' '}
+        {globalArea ? 'toda la pantalla de la app' : 'dentro del contenido'}. Publica para aplicar en la app.
       </p>
     </div>
   );

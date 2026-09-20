@@ -61,6 +61,7 @@ import {
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { addLevelXp } from '../../lib/profileFirestore';
 import { FloatingGift, GiftVisual } from '../live/FloatingGift';
+import { isGiftLayoutVariantId, type GiftLayoutVariantId } from '../../lib/giftLayout';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
 import { CallChatActions } from './CallChatActions';
@@ -660,6 +661,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [giftFloats, setGiftFloats] = useState<
     Array<{ id: string; giftId: string; left: number; senderName?: string }>
   >([]);
+  const [giftLayoutContext, setGiftLayoutContext] = useState<GiftLayoutVariantId>('chat');
   const [mediaViewer, setMediaViewer] = useState<{ url: string; gif?: boolean } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
@@ -1104,6 +1106,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     try {
       if (sessionStorage.getItem('lb_open_call_gifts') === '1') {
         sessionStorage.removeItem('lb_open_call_gifts');
+        setGiftLayoutContext('llamadas_video');
         setGiftsOpen(true);
       }
     } catch {
@@ -1112,7 +1115,11 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }, [activeUid, chatId]);
 
   useEffect(() => {
-    function openGiftsFromCall() {
+    function openGiftsFromCall(event: Event) {
+      const detail = (event as CustomEvent<{ layoutContext?: string }>).detail;
+      setGiftLayoutContext(
+        isGiftLayoutVariantId(detail?.layoutContext) ? detail.layoutContext : 'llamadas_video',
+      );
       setGiftsOpen(true);
     }
     function openGifFromCall() {
@@ -2748,6 +2755,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                   anchorRef={attachBtnRef}
                   onClose={() => setAttachOpen(false)}
                   onGift={() => {
+                    setGiftLayoutContext('chat');
                     setGiftsOpen(true);
                     setGiftError(null);
                     setRechargeNeeded(null);
@@ -2964,7 +2972,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
                   senderName={item.senderName}
                   left={item.left}
                   lite
-                  fillViewport
+                  layoutContext={giftLayoutContext}
                   onComplete={() =>
                     setGiftFloats((current) => current.filter((row) => row.id !== item.id))
                   }

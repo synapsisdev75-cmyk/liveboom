@@ -11,6 +11,7 @@ import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
 import type { GiftMultiplier } from '../live/GiftSendConfirm';
 import { CoinModal } from '../wallet/CoinModal';
 import { useT } from '../../i18n';
+import type { GiftLayoutVariantId } from '../../lib/giftLayout';
 
 type FloatItem = { id: string; giftId: string; left: number; senderName?: string };
 
@@ -22,6 +23,8 @@ type Props = {
   inline?: boolean;
   /** Flash Boom / Boom Clip: el visor congela la barra de tiempo. */
   onOpenChange?: (open: boolean) => void;
+  /** Variante de colocación del regalo (Publicaciones / Clip / Flash). */
+  layoutContext?: GiftLayoutVariantId;
 };
 
 export function ReelGiftControls({
@@ -30,6 +33,7 @@ export function ReelGiftControls({
   postId,
   inline = false,
   onOpenChange,
+  layoutContext = 'publicaciones',
 }: Props) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
@@ -170,6 +174,7 @@ export function ReelGiftControls({
                   senderName={item.senderName}
                   left={item.left}
                   lite
+                  layoutContext={layoutContext}
                   onComplete={() => setFloats((current) => current.filter((f) => f.id !== item.id))}
                 />
               ))}

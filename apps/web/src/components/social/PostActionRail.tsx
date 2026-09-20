@@ -10,6 +10,7 @@ import { PostViewsIndicator } from './PostViewsIndicator';
 import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
 import { useT } from '../../i18n';
+import type { GiftLayoutVariantId } from '../../lib/giftLayout';
 
 export function OverlayIconButton({
   children,
@@ -69,6 +70,7 @@ type Props = {
   anchor?: 'media' | 'viewport';
   /** `aside` = columna al lado del media (PC, igual que Explorar). */
   layout?: 'default' | 'corner' | 'aside';
+  giftLayoutContext?: GiftLayoutVariantId;
 };
 
 /**
@@ -100,6 +102,7 @@ export function PostActionRail({
   onGiftsOpenChange,
   anchor = 'viewport',
   layout = 'default',
+  giftLayoutContext = 'publicaciones',
 }: Props) {
   const t = useT();
   const profilePath =
@@ -177,6 +180,7 @@ export function PostActionRail({
             authorUid={authorUid}
             postId={postId}
             onOpenChange={onGiftsOpenChange}
+            layoutContext={giftLayoutContext}
           />
         </div>
       ) : null}
