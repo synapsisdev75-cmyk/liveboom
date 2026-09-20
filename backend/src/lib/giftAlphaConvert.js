@@ -163,13 +163,22 @@ function pixFmtHasAlpha(pixFmt) {
   );
 }
 
-/** VP9+alfa en WebM: ffprobe suele reportar yuv420p y guardar el canal en ALPHA_MODE. */
-function streamHasAlpha(stream) {
-  if (!stream || typeof stream !== 'object') return false;
+function streamReportsAlpha(stream) {
+  if (!stream) return false;
   if (pixFmtHasAlpha(stream.pix_fmt)) return true;
   const tags = stream.tags && typeof stream.tags === 'object' ? stream.tags : {};
-  const mode = String(tags.ALPHA_MODE || tags.alpha_mode || '').trim().toLowerCase();
-  return mode === '1' || mode === 'true' || mode === 'yes';
+  const mode = String(tags.ALPHA_MODE || tags.alpha_mode || tags.ALPHA || '').toLowerCase();
+  if (mode === '1' || mode === 'true' || mode === 'yes') return true;
+  const sides = Array.isArray(stream.side_data_list) ? stream.side_data_list : [];
+  return sides.some((item) => /alpha/i.test(String(item?.side_data_type || item?.type || '')));
+}
+
+/** VP9/WebM a menudo reporta yuv420p y guarda el alfa como tag o segunda pista. */
+function probeReportsAlpha(probe) {
+  const streams = Array.isArray(probe?.streams) ? probe.streams : [];
+  const videos = streams.filter((s) => s && s.codec_type === 'video');
+  if (videos.some(streamReportsAlpha)) return true;
+  return videos.length >= 2;
 }
 
 function classifyProRes(stream) {
@@ -202,7 +211,7 @@ function inspectProbe(probe) {
   const width = Number(video?.width || 0);
   const height = Number(video?.height || 0);
   const pixFmt = String(video?.pix_fmt || '');
-  const hasAlphaChannel = streamHasAlpha(video);
+  const hasAlphaChannel = pixFmtHasAlpha(pixFmt);
   const prores = classifyProRes(video);
   const nbFrames = Number(video?.nb_frames || 0);
 
@@ -433,12 +442,15 @@ async function convertWithProgress({
   inspect,
   keepAudio,
   hasAlpha,
+  encoder = 'libvpx-vp9',
   onProgress,
 }) {
   const vfParts = [];
   const scale = scaleFilter(inspect.width, inspect.height);
   if (scale) vfParts.push(scale);
   vfParts.push(hasAlpha ? 'format=yuva420p' : 'format=yuv420p');
+  const videoOnly = `${tmpOut}.vonly.webm`;
+  const videoTarget = keepAudio && inspect.hasAudio ? videoOnly : tmpOut;
 
   const args = [
     '-hide_banner',
@@ -448,19 +460,19 @@ async function convertWithProgress({
     tmpIn,
     '-map',
     '0:v:0',
-  ];
-  if (keepAudio && inspect.hasAudio) args.push('-map', '0:a:0?');
-  args.push(
+    '-an',
     '-c:v',
-    'libvpx-vp9',
+    encoder,
     '-pix_fmt',
     hasAlpha ? 'yuva420p' : 'yuv420p',
     '-auto-alt-ref',
     '0',
+    '-lag-in-frames',
+    '0',
     '-b:v',
     '0',
     '-crf',
-    '20',
+    encoder === 'libvpx' ? '22' : '20',
     '-deadline',
     'good',
     '-cpu-used',
@@ -469,32 +481,68 @@ async function convertWithProgress({
     '1',
     '-threads',
     '2',
-    '-tile-columns',
-    '1',
-  );
+    '-vf',
+    vfParts.join(','),
+  ];
   if (hasAlpha) args.push('-metadata:s:v:0', 'alpha_mode=1');
-  args.push('-vf', vfParts.join(','));
-  if (keepAudio && inspect.hasAudio) {
-    args.push('-c:a', 'libopus', '-b:a', '96k');
-  } else {
-    args.push('-an');
-  }
-  args.push('-progress', 'pipe:1', '-nostats', '-f', 'webm', tmpOut);
+  args.push('-progress', 'pipe:1', '-nostats', '-f', 'webm', videoTarget);
 
   let buf = '';
   let lastEmit = 0;
-  await runTool(ffmpegPath, args, {
-    timeoutMs: LIMITS.ffmpegTimeoutMs,
-    onStdout: (chunk) => {
-      buf += chunk;
-      if (buf.length > 8000) buf = buf.slice(-4000);
-      const now = Date.now();
-      if (now - lastEmit < LIMITS.progressFlushMs) return;
-      lastEmit = now;
-      onProgress?.(parseFfmpegProgress(buf, inspect.durationSec));
-    },
-  });
-  onProgress?.({ percent: 99, indeterminate: false, ended: true });
+  try {
+    await runTool(ffmpegPath, args, {
+      timeoutMs: LIMITS.ffmpegTimeoutMs,
+      onStdout: (chunk) => {
+        buf += chunk;
+        if (buf.length > 8000) buf = buf.slice(-4000);
+        const now = Date.now();
+        if (now - lastEmit < LIMITS.progressFlushMs) return;
+        lastEmit = now;
+        onProgress?.(parseFfmpegProgress(buf, inspect.durationSec));
+      },
+    });
+    onProgress?.({ percent: 99, indeterminate: false, ended: true });
+
+    if (keepAudio && inspect.hasAudio) {
+      try {
+        const muxed = `${tmpOut}.mux.webm`;
+        await runTool(
+          ffmpegPath,
+          [
+            '-hide_banner',
+            '-nostdin',
+            '-y',
+            '-i',
+            videoOnly,
+            '-i',
+            tmpIn,
+            '-map',
+            '0:v:0',
+            '-map',
+            '1:a:0?',
+            '-c:v',
+            'copy',
+            '-c:a',
+            'libopus',
+            '-b:a',
+            '96k',
+            '-shortest',
+            '-f',
+            'webm',
+            muxed,
+          ],
+          { timeoutMs: 180_000 },
+        );
+        fs.renameSync(muxed, tmpOut);
+      } catch (muxError) {
+        console.warn('[gift-alpha] mux audio falló, se guarda solo video', muxError.message);
+        fs.copyFileSync(videoOnly, tmpOut);
+      }
+    }
+  } finally {
+    fs.rmSync(videoOnly, { force: true });
+    fs.rmSync(`${tmpOut}.mux.webm`, { force: true });
+  }
 }
 
 async function verifyWebm({ ffmpegPath, tmpOut, inspect, expectAlpha }) {
@@ -516,35 +564,16 @@ async function verifyWebm({ ffmpegPath, tmpOut, inspect, expectAlpha }) {
     throw Object.assign(new Error(`El WebM no usa VP9 (códec ${codec || 'vacío'}).`), { code: 'VERIFY' });
   }
   const pixFmt = String(video.pix_fmt || '');
-  let hasAlphaOut = streamHasAlpha(video);
-  if (expectAlpha && !hasAlphaOut) {
-    const sampled = await sampleAlpha(ffmpegPath, tmpOut, ['-c:v', 'libvpx-vp9']);
-    if (sampled.usable) hasAlphaOut = true;
-  }
-  if (expectAlpha && !hasAlphaOut) {
-    throw Object.assign(new Error('La conversión no conservó el canal alfa.'), { code: 'VERIFY' });
-  }
   const srcDur = inspect.durationSec || 0;
   const outDur = Number(video.duration || probe.format?.duration || 0);
   if (srcDur > 0.4 && outDur > 0 && Math.abs(outDur - srcDur) > Math.max(1.2, srcDur * 0.25)) {
     throw Object.assign(new Error('La duración del WebM no coincide con el original.'), { code: 'VERIFY' });
   }
 
+  const decoderHint = codec === 'vp8' ? ['-c:v', 'libvpx'] : ['-c:v', 'libvpx-vp9'];
   await runTool(
     ffmpegPath,
-    [
-      '-hide_banner',
-      '-nostdin',
-      '-c:v',
-      'libvpx-vp9',
-      '-i',
-      tmpOut,
-      '-frames:v',
-      '3',
-      '-f',
-      'null',
-      '-',
-    ],
+    ['-hide_banner', '-nostdin', ...decoderHint, '-i', tmpOut, '-frames:v', '3', '-f', 'null', '-'],
     { timeoutMs: 40_000 },
   ).catch(() =>
     runTool(
@@ -556,12 +585,17 @@ async function verifyWebm({ ffmpegPath, tmpOut, inspect, expectAlpha }) {
 
   let alpha = { usable: null, opaque: null };
   if (expectAlpha) {
-    alpha = await sampleAlpha(ffmpegPath, tmpOut, ['-c:v', 'libvpx-vp9']);
+    const reportedAlpha = probeReportsAlpha(probe) || pixFmtHasAlpha(pixFmt);
+    alpha = await sampleAlpha(ffmpegPath, tmpOut, decoderHint);
     if (alpha.usable === false && alpha.opaque) {
       return { out, pixFmt, warning: OPAQUE_ALPHA_WARNING, alpha };
     }
     if (alpha.usable === false && alpha.fullyTransparent) {
       throw Object.assign(new Error('El WebM quedó sin cobertura visible (alfa vacío).'), { code: 'VERIFY' });
+    }
+    const kept = reportedAlpha || alpha.usable === true;
+    if (!kept) {
+      throw Object.assign(new Error('La conversión no conservó el canal alfa.'), { code: 'VERIFY' });
     }
   }
   return { out, pixFmt, warning: null, alpha };
@@ -771,6 +805,7 @@ async function processGiftAlphaJob(jobId) {
       inspect,
       keepAudio: job.keepAudio !== false,
       hasAlpha: expectAlpha,
+      encoder: 'libvpx-vp9',
       onProgress: (info) => {
         writeJob(id, {
           stage: STAGE.converting,
@@ -786,12 +821,42 @@ async function processGiftAlphaJob(jobId) {
     }
 
     await writeJob(id, { stage: STAGE.verifying, progressPercent: 99, indeterminate: true });
-    const verified = await verifyWebm({
-      ffmpegPath,
-      tmpOut,
-      inspect,
-      expectAlpha,
-    });
+    let verified;
+    try {
+      verified = await verifyWebm({
+        ffmpegPath,
+        tmpOut,
+        inspect,
+        expectAlpha,
+      });
+    } catch (verifyError) {
+      if (!(expectAlpha && verifyError && verifyError.code === 'VERIFY' && /alfa/i.test(String(verifyError.message)))) {
+        throw verifyError;
+      }
+      console.warn('[gift-alpha] VP9 no dejó alfa visible, reintento VP8', verifyError.message);
+      await convertWithProgress({
+        ffmpegPath,
+        tmpIn,
+        tmpOut,
+        inspect,
+        keepAudio: job.keepAudio !== false,
+        hasAlpha: true,
+        encoder: 'libvpx',
+        onProgress: (info) => {
+          writeJob(id, {
+            stage: STAGE.converting,
+            progressPercent: info.percent,
+            indeterminate: Boolean(info.indeterminate),
+          }).catch(() => {});
+        },
+      });
+      verified = await verifyWebm({
+        ffmpegPath,
+        tmpOut,
+        inspect,
+        expectAlpha,
+      });
+    }
     if (verified.warning) warning = verified.warning;
 
     await writeJob(id, { stage: STAGE.saving, progressPercent: 99, indeterminate: true });
@@ -928,7 +993,8 @@ module.exports = {
   safeGiftId,
   safeGiftSourcePath,
   pixFmtHasAlpha,
-  streamHasAlpha,
+  streamReportsAlpha,
+  probeReportsAlpha,
   classifyProRes,
   inspectProbe,
   parseFfmpegProgress,
