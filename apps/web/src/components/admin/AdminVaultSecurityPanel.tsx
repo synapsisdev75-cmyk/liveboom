@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Shield } from 'lucide-react';
 import { fetchAdminAuditPage, type AdminAuditLog } from '../../admin/api';
 import { isOwnerEmail } from '../../lib/superAdmin';
-import { DEFAULT_SESSION_TTL_MIN, IDLE_LOCK_MS } from '../../lib/superAdminSecurity';
+import { DEFAULT_SESSION_TTL_MIN, SESSION_CONTINUE_ANSWER_MS, SESSION_CONTINUE_BEFORE_MS } from '../../lib/superAdminSecurity';
 import { useAuthStore } from '../../store/authStore';
 import { useSuperAdminVaultStore } from '../../store/superAdminVaultStore';
 
@@ -65,8 +65,14 @@ export function AdminVaultSecurityPanel() {
           (mismo UID y email). Las publicaciones del panel y las APIs administrativas requieren esa sesión.
         </p>
         <ul className="list-inside list-disc space-y-1 text-xs text-zinc-500">
-          <li>TTL de sesión por defecto: {DEFAULT_SESSION_TTL_MIN} min</li>
-          <li>Cierre por inactividad: {Math.round(IDLE_LOCK_MS / 60_000)} min</li>
+          <li>TTL de sesión: {DEFAULT_SESSION_TTL_MIN} min (todos los Super Admins)</li>
+          <li>
+            Aviso «¿continúas en línea?» a los {Math.round(SESSION_CONTINUE_BEFORE_MS / 60_000)} min
+            antes del cierre
+          </li>
+          <li>
+            Sin respuesta en {Math.round(SESSION_CONTINUE_ANSWER_MS / 1000)} s → se cierra la bóveda
+          </li>
           <li>Al cerrar sesión de la app, la bóveda también se cierra</li>
           {expiresAtMs > Date.now() ? (
             <li>

@@ -17,7 +17,7 @@ type Props = { children: React.ReactNode };
  * Bóveda Super Admin sincronizada con Google Auth:
  * 1) Ya eres allowlist Super Admin
  * 2) Re-login real con Google
- * 3) Sesión Firestore con caducidad (reglas exigen esto para escribir)
+ * 3) Sesión Firestore 1 h · a 10 min del cierre pregunta si continúas en línea
  */
 export function SuperAdminVaultGate({ children }: Props) {
   const profile = useAuthStore((s) => s.profile);
@@ -27,10 +27,15 @@ export function SuperAdminVaultGate({ children }: Props) {
 
   const unlocked = useSuperAdminVaultStore((s) => s.unlocked);
   const checking = useSuperAdminVaultStore((s) => s.checking);
+  const expiresAtMs = useSuperAdminVaultStore((s) => s.expiresAtMs);
+  const continuePromptOpen = useSuperAdminVaultStore((s) => s.continuePromptOpen);
+  const continueDeadlineMs = useSuperAdminVaultStore((s) => s.continueDeadlineMs);
   const hydrate = useSuperAdminVaultStore((s) => s.hydrate);
   const unlock = useSuperAdminVaultStore((s) => s.unlock);
   const touch = useSuperAdminVaultStore((s) => s.touch);
   const lock = useSuperAdminVaultStore((s) => s.lock);
+  const continueOnline = useSuperAdminVaultStore((s) => s.continueOnline);
+  const declineContinue = useSuperAdminVaultStore((s) => s.declineContinue);
 
   const [ttlMin, setTtlMin] = useState(DEFAULT_SESSION_TTL_MIN);
   const [maxFailures, setMaxFailures] = useState(5);
@@ -39,6 +44,7 @@ export function SuperAdminVaultGate({ children }: Props) {
   const [failures, setFailures] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [answerLeftSec, setAnswerLeftSec] = useState(60);
 
   useEffect(() => {
     if (!uid) return;
@@ -51,7 +57,7 @@ export function SuperAdminVaultGate({ children }: Props) {
       try {
         const sec = await fetchSuperAdminSecurity();
         if (!cancelled && sec) {
-          setTtlMin(sec.sessionTtlMin);
+          setTtlMin(Math.max(DEFAULT_SESSION_TTL_MIN, sec.sessionTtlMin));
           setMaxFailures(sec.maxFailures);
           setLockoutMinutes(sec.lockoutMinutes);
         }
@@ -85,11 +91,29 @@ export function SuperAdminVaultGate({ children }: Props) {
     };
   }, [unlocked, uid, touch]);
 
+  useEffect(() => {
+    if (!continuePromptOpen || !continueDeadlineMs) {
+      setAnswerLeftSec(60);
+      return;
+    }
+    const tick = () => {
+      setAnswerLeftSec(Math.max(0, Math.ceil((continueDeadlineMs - Date.now()) / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [continuePromptOpen, continueDeadlineMs]);
+
   const lockedNow = lockedUntilMs > Date.now();
   const lockRemainingMin = useMemo(
     () => Math.max(1, Math.ceil((lockedUntilMs - Date.now()) / 60_000)),
     [lockedUntilMs],
   );
+
+  const sessionLeftMin = useMemo(() => {
+    if (!expiresAtMs) return 0;
+    return Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 60_000));
+  }, [expiresAtMs, continuePromptOpen, answerLeftSec]);
 
   async function handleGoogleUnlock() {
     if (!uid || !email) return;
@@ -103,7 +127,7 @@ export function SuperAdminVaultGate({ children }: Props) {
         expectedUid: uid,
         expectedEmail: email,
       });
-      await unlock({ uid, email, ttlMin });
+      await unlock({ uid, email, ttlMin: DEFAULT_SESSION_TTL_MIN });
       setFailures(0);
       setLockedUntilMs(0);
     } catch (err) {
@@ -133,7 +157,8 @@ export function SuperAdminVaultGate({ children }: Props) {
     return (
       <div onPointerDown={() => touch(uid)} onKeyDown={() => touch(uid)}>
         <div className="sticky top-0 z-[80] border-b border-emerald-500/30 bg-emerald-950/90 px-3 py-2 text-center text-[11px] text-emerald-100 backdrop-blur">
-          Bóveda abierta con Google · sesión limitada ·{' '}
+          Bóveda abierta · sesión {ttlMin} min
+          {sessionLeftMin > 0 ? ` · ~${sessionLeftMin} min restantes` : ''} ·{' '}
           <button
             type="button"
             className="font-semibold underline"
@@ -143,6 +168,44 @@ export function SuperAdminVaultGate({ children }: Props) {
           </button>
         </div>
         {children}
+
+        {continuePromptOpen ? (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lb-vault-continue-title"
+          >
+            <div className="w-full max-w-md space-y-4 rounded-2xl border border-amber-400/40 bg-zinc-950 p-5 shadow-2xl">
+              <h2 id="lb-vault-continue-title" className="text-lg font-bold text-white">
+                ¿Estás trabajando o continúas en línea?
+              </h2>
+              <p className="text-sm text-zinc-300">
+                Tu sesión de Super Admin termina en unos minutos. Elige una opción para seguir, o se
+                cerrará sola.
+              </p>
+              <p className="text-center text-sm font-semibold text-amber-200">
+                Responde en {answerLeftSec}s
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  className="min-h-12 flex-1 rounded-xl bg-emerald-500 px-4 text-sm font-bold text-zinc-950"
+                  onClick={() => void continueOnline(uid)}
+                >
+                  Sí, continúo en línea
+                </button>
+                <button
+                  type="button"
+                  className="min-h-12 flex-1 rounded-xl border border-white/20 px-4 text-sm font-semibold text-zinc-200 hover:bg-white/5"
+                  onClick={() => void declineContinue(uid, email)}
+                >
+                  No
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -155,7 +218,7 @@ export function SuperAdminVaultGate({ children }: Props) {
           <div>
             <h1 className="text-lg font-bold text-white">Abrir Super Admin</h1>
             <p className="text-xs text-zinc-500">
-              Confirmación real con tu cuenta Google · sesión ~{ttlMin} min
+              Confirmación real con tu cuenta Google · sesión {DEFAULT_SESSION_TTL_MIN} min
             </p>
           </div>
         </div>

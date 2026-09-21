@@ -16,10 +16,16 @@ const SESSION_COL = 'adminSessions';
 const LOCKOUT_COL = 'adminVaultLockouts';
 const AUDIT_COL = 'adminAuditLogs';
 
-export const DEFAULT_SESSION_TTL_MIN = 20;
+export const DEFAULT_SESSION_TTL_MIN = 60;
 export const DEFAULT_MAX_FAILURES = 5;
 export const DEFAULT_LOCKOUT_MIN = 30;
-export const IDLE_LOCK_MS = 12 * 60 * 1000;
+/** Heartbeat Firestore (no cierra la bóveda; el cierre va por TTL + prompt). */
+export const IDLE_LOCK_MS = 15 * 60 * 1000;
+/** Aviso «¿continúas en línea?» antes de que expire la hora. */
+export const SESSION_CONTINUE_BEFORE_MS = 10 * 60 * 1000;
+/** Tiempo para responder Sí/No; si no, se cierra. */
+export const SESSION_CONTINUE_ANSWER_MS = 60 * 1000;
+
 
 export type SuperAdminSecurityDoc = {
   configured: boolean;
@@ -103,7 +109,8 @@ export async function fetchSuperAdminSecurity(): Promise<SuperAdminSecurityDoc |
     salt: String(data.salt || ''),
     pinHash: String(data.pinHash || ''),
     vaultHash: String(data.vaultHash || ''),
-    sessionTtlMin: Math.max(5, Math.min(120, Number(data.sessionTtlMin) || DEFAULT_SESSION_TTL_MIN)),
+    sessionTtlMin: Math.max(60, Math.min(120, Number(data.sessionTtlMin) || DEFAULT_SESSION_TTL_MIN)),
+
     maxFailures: Math.max(3, Math.min(20, Number(data.maxFailures) || DEFAULT_MAX_FAILURES)),
     lockoutMinutes: Math.max(5, Math.min(180, Number(data.lockoutMinutes) || DEFAULT_LOCKOUT_MIN)),
     version: Number(data.version) || 1,
@@ -247,7 +254,7 @@ export async function createAdminSession(input: {
 }): Promise<{ sessionId: string; expiresAtMs: number; deviceId: string }> {
   const sessionId = randomHex(20);
   const deviceId = getOrCreateDeviceId();
-  const expiresAtMs = Date.now() + Math.max(5, input.ttlMin) * 60_000;
+  const expiresAtMs = Date.now() + Math.max(60, input.ttlMin) * 60_000;
   await setDoc(doc(db, SESSION_COL, input.uid), {
     email: normalizeEmail(input.email),
     sessionId,
@@ -267,8 +274,25 @@ export async function createAdminSession(input: {
   return { sessionId, expiresAtMs, deviceId };
 }
 
-export async function refreshAdminSessionIdle(uid: string, ttlMin: number): Promise<number> {
-  const expiresAtMs = Date.now() + Math.max(5, ttlMin) * 60_000;
+export async function refreshAdminSessionIdle(uid: string, _ttlMin?: number): Promise<number> {
+  // Solo heartbeat: no alarga expiresAt (la hora es fija hasta «continuar en línea»).
+  const snap = await getDoc(doc(db, SESSION_COL, uid));
+  const current = snap.exists() ? (snap.data() as AdminSessionDoc) : null;
+  const expiresAtMs = current?.expiresAt?.toMillis?.() ?? 0;
+  await setDoc(
+    doc(db, SESSION_COL, uid),
+    {
+      idleDeadlineMs: Date.now() + IDLE_LOCK_MS,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return expiresAtMs > Date.now() ? expiresAtMs : 0;
+}
+
+/** Extiende la sesión otra hora (respuesta «Sí, continúo en línea»). */
+export async function extendAdminSession(uid: string, ttlMin: number): Promise<number> {
+  const expiresAtMs = Date.now() + Math.max(60, ttlMin) * 60_000;
   await setDoc(
     doc(db, SESSION_COL, uid),
     {
