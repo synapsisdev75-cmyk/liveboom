@@ -235,9 +235,6 @@ export function SideRailPanel() {
   if (liveMatch?.params.username) {
     return <LiveRail host={decodeURIComponent(liveMatch.params.username)} />;
   }
-  if (locationPath.startsWith('/mensajes')) {
-    return null;
-  }
   if (locationPath.startsWith('/actividad')) {
     return <ActivityRail />;
   }

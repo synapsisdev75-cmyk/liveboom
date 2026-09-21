@@ -1804,7 +1804,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     <div
       className={`lb-chat-pane flex min-h-0 flex-col border-white/[0.06] bg-[#0a0a0b] ${
         isPage
-          ? `w-full md:w-[min(32%,18rem)] lg:w-[min(26%,16.5rem)] md:shrink-0 md:border-l ${mobileHideList ? 'hidden md:flex' : 'flex'}`
+          ? `w-full md:w-[min(42%,18rem)] lg:w-[min(40%,17rem)] md:shrink-0 md:border-r ${mobileHideList ? 'hidden md:flex' : 'flex'}`
           : 'flex w-full md:w-48 md:border-r'
       }`}
     >
@@ -3029,7 +3029,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   return (
     <>
-      <section className="flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)+var(--lb-safe-bottom))] md:flex-row-reverse lg:pb-0">
+      <section className="flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)+var(--lb-safe-bottom))] md:flex-row lg:pb-0">
         {listPane}
         {threadPane}
       </section>

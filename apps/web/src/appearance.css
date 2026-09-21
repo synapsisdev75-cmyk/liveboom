@@ -2262,12 +2262,6 @@ html[data-lb-theme='light'] .lb-mobile-drawer .lb-sidebar-wallet__withdraw:hover
   background: color-mix(in srgb, var(--success) 14%, var(--lb-surface));
 }
 
-html[data-lb-theme='light'] .lb-sidebar-rail-coins {
-  border-color: color-mix(in srgb, var(--lb-accent-secondary) 38%, var(--lb-line));
-  background: color-mix(in srgb, var(--lb-accent-secondary) 12%, var(--lb-surface));
-  color: var(--lb-accent-text);
-}
-
 html[data-lb-theme='dark'] .lb-sidebar-dock,
 html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-dock {
   border-color: var(--lb-line);
