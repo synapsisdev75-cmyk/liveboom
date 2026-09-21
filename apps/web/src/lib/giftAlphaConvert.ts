@@ -91,6 +91,10 @@ export function forgetGiftAlphaJob(giftId: string) {
   }
 }
 
+export function rememberGiftAlphaJob(giftId: string, jobId: string) {
+  rememberJob(giftId, jobId);
+}
+
 export function formatGiftAnimBytes(bytes: number): string {
   if (!(bytes > 0)) return '0 B';
   if (bytes < 1024) return `${bytes} B`;

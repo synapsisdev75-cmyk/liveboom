@@ -66,9 +66,16 @@ function safeGiftSourcePath(raw) {
     .replace(/^\/+/, '');
   if (!value.startsWith('config/gifts/')) return null;
   if (value.includes('..') || value.includes('\\') || value.includes('\0')) return null;
-  if (!/\.mov$/i.test(value)) return null;
+  if (!/\.(mov|mp4|webm)$/i.test(value)) return null;
   if (value.split('/').length !== 3) return null;
   return value;
+}
+
+function contentTypeForSourceExt(ext) {
+  const value = String(ext || '').toLowerCase();
+  if (value === '.webm') return 'video/webm';
+  if (value === '.mp4') return 'video/mp4';
+  return 'video/quicktime';
 }
 
 function downloadUrlFor(bucketName, objectPath, token) {
@@ -217,18 +224,18 @@ function inspectProbe(probe) {
   const video = streams.find((s) => s && s.codec_type === 'video') || null;
   const audio = streams.find(streamIsAudio) || null;
   const formatName = String(format.format_name || '').toLowerCase();
-  const containerOk = /mov|mp4|quicktime/.test(formatName);
+  const containerOk = /mov|mp4|quicktime|webm|matroska/.test(formatName);
   const durationSec = Number(video?.duration || format.duration || 0);
   const width = Number(video?.width || 0);
   const height = Number(video?.height || 0);
   const pixFmt = String(video?.pix_fmt || '');
-  const hasAlphaChannel = pixFmtHasAlpha(pixFmt);
+  const hasAlphaChannel = pixFmtHasAlpha(pixFmt) || probeReportsAlpha(probe);
   const prores = classifyProRes(video);
   const nbFrames = Number(video?.nb_frames || 0);
 
   let error = null;
   if (!video) error = 'El archivo no contiene una pista de video.';
-  else if (!containerOk) error = 'Solo se admite contenedor MOV (QuickTime) para esta conversión.';
+  else if (!containerOk) error = 'Solo se admiten MOV, MP4 o WebM para esta conversión.';
   else if (!(width >= 2 && height >= 2)) error = 'La resolución del video no es válida.';
   else if (durationSec > LIMITS.maxDurationSec + 0.35) {
     error = `La animación supera ${LIMITS.maxDurationSec} s (duración ${durationSec.toFixed(1)} s).`;
@@ -748,7 +755,7 @@ async function releaseLock(jobId) {
 async function enqueueGiftAlphaJob({ storagePath, giftId, createdByUid, keepAudio, fileName, clientNonce }) {
   const sourcePath = safeGiftSourcePath(storagePath);
   if (!sourcePath) {
-    const error = new Error('Ruta MOV inválida');
+    const error = new Error('Ruta de video inválida');
     error.code = 'INVALID_PATH';
     throw error;
   }
@@ -767,14 +774,14 @@ async function enqueueGiftAlphaJob({ storagePath, giftId, createdByUid, keepAudi
   const sourceFile = bucket.file(sourcePath);
   const [exists] = await sourceFile.exists();
   if (!exists) {
-    const error = new Error('No se encontró el MOV en Storage');
+    const error = new Error('No se encontró el archivo de animación en Storage');
     error.code = 'NOT_FOUND';
     throw error;
   }
   const [meta] = await sourceFile.getMetadata();
   const size = Number(meta.size || 0);
   if (size > LIMITS.maxMovBytes) {
-    const error = new Error(`El MOV supera ${Math.round(LIMITS.maxMovBytes / (1024 * 1024))} MB`);
+    const error = new Error(`El archivo supera ${Math.round(LIMITS.maxMovBytes / (1024 * 1024))} MB`);
     error.code = 'TOO_LARGE';
     throw error;
   }
@@ -790,7 +797,8 @@ async function enqueueGiftAlphaJob({ storagePath, giftId, createdByUid, keepAudi
 
   const jobId = randomUUID();
   const destPath = `config/gifts/${gid}-video-${Date.now()}-${jobId.slice(0, 8)}.webm`;
-  const privatePath = `admin/private/gifts/${gid}/${jobId}.mov`;
+  const srcExt = path.extname(sourcePath).toLowerCase() || '.mov';
+  const privatePath = `admin/private/gifts/${gid}/${jobId}${srcExt}`;
 
   await writeJob(jobId, {
     jobId,
@@ -835,7 +843,8 @@ async function processGiftAlphaJob(jobId) {
 
   const ffmpegPath = ffmpegBin();
   const tmpId = randomUUID();
-  const tmpIn = path.join(os.tmpdir(), `gift-alpha-${tmpId}.mov`);
+  const srcExt = path.extname(String(job.sourcePath || '')).toLowerCase() || '.mov';
+  const tmpIn = path.join(os.tmpdir(), `gift-alpha-${tmpId}${srcExt}`);
   const tmpOut = path.join(os.tmpdir(), `gift-alpha-${tmpId}.webm`);
 
   try {
@@ -852,7 +861,7 @@ async function processGiftAlphaJob(jobId) {
     }
     const [stillThere] = await sourceFile.exists();
     if (!stillThere) {
-      const error = new Error('No se encontró el MOV en Storage');
+      const error = new Error('No se encontró el archivo de animación en Storage');
       error.code = 'NOT_FOUND';
       throw error;
     }
@@ -986,7 +995,7 @@ async function processGiftAlphaJob(jobId) {
       await bucket.upload(tmpIn, {
         destination: job.privatePath,
         metadata: {
-          contentType: 'video/quicktime',
+          contentType: contentTypeForSourceExt(srcExt),
           metadata: {
             giftId: job.giftId,
             jobId: id,
@@ -994,15 +1003,9 @@ async function processGiftAlphaJob(jobId) {
           },
         },
       });
-      try {
-        if (sourceFile.name !== job.privatePath) {
-          await sourceFile.delete({ ignoreNotFound: true });
-        }
-      } catch {
-        /* el WebM público es el activo */
-      }
+      // Conservar el original público en config/gifts; el archivo privado es copia de archivo.
     } catch (copyErr) {
-      console.warn('[gift-alpha] no se pudo archivar el MOV original', copyErr.message);
+      console.warn('[gift-alpha] no se pudo archivar el original', copyErr.message);
     }
 
     const url = downloadUrlFor(bucket.name, destPath, token);
@@ -1021,7 +1024,7 @@ async function processGiftAlphaJob(jobId) {
     });
     return publicJob(await readJob(id));
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo convertir el MOV';
+    const message = error instanceof Error ? error.message : 'No se pudo convertir la animación';
     await writeJob(id, {
       status: 'failed',
       stage: STAGE.failed,

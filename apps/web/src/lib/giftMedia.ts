@@ -18,6 +18,10 @@ export type GiftMediaInfo = {
   hasAlpha?: boolean;
   alphaUsable?: boolean | null;
   alphaWarning?: string | null;
+  /** El pipeline no pudo dejar una versión de producción segura. */
+  needsReview?: boolean;
+  ingestReason?: string | null;
+  ingestMessage?: string | null;
 };
 
 export function clampGiftVolume(value: unknown, fallback = 1): number {
@@ -42,6 +46,9 @@ export function defaultGiftMedia(): GiftMediaInfo {
     hasAlpha: false,
     alphaUsable: null,
     alphaWarning: null,
+    needsReview: false,
+    ingestReason: null,
+    ingestMessage: null,
   };
 }
 
@@ -69,6 +76,9 @@ export function normalizeGiftMedia(raw: unknown): GiftMediaInfo {
     hasAlpha: Boolean(row.hasAlpha),
     alphaUsable: row.alphaUsable == null ? null : Boolean(row.alphaUsable),
     alphaWarning: row.alphaWarning ? String(row.alphaWarning) : null,
+    needsReview: Boolean(row.needsReview),
+    ingestReason: row.ingestReason ? String(row.ingestReason) : null,
+    ingestMessage: row.ingestMessage ? String(row.ingestMessage) : null,
   };
 }
 
@@ -79,7 +89,7 @@ export function serializeGiftMedia(media: GiftMediaInfo | undefined): GiftMediaI
 export function giftPlaybackSrc(media: GiftMediaInfo | undefined, video?: string, prefer: 'active' | 'original' | 'processed' = 'active'): string {
   if (prefer === 'original') return media?.originalAsset || video || '';
   if (prefer === 'processed') return media?.processedAsset || video || '';
-  if (media?.processedAsset && (media.backgroundRemoved || media.hasAlpha)) return media.processedAsset;
+  if (media?.processedAsset) return media.processedAsset;
   return video || media?.originalAsset || '';
 }
 

@@ -20,9 +20,11 @@ const {
 describe('conversión MOV ProRes 4444 → WebM', () => {
   it('rechaza rutas y regalos inseguros', () => {
     assert.equal(safeGiftSourcePath('config/gifts/besito-video.mov'), 'config/gifts/besito-video.mov');
+    assert.equal(safeGiftSourcePath('config/gifts/x.webm'), 'config/gifts/x.webm');
+    assert.equal(safeGiftSourcePath('config/gifts/x.mp4'), 'config/gifts/x.mp4');
     assert.equal(safeGiftSourcePath('config/gifts/../secret.mov'), null);
     assert.equal(safeGiftSourcePath('admin/private/gifts/x.mov'), null);
-    assert.equal(safeGiftSourcePath('config/gifts/x.webm'), null);
+    assert.equal(safeGiftSourcePath('config/gifts/x.gif'), null);
     assert.equal(safeGiftId('besito'), 'besito');
     assert.equal(safeGiftId('../flor'), null);
     assert.equal(safeGiftId(''), null);
@@ -177,6 +179,23 @@ describe('conversión MOV ProRes 4444 → WebM', () => {
       ],
     });
     assert.match(String(tooLong.error), /supera/);
+
+    const webmAlpha = inspectProbe({
+      format: { format_name: 'matroska,webm', duration: '3' },
+      streams: [
+        {
+          codec_type: 'video',
+          codec_name: 'vp9',
+          pix_fmt: 'yuv420p',
+          width: 512,
+          height: 512,
+          duration: '3',
+          tags: { ALPHA_MODE: '1' },
+        },
+      ],
+    });
+    assert.equal(webmAlpha.hasAlphaChannel, true);
+    assert.equal(webmAlpha.error, null);
   });
 
   it('el progreso sale de out_time de FFmpeg, no de un temporizador', () => {

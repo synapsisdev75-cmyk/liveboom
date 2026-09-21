@@ -68,7 +68,7 @@ export function VideoNoteBubble({ src, mine }: { src: string; mine?: boolean }) 
         <video ref={videoRef} src={src} playsInline preload="metadata" className="h-full w-full object-cover" />
       </div>
       {!playing ? (
-        <span className="pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-black/30">
+        <span className="pointer-events-none lb-media-scrim absolute inset-0 grid place-items-center rounded-full bg-black/30">
           <span className="grid h-11 w-11 place-items-center rounded-full bg-black/45 text-white">
             <Play size={22} fill="currentColor" className="ml-0.5" />
           </span>

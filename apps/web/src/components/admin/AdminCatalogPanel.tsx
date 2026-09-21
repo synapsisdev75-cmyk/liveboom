@@ -29,14 +29,13 @@ import {
   rememberedGiftAlphaJobId,
   resumeGiftAlphaJob,
   retryGiftAlphaJob,
-  uploadGiftAnimation,
   type GiftAnimProgress,
 } from '../../lib/giftAlphaConvert';
 import {
   deleteGiftPermanentlyApi,
   giftStoragePathFromUrl,
+  ingestUploadedGiftAnimation,
   startGiftBackgroundRemove,
-  uploadGiftSource,
 } from '../../lib/giftMediaApi';
 import { defaultGiftMedia, type GiftMediaInfo } from '../../lib/giftMedia';
 
@@ -289,7 +288,28 @@ export function AdminCatalogPanel({
         if (cancelled || !job) return;
         if ((animGenRef.current[giftId] || 0) !== genAtStart) return;
         if (job.status === 'done' && job.url && !job.url.startsWith('blob:')) {
-          patchGift(job.giftId, { video: job.url });
+          const processedUrl = job.url;
+          giftsDirtyRef.current = true;
+          setGifts((prev) =>
+            prev.map((row) => {
+              if (row.id !== job.giftId) return row;
+              const media = row.media || defaultGiftMedia();
+              return {
+                ...row,
+                video: processedUrl,
+                media: {
+                  ...media,
+                  processedAsset: processedUrl,
+                  originalAsset: media.originalAsset || row.video || null,
+                  hasAudio: job.hasAudio !== false,
+                  hasAlpha: Boolean(job.hasAlpha),
+                  alphaUsable: job.alphaUsable == null ? null : Boolean(job.alphaUsable),
+                  needsReview: false,
+                  processingStatus: 'ready' as const,
+                },
+              };
+            }),
+          );
           forgetGiftAlphaJob(job.giftId);
           if (job.warning) setMessage(`${job.warning} Publica para aplicar.`);
         }
@@ -457,13 +477,12 @@ export function AdminCatalogPanel({
     const targetGiftId = gift.id;
     const gen = (animGenRef.current[targetGiftId] || 0) + 1;
     animGenRef.current[targetGiftId] = gen;
-    const convertMov = needsAlphaMovConvert(file);
     setMessage(null);
     setAnimProgress((prev) => ({
       ...prev,
       [targetGiftId]: {
         stage: 'uploading',
-        label: convertMov ? 'Subiendo archivo…' : 'Subiendo…',
+        label: 'Subiendo original…',
         percent: 0,
         indeterminate: false,
         fileName: file.name,
@@ -471,62 +490,35 @@ export function AdminCatalogPanel({
       },
     }));
     try {
-      if (convertMov) {
-        const result = await uploadGiftAnimation(targetGiftId, file, (progress) => {
-          setAnimProgress((prev) => ({ ...prev, [targetGiftId]: progress }));
-        });
-        if (animGenRef.current[targetGiftId] !== gen) return;
-        patchGift(targetGiftId, {
-          video: result.url,
-          media: {
-            ...(gift.media || defaultGiftMedia()),
-            originalAsset: result.url,
-            processedAsset: null,
-            backgroundRemoved: false,
-            processingStatus: 'ready',
-            hasAudio: result.job?.hasAudio !== false,
-          },
-        });
-        const warn = result.job?.warning;
-        setMessage(
-          warn ? `${warn} Publica para aplicar.` : 'MOV convertido a WebM. Publica para aplicar.',
-        );
+      const result = await ingestUploadedGiftAnimation(targetGiftId, file, (progress) => {
+        setAnimProgress((prev) => ({ ...prev, [targetGiftId]: progress }));
+      });
+      if (animGenRef.current[targetGiftId] !== gen) return;
+      patchGift(targetGiftId, {
+        video: result.url,
+        media: result.media,
+      });
+      setAnimProgress((prev) => ({
+        ...prev,
+        [targetGiftId]: {
+          stage: 'done',
+          label: result.decision.action === 'review' ? 'Revisión pendiente' : 'Animación lista.',
+          percent: 100,
+          indeterminate: false,
+          fileName: file.name,
+          fileBytes: file.size,
+          warning: result.decision.action === 'review' ? result.decision.message : result.job && 'warning' in result.job ? result.job.warning : null,
+        },
+      }));
+      setMessage(
+        result.decision.action === 'review'
+          ? `${result.decision.message} Publica solo si el original se ve bien, o usa Quitar fondo / Ajustar.`
+          : result.media.alphaWarning
+            ? `${result.media.alphaWarning} ${result.decision.message} Publica para aplicar.`
+            : `${result.decision.message} Publica para aplicar.`,
+      );
+      if (result.decision.action !== 'convert-alpha') {
         forgetGiftAlphaJob(targetGiftId);
-      } else {
-        const result = await uploadGiftSource(targetGiftId, file, (percent) => {
-          setAnimProgress((prev) => ({
-            ...prev,
-            [targetGiftId]: {
-              stage: 'uploading',
-              label: `Subiendo archivo… ${percent}%`,
-              percent,
-              indeterminate: false,
-              fileName: file.name,
-              fileBytes: file.size,
-            },
-          }));
-        });
-        if (animGenRef.current[targetGiftId] !== gen) return;
-        patchGift(targetGiftId, {
-          video: result.url,
-          media: result.media,
-        });
-        setAnimProgress((prev) => ({
-          ...prev,
-          [targetGiftId]: {
-            stage: 'done',
-            label: result.media.hasAudio ? 'Video con audio listo.' : 'Video listo.',
-            percent: 100,
-            indeterminate: false,
-            fileName: file.name,
-            fileBytes: file.size,
-          },
-        }));
-        setMessage(
-          result.media.hasAudio
-            ? 'Animación subida con audio completo. Publica para aplicar.'
-            : 'Animación subida. Publica para aplicar.',
-        );
       }
     } catch (err) {
       if (animGenRef.current[targetGiftId] !== gen) return;
@@ -536,14 +528,14 @@ export function AdminCatalogPanel({
         [targetGiftId]: {
           ...(prev[targetGiftId] || {
             stage: 'failed',
-            label: 'Error al convertir',
+            label: 'Error al procesar',
             percent: null,
             indeterminate: false,
             fileName: file.name,
             fileBytes: file.size,
           }),
           stage: 'failed',
-          label: 'Error al convertir',
+          label: 'Error al procesar',
           error,
         },
       }));
@@ -595,11 +587,14 @@ export function AdminCatalogPanel({
         video: job.url,
         media: {
           ...(row?.media || defaultGiftMedia()),
-          originalAsset: job.url,
-          processedAsset: null,
+          originalAsset: row?.media?.originalAsset || row?.video || null,
+          processedAsset: job.url,
           backgroundRemoved: false,
           processingStatus: 'ready',
           hasAudio: job.hasAudio !== false,
+          hasAlpha: Boolean(job.hasAlpha),
+          alphaUsable: job.alphaUsable == null ? null : Boolean(job.alphaUsable),
+          needsReview: false,
         },
       });
       forgetGiftAlphaJob(targetGiftId);
@@ -1000,7 +995,7 @@ export function AdminCatalogPanel({
                 <AssetDropZone
                   label="Animación WebM / MP4 / MOV 4444"
                   accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov,.MOV"
-                  hint={`Arrastra un WebM, MP4 o MOV ProRes 4444. Los MOV se convierten automáticamente a WebM. ${giftAnimLimitsHint()}.`}
+                  hint={`Al subir, se inspecciona, convierte y valida automáticamente (transparencia, audio, formato). ${giftAnimLimitsHint()}.`}
                   previewUrl={gift.video}
                   isVideo
                   progress={animProgress[gift.id] || null}
@@ -1024,7 +1019,12 @@ export function AdminCatalogPanel({
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Quitar fondo
                   </p>
-                  {gift.media?.hasAlpha && gift.media?.alphaUsable !== false ? (
+                  {gift.media?.needsReview ? (
+                    <p className="text-[11px] text-amber-200/90">
+                      {gift.media.ingestMessage ||
+                        'Esta animación quedó marcada para revisión. El original se conservó; no se publicó una versión recortada.'}
+                    </p>
+                  ) : gift.media?.hasAlpha && gift.media?.alphaUsable !== false ? (
                     <p className="text-[11px] text-emerald-200/90">
                       Esta animación ya tiene transparencia real. No se volverá a recortar el fondo ni se
                       sustituye el original.

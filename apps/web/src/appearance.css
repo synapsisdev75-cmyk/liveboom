@@ -90,6 +90,10 @@
   --shadow-modal: 0 18px 48px rgba(0, 0, 0, 0.4);
 }
 
+html[data-lb-theme='dark'] {
+  color-scheme: dark;
+}
+
 html[data-lb-theme='light'] {
   color-scheme: light;
   --status-offline: #9ca3af;
@@ -158,6 +162,13 @@ html[data-lb-theme] .text-zinc-800 {
   color: var(--text-secondary);
 }
 
+html[data-lb-theme='light'] .text-fuchsia-100,
+html[data-lb-theme='light'] .text-violet-100,
+html[data-lb-theme='light'] .text-violet-100\/85,
+html[data-lb-theme='light'] .text-violet-100\/90 {
+  color: var(--link-default);
+}
+
 html[data-lb-theme] .text-cyan-200,
 html[data-lb-theme] .text-cyan-300,
 html[data-lb-theme] .text-cyan-400,
@@ -203,6 +214,7 @@ html[data-lb-theme] .bg-zinc-950,
 html[data-lb-theme] .bg-zinc-950\/70,
 html[data-lb-theme] .bg-zinc-950\/95,
 html[data-lb-theme] .bg-\[\#0a0a0b\],
+html[data-lb-theme] .bg-\[\#0A0A0B\],
 html[data-lb-theme] .bg-\[\#0a0b10\] {
   background-color: var(--bg-primary);
 }
@@ -236,7 +248,8 @@ html[data-lb-theme] .border-zinc-800 {
 
 html[data-lb-theme] .hover\:bg-white\/5:hover,
 html[data-lb-theme] .hover\:bg-white\/10:hover,
-html[data-lb-theme] .hover\:bg-white\/\[0\.04\]:hover {
+html[data-lb-theme] .hover\:bg-white\/\[0\.04\]:hover,
+html[data-lb-theme] .hover\:bg-\[\#1a1b24\]:hover {
   background-color: var(--surface-hover);
 }
 
@@ -287,12 +300,15 @@ html[data-lb-theme] .bg-boom-bg {
 }
 
 html[data-lb-theme] .border-\[\#0a0a0b\],
-html[data-lb-theme] .ring-\[\#0a0a0b\] {
+html[data-lb-theme] .border-\[\#0A0A0B\],
+html[data-lb-theme] .ring-\[\#0a0a0b\],
+html[data-lb-theme] .ring-\[\#0A0A0B\] {
   border-color: var(--bg-primary);
   --tw-ring-color: var(--bg-primary);
 }
 
-html[data-lb-theme] .ring-offset-\[\#0a0a0b\] {
+html[data-lb-theme] .ring-offset-\[\#0a0a0b\],
+html[data-lb-theme] .ring-offset-\[\#0A0A0B\] {
   --tw-ring-offset-color: var(--bg-primary);
 }
 
@@ -306,6 +322,50 @@ html[data-lb-theme] .lb-media-stage,
 html[data-lb-theme] .lb-live-stage,
 html[data-lb-theme] .bg-black {
   background-color: #000;
+  color: #fff;
+}
+
+/* UI: velos negros de tarjeta/campo siguen el tema. No aplica a escenario multimedia. */
+html[data-lb-theme='light'] .bg-black\/20 {
+  background-color: color-mix(in srgb, var(--text-primary) 6%, var(--surface-secondary));
+}
+
+html[data-lb-theme='light'] .bg-black\/30 {
+  background-color: color-mix(in srgb, var(--text-primary) 8%, var(--surface-secondary));
+}
+
+html[data-lb-theme='light'] .bg-black\/40 {
+  background-color: color-mix(in srgb, var(--text-primary) 10%, var(--surface-secondary));
+}
+
+html[data-lb-theme='light'] .lb-explore-view .bg-black\/20,
+html[data-lb-theme='light'] .lb-media-stage .bg-black\/20,
+html[data-lb-theme='light'] .lb-live-stage .bg-black\/20,
+html[data-lb-theme='light'] [data-lb-surface='dark'] .bg-black\/20,
+html[data-lb-theme='light'] .lb-profile-hero .bg-black\/20 {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+html[data-lb-theme='light'] .lb-explore-view .bg-black\/30,
+html[data-lb-theme='light'] .lb-media-stage .bg-black\/30,
+html[data-lb-theme='light'] .lb-live-stage .bg-black\/30,
+html[data-lb-theme='light'] [data-lb-surface='dark'] .bg-black\/30,
+html[data-lb-theme='light'] .lb-profile-hero .bg-black\/30,
+html[data-lb-theme='light'] .lb-media-scrim.bg-black\/30 {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+html[data-lb-theme='light'] .lb-explore-view .bg-black\/40,
+html[data-lb-theme='light'] .lb-media-stage .bg-black\/40,
+html[data-lb-theme='light'] .lb-live-stage .bg-black\/40,
+html[data-lb-theme='light'] [data-lb-surface='dark'] .bg-black\/40,
+html[data-lb-theme='light'] .lb-live-studio-encoder .bg-black\/40,
+html[data-lb-theme='light'] .lb-live-studio-modal .bg-black\/40,
+html[data-lb-theme='light'] .lb-media-scrim.bg-black\/40 {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.lb-media-scrim {
   color: #fff;
 }
 
@@ -557,19 +617,9 @@ html[data-lb-theme] [class*='bg-black'] .text-white {
   box-shadow: 0 1px 8px rgb(0 0 0 / 0.28);
 }
 
-html[data-lb-theme='dark'] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
-  color: #fff;
+html[data-lb-theme] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
+  color: var(--media-control-text);
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.65);
-}
-
-html[data-lb-theme='light'] .lb-explore-view .lb-explore-tabs {
-  background: rgb(255 255 255 / 0.62);
-  box-shadow: 0 1px 8px rgb(0 0 0 / 0.12);
-}
-
-html[data-lb-theme='light'] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
-  color: #111;
-  text-shadow: 0 1px 2px rgb(255 255 255 / 0.8);
 }
 
 .lb-explore-icon {
@@ -629,15 +679,10 @@ html[data-lb-theme='light'] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
   }
 }
 
-html[data-lb-theme='dark'] .lb-explore-view .lb-explore-chrome,
-html[data-lb-theme='dark'] .lb-explore-view .lb-explore-chrome button {
-  color: #fff;
-}
-
-html[data-lb-theme='light'] .lb-explore-view .lb-explore-chrome,
-html[data-lb-theme='light'] .lb-explore-view .lb-explore-chrome button {
-  color: var(--text-primary);
-  text-shadow: 0 0 4px #fff, 0 1px 8px rgb(255 255 255 / 0.85);
+html[data-lb-theme] .lb-explore-view .lb-explore-chrome,
+html[data-lb-theme] .lb-explore-view .lb-explore-chrome button {
+  color: var(--media-control-text);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.65);
 }
 
 html[data-lb-theme] .lb-reaction-chip,
@@ -821,7 +866,7 @@ html[data-lb-theme='light'] main .text-white {
 
 html[data-lb-theme='light'] main [data-lb-surface='dark'] .text-white,
 html[data-lb-theme='light'] main .lb-profile-hero .text-white {
-  color: var(--text-primary);
+  color: var(--text-on-dark);
 }
 
 html[data-lb-theme='light'] main .bg-zinc-950,
@@ -1068,26 +1113,22 @@ html[data-lb-theme='light'] .lb-live-room {
   color: var(--lb-text);
 }
 
-/* Reloj EN VIVO: el escenario negro fuerza texto blanco; este recuento sí sigue el tema. */
+/* Reloj EN VIVO sobre el video: scrim + cifras uniformes. No sigue el fondo de la app. */
 .lb-live-elapsed {
   font-size: 0.75rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
+  color: var(--media-control-text);
 }
 
 html[data-lb-theme] .lb-live-stage-hud .lb-live-elapsed,
 html[data-lb-theme] .lb-live-stage-section .lb-live-elapsed,
 html[data-lb-theme='light'] main .lb-live-stage-hud .lb-live-elapsed,
 html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-elapsed {
-  color: var(--text-primary);
-  text-shadow: none;
-}
-
-html[data-lb-theme='light'] .lb-live-stage-hud .lb-live-elapsed,
-html[data-lb-theme='light'] main [class*='bg-black'] .lb-live-elapsed {
-  background: var(--bg-elevated);
-  box-shadow: inset 0 0 0 1px var(--border-default);
+  color: var(--media-control-text);
+  background: var(--media-control-bg);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.55);
+  box-shadow: inset 0 0 0 1px var(--media-control-border);
   border-radius: 0.4rem;
   padding: 0.2rem 0.5rem;
 }
@@ -1807,12 +1848,20 @@ html[data-lb-theme='light'] .lb-theme-toggle {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lb-theme-toggle,
-  .lb-theme-toggle__icon,
+  html[data-lb-theme],
+  .lb-shell,
+  .lb-panel,
+  .lb-card,
+  .lb-pub-card,
+  .lb-sidebar,
+  .lb-mobile-drawer,
+  .lb-shell-header,
+  .lb-bottom-nav,
   .lb-appearance-popover,
-  .lb-appearance-sheet {
-    animation: none !important;
-    transition: none !important;
+  .lb-appearance-sheet,
+  .lb-auth-card,
+  .lb-theme-toggle {
+    transition: none;
   }
 }
 
@@ -2871,6 +2920,20 @@ html[data-lb-theme] .lb-auth-card input:not([type='checkbox'])::placeholder,
 html[data-lb-theme='light'] .lb-auth-card input:not([type='checkbox'])::placeholder {
   color: var(--text-muted);
   -webkit-text-fill-color: var(--text-muted);
+}
+
+html[data-lb-theme] .lb-chat-record {
+  background: var(--surface-secondary);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+html[data-lb-theme] .lb-chat-record-timer {
+  color: var(--text-primary);
+}
+
+html[data-lb-theme] .lb-chat-record-label {
+  color: var(--accent-secondary);
 }
 
 html[data-lb-theme='light'] .lb-auth-card .bg-black\/35 {

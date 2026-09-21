@@ -1157,29 +1157,47 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }, [activeUid]);
 
   const giftSeededRef = useRef<string | null>(null);
+  const giftWatchStartedRef = useRef(0);
+  const viewingGiftThread = Boolean(docVisible && chatId && activeFriend);
+
+  useEffect(() => {
+    if (!viewingGiftThread) setGiftFloats([]);
+  }, [viewingGiftThread, chatId]);
+
   useEffect(() => {
     if (!chatId) {
       giftSeededRef.current = null;
+      giftWatchStartedRef.current = 0;
       seenGiftAnimRef.current.clear();
       return;
     }
     if (giftSeededRef.current !== chatId) {
       if (messages.length === 0) return;
       giftSeededRef.current = chatId;
+      giftWatchStartedRef.current = Date.now();
       messages.forEach((message) => {
         if (message.giftId) seenGiftAnimRef.current.add(message.id);
       });
       return;
     }
+    let playedLive = false;
     for (const message of messages) {
-      if (!message.giftId || message.mine || seenGiftAnimRef.current.has(message.id)) continue;
+      if (!message.giftId || seenGiftAnimRef.current.has(message.id)) continue;
       seenGiftAnimRef.current.add(message.id);
+      if (message.mine) continue;
+      if (!viewingGiftThread) continue;
+      const createdAt = Date.parse(message.createdAt);
+      if (!Number.isFinite(createdAt)) continue;
+      if (createdAt < giftWatchStartedRef.current - 1500) continue;
+      if (Date.now() - createdAt > 15_000) continue;
       animateGiftInChat(
         message.giftId,
         activeFriend?.displayName || activeFriend?.username || undefined,
       );
+      playedLive = true;
     }
-  }, [chatId, messages]);
+    if (playedLive) scrollChatToBottom(true);
+  }, [chatId, messages, viewingGiftThread, activeFriend?.displayName, activeFriend?.username, scrollChatToBottom]);
 
   useEffect(() => {
     // Solo el que espera ve la animación del otro — nunca la propia.
@@ -1499,6 +1517,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       void addLevelXp(profile.firebaseUid, totalCoins).catch(() => undefined);
       await send(mult > 1 ? `🎁 ${catalog.name} x${mult}` : `🎁 ${catalog.name}`, { giftId: catalog.id });
       animateGiftInChat(catalog.id, senderName);
+      scrollChatToBottom(true);
       setGiftsOpen(false);
     } catch (err) {
       setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');

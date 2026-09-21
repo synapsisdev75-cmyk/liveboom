@@ -622,7 +622,6 @@
 }
 
 :root {
-  color-scheme: dark;
   --lb-safe-top: env(safe-area-inset-top, 0px);
   --lb-safe-right: env(safe-area-inset-right, 0px);
   --lb-safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -777,7 +776,7 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #0a0a0b;
+  background: var(--bg-primary, #0a0a0b);
   overflow-x: hidden;
 }
 

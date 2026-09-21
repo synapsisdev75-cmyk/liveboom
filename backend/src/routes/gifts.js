@@ -115,7 +115,8 @@ function giftAlphaHttpStatus(code) {
     code === 'UNSUPPORTED' ||
     code === 'CONFIRM' ||
     code === 'LAST_GIFT' ||
-    code === 'AUDIO'
+    code === 'AUDIO' ||
+    code === 'NO_FFMPEG'
   ) {
     return 400;
   }
@@ -216,6 +217,33 @@ router.post('/media/inspect', requireAuth, requireGiftsAdmin, async (req, res) =
     const code = error && error.code ? String(error.code) : '';
     res.status(giftAlphaHttpStatus(code)).json({
       error: error instanceof Error ? error.message : 'No se pudo inspeccionar el video',
+    });
+  }
+});
+
+router.post('/ingest', requireAuth, requireGiftsAdmin, async (req, res) => {
+  try {
+    const { ingestGiftAnimation } = require('../lib/giftAnimIngest');
+    const result = await ingestGiftAnimation({
+      storagePath: typeof req.body?.storagePath === 'string' ? req.body.storagePath : '',
+      giftId: typeof req.body?.giftId === 'string' ? req.body.giftId : '',
+      createdByUid: req.user?.uid || '',
+      fileName: typeof req.body?.fileName === 'string' ? req.body.fileName : '',
+      clientNonce: typeof req.body?.clientNonce === 'string' ? req.body.clientNonce : '',
+    });
+    res.json({
+      ok: true,
+      decision: result.decision,
+      jobKind: result.jobKind,
+      job: result.job,
+      media: result.media,
+      sourcePath: result.sourcePath,
+    });
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    console.error('[gifts/ingest]', error);
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo procesar la animación',
     });
   }
 });

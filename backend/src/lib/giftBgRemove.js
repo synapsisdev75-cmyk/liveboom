@@ -131,6 +131,7 @@ function inspectMedia(probe) {
     error = `La animación supera ${LIMITS.maxDurationSec} s.`;
   }
   return {
+    container: String(format.format_name || '').toLowerCase(),
     codec: String(video?.codec_name || ''),
     width,
     height,
@@ -824,6 +825,7 @@ module.exports = {
   safeGiftMediaPath,
   inspectMedia,
   inspectStorageMedia,
+  detectBackground,
   buildKeyFilter,
   classifyBg,
   publicJob,

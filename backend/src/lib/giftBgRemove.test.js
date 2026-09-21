@@ -32,6 +32,7 @@ test('inspectMedia reports audio and duration', () => {
   });
   assert.equal(info.hasAudio, true);
   assert.equal(info.hasAlphaChannel, false);
+  assert.match(info.container, /mp4/);
   assert.ok(Math.abs(info.durationSec - 8.2) < 0.01);
 });
 
