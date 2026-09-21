@@ -1,7 +1,13 @@
 /**
- * Cajas flotantes de chat minimizado (pastillas foto + nombre abajo a la derecha).
+ * Interruptor de la caja de mensajes (página /mensajes + ítem Mensajes del menú).
  *
- * false = ocultas. El código no se borra.
+ * false = oculta. El código no se borra.
  * Para reactivar, la orden del usuario es: «Habilitar caja de mensajes».
+ */
+export const MESSAGES_INBOX_ENABLED = false;
+
+/**
+ * Pastillas flotantes de chat minimizado (foto + nombre).
+ * Independiente de la página /mensajes.
  */
 export const MESSAGE_BOXES_ENABLED = true;

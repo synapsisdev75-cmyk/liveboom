@@ -36,6 +36,7 @@ import { AppearanceControl } from '../appearance/AppearanceControl';
 import { bcp47For, useT } from '../../i18n';
 import { useLocaleStore } from '../../store/localeStore';
 import { prefetchRoute } from '../../lib/routePrefetch';
+import { MESSAGES_INBOX_ENABLED } from '../../lib/messagesUiFlags';
 
 function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
@@ -56,8 +57,8 @@ function SidebarUnreadHint({ className = 'ml-auto' }: { className?: string }) {
 /** Orden exacto del mockup de barra lateral. */
 function useSideNavItems() {
   const t = useT();
-  return useMemo(
-    () => [
+  return useMemo(() => {
+    const items = [
       { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
       { id: 'explore', label: t('nav.explore'), icon: Compass, to: '/explorar' as const },
       { id: 'groups', label: t('nav.groups'), icon: Users, to: '/grupos' as const },
@@ -67,23 +68,23 @@ function useSideNavItems() {
       { id: 'profile', label: t('nav.profile'), icon: UserRound, to: '/perfil' as const },
       { id: 'search', label: t('nav.searchFriends'), icon: Search, to: '/buscar' as const },
       { id: 'settings', label: t('nav.settings'), icon: Settings, to: '/perfil/editar' as const },
-    ],
-    [t],
-  );
+    ];
+    return MESSAGES_INBOX_ENABLED ? items : items.filter((item) => item.id !== 'messages');
+  }, [t]);
 }
 
 function useMobileNavItems() {
   const t = useT();
-  return useMemo(
-    () => [
+  return useMemo(() => {
+    const items = [
       { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
       { id: 'explore', label: t('nav.explore'), icon: Compass, to: '/explorar' as const },
       { id: 'create', label: t('nav.create'), icon: Plus, to: '/crear' as const, accent: true },
       { id: 'messages', label: t('nav.messages'), icon: MessageCircle, to: '/mensajes' as const },
       { id: 'profile', label: t('nav.profile'), icon: UserRound, to: '/perfil' as const },
-    ],
-    [t],
-  );
+    ];
+    return MESSAGES_INBOX_ENABLED ? items : items.filter((item) => item.id !== 'messages');
+  }, [t]);
 }
 
 const activeClass =

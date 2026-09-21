@@ -31,7 +31,7 @@ import {
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
-import { MESSAGE_BOXES_ENABLED } from '../../lib/messagesUiFlags';
+import { MESSAGE_BOXES_ENABLED, MESSAGES_INBOX_ENABLED } from '../../lib/messagesUiFlags';
 import {
   useMessagesMenuStore,
   type MessagesPopupPeer,
@@ -359,15 +359,17 @@ function FloatingDmWindow({
           >
             <Minus size={16} />
           </button>
-          <button
-            type="button"
-            onClick={onExpand}
-            className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
-            aria-label="Pantalla completa"
-            title="Pantalla completa"
-          >
-            <Maximize2 size={16} />
-          </button>
+          {MESSAGES_INBOX_ENABLED ? (
+            <button
+              type="button"
+              onClick={onExpand}
+              className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
+              aria-label="Pantalla completa"
+              title="Pantalla completa"
+            >
+              <Maximize2 size={16} />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -621,15 +623,17 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5">
         <p className="text-sm font-bold text-white">Chats</p>
         <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={onExpandAll}
-            className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
-            aria-label="Abrir mensajes en pantalla completa"
-            title="Pantalla completa"
-          >
-            <Maximize2 size={16} />
-          </button>
+          {MESSAGES_INBOX_ENABLED ? (
+            <button
+              type="button"
+              onClick={onExpandAll}
+              className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
+              aria-label="Abrir mensajes en pantalla completa"
+              title="Pantalla completa"
+            >
+              <Maximize2 size={16} />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -723,13 +727,15 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
         )}
       </ul>
 
-      <button
-        type="button"
-        onClick={onExpandAll}
-        className="shrink-0 border-t border-white/10 px-3 py-3 text-center text-sm font-semibold text-cyan-300 hover:bg-white/5"
-      >
-        Ver todos los mensajes
-      </button>
+      {MESSAGES_INBOX_ENABLED ? (
+        <button
+          type="button"
+          onClick={onExpandAll}
+          className="shrink-0 border-t border-white/10 px-3 py-3 text-center text-sm font-semibold text-cyan-300 hover:bg-white/5"
+        >
+          Ver todos los mensajes
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -819,6 +825,7 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
   const menuOpen = desktop ? railOpen : sheetOpen;
 
   function openFullscreen(peer?: MessagesPopupPeer | null) {
+    if (!MESSAGES_INBOX_ENABLED) return;
     closeAll();
     setSheetOpen(false);
     if (peer?.username) {
