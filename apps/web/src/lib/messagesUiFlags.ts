@@ -4,7 +4,7 @@
  * false = oculta. El código no se borra.
  * Para reactivar, la orden del usuario es: «Habilitar caja de mensajes».
  */
-export const MESSAGES_INBOX_ENABLED = false;
+export const MESSAGES_INBOX_ENABLED = true;
 
 /**
  * Pastillas flotantes de chat minimizado (foto + nombre).
