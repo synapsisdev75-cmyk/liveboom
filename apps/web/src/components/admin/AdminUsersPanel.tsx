@@ -284,6 +284,11 @@ export function AdminUsersPanel() {
             {users.length} registrados ·{' '}
             <span className="text-emerald-400">{onlineCount} en línea</span> ·{' '}
             <span className="text-zinc-400">{offlineCount} desconectados</span>
+            {owner ? (
+              <span className="mt-1 block">
+                “Delegar super” da todas las funciones. Para limitarlas, usa la pestaña Delegar.
+              </span>
+            ) : null}
           </p>
         </div>
         <button

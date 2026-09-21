@@ -13,7 +13,7 @@ const superAdminMod = require('../middleware/requireSuperAdmin');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
-const requireSuperAdmin = asFn(superAdminMod);
+const requireWithdrawalsAdmin = superAdminMod.requireCapability('withdrawals');
 const isSuperAdminEmail =
   typeof superAdminMod.isSuperAdminEmail === 'function'
     ? superAdminMod.isSuperAdminEmail
@@ -188,7 +188,7 @@ router.post('/withdrawals/prepare', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/admin/withdrawals/report', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/admin/withdrawals/report', requireAuth, requireWithdrawalsAdmin, async (req, res) => {
   try {
     const { downloadCurrentReport } = require('../lib/withdrawalReport');
     const file = await downloadCurrentReport();
@@ -211,7 +211,7 @@ router.get('/admin/withdrawals/report', requireAuth, requireSuperAdmin, async (r
   }
 });
 
-router.get('/admin/withdrawals', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/admin/withdrawals', requireAuth, requireWithdrawalsAdmin, async (req, res) => {
   try {
     const { readReportMeta } = require('../lib/withdrawalReport');
     const cursor = req.query.cursor ? String(req.query.cursor) : null;
@@ -237,7 +237,7 @@ router.get('/admin/withdrawals', requireAuth, requireSuperAdmin, async (req, res
   }
 });
 
-router.post('/admin/withdrawals/:id/status', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/admin/withdrawals/:id/status', requireAuth, requireWithdrawalsAdmin, async (req, res) => {
   try {
     const email = req.user?.email;
     const result = await wallet.updateWithdrawalAdmin({

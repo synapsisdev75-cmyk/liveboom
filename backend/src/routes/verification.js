@@ -6,7 +6,7 @@ const config = require('../lib/verificationConfig');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
-const requireSuperAdmin = asFn(superAdminMod);
+const requireVerificationAdmin = superAdminMod.requireCapability('verification');
 
 function uidOf(req) {
   return String(req.user?.uid || '').trim();
@@ -89,7 +89,7 @@ router.post('/submit', requireAuth, async (req, res) => {
 
 router.get('/files/:fileId/url', requireAuth, async (req, res) => {
   try {
-    const admin = await superAdminMod.isSuperAdminEmail(req.user?.email || '');
+    const admin = await superAdminMod.emailHasCapability(req.user?.email || '', 'verification');
     const targetUid = admin && req.query.uid ? String(req.query.uid) : uidOf(req);
     if (!admin && targetUid !== uidOf(req)) {
       res.status(403).json({ error: 'No autorizado.' });
@@ -108,7 +108,7 @@ router.get('/files/:fileId/url', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/admin', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/admin', requireAuth, requireVerificationAdmin, async (req, res) => {
   try {
     res.json(
       await verification.listQueue({
@@ -122,7 +122,7 @@ router.get('/admin', requireAuth, requireSuperAdmin, async (req, res) => {
   }
 });
 
-router.get('/admin/:uid', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/admin/:uid', requireAuth, requireVerificationAdmin, async (req, res) => {
   try {
     const uid = String(req.params.uid || '');
     const current = await verification.getPublicCase(uid);
@@ -135,7 +135,7 @@ router.get('/admin/:uid', requireAuth, requireSuperAdmin, async (req, res) => {
   }
 });
 
-router.post('/admin/:uid/decision', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/admin/:uid/decision', requireAuth, requireVerificationAdmin, async (req, res) => {
   try {
     res.json(
       await verification.decideCase({

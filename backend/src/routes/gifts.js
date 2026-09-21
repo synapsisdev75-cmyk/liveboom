@@ -12,7 +12,8 @@ const { firestoreConfigured, getAdminDb } = require('../lib/firestoreAdmin');
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
-const requireSuperAdmin = asFn(require('../middleware/requireSuperAdmin'));
+const superAdminMod = require('../middleware/requireSuperAdmin');
+const requireGiftsAdmin = superAdminMod.requireCapability('gifts');
 
 function withTimeout(promise, ms) {
   let timer;
@@ -123,7 +124,7 @@ function giftAlphaHttpStatus(code) {
   return 500;
 }
 
-router.get('/convert-alpha/limits', requireAuth, requireSuperAdmin, (_req, res) => {
+router.get('/convert-alpha/limits', requireAuth, requireGiftsAdmin, (_req, res) => {
   const { LIMITS } = require('../lib/giftAlphaConvert');
   res.json({
     ok: true,
@@ -134,7 +135,7 @@ router.get('/convert-alpha/limits', requireAuth, requireSuperAdmin, (_req, res) 
   });
 });
 
-router.post('/convert-alpha/jobs', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/convert-alpha/jobs', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { enqueueGiftAlphaJob, kickGiftAlphaJob } = require('../lib/giftAlphaConvert');
     const job = await enqueueGiftAlphaJob({
@@ -156,7 +157,7 @@ router.post('/convert-alpha/jobs', requireAuth, requireSuperAdmin, async (req, r
   }
 });
 
-router.get('/convert-alpha/jobs/:jobId', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/convert-alpha/jobs/:jobId', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { readJob, publicJob } = require('../lib/giftAlphaConvert');
     const job = publicJob(await readJob(req.params.jobId));
@@ -171,7 +172,7 @@ router.get('/convert-alpha/jobs/:jobId', requireAuth, requireSuperAdmin, async (
   }
 });
 
-router.get('/convert-alpha/gifts/:giftId', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/convert-alpha/gifts/:giftId', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { readJob, publicJob, safeGiftId } = require('../lib/giftAlphaConvert');
     const { getAdminDb } = require('../lib/firestoreAdmin');
@@ -190,7 +191,7 @@ router.get('/convert-alpha/gifts/:giftId', requireAuth, requireSuperAdmin, async
   }
 });
 
-router.post('/convert-alpha/jobs/:jobId/retry', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/convert-alpha/jobs/:jobId/retry', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { retryGiftAlphaJob, kickGiftAlphaJob } = require('../lib/giftAlphaConvert');
     const job = await retryGiftAlphaJob(req.params.jobId);
@@ -204,7 +205,7 @@ router.post('/convert-alpha/jobs/:jobId/retry', requireAuth, requireSuperAdmin, 
   }
 });
 
-router.post('/media/inspect', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/media/inspect', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { inspectStorageMedia } = require('../lib/giftBgRemove');
     const media = await inspectStorageMedia(
@@ -219,7 +220,7 @@ router.post('/media/inspect', requireAuth, requireSuperAdmin, async (req, res) =
   }
 });
 
-router.post('/bg-remove/jobs', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/bg-remove/jobs', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { enqueueGiftBgJob, kickGiftBgJob } = require('../lib/giftBgRemove');
     const job = await enqueueGiftBgJob({
@@ -243,7 +244,7 @@ router.post('/bg-remove/jobs', requireAuth, requireSuperAdmin, async (req, res) 
   }
 });
 
-router.get('/bg-remove/jobs/:jobId', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/bg-remove/jobs/:jobId', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { readJob, publicJob } = require('../lib/giftBgRemove');
     const job = publicJob(await readJob(req.params.jobId));
@@ -257,7 +258,7 @@ router.get('/bg-remove/jobs/:jobId', requireAuth, requireSuperAdmin, async (req,
   }
 });
 
-router.post('/bg-remove/jobs/:jobId/retry', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/bg-remove/jobs/:jobId/retry', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { retryGiftBgJob, kickGiftBgJob } = require('../lib/giftBgRemove');
     const job = await retryGiftBgJob(req.params.jobId);
@@ -271,7 +272,7 @@ router.post('/bg-remove/jobs/:jobId/retry', requireAuth, requireSuperAdmin, asyn
   }
 });
 
-router.post('/catalog/:giftId/delete', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/catalog/:giftId/delete', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { deleteGiftPermanently } = require('../lib/giftCatalogDelete');
     const result = await deleteGiftPermanently({
@@ -289,7 +290,7 @@ router.post('/catalog/:giftId/delete', requireAuth, requireSuperAdmin, async (re
   }
 });
 
-router.post('/convert-alpha', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/convert-alpha', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { enqueueGiftAlphaJob, kickGiftAlphaJob } = require('../lib/giftAlphaConvert');
     const job = await enqueueGiftAlphaJob({
@@ -311,7 +312,7 @@ router.post('/convert-alpha', requireAuth, requireSuperAdmin, async (req, res) =
   }
 });
 
-router.post('/restore-audio', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/restore-audio', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { restoreSilentGiftAudio } = require('../lib/giftAlphaConvert');
     const result = await restoreSilentGiftAudio({ limit: 8, force: true });

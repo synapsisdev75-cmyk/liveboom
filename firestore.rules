@@ -40,6 +40,22 @@ service cloud.firestore {
       return isSuperAdmin() && hasValidAdminSession();
     }
 
+    function superAdminGrantsMap() {
+      return exists(/databases/$(database)/documents/config/superAdmins)
+        ? get(/databases/$(database)/documents/config/superAdmins).data.get('grants', {})
+        : {};
+    }
+
+    /** Dueño: todas. Delegado: las que el dueño guardó; sin grants = acceso completo anterior. */
+    function hasCapability(cap) {
+      return isUnlockedSuperAdmin()
+        && (
+          isOwner()
+          || !(request.auth.token.email in superAdminGrantsMap())
+          || cap in superAdminGrantsMap().get(request.auth.token.email, [])
+        );
+    }
+
     function walletBalancesUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'coinsBalance',
@@ -53,7 +69,7 @@ service cloud.firestore {
 
     match /config/levels {
       allow read: if true;
-      allow create, update: if isUnlockedSuperAdmin();
+      allow create, update: if hasCapability('levels');
       allow delete: if false;
     }
 
@@ -61,7 +77,7 @@ service cloud.firestore {
     // publicar. Nunca borrar el documento ni vaciar la lista de regalos.
     match /config/giftsCatalog {
       allow read: if true;
-      allow create, update: if isUnlockedSuperAdmin()
+      allow create, update: if hasCapability('gifts')
         && request.resource.data.gifts is list
         && request.resource.data.gifts.size() > 0
         && request.resource.data.version is number
@@ -76,7 +92,7 @@ service cloud.firestore {
     // Paquetes Blast: misma protección anti-borrado / anti-vacío.
     match /config/coinPackages {
       allow read: if true;
-      allow create, update: if isUnlockedSuperAdmin()
+      allow create, update: if hasCapability('blast')
         && request.resource.data.packages is list
         && request.resource.data.packages.size() > 0
         && request.resource.data.version is number
@@ -90,7 +106,7 @@ service cloud.firestore {
 
     match /config/communityHeader {
       allow read: if true;
-      allow create, update: if isUnlockedSuperAdmin();
+      allow create, update: if hasCapability('community');
       allow delete: if false;
     }
 
@@ -112,7 +128,8 @@ service cloud.firestore {
         && hasValidAdminSession()
         && request.resource.data.ownerEmail == 'synapsisdev75@gmail.com'
         && request.resource.data.emails is list
-        && 'synapsisdev75@gmail.com' in request.resource.data.emails;
+        && 'synapsisdev75@gmail.com' in request.resource.data.emails
+        && (!('grants' in request.resource.data) || request.resource.data.grants is map);
       allow delete: if false;
     }
 
@@ -150,8 +167,8 @@ service cloud.firestore {
     }
 
     match /adminChangeRequests/{requestId} {
-      allow read: if isUnlockedSuperAdmin();
-      allow create: if isUnlockedSuperAdmin()
+      allow read: if hasCapability('requests');
+      allow create: if hasCapability('requests')
         && request.resource.data.createdByUid == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.prompt is string
@@ -181,7 +198,8 @@ service cloud.firestore {
           && walletBalancesUnchanged()
         )
         || (
-          isUnlockedSuperAdmin()
+          isOwner()
+          && hasValidAdminSession()
           && request.resource.data.firebaseUid == resource.data.firebaseUid
           && walletBalancesUnchanged()
           && request.resource.data.diff(resource.data).affectedKeys()
@@ -376,7 +394,7 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/users/$(otherOnExisting())/callAuthorizations/$(request.resource.data.call.authorizationId)).data.callerId == request.auth.uid;
       }
 
-      allow read: if isChatParticipant() || isSuperAdmin();
+      allow read: if isChatParticipant() || hasCapability('messages');
       allow update: if isChatParticipant()
         && (!startingNewCall() || mutualFriends(request.auth.uid, otherOnExisting()) || authorizedFollowerStart());
       allow create: if isCreatingParticipant()
@@ -384,7 +402,7 @@ service cloud.firestore {
       allow delete: if isChatParticipant();
 
       match /messages/{messageId} {
-        allow read: if isSuperAdmin()
+        allow read: if hasCapability('messages')
           || (signedIn() && request.auth.uid in chatData().participants);
         // Si ya eres participante del chat, puedes enviar (la relación se exige al crear el chat).
         allow create: if signedIn()
@@ -613,7 +631,7 @@ service cloud.firestore {
       allow write: if false;
     }
     match /config/adRevenueProjection {
-      allow read: if isUnlockedSuperAdmin();
+      allow read: if hasCapability('ads');
       allow write: if false;
     }
 
@@ -686,7 +704,7 @@ service cloud.firestore {
       }
 
       match /messages/{messageId} {
-        allow read: if isGroupMember() || isSuperAdmin();
+        allow read: if isGroupMember() || hasCapability('messages');
         allow create: if isGroupMember()
           && request.resource.data.fromUid == request.auth.uid
           && request.resource.data.text is string

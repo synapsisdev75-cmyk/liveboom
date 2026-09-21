@@ -203,14 +203,20 @@ function AssetDropZone({
   );
 }
 
-export function AdminCatalogPanel() {
+export function AdminCatalogPanel({
+  modules = ['gifts', 'coins'],
+}: {
+  modules?: Array<'gifts' | 'coins'>;
+}) {
+  const allowedGifts = modules.includes('gifts');
+  const allowedCoins = modules.includes('coins');
   const email = useAuthStore((s) => s.profile?.email) || 'super-admin';
   const storeGifts = useCatalogConfigStore((s) => s.gifts);
   const storePacks = useCatalogConfigStore((s) => s.packages);
   const giftsVersion = useCatalogConfigStore((s) => s.giftsVersion);
   const packsVersion = useCatalogConfigStore((s) => s.packsVersion);
 
-  const [sub, setSub] = useState<SubTab>('gifts');
+  const [sub, setSub] = useState<SubTab>(allowedGifts ? 'gifts' : 'coins');
   const [gifts, setGifts] = useState<EditableGift[]>(() => buildDefaultGiftsCatalog().gifts);
   const [packs, setPacks] = useState<EditableCoinPackage[]>(() => buildDefaultCoinPackages().packages);
   const [selectedGiftId, setSelectedGiftId] = useState(gifts[0]?.id || '');
@@ -246,6 +252,11 @@ export function AdminCatalogPanel() {
       }
     }
   }, [storePacks, packsVersion]);
+
+  useEffect(() => {
+    if (sub === 'gifts' && !allowedGifts && allowedCoins) setSub('coins');
+    if (sub === 'coins' && !allowedCoins && allowedGifts) setSub('gifts');
+  }, [allowedGifts, allowedCoins, sub]);
 
   const filteredGifts = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -727,6 +738,7 @@ export function AdminCatalogPanel() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
+        {allowedGifts ? (
         <button
           type="button"
           onClick={() => setSub('gifts')}
@@ -738,6 +750,8 @@ export function AdminCatalogPanel() {
         >
           Regalos / animaciones
         </button>
+        ) : null}
+        {allowedCoins ? (
         <button
           type="button"
           onClick={() => setSub('coins')}
@@ -749,6 +763,7 @@ export function AdminCatalogPanel() {
         >
           Paquetes Blast
         </button>
+        ) : null}
         {sub === 'gifts' ? (
           <button
             type="button"

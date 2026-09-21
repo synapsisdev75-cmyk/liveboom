@@ -8,7 +8,15 @@ import { AdminVaultSecurityPanel } from '../components/admin/AdminVaultSecurityP
 import { AdminWithdrawalsPanel } from '../components/admin/AdminWithdrawalsPanel';
 import { AdminVerificationPanel } from '../components/admin/AdminVerificationPanel';
 import { CommunityHeaderEditor } from '../components/admin/CommunityHeaderEditor';
-import { isOwnerEmail } from '../lib/superAdmin';
+import { AdminDelegatePanel } from '../components/admin/AdminDelegatePanel';
+import { AdminChangeRequestsPanel } from '../components/admin/AdminChangeRequestsPanel';
+import {
+  hasSuperAdminCapability,
+  isOwnerEmail,
+  type SuperAdminCapability,
+  type SuperAdminGrants,
+} from '../lib/superAdmin';
+import { listenSuperAdmins } from '../lib/superAdminsFirestore';
 import { useSuperAdminVaultStore } from '../store/superAdminVaultStore';
 import { LevelAvatarFrame } from '../components/profile/LevelAvatarFrame';
 import { LevelInsignia } from '../components/profile/LevelInsignia';
@@ -24,15 +32,30 @@ import { useAuthStore } from '../store/authStore';
 import { useLevelsConfigStore } from '../store/levelsConfigStore';
 
 type AdminTab =
+  | 'delegate'
   | 'levels'
   | 'users'
   | 'messages'
   | 'community'
-  | 'catalog'
+  | 'gifts'
+  | 'blast'
   | 'ads'
+  | 'requests'
   | 'withdrawals'
   | 'verifications'
   | 'security';
+
+const TAB_CAPABILITY: Partial<Record<AdminTab, SuperAdminCapability>> = {
+  messages: 'messages',
+  gifts: 'gifts',
+  blast: 'blast',
+  ads: 'ads',
+  levels: 'levels',
+  community: 'community',
+  requests: 'requests',
+  withdrawals: 'withdrawals',
+  verifications: 'verification',
+};
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -101,6 +124,30 @@ export function SuperAdminView() {
   const liveTiers = useLevelsConfigStore((s) => s.tiers);
   const lockVault = useSuperAdminVaultStore((s) => s.lock);
   const owner = isOwnerEmail(profile?.email);
+  const [allowlist, setAllowlist] = useState<string[]>([]);
+  const [grants, setGrants] = useState<SuperAdminGrants>({});
+
+  useEffect(() => {
+    return listenSuperAdmins((doc) => {
+      setAllowlist(doc?.emails ?? []);
+      setGrants(doc?.grants ?? {});
+    });
+  }, []);
+
+  const can = useCallback(
+    (capability: SuperAdminCapability) =>
+      hasSuperAdminCapability(profile?.email, capability, grants, allowlist),
+    [profile?.email, grants, allowlist],
+  );
+
+  const tabAllowed = useCallback(
+    (id: AdminTab) => {
+      if (id === 'users' || id === 'delegate' || id === 'security') return owner;
+      const cap = TAB_CAPABILITY[id];
+      return cap ? can(cap) : false;
+    },
+    [owner, can],
+  );
 
   const location = useLocation();
   const [tab, setTab] = useState<AdminTab>(() =>
@@ -108,6 +155,15 @@ export function SuperAdminView() {
       ? 'verifications'
       : 'users',
   );
+
+  useEffect(() => {
+    if (tabAllowed(tab)) return;
+    const fallback: AdminTab[] = owner
+      ? ['users', 'delegate', 'messages', 'gifts', 'blast', 'ads', 'levels', 'community', 'requests', 'withdrawals', 'verifications', 'security']
+      : ['messages', 'gifts', 'blast', 'ads', 'levels', 'community', 'requests', 'withdrawals', 'verifications'];
+    const next = fallback.find((id) => tabAllowed(id));
+    if (next) setTab(next);
+  }, [tab, tabAllowed, owner]);
 
   useEffect(() => {
     if (/withdrawal-verifications|verificaciones-retiro/.test(location.pathname)) {
@@ -236,14 +292,17 @@ export function SuperAdminView() {
       <div className="flex flex-wrap gap-2">
         {(
           [
-            { id: 'users' as const, label: 'Usuarios / XP' },
-            { id: 'messages' as const, label: 'Mensajes' },
-            { id: 'catalog' as const, label: 'Regalos / Blast' },
-            { id: 'ads' as const, label: 'Publicidad' },
-            { id: 'levels' as const, label: 'Niveles / Marcos' },
-            { id: 'community' as const, label: 'Comunidad' },
-            { id: 'withdrawals' as const, label: 'Solicitud de retiros' },
-            { id: 'verifications' as const, label: 'Verificación de retiros' },
+            ...(owner ? [{ id: 'delegate' as const, label: 'Delegar' }] : []),
+            ...(owner ? [{ id: 'users' as const, label: 'Usuarios / XP' }] : []),
+            ...(can('messages') ? [{ id: 'messages' as const, label: 'Mensajes' }] : []),
+            ...(can('gifts') ? [{ id: 'gifts' as const, label: 'Regalos' }] : []),
+            ...(can('blast') ? [{ id: 'blast' as const, label: 'Blast' }] : []),
+            ...(can('ads') ? [{ id: 'ads' as const, label: 'Publicidad' }] : []),
+            ...(can('levels') ? [{ id: 'levels' as const, label: 'Niveles / Marcos' }] : []),
+            ...(can('community') ? [{ id: 'community' as const, label: 'Comunidad' }] : []),
+            ...(can('requests') ? [{ id: 'requests' as const, label: 'Solicitudes' }] : []),
+            ...(can('withdrawals') ? [{ id: 'withdrawals' as const, label: 'Solicitud de retiros' }] : []),
+            ...(can('verification') ? [{ id: 'verifications' as const, label: 'Verificación de retiros' }] : []),
             ...(owner ? [{ id: 'security' as const, label: 'Seguridad' }] : []),
           ] as { id: AdminTab; label: string }[]
         ).map(({ id, label }) => (
@@ -268,16 +327,19 @@ export function SuperAdminView() {
         </p>
       ) : null}
 
-      {tab === 'users' ? <AdminUsersPanel /> : null}
-      {tab === 'messages' ? <AdminMessagesPanel /> : null}
-      {tab === 'catalog' ? <AdminCatalogPanel /> : null}
-      {tab === 'ads' ? <AdminAdsPanel /> : null}
-      {tab === 'community' ? <CommunityHeaderEditor /> : null}
-      {tab === 'withdrawals' ? <AdminWithdrawalsPanel /> : null}
-      {tab === 'verifications' ? <AdminVerificationPanel /> : null}
+      {tab === 'delegate' && owner ? <AdminDelegatePanel /> : null}
+      {tab === 'users' && owner ? <AdminUsersPanel /> : null}
+      {tab === 'messages' && can('messages') ? <AdminMessagesPanel /> : null}
+      {tab === 'gifts' && can('gifts') ? <AdminCatalogPanel modules={['gifts']} /> : null}
+      {tab === 'blast' && can('blast') ? <AdminCatalogPanel modules={['coins']} /> : null}
+      {tab === 'ads' && can('ads') ? <AdminAdsPanel /> : null}
+      {tab === 'community' && can('community') ? <CommunityHeaderEditor /> : null}
+      {tab === 'requests' && can('requests') ? <AdminChangeRequestsPanel /> : null}
+      {tab === 'withdrawals' && can('withdrawals') ? <AdminWithdrawalsPanel /> : null}
+      {tab === 'verifications' && can('verification') ? <AdminVerificationPanel /> : null}
       {tab === 'security' && owner ? <AdminVaultSecurityPanel /> : null}
 
-      {tab === 'levels' ? (
+      {tab === 'levels' && can('levels') ? (
       <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
         <aside className="lb-panel space-y-1 rounded-2xl p-2">
           <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">

@@ -235,13 +235,7 @@ service firebase.storage {
     match /admin/community/{theme}/{fileName} {
       allow read: if true;
       allow write: if signedIn()
-        && (
-          request.auth.token.email == 'synapsisdev75@gmail.com'
-          || (
-            firestore.exists(/databases/(default)/documents/config/superAdmins)
-            && request.auth.token.email in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
-          )
-        )
+        && hasStorageCapability('community')
         && request.resource.size < 40 * 1024 * 1024
         && (
           request.resource.contentType.matches('image/.*')
@@ -283,6 +277,24 @@ service firebase.storage {
         || (isSuperAdminStorage() && hasValidAdminSessionStorage());
     }
 
+    function storageGrantsMap() {
+      return firestore.exists(/databases/(default)/documents/config/superAdmins)
+        ? firestore.get(/databases/(default)/documents/config/superAdmins).data.get('grants', {})
+        : {};
+    }
+
+    function hasStorageCapability(cap) {
+      return isOwnerStorage()
+        || (
+          isSuperAdminStorage()
+          && hasValidAdminSessionStorage()
+          && (
+            !(request.auth.token.email in storageGrantsMap())
+            || cap in storageGrantsMap().get(request.auth.token.email, [])
+          )
+        );
+    }
+
     function isGiftCatalogFileName(fileName) {
       return fileName.matches('.*\\.png$')
         || fileName.matches('.*\\.jpg$')
@@ -304,7 +316,7 @@ service firebase.storage {
 
     match /config/gifts/{fileName} {
       allow read: if true;
-      allow create, update: if canWriteGiftCatalog()
+      allow create, update: if hasStorageCapability('gifts')
         && isGiftCatalogFileName(fileName)
         && (
           (
@@ -322,15 +334,15 @@ service firebase.storage {
             && request.resource.size < 25 * 1024 * 1024
           )
         );
-      allow delete: if canWriteGiftCatalog();
+      allow delete: if hasStorageCapability('gifts');
     }
 
     match /config/blast/{fileName} {
       allow read: if true;
-      allow create, update: if canWriteGiftCatalog()
+      allow create, update: if hasStorageCapability('blast')
         && request.resource.size < 15 * 1024 * 1024
         && isBlastCatalogFileName(fileName);
-      allow delete: if canWriteGiftCatalog();
+      allow delete: if hasStorageCapability('blast');
     }
 
     // Pedidos UI — capturas. Solo el UID dueño de la carpeta puede subir.

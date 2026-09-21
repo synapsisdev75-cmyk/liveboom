@@ -18,7 +18,8 @@ const promo = require('../lib/promoCampaigns');
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
-const requireSuperAdmin = asFn(require('../middleware/requireSuperAdmin'));
+const superAdminMod = require('../middleware/requireSuperAdmin');
+const requireAdsAdmin = superAdminMod.requireCapability('ads');
 
 function simulatePromoAllowed() {
   const flag = String(
@@ -460,7 +461,7 @@ router.post('/promotions/:id/event', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/admin/campaigns', requireAuth, requireSuperAdmin, async (_req, res) => {
+router.get('/admin/campaigns', requireAuth, requireAdsAdmin, async (_req, res) => {
   try {
     const campaigns = await promo.listAdminCampaigns();
     res.json({ ok: true, campaigns });
@@ -469,7 +470,7 @@ router.get('/admin/campaigns', requireAuth, requireSuperAdmin, async (_req, res)
   }
 });
 
-router.post('/admin/campaigns/:id/approve', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/admin/campaigns/:id/approve', requireAuth, requireAdsAdmin, async (req, res) => {
   try {
     const campaign = await promo.approveCampaign({
       campaignId: req.params.id,
@@ -484,7 +485,7 @@ router.post('/admin/campaigns/:id/approve', requireAuth, requireSuperAdmin, asyn
   }
 });
 
-router.post('/admin/campaigns/:id/reject', requireAuth, requireSuperAdmin, async (req, res) => {
+router.post('/admin/campaigns/:id/reject', requireAuth, requireAdsAdmin, async (req, res) => {
   try {
     await promo.rejectCampaign({
       campaignId: req.params.id,
@@ -497,7 +498,7 @@ router.post('/admin/campaigns/:id/reject', requireAuth, requireSuperAdmin, async
   }
 });
 
-router.get('/admin/projection', requireAuth, requireSuperAdmin, async (req, res) => {
+router.get('/admin/projection', requireAuth, requireAdsAdmin, async (req, res) => {
   try {
     const stored = await promo.loadProjection();
     const extraMau = Number(req.query?.mau);
@@ -517,7 +518,7 @@ router.get('/admin/projection', requireAuth, requireSuperAdmin, async (req, res)
   }
 });
 
-router.put('/admin/projection', requireAuth, requireSuperAdmin, async (req, res) => {
+router.put('/admin/projection', requireAuth, requireAdsAdmin, async (req, res) => {
   try {
     const saved = await promo.saveProjection(req.body?.params || req.body, req.user?.email);
     const table = promo.projectionWithParams(saved.params, saved.params.defaultMaus);
@@ -527,7 +528,7 @@ router.put('/admin/projection', requireAuth, requireSuperAdmin, async (req, res)
   }
 });
 
-router.put('/admin/catalog', requireAuth, requireSuperAdmin, async (req, res) => {
+router.put('/admin/catalog', requireAuth, requireAdsAdmin, async (req, res) => {
   try {
     const catalog = await promo.saveCatalog(req.body, req.user?.email);
     res.json({ ok: true, catalog });
