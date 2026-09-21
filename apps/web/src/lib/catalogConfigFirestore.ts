@@ -320,6 +320,17 @@ export async function uploadCatalogAsset(
   const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
   const path = `config/${folder}/${id}-${Date.now()}.${ext}`;
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file, { contentType: catalogAssetContentType(file, ext) });
+  try {
+    await uploadBytes(storageRef, file, { contentType: catalogAssetContentType(file, ext) });
+  } catch (err) {
+    const code = String((err as { code?: string } | null)?.code || '');
+    const raw = err instanceof Error ? err.message : String(err || '');
+    if (code === 'storage/unauthorized' || /storage\/unauthorized/i.test(raw)) {
+      throw new Error(
+        'Storage no autorizó la subida. Con la bóveda abierta, vuelve a soltar el archivo.',
+      );
+    }
+    throw err;
+  }
   return getDownloadURL(storageRef);
 }

@@ -68,6 +68,17 @@ async function authFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 40
   return data;
 }
 
+function mapGiftStorageError(err: unknown): Error {
+  const code = String((err as { code?: string } | null)?.code || '');
+  const raw = err instanceof Error ? err.message : String(err || '');
+  if (code === 'storage/unauthorized' || /storage\/unauthorized/i.test(raw)) {
+    return new Error(
+      'Storage no autorizó la subida. Con la bóveda abierta, vuelve a soltar el WebM/MOV.',
+    );
+  }
+  return err instanceof Error ? err : new Error(raw || 'Error al subir el archivo');
+}
+
 function uploadResumable(storagePath: string, file: File, contentType: string, onPct: (n: number) => void) {
   const storageRef = ref(storage, storagePath);
   const task = uploadBytesResumable(storageRef, file, { contentType });
@@ -78,7 +89,7 @@ function uploadResumable(storagePath: string, file: File, contentType: string, o
         const total = snap.totalBytes || file.size || 1;
         onPct(Math.min(100, Math.round((snap.bytesTransferred / total) * 100)));
       },
-      reject,
+      (err) => reject(mapGiftStorageError(err)),
       () => resolve(),
     );
   });

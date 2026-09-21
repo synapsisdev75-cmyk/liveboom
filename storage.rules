@@ -243,7 +243,9 @@ service firebase.storage {
     }
 
     // Catálogo Super Admin — regalos / Blast (AdminCatalogPanel)
-    // Owner: sin depender de firestore.get (si falla el bridge Storage→Firestore, bloqueaba todo).
+    // El bridge Storage→Firestore (firestore.get) a menudo deniega a delegados
+    // aunque la bóveda esté abierta. El dueño ya tenía bypass por UID/email;
+    // los Super Admin listados usan el mismo patrón (lista literal, no Firestore).
     function storageAuthEmail() {
       return signedIn() && request.auth.token.email is string
         ? request.auth.token.email.lower()
@@ -258,12 +260,34 @@ service firebase.storage {
         );
     }
 
+    function isListedSuperAdminStorage() {
+      return signedIn()
+        && (
+          request.auth.uid in [
+            'OcfxoCApNAUtso0hZ3VID5kzOVd2',
+            'IfmsAUo97tUq7A20WVIXJZnyl7v1',
+            'TTVxbaJeTtNtjgLRWabtMcpjGWz1',
+            'RKrG4XBS7ZM9Jos6dn7RiIGogKB2',
+            'D56j2gyRFpVRYQ1qHyUMTlCcSDl1',
+            'bTx4id5ZymMykmZIA9HyCM8ciVK2'
+          ]
+          || storageAuthEmail() in [
+            'synapsisdev75@gmail.com',
+            'yulianurbano77@gmail.com',
+            'danny502jimenez1@gmail.com',
+            'leidyvivianamorenohernandez6@gmail.com',
+            'alisonurbano1@gmail.com',
+            'urbanoj34@gmail.com'
+          ]
+        );
+    }
+
     function isSuperAdminStorage() {
-      return isOwnerStorage()
+      return isListedSuperAdminStorage()
         || (
           storageAuthEmail() != ''
           && firestore.exists(/databases/(default)/documents/config/superAdmins)
-          && storageAuthEmail() in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
+          && storageAuthEmail() in firestore.get(/databases/(default)/documents/config/superAdmins).data.emails
         );
     }
 
@@ -271,11 +295,6 @@ service firebase.storage {
       return signedIn()
         && firestore.exists(/databases/(default)/documents/adminSessions/$(request.auth.uid))
         && firestore.get(/databases/(default)/documents/adminSessions/$(request.auth.uid)).data.expiresAt > request.time;
-    }
-
-    function canWriteGiftCatalog() {
-      return isOwnerStorage()
-        || (isSuperAdminStorage() && hasValidAdminSessionStorage());
     }
 
     function storageGrantsMap() {
@@ -286,6 +305,8 @@ service firebase.storage {
 
     function hasStorageCapability(cap) {
       return isOwnerStorage()
+        || isListedSuperAdminStorage()
+        || hasValidAdminSessionStorage()
         || (
           isSuperAdminStorage()
           && hasValidAdminSessionStorage()
