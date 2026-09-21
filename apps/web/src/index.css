@@ -774,7 +774,8 @@ html[data-lb-theme='light'] .lb-liquid-nav__label--active {
 html,
 body,
 #root {
-  height: 100%;
+  height: var(--lb-vv-height, 100dvh);
+  max-height: var(--lb-vv-height, 100dvh);
   margin: 0;
   background: var(--bg-primary, #0a0a0b);
   overflow-x: hidden;
@@ -1270,7 +1271,7 @@ aside.chat-scroll::-webkit-scrollbar {
   right: max(0.75rem, env(safe-area-inset-right, 0px));
   bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   width: min(24rem, calc(100vw - 1.5rem));
-  height: min(32rem, calc(100dvh - 5.5rem));
+  height: min(32rem, calc(var(--lb-vv-height, 100dvh) - 5.5rem));
 }
 
 .lb-msg-min-dock {
@@ -1284,13 +1285,22 @@ aside.chat-scroll::-webkit-scrollbar {
   max-width: calc(100vw - 1.5rem);
 }
 
-/* PC/escritorio: pastillas en fila a la izquierda del chat flotante */
+/* PC/escritorio: caja pegada al borde inferior del viewport disponible */
 @media (min-width: 1024px) {
+  .lb-msg-quick-popup {
+    right: max(0px, env(safe-area-inset-right, 0px));
+    bottom: 0;
+    width: min(24rem, calc(100vw - 1.5rem));
+    height: min(36rem, calc(var(--lb-vv-height, 100dvh) - 4.25rem));
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
   body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
     left: auto;
-    right: calc(min(24rem, calc(100vw - 1.5rem)) + 1rem);
-    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
-    max-width: min(36rem, calc(100vw - min(24rem, calc(100vw - 1.5rem)) - 2.5rem));
+    right: calc(min(24rem, calc(100vw - 1.5rem)) + 0.75rem);
+    bottom: 0;
+    max-width: min(36rem, calc(100vw - min(24rem, calc(100vw - 1.5rem)) - 2rem));
   }
 }
 
@@ -1300,7 +1310,7 @@ aside.chat-scroll::-webkit-scrollbar {
     left: max(0.5rem, env(safe-area-inset-left, 0px));
     width: auto;
     bottom: calc(var(--lb-bottom-nav-h, 4.25rem) + max(0.5rem, env(safe-area-inset-bottom, 0px)));
-    height: min(28rem, calc(100dvh - var(--lb-bottom-nav-h, 4.25rem) - 5rem));
+    height: min(28rem, calc(var(--lb-vv-height, 100dvh) - var(--lb-bottom-nav-h, 4.25rem) - 5rem));
   }
 
   .lb-msg-min-dock {
@@ -1314,7 +1324,7 @@ aside.chat-scroll::-webkit-scrollbar {
   body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
     bottom: calc(
       var(--lb-bottom-nav-h, 4.25rem) + max(0.5rem, env(safe-area-inset-bottom, 0px)) +
-        min(28rem, calc(100dvh - var(--lb-bottom-nav-h, 4.25rem) - 5rem)) + 0.5rem
+        min(28rem, calc(var(--lb-vv-height, 100dvh) - var(--lb-bottom-nav-h, 4.25rem) - 5rem)) + 0.5rem
     );
   }
 }

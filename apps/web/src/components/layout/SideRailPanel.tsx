@@ -215,7 +215,7 @@ function GroupRailAvatar({ name, photoUrl }: { name: string; photoUrl?: string |
 
 function LiveRail({ host }: { host: string }) {
   return (
-    <aside className="lb-side-rail lb-live-rail hidden w-[min(22%,18rem)] min-w-[220px] shrink-0 flex-col border-l lg:flex lg:min-w-[240px]">
+    <aside className="lb-side-rail lb-live-rail hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(22%,18rem)] min-w-[220px] shrink-0 flex-col border-l lg:flex lg:min-w-[240px]">
       <section className="border-b border-[color:var(--lb-line)] p-4 lg:p-5">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
@@ -1437,7 +1437,7 @@ function DiscoveryRail() {
 
   return (
     <>
-      <aside className="lb-side-rail chat-scroll hidden w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-l border-white/5 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem] lg:p-4">
+      <aside className="lb-side-rail chat-scroll hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden border-l border-white/5 p-3 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem] lg:p-4">
         {/* Arrow 1: Crear tu grupo — arriba de Publicidad */}
         {onGroups ? (
           <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">

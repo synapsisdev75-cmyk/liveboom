@@ -747,7 +747,7 @@ export function MessagesSideRail() {
   }
 
   return (
-    <aside className="lb-side-rail lb-msg-side-rail chat-scroll hidden h-[100dvh] w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col overflow-hidden border-l border-white/5 bg-zinc-950/95 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem]">
+    <aside className="lb-side-rail lb-msg-side-rail chat-scroll hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col overflow-hidden border-l border-white/5 bg-zinc-950/95 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem]">
       <MessagesChatListPanel
         embedded
         onClose={close}

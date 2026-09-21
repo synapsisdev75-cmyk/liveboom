@@ -393,7 +393,7 @@ export function MainLayout() {
 
   return (
     <div
-      className={`lb-shell flex h-[100dvh] w-full flex-col overflow-hidden font-sans lg:flex-row${
+      className={`lb-shell flex h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-full flex-col overflow-hidden font-sans lg:flex-row${
         onProfilePage ? ' lb-shell--profile' : ''
       }${onMessages ? ' lb-shell--messages' : ''}`}
     >
@@ -439,7 +439,7 @@ export function MainLayout() {
       ) : null}
 
       <aside
-        className={`lb-sidebar hidden h-[100dvh] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex ${
+        className={`lb-sidebar hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex ${
           onMessages ? 'lb-sidebar--messages-rail' : ''
         }`}
       >
