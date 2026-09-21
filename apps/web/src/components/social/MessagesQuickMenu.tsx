@@ -27,7 +27,7 @@ import {
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
-import { MESSAGE_BOXES_ENABLED, MESSAGES_INBOX_ENABLED } from '../../lib/messagesUiFlags';
+import { useMessageBoxesVisible, useMessagesInboxVisible } from '../../hooks/useMessagesInboxVisible';
 import {
   useMessagesMenuStore,
   type MessagesPopupPeer,
@@ -134,6 +134,7 @@ function FloatingDmWindow({
   const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
   const giftsVersion = useCatalogConfigStore((state) => state.giftsVersion);
   const giftCatalog = useMemo(() => sortedPrivateGiftCatalog(), [giftsVersion]);
+  const inboxVisible = useMessagesInboxVisible();
 
   useEffect(() => {
     setChatId(peer.chatId || null);
@@ -350,7 +351,7 @@ function FloatingDmWindow({
           >
             <Minus size={16} />
           </button>
-          {MESSAGES_INBOX_ENABLED ? (
+          {inboxVisible ? (
             <button
               type="button"
               onClick={onExpand}
@@ -570,6 +571,7 @@ type ChatListProps = {
 /** Lista de chats reutilizable: rail derecho o sheet móvil. */
 export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose }: ChatListProps) {
   const profile = useAuthStore((state) => state.profile);
+  const inboxVisible = useMessagesInboxVisible();
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<ListTab>('todos');
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -614,7 +616,7 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5">
         <p className="text-sm font-bold text-white">Chats</p>
         <div className="flex items-center gap-0.5">
-          {MESSAGES_INBOX_ENABLED ? (
+          {inboxVisible ? (
             <button
               type="button"
               onClick={onExpandAll}
@@ -718,7 +720,7 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
         )}
       </ul>
 
-      {MESSAGES_INBOX_ENABLED ? (
+      {inboxVisible ? (
         <button
           type="button"
           onClick={onExpandAll}
@@ -734,6 +736,7 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
 /** Rail derecho temporal: sustituye Publicidad / Tendencias mientras el menú está abierto. */
 export function MessagesSideRail() {
   const navigate = useNavigate();
+  const inboxVisible = useMessagesInboxVisible();
   const setRailOpen = useMessagesMenuStore((state) => state.setRailOpen);
   const openChatFromList = useMessagesMenuStore((state) => state.openChatFromList);
 
@@ -742,6 +745,7 @@ export function MessagesSideRail() {
   }
 
   function expandAll() {
+    if (!inboxVisible) return;
     setRailOpen(false);
     navigate('/mensajes');
   }
@@ -769,6 +773,8 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
   const navigate = useNavigate();
   const location = useLocation();
   const desktop = useDesktopRail();
+  const inboxVisible = useMessagesInboxVisible();
+  const boxesVisible = useMessageBoxesVisible();
   const railOpen = useMessagesMenuStore((state) => state.railOpen);
   const popupPeer = useMessagesMenuStore((state) => state.popupPeer);
   const minimized = useMessagesMenuStore((state) => state.minimized);
@@ -800,6 +806,11 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
   }, [location.pathname, setRailOpen, closePopup, hostPortals]);
 
   useEffect(() => {
+    if (!hostPortals) return;
+    if (!boxesVisible) closeAll();
+  }, [boxesVisible, closeAll, hostPortals]);
+
+  useEffect(() => {
     if (!railOpen && !sheetOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -816,7 +827,7 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
   const menuOpen = desktop ? railOpen : sheetOpen;
 
   function openFullscreen(peer?: MessagesPopupPeer | null) {
-    if (!MESSAGES_INBOX_ENABLED) return;
+    if (!inboxVisible) return;
     closeAll();
     setSheetOpen(false);
     if (peer?.username) {
@@ -890,7 +901,7 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
           )
         : null}
 
-      {hostPortals && popupPeer ? (
+      {hostPortals && boxesVisible && popupPeer ? (
         <FloatingDmWindow
           key={popupPeer.uid}
           peer={popupPeer}
@@ -900,7 +911,7 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
         />
       ) : null}
 
-      {hostPortals && MESSAGE_BOXES_ENABLED ? (
+      {hostPortals && boxesVisible ? (
         <MinimizedChatsDock items={minimized} onExpand={expandMinimized} />
       ) : null}
     </div>

@@ -36,7 +36,7 @@ import { AppearanceControl } from '../appearance/AppearanceControl';
 import { bcp47For, useT } from '../../i18n';
 import { useLocaleStore } from '../../store/localeStore';
 import { prefetchRoute } from '../../lib/routePrefetch';
-import { MESSAGES_INBOX_ENABLED } from '../../lib/messagesUiFlags';
+import { useMessagesInboxVisible } from '../../hooks/useMessagesInboxVisible';
 
 function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
@@ -57,6 +57,7 @@ function SidebarUnreadHint({ className = 'ml-auto' }: { className?: string }) {
 /** Orden exacto del mockup de barra lateral. */
 function useSideNavItems() {
   const t = useT();
+  const messagesVisible = useMessagesInboxVisible();
   return useMemo(() => {
     const items = [
       { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
@@ -69,12 +70,13 @@ function useSideNavItems() {
       { id: 'search', label: t('nav.searchFriends'), icon: Search, to: '/buscar' as const },
       { id: 'settings', label: t('nav.settings'), icon: Settings, to: '/perfil/editar' as const },
     ];
-    return MESSAGES_INBOX_ENABLED ? items : items.filter((item) => item.id !== 'messages');
-  }, [t]);
+    return messagesVisible ? items : items.filter((item) => item.id !== 'messages');
+  }, [t, messagesVisible]);
 }
 
 function useMobileNavItems() {
   const t = useT();
+  const messagesVisible = useMessagesInboxVisible();
   return useMemo(() => {
     const items = [
       { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
@@ -83,8 +85,8 @@ function useMobileNavItems() {
       { id: 'messages', label: t('nav.messages'), icon: MessageCircle, to: '/mensajes' as const },
       { id: 'profile', label: t('nav.profile'), icon: UserRound, to: '/perfil' as const },
     ];
-    return MESSAGES_INBOX_ENABLED ? items : items.filter((item) => item.id !== 'messages');
-  }, [t]);
+    return messagesVisible ? items : items.filter((item) => item.id !== 'messages');
+  }, [t, messagesVisible]);
 }
 
 const activeClass =

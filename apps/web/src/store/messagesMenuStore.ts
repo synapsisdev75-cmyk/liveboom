@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { MESSAGE_BOXES_ENABLED } from '../lib/messagesUiFlags';
+import { MESSAGE_BOXES_ENABLED, isMessageBoxesVisibleNow } from '../lib/messagesUiFlags';
 import type { FriendChip } from '../lib/socialFirestore';
 
 export type MessagesPopupPeer = FriendChip & {
@@ -39,8 +39,8 @@ export const useMessagesMenuStore = create<MessagesMenuState>((set) => ({
   setPopupPeer: (popupPeer) => set({ popupPeer }),
   openChatFromList: (peer) =>
     set((state) => {
-      if (!MESSAGE_BOXES_ENABLED) {
-        return { railOpen: false, popupPeer: peer, minimized: [] };
+      if (!MESSAGE_BOXES_ENABLED || !isMessageBoxesVisibleNow()) {
+        return { railOpen: false, popupPeer: null, minimized: [] };
       }
       const prev = state.popupPeer;
       let minimized = withoutUid(state.minimized, peer.uid);
@@ -51,11 +51,14 @@ export const useMessagesMenuStore = create<MessagesMenuState>((set) => ({
     }),
   expandMinimized: (uid) =>
     set((state) => {
+      if (!MESSAGE_BOXES_ENABLED || !isMessageBoxesVisibleNow()) {
+        return { popupPeer: null, minimized: [] };
+      }
       const target = state.minimized.find((item) => item.uid === uid);
       if (!target) return state;
       const prev = state.popupPeer;
       let minimized = withoutUid(state.minimized, uid);
-      if (MESSAGE_BOXES_ENABLED && prev && prev.uid !== uid) {
+      if (prev && prev.uid !== uid) {
         minimized = [...minimized, prev].slice(-MAX_MINIMIZED);
       }
       return { popupPeer: target, minimized };
@@ -66,7 +69,9 @@ export const useMessagesMenuStore = create<MessagesMenuState>((set) => ({
     set((state) => {
       const prev = state.popupPeer;
       if (!prev) return state;
-      if (!MESSAGE_BOXES_ENABLED) return { popupPeer: null, minimized: [] };
+      if (!MESSAGE_BOXES_ENABLED || !isMessageBoxesVisibleNow()) {
+        return { popupPeer: null, minimized: [] };
+      }
       return {
         popupPeer: null,
         minimized: [...withoutUid(state.minimized, prev.uid), prev].slice(-MAX_MINIMIZED),
