@@ -1,45 +1,25 @@
-import {
-  Gift,
+﻿import {
   Maximize2,
   MessageCircle,
-  Minus,
   Search,
-  Send,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { countInboxUnread } from '../../lib/chatNotifyContext';
-import { openRechargeCoins, validateCoinsBalance } from '../../lib/giftsFirestore';
-import { findLiveGift, sortedPrivateGiftCatalog } from '../../lib/liveboomGifts';
-import { sendPrivateGiftToPeer } from '../../lib/privateGiftSend';
-import { playIncomingMessageSound } from '../../lib/alertSound';
 import {
-  ensureChat,
   listenConversations,
-  listenMessages,
-  markMessagesDelivered,
-  markMessagesRead,
-  sendChatMessage,
-  type ChatMessage,
   type Conversation,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
-import { useCallStore } from '../../store/callStore';
 import { useMessageBoxesVisible, useMessagesInboxVisible } from '../../hooks/useMessagesInboxVisible';
 import {
   useMessagesMenuStore,
   type MessagesPopupPeer,
 } from '../../store/messagesMenuStore';
-import { useCatalogConfigStore } from '../../store/catalogConfigStore';
-import { GiftBoxStrip } from '../live/GiftBoxStrip';
-import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
-import { FloatingGift, GiftVisual } from '../live/FloatingGift';
-import { CoinModal } from '../wallet/CoinModal';
 import { UserAvatar } from '../profile/UserAvatar';
-import { CallChatActions } from './CallChatActions';
-import { EmojiPickerButton } from './EmojiPicker';
+import { InternalChatPanel } from './InternalChatPanel';
 
 type ListTab = 'todos' | 'unread';
 
@@ -47,25 +27,13 @@ function timeAgo(iso: string | null) {
   if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();
   if (!Number.isFinite(ms) || ms < 0) return '';
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${Math.max(1, m)} m`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h} h`;
-  return `${Math.floor(h / 24)} d`;
-}
-
-function meFromProfile(profile: {
-  firebaseUid: string;
-  handle: string;
-  displayName: string;
-  avatarUrl: string | null;
-}) {
-  return {
-    firebaseUid: profile.firebaseUid,
-    handle: profile.handle,
-    displayName: profile.displayName,
-    avatarUrl: profile.avatarUrl,
-  };
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'ahora';
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `${days} d`;
 }
 
 function useDesktopRail() {
@@ -91,438 +59,6 @@ function peerFromChat(chat: Conversation): MessagesPopupPeer {
     chatId: chat.chatId,
     lastMessage: chat.lastMessage,
   };
-}
-
-/** Chat flotante: regalos, llamadas, emojis + expandir a /mensajes. */
-function FloatingDmWindow({
-  peer,
-  onClose,
-  onExpand,
-  onMinimize,
-}: {
-  peer: MessagesPopupPeer;
-  onClose: () => void;
-  onExpand: () => void;
-  onMinimize: () => void;
-}) {
-  const profile = useAuthStore((state) => state.profile);
-  const setCoins = useAuthStore((state) => state.setCoins);
-  const callStatus = useCallStore((state) => state.status);
-  const callChatId = useCallStore((state) => state.chatId);
-  const hangup = useCallStore((state) => state.hangup);
-  const [chatId, setChatId] = useState<string | null>(peer.chatId || null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [emojiOpen, setEmojiOpen] = useState(false);
-  const [giftsOpen, setGiftsOpen] = useState(false);
-  const [sendingGift, setSendingGift] = useState<string | null>(null);
-  const [giftError, setGiftError] = useState<string | null>(null);
-  const [rechargeNeeded, setRechargeNeeded] = useState<number | null>(null);
-  const [rechargeOpen, setRechargeOpen] = useState(false);
-  const [giftFloats, setGiftFloats] = useState<
-    Array<{ id: string; giftId: string; left: number; senderName?: string }>
-  >([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const giftTriggerRef = useRef<HTMLButtonElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const lastMsgCount = useRef(0);
-  const seenGiftAnimRef = useRef<Set<string>>(new Set());
-  const giftSeededRef = useRef<string | null>(null);
-  const giftWatchStartedRef = useRef(0);
-  const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
-  const giftsVersion = useCatalogConfigStore((state) => state.giftsVersion);
-  const giftCatalog = useMemo(() => sortedPrivateGiftCatalog(), [giftsVersion]);
-  const inboxVisible = useMessagesInboxVisible();
-
-  useEffect(() => {
-    setChatId(peer.chatId || null);
-    setMessages([]);
-    setDraft('');
-    setError(null);
-    lastMsgCount.current = 0;
-    seenGiftAnimRef.current.clear();
-    giftSeededRef.current = null;
-    giftWatchStartedRef.current = 0;
-    setGiftFloats([]);
-  }, [peer.uid, peer.chatId]);
-
-  useEffect(() => {
-    if (!profile) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const id = await ensureChat(meFromProfile(profile), peer);
-        if (!cancelled) setChatId(id);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'No se pudo abrir el chat');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [profile?.firebaseUid, peer.uid]);
-
-  useEffect(() => {
-    if (!chatId || !profile) return;
-    // listenMessages ya entrega orden cronológico (antiguo → nuevo). No invertir otra vez.
-    return listenMessages(chatId, profile.firebaseUid, (list) => {
-      if (list.length > lastMsgCount.current && lastMsgCount.current > 0) {
-        const newest = list[list.length - 1];
-        if (newest && newest.fromUid !== profile.firebaseUid) {
-          playIncomingMessageSound(document.visibilityState === 'visible');
-        }
-      }
-      lastMsgCount.current = list.length;
-      setMessages(list);
-      void (async () => {
-        await markMessagesDelivered(chatId, profile.firebaseUid, list);
-        if (document.visibilityState === 'visible') {
-          await markMessagesRead(chatId, profile.firebaseUid, list);
-        }
-      })();
-    });
-  }, [chatId, profile?.firebaseUid]);
-
-  useEffect(() => {
-    if (!chatId) return;
-    if (giftSeededRef.current !== chatId) {
-      if (messages.length === 0) return;
-      giftSeededRef.current = chatId;
-      giftWatchStartedRef.current = Date.now();
-      messages.forEach((message) => {
-        if (message.giftId) seenGiftAnimRef.current.add(message.id);
-      });
-      return;
-    }
-    for (const message of messages) {
-      if (!message.giftId || seenGiftAnimRef.current.has(message.id)) continue;
-      seenGiftAnimRef.current.add(message.id);
-      if (message.fromUid === profile?.firebaseUid) continue;
-      const createdAt = Date.parse(message.createdAt);
-      if (!Number.isFinite(createdAt)) continue;
-      if (createdAt < giftWatchStartedRef.current - 1500) continue;
-      if (Date.now() - createdAt > 15_000) continue;
-      const incomingGiftId = message.giftId;
-      setGiftFloats((current) => [
-        ...current.slice(-1),
-        {
-          id: `gf-in-${message.id}`,
-          giftId: incomingGiftId,
-          left: 30 + Math.random() * 40,
-          senderName: peer.displayName || peer.username,
-        },
-      ]);
-    }
-  }, [chatId, messages, peer.displayName, peer.username, profile?.firebaseUid]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages.length, peer.uid, giftFloats.length]);
-
-  async function send(text = draft, extras?: { giftId?: string }) {
-    if (!profile || busy) return;
-    const body = text.trim();
-    if (!body && !extras?.giftId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await sendChatMessage(meFromProfile(profile), peer, body || '🎁 Regalo', {
-        giftId: extras?.giftId || null,
-      });
-      if (!extras?.giftId) setDraft('');
-      setEmojiOpen(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo enviar');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function sendGift(giftId: string, multiplier: 1 | 2 | 4 | 8 = 1) {
-    if (sendingGift || !profile) return;
-    const catalog = findLiveGift(giftId);
-    if (!catalog) {
-      setGiftError('Regalo no válido');
-      return;
-    }
-    const mult = ([1, 2, 4, 8] as const).includes(multiplier) ? multiplier : 1;
-    const totalCoins = catalog.coins * mult;
-    const coins = profile.coinsBalance ?? 0;
-    if (!validateCoinsBalance(coins, totalCoins)) {
-      setGiftError('No tienes Coins suficientes');
-      setRechargeNeeded(totalCoins);
-      return;
-    }
-    setGiftError(null);
-    setRechargeNeeded(null);
-    setSendingGift(giftId);
-    const senderName = profile.displayName || profile.handle || 'Liveboomer';
-    try {
-      const result = await sendPrivateGiftToPeer({
-        giftId: catalog.id,
-        sender: profile,
-        peer,
-        multiplier: mult,
-        clientId: `quick-${chatId || peer.uid}-${Date.now()}`,
-      });
-      setCoins(result.senderBalance);
-      setGiftFloats((current) => [
-        ...current.slice(-1),
-        {
-          id: `gf-${Date.now()}`,
-          giftId: catalog.id,
-          left: 30 + Math.random() * 40,
-          senderName,
-        },
-      ]);
-      setGiftsOpen(false);
-    } catch (err) {
-      setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
-      setGiftsOpen(true);
-    } finally {
-      setSendingGift(null);
-    }
-  }
-
-  function insertEmoji(token: string) {
-    const el = inputRef.current;
-    const next = draft + token;
-    setDraft(next.slice(0, 2000));
-    window.setTimeout(() => el?.focus(), 0);
-  }
-
-  return createPortal(
-    <div className="lb-msg-quick-popup pointer-events-auto fixed z-[80] flex flex-col overflow-hidden rounded-2xl border border-white/12 bg-zinc-950 shadow-2xl">
-      <div className="flex shrink-0 items-center gap-1 border-b border-white/10 px-2 py-1.5 sm:gap-1.5 sm:px-2.5 sm:py-2">
-        <button
-          type="button"
-          onClick={onExpand}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1 py-1 text-left transition hover:bg-white/5"
-          title="Abrir en pantalla completa"
-        >
-          <UserAvatar
-            uid={peer.uid}
-            src={peer.avatarUrl}
-            username={peer.username}
-            displayName={peer.displayName}
-            size={36}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-white">
-              {peer.displayName || peer.username}
-            </span>
-            <span className="block truncate text-[10px] text-zinc-500">@{peer.username}</span>
-          </span>
-        </button>
-        <div className="flex shrink-0 items-center gap-0.5">
-          {inThisCall ? (
-            <button
-              type="button"
-              onClick={() => void hangup()}
-              className="inline-flex h-9 items-center rounded-lg bg-red-500/20 px-2 text-[10px] font-bold text-red-300"
-            >
-              Colgar
-            </button>
-          ) : (
-            <CallChatActions
-              key={peer.uid}
-              chatId={chatId}
-              peer={peer}
-              inThisCall={false}
-              busy={busy}
-              callStatus={callStatus}
-              onBusy={setBusy}
-              onError={setError}
-              onStopCall={() => void hangup()}
-            />
-          )}
-          <button
-            type="button"
-            onClick={onMinimize}
-            className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
-            aria-label="Minimizar"
-            title="Minimizar"
-          >
-            <Minus size={16} />
-          </button>
-          {inboxVisible ? (
-            <button
-              type="button"
-              onClick={onExpand}
-              className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
-              aria-label="Pantalla completa"
-              title="Pantalla completa"
-            >
-              <Maximize2 size={16} />
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-white"
-            aria-label="Cerrar chat"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-
-      <div className="relative min-h-0 flex-1">
-        <div ref={scrollRef} className="absolute inset-0 space-y-2 overflow-y-auto px-3 py-2">
-          {messages.length === 0 ? (
-            <p className="py-8 text-center text-xs text-zinc-500">Sin mensajes aún. Escribe el primero.</p>
-          ) : (
-            messages.map((msg) => {
-              const mine = msg.fromUid === profile?.firebaseUid;
-              const gift = msg.giftId ? findLiveGift(msg.giftId) : null;
-              return (
-                <div key={msg.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-snug ${
-                      mine
-                        ? 'rounded-br-md bg-violet-600/90 text-white'
-                        : 'rounded-bl-md bg-zinc-800 text-zinc-100'
-                    }`}
-                  >
-                    {gift ? (
-                      <div className="mb-1 flex items-center gap-1.5">
-                        <GiftVisual gift={gift} size={28} />
-                        <span className="font-semibold">{gift.name}</span>
-                      </div>
-                    ) : null}
-                    {msg.mediaUrl && msg.mediaType === 'image' ? (
-                      <img
-                        src={msg.mediaUrl}
-                        alt=""
-                        className="mb-1 max-h-40 w-full rounded-xl object-contain"
-                        loading="lazy"
-                      />
-                    ) : msg.mediaUrl ? (
-                      <p className="opacity-90">
-                        {msg.mediaType === 'audio'
-                          ? '🎤 Nota de voz'
-                          : msg.mediaType === 'video'
-                            ? '🎬 Video'
-                            : '📎 Adjunto'}
-                      </p>
-                    ) : null}
-                    {msg.text ? <p className="whitespace-pre-wrap break-words">{msg.text}</p> : null}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-        {giftFloats.length > 0 ? (
-          <div className="pointer-events-none absolute inset-0 z-[70] overflow-visible">
-            {giftFloats.map((item) => (
-              <FloatingGift
-                key={item.id}
-                giftId={item.giftId}
-                senderName={item.senderName}
-                left={item.left}
-                layoutContext="chat"
-                onComplete={() =>
-                  setGiftFloats((current) => current.filter((row) => row.id !== item.id))
-                }
-              />
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      {error ? <p className="shrink-0 px-3 pb-1 text-[11px] text-rose-300">{error}</p> : null}
-      {giftError ? <p className="shrink-0 px-3 pb-1 text-[11px] text-rose-300">{giftError}</p> : null}
-
-      <form
-        className="flex shrink-0 items-center gap-1 border-t border-white/10 px-2 py-2 sm:gap-1.5 sm:px-2.5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send();
-        }}
-      >
-        <button
-          ref={giftTriggerRef}
-          type="button"
-          onClick={() => {
-            setGiftsOpen((v) => !v);
-            setEmojiOpen(false);
-          }}
-          className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
-            giftsOpen ? 'bg-fuchsia-500/25 text-fuchsia-200' : 'text-zinc-400 hover:bg-white/5 hover:text-fuchsia-300'
-          }`}
-          aria-label="Regalos"
-          title="Regalos"
-        >
-          <Gift size={18} />
-        </button>
-        <EmojiPickerButton
-          open={emojiOpen}
-          onOpenChange={(next) => {
-            setEmojiOpen(next);
-            if (next) setGiftsOpen(false);
-          }}
-          title="Emoji"
-          placement="above"
-          showUnicode
-          buttonClassName={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
-            emojiOpen ? 'bg-amber-500/20 text-amber-200' : 'text-zinc-400 hover:bg-white/5 hover:text-amber-200'
-          }`}
-          onPick={(id) => insertEmoji(id)}
-        />
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value.slice(0, 2000))}
-          placeholder="Escribe un mensaje..."
-          className="min-h-10 min-w-0 flex-1 rounded-full border border-white/10 bg-zinc-900 px-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-cyan-400/40"
-        />
-        <button
-          type="submit"
-          disabled={busy || !draft.trim()}
-          className="grid h-10 w-10 place-items-center rounded-full bg-cyan-500/20 text-cyan-300 transition hover:bg-cyan-500/30 disabled:opacity-40"
-          aria-label="Enviar"
-        >
-          <Send size={16} />
-        </button>
-      </form>
-
-      {giftsOpen ? (
-        <GiftCatalogLayer open={giftsOpen} triggerRef={giftTriggerRef} onClose={() => setGiftsOpen(false)}>
-          <GiftBoxStrip
-            gifts={giftCatalog}
-            sendingGiftId={sendingGift}
-            coins={profile?.coinsBalance}
-            error={giftError}
-            rechargeNeeded={rechargeNeeded}
-            onRecharge={() => {
-              setRechargeOpen(true);
-              openRechargeCoins();
-            }}
-            compact
-            floating
-            onSelect={(id, multiplier) => void sendGift(id, multiplier ?? 1)}
-            onClose={() => setGiftsOpen(false)}
-          />
-        </GiftCatalogLayer>
-      ) : null}
-      {rechargeOpen
-        ? createPortal(
-            <div className="pointer-events-auto fixed inset-0 z-[124]">
-              <CoinModal onClose={() => setRechargeOpen(false)} />
-            </div>,
-            document.body,
-          )
-        : null}
-    </div>,
-    document.body,
-  );
 }
 
 /** Pastillas minimizadas: solo foto + nombre; clic para reabrir. */
@@ -591,28 +127,24 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
     if (q) {
       rows = rows.filter(
         (c) =>
-          c.displayName.toLowerCase().includes(q) ||
           c.username.toLowerCase().includes(q) ||
+          (c.displayName || '').toLowerCase().includes(q) ||
           (c.lastMessage || '').toLowerCase().includes(q),
       );
     }
-    return rows.slice(0, 40);
-  }, [conversations, tab, query]);
+    return rows;
+  }, [conversations, query, tab]);
 
   if (!profile) {
     return (
-      <div className="flex flex-1 items-center justify-center p-4 text-center text-xs text-zinc-500">
+      <div className="flex flex-1 items-center justify-center px-4 py-8 text-center text-sm text-zinc-500">
         Inicia sesión para ver tus mensajes.
       </div>
     );
   }
 
   return (
-    <div
-      className={`lb-msg-chat-list flex min-h-0 flex-col overflow-hidden ${
-        embedded ? 'h-full' : 'max-h-[min(85dvh,36rem)]'
-      }`}
-    >
+    <div className={`flex min-h-0 flex-1 flex-col ${embedded ? '' : ''}`}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5">
         <p className="text-sm font-bold text-white">Chats</p>
         <div className="flex items-center gap-0.5">
@@ -737,7 +269,6 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
 export function MessagesSideRail() {
   const navigate = useNavigate();
   const inboxVisible = useMessagesInboxVisible();
-  const boxesVisible = useMessageBoxesVisible();
   const setRailOpen = useMessagesMenuStore((state) => state.setRailOpen);
   const openChatFromList = useMessagesMenuStore((state) => state.openChatFromList);
 
@@ -758,7 +289,6 @@ export function MessagesSideRail() {
         onClose={close}
         onExpandAll={expandAll}
         onSelect={(chat) => {
-          if (!boxesVisible) return;
           openChatFromList(peerFromChat(chat));
         }}
       />
@@ -767,27 +297,24 @@ export function MessagesSideRail() {
 }
 
 /**
- * Host único (siempre montado en el shell): caja flotante + pastillas minimizadas.
- * En laptop/PC/tablet landscape se cierra y no renderiza (el escritorio queda libre).
+ * Host único (siempre montado en el shell): ventanas celular + pastillas minimizadas.
  */
 export function MessagesFloatingHost() {
   const profile = useAuthStore((state) => state.profile);
-  const navigate = useNavigate();
   const location = useLocation();
-  const inboxVisible = useMessagesInboxVisible();
   const boxesVisible = useMessageBoxesVisible();
-  const popupPeer = useMessagesMenuStore((state) => state.popupPeer);
+  const openWindows = useMessagesMenuStore((state) => state.openWindows);
   const minimized = useMessagesMenuStore((state) => state.minimized);
   const setRailOpen = useMessagesMenuStore((state) => state.setRailOpen);
   const expandMinimized = useMessagesMenuStore((state) => state.expandMinimized);
-  const closePopup = useMessagesMenuStore((state) => state.closePopup);
-  const minimizeCurrent = useMessagesMenuStore((state) => state.minimizeCurrent);
+  const closeWindow = useMessagesMenuStore((state) => state.closeWindow);
+  const minimizeWindow = useMessagesMenuStore((state) => state.minimizeWindow);
   const closeAll = useMessagesMenuStore((state) => state.closeAll);
 
   useEffect(() => {
     setRailOpen(false);
-    closePopup();
-  }, [location.pathname, setRailOpen, closePopup]);
+    closeAll();
+  }, [location.pathname, setRailOpen, closeAll]);
 
   useEffect(() => {
     if (!boxesVisible) closeAll();
@@ -795,29 +322,51 @@ export function MessagesFloatingHost() {
 
   if (!profile || !boxesVisible) return null;
 
-  function openFullscreen(peer?: MessagesPopupPeer | null) {
-    if (!inboxVisible) return;
-    closeAll();
-    if (peer?.username) {
-      navigate(`/mensajes?con=${encodeURIComponent(peer.username)}`);
-      return;
-    }
-    navigate('/mensajes');
-  }
-
   return (
     <>
-      {popupPeer ? (
-        <FloatingDmWindow
-          key={popupPeer.uid}
-          peer={popupPeer}
-          onClose={closePopup}
-          onMinimize={minimizeCurrent}
-          onExpand={() => openFullscreen(popupPeer)}
+      {openWindows.map((peer, index) => (
+        <PhoneChatWindow
+          key={peer.uid}
+          peer={peer}
+          index={openWindows.length - 1 - index}
+          onClose={() => closeWindow(peer.uid)}
+          onMinimize={() => minimizeWindow(peer.uid)}
         />
-      ) : null}
+      ))}
       <MinimizedChatsDock items={minimized} onExpand={expandMinimized} />
     </>
+  );
+}
+
+/** Ventana flotante tamaño celular real con el chat completo (InternalChatPanel). */
+function PhoneChatWindow({
+  peer,
+  index,
+  onClose,
+  onMinimize,
+}: {
+  peer: MessagesPopupPeer;
+  /** 0 = más a la derecha */
+  index: number;
+  onClose: () => void;
+  onMinimize: () => void;
+}) {
+  return createPortal(
+    <div
+      className="lb-phone-chat-window"
+      style={{
+        right: `calc(max(0.75rem, env(safe-area-inset-right, 0px)) + ${index} * (min(24.375rem, calc(100vw - 1.25rem)) + 0.75rem))`,
+        bottom: 0,
+        zIndex: 80 + index,
+      }}
+    >
+      <InternalChatPanel
+        floatingPeer={peer}
+        onFloatingClose={onClose}
+        onFloatingMinimize={onMinimize}
+      />
+    </div>,
+    document.body,
   );
 }
 

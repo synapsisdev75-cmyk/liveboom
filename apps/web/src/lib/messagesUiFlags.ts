@@ -1,29 +1,31 @@
 /**
- * Interruptor de la caja de mensajes (página /mensajes + ítem Mensajes del menú + caja flotante).
+ * Interruptor de la caja de mensajes (página /mensajes + ítem Mensajes del menú).
  *
  * - Móvil y tablet en vertical: visible si MESSAGES_INBOX_ENABLED.
- * - Laptop, PC de escritorio y tablet en horizontal: solo si MESSAGES_INBOX_WIDE_ENABLED.
+ * - Laptop, PC y tablet horizontal: solo si MESSAGES_INBOX_WIDE_ENABLED.
  *
- * false en WIDE = oculta en esos layouts; el código no se borra.
- * Para mostrar también en laptop/PC/tablet horizontal: «Habilitar caja de mensajes».
+ * Las ventanas flotantes estilo celular (MESSAGE_BOXES) sí se permiten en PC:
+ * se abren desde el rail «Chats» al tocar un usuario.
+ *
+ * Para mostrar también la página /mensajes en laptop/PC: «Habilitar caja de mensajes».
  */
 import { VP_LG, VP_MD } from '../responsive/viewport';
 
 export const MESSAGES_INBOX_ENABLED = true;
 
 /**
- * Laptop / PC / tablet horizontal.
+ * Laptop / PC / tablet horizontal — página /mensajes + ítem de menú.
  * Orden del usuario para activar: «Habilitar caja de mensajes».
  */
 export const MESSAGES_INBOX_WIDE_ENABLED = false;
 
 /**
- * Pastillas flotantes de chat minimizado (foto + nombre) y caja abierta.
- * Misma regla de layout: ocultas en laptop/PC/tablet horizontal hasta «Habilitar caja de mensajes».
+ * Ventanas flotantes estilo celular (abiertas + minimizadas).
+ * Activas en todos los layouts, incluido PC/escritorio.
  */
 export const MESSAGE_BOXES_ENABLED = true;
 
-/** true = ocultar en el viewport actual por regla de laptop/PC/tablet landscape. */
+/** true = ocultar página /mensajes en el viewport actual (laptop/PC/tablet landscape). */
 export function isMessagesInboxHiddenByLayout(): boolean {
   if (MESSAGES_INBOX_WIDE_ENABLED) return false;
   if (typeof window === 'undefined') return false;
@@ -42,10 +44,9 @@ export function isMessagesInboxVisibleNow(): boolean {
   return !isMessagesInboxHiddenByLayout();
 }
 
-/** Cajas/pastillas flotantes de chat visibles ahora. */
+/** Ventanas/pastillas flotantes de chat visibles ahora. */
 export function isMessageBoxesVisibleNow(): boolean {
-  if (!MESSAGE_BOXES_ENABLED) return false;
-  return !isMessagesInboxHiddenByLayout();
+  return MESSAGE_BOXES_ENABLED;
 }
 
 if (typeof document !== 'undefined') {

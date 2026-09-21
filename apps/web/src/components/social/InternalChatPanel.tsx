@@ -19,6 +19,7 @@ import {
   Search,
   Send,
   MoreHorizontal,
+  Minus,
   Trash2,
   Video,
   X,
@@ -115,6 +116,10 @@ type Props = {
   page?: boolean;
   /** @deprecated usa page */
   fullscreen?: boolean;
+  /** Ventana flotante estilo celular: solo el hilo, peer fijo, sin lista ni URL. */
+  floatingPeer?: FriendChip & { chatId?: string | null };
+  onFloatingMinimize?: () => void;
+  onFloatingClose?: () => void;
 };
 
 type ListTab = 'todos' | 'unread' | 'grupos' | 'archivados';
@@ -603,8 +608,16 @@ function Avatar({
   );
 }
 
-export function InternalChatPanel({ compact = false, page = false, fullscreen = false }: Props) {
+export function InternalChatPanel({
+  compact = false,
+  page = false,
+  fullscreen = false,
+  floatingPeer,
+  onFloatingMinimize,
+  onFloatingClose,
+}: Props) {
   const t = useT();
+  const isFloating = Boolean(floatingPeer);
   const isPage = page || fullscreen;
   const profile = useAuthStore((state) => state.profile);
   const setCoins = useAuthStore((state) => state.setCoins);
@@ -613,7 +626,9 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const [following, setFollowing] = useState<FriendChip[]>([]);
   const [followers, setFollowers] = useState<FriendChip[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeUid, setActiveUid] = useState<string | null>(searchParams.get('conUid'));
+  const [activeUid, setActiveUid] = useState<string | null>(
+    floatingPeer?.uid || searchParams.get('conUid'),
+  );
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -856,6 +871,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   const conUser = searchParams.get('con');
   const conUidParam = searchParams.get('conUid');
   useEffect(() => {
+    if (isFloating) return;
     if (conUidParam) {
       setActiveUid(conUidParam);
       setSearchParams({}, { replace: true });
@@ -868,7 +884,12 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       setActiveUid(match.uid);
       setSearchParams({}, { replace: true });
     }
-  }, [conUser, conUidParam, friends, following, followers, conversations, setSearchParams]);
+  }, [isFloating, conUser, conUidParam, friends, following, followers, conversations, setSearchParams]);
+
+  useEffect(() => {
+    if (!floatingPeer?.uid) return;
+    setActiveUid(floatingPeer.uid);
+  }, [floatingPeer?.uid]);
 
   const people = useMemo(() => {
     const convByUid = new Map(
@@ -942,14 +963,30 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }, [people, listTab, queryText, archivedMap, onlineByUid]);
 
   useEffect(() => {
-    if (isPage || compact || peerDeletedNotice) return;
+    if (isFloating || isPage || compact || peerDeletedNotice) return;
     if (people.length > 0 && !activeUid) {
       const first = people[0];
       if (first) setActiveUid(first.uid);
     }
-  }, [people, compact, activeUid, isPage, peerDeletedNotice]);
+  }, [people, compact, activeUid, isPage, isFloating, peerDeletedNotice]);
 
-  const activeFriend = people.find((item) => item.uid === activeUid) || null;
+  const activeFriend = useMemo(() => {
+    const fromPeople = people.find((item) => item.uid === activeUid) || null;
+    if (floatingPeer && floatingPeer.uid === activeUid) {
+      return {
+        uid: floatingPeer.uid,
+        username: floatingPeer.username,
+        displayName: floatingPeer.displayName,
+        avatarUrl: floatingPeer.avatarUrl,
+        lastMessage: fromPeople?.lastMessage ?? null,
+        lastAt: fromPeople?.lastAt ?? null,
+        unread: fromPeople?.unread ?? 0,
+        chatId: fromPeople?.chatId ?? floatingPeer.chatId ?? null,
+        peerTypingAt: fromPeople?.peerTypingAt ?? 0,
+      } satisfies PersonRow;
+    }
+    return fromPeople;
+  }, [people, activeUid, floatingPeer]);
   const online = Boolean(activeFriend && onlineByUid[activeFriend.uid]);
   const inThisCall = Boolean(
     chatId &&
@@ -2061,7 +2098,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       >
         <div className="lb-chat-thread-head">
           <div className="lb-chat-thread-head__row">
-            {isPage ? (
+            {isFloating ? (
+              <button
+                type="button"
+                onClick={() => onFloatingMinimize?.()}
+                className="lb-chat-thread-head__back"
+                aria-label="Minimizar chat"
+                title="Minimizar"
+              >
+                <Minus size={18} />
+              </button>
+            ) : isPage ? (
               <button
                 type="button"
                 onClick={() => setActiveUid(null)}
@@ -2168,6 +2215,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
               >
                 <Trash2 size={16} />
               </button>
+              {isFloating ? (
+                <button
+                  type="button"
+                  onClick={() => onFloatingClose?.()}
+                  className="lb-chat-thread-head__icon"
+                  aria-label="Cerrar chat"
+                  title="Cerrar"
+                >
+                  <X size={16} />
+                </button>
+              ) : null}
             </div>
           </div>
           <div ref={callDockRef} id="lb-chat-call-dock" className="lb-chat-call-dock" />
@@ -3017,6 +3075,17 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         : null}
     </>
   );
+
+  if (isFloating) {
+    return (
+      <>
+        <div className="lb-phone-chat-frame flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#0a0a0b]">
+          {threadPane}
+        </div>
+        {chatExtras}
+      </>
+    );
+  }
 
   if (!isPage) {
     return (

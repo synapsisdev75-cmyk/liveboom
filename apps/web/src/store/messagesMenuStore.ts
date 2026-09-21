@@ -7,75 +7,97 @@ export type MessagesPopupPeer = FriendChip & {
   lastMessage?: string | null;
 };
 
-const MAX_MINIMIZED = 4;
+const MAX_OPEN = 3;
+const MAX_MINIMIZED = 5;
 
 function withoutUid(list: MessagesPopupPeer[], uid: string) {
   return list.filter((item) => item.uid !== uid);
 }
 
-/** Menú de mensajes: rail derecho temporal + chat flotante + minimizados. */
+/** Menú de mensajes: rail derecho + ventanas celular (varias) + minimizados. */
 type MessagesMenuState = {
   railOpen: boolean;
-  popupPeer: MessagesPopupPeer | null;
+  openWindows: MessagesPopupPeer[];
   minimized: MessagesPopupPeer[];
   setRailOpen: (open: boolean) => void;
   toggleRail: () => void;
-  setPopupPeer: (peer: MessagesPopupPeer | null) => void;
-  /** Abre un chat; si ya hay otro abierto, lo minimiza a pastilla foto+nombre. */
+  /** Abre un chat en ventana celular; puede haber varias a la vez. */
   openChatFromList: (peer: MessagesPopupPeer) => void;
   expandMinimized: (uid: string) => void;
   closeMinimized: (uid: string) => void;
-  closePopup: () => void;
-  minimizeCurrent: () => void;
+  closeWindow: (uid: string) => void;
+  minimizeWindow: (uid: string) => void;
   closeAll: () => void;
 };
 
 export const useMessagesMenuStore = create<MessagesMenuState>((set) => ({
   railOpen: false,
-  popupPeer: null,
+  openWindows: [],
   minimized: [],
   setRailOpen: (railOpen) => set({ railOpen }),
   toggleRail: () => set((state) => ({ railOpen: !state.railOpen })),
-  setPopupPeer: (popupPeer) => set({ popupPeer }),
   openChatFromList: (peer) =>
     set((state) => {
       if (!MESSAGE_BOXES_ENABLED || !isMessageBoxesVisibleNow()) {
-        return { railOpen: false, popupPeer: null, minimized: [] };
+        return { openWindows: [], minimized: [] };
       }
-      const prev = state.popupPeer;
-      let minimized = withoutUid(state.minimized, peer.uid);
-      if (prev && prev.uid !== peer.uid) {
-        minimized = [...withoutUid(minimized, prev.uid), prev].slice(-MAX_MINIMIZED);
+      const minimized = withoutUid(state.minimized, peer.uid);
+      const already = state.openWindows.find((item) => item.uid === peer.uid);
+      if (already) {
+        // Trae al frente (final del array) y actualiza datos.
+        return {
+          openWindows: [...withoutUid(state.openWindows, peer.uid), { ...already, ...peer }],
+          minimized,
+        };
       }
-      return { railOpen: false, popupPeer: peer, minimized };
+      let openWindows = [...state.openWindows, peer];
+      if (openWindows.length > MAX_OPEN) {
+        const [oldest, ...rest] = openWindows;
+        openWindows = rest;
+        if (oldest) {
+          return {
+            openWindows,
+            minimized: [...withoutUid(minimized, oldest.uid), oldest].slice(-MAX_MINIMIZED),
+          };
+        }
+      }
+      return { openWindows, minimized };
     }),
   expandMinimized: (uid) =>
     set((state) => {
       if (!MESSAGE_BOXES_ENABLED || !isMessageBoxesVisibleNow()) {
-        return { popupPeer: null, minimized: [] };
+        return { openWindows: [], minimized: [] };
       }
       const target = state.minimized.find((item) => item.uid === uid);
       if (!target) return state;
-      const prev = state.popupPeer;
+      let openWindows = [...withoutUid(state.openWindows, uid), target];
       let minimized = withoutUid(state.minimized, uid);
-      if (prev && prev.uid !== uid) {
-        minimized = [...minimized, prev].slice(-MAX_MINIMIZED);
+      if (openWindows.length > MAX_OPEN) {
+        const [oldest, ...rest] = openWindows;
+        openWindows = rest;
+        if (oldest && oldest.uid !== uid) {
+          minimized = [...withoutUid(minimized, oldest.uid), oldest].slice(-MAX_MINIMIZED);
+        }
       }
-      return { popupPeer: target, minimized };
+      return { openWindows, minimized };
     }),
   closeMinimized: (uid) => set((state) => ({ minimized: withoutUid(state.minimized, uid) })),
-  closePopup: () => set({ popupPeer: null }),
-  minimizeCurrent: () =>
+  closeWindow: (uid) =>
+    set((state) => ({
+      openWindows: withoutUid(state.openWindows, uid),
+      minimized: withoutUid(state.minimized, uid),
+    })),
+  minimizeWindow: (uid) =>
     set((state) => {
-      const prev = state.popupPeer;
-      if (!prev) return state;
+      const target = state.openWindows.find((item) => item.uid === uid);
+      if (!target) return state;
       if (!MESSAGE_BOXES_ENABLED || !isMessageBoxesVisibleNow()) {
-        return { popupPeer: null, minimized: [] };
+        return { openWindows: [], minimized: [] };
       }
       return {
-        popupPeer: null,
-        minimized: [...withoutUid(state.minimized, prev.uid), prev].slice(-MAX_MINIMIZED),
+        openWindows: withoutUid(state.openWindows, uid),
+        minimized: [...withoutUid(state.minimized, uid), target].slice(-MAX_MINIMIZED),
       };
     }),
-  closeAll: () => set({ railOpen: false, popupPeer: null, minimized: [] }),
+  closeAll: () => set({ railOpen: false, openWindows: [], minimized: [] }),
 }));

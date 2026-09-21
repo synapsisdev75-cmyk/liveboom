@@ -1274,6 +1274,34 @@ aside.chat-scroll::-webkit-scrollbar {
   height: min(32rem, calc(var(--lb-vv-height, 100dvh) - 5.5rem));
 }
 
+/* Ventana chat = proporción/tamaño celular real (~390×844), varias en fila desde la derecha. */
+.lb-phone-chat-window {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  width: min(24.375rem, calc(100vw - 1.25rem));
+  height: min(52.75rem, calc(var(--lb-vv-height, 100dvh) - 1rem));
+  max-height: calc(var(--lb-vv-height, 100dvh) - 0.5rem);
+  border-radius: 1.25rem 1.25rem 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 0;
+  background: #0a0a0b;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.lb-phone-chat-window .lb-phone-chat-frame,
+.lb-phone-chat-window .lb-chat-pane {
+  height: 100%;
+  min-height: 0;
+}
+
+.lb-phone-chat-window .lb-chat-composer {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
 .lb-msg-min-dock {
   right: max(0.75rem, env(safe-area-inset-right, 0px));
   bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
@@ -1285,15 +1313,16 @@ aside.chat-scroll::-webkit-scrollbar {
   max-width: calc(100vw - 1.5rem);
 }
 
-/* Laptop/PC/tablet landscape: sin caja ni pastillas minimizadas (espacio libre al borde). */
+/* Apagado total de cajas (flag MESSAGE_BOXES_ENABLED = false). */
 html.lb-msg-boxes-off .lb-msg-quick-popup,
+html.lb-msg-boxes-off .lb-phone-chat-window,
 html.lb-msg-boxes-off .lb-msg-min-dock {
   display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
-/* PC/escritorio: caja pegada al borde inferior del viewport disponible */
+/* PC/escritorio: ventanas y pastillas al borde inferior */
 @media (min-width: 1024px) {
   .lb-msg-quick-popup {
     right: max(0px, env(safe-area-inset-right, 0px));
@@ -1304,11 +1333,17 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
     border-bottom-right-radius: 0;
   }
 
+  .lb-phone-chat-window {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  body:has(.lb-phone-chat-window) .lb-msg-min-dock,
   body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
     left: auto;
-    right: calc(min(24rem, calc(100vw - 1.5rem)) + 0.75rem);
+    right: calc(min(24.375rem, calc(100vw - 1.25rem)) + 0.75rem);
     bottom: 0;
-    max-width: min(36rem, calc(100vw - min(24rem, calc(100vw - 1.5rem)) - 2rem));
+    max-width: min(36rem, calc(100vw - min(24.375rem, calc(100vw - 1.25rem)) - 2rem));
   }
 }
 
@@ -1321,6 +1356,16 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
     height: min(28rem, calc(var(--lb-vv-height, 100dvh) - var(--lb-bottom-nav-h, 4.25rem) - 5rem));
   }
 
+  .lb-phone-chat-window {
+    width: min(24.375rem, calc(100vw - 1rem));
+    height: min(
+      52.75rem,
+      calc(var(--lb-vv-height, 100dvh) - var(--lb-bottom-nav-h, 4.25rem) - 0.5rem)
+    );
+    bottom: calc(var(--lb-bottom-nav-h, 4.25rem));
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+
   .lb-msg-min-dock {
     left: max(0.5rem, env(safe-area-inset-left, 0px));
     right: max(0.5rem, env(safe-area-inset-right, 0px));
@@ -1328,7 +1373,7 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
     max-width: none;
   }
 
-  /* Móvil: misma fila; si hay popup, encima del chat */
+  body:has(.lb-phone-chat-window) .lb-msg-min-dock,
   body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
     bottom: calc(
       var(--lb-bottom-nav-h, 4.25rem) + max(0.5rem, env(safe-area-inset-bottom, 0px)) +
