@@ -67,8 +67,8 @@ async function cancelGiftJobs(db, giftId) {
 async function isGiftDeleted(giftId) {
   const id = safeGiftId(giftId);
   if (!id || !firestoreConfigured()) return false;
-  const { findGift } = require('./gifts');
-  if (findGift(id)) return false;
+  const { LEGACY_STATIC_GIFT_IDS } = require('./gifts');
+  if (LEGACY_STATIC_GIFT_IDS.has(id)) return true;
   const snap = await getAdminDb().collection(TOMBSTONES).doc(id).get();
   return snap.exists;
 }
@@ -88,10 +88,6 @@ async function deleteGiftPermanently({ giftId, adminUserId, adminEmail }) {
   const catalog = catalogSnap.exists ? catalogSnap.data() || {} : {};
   const gifts = Array.isArray(catalog.gifts) ? catalog.gifts : [];
   const target = gifts.find((g) => String(g?.id || '') === gid) || null;
-  if (target && gifts.length <= 1) {
-    throw Object.assign(new Error('Debe quedar al menos un regalo en el catálogo.'), { code: 'LAST_GIFT' });
-  }
-
   const remaining = gifts.filter((g) => String(g?.id || '') !== gid);
   const shared = new Set();
   for (const other of remaining) {

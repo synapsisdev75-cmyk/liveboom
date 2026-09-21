@@ -1,6 +1,9 @@
-/** Catálogo oficial Liveboom — sincronizado con apps/web/src/lib/liveboomGifts.ts */
+/**
+ * Inventario del catálogo estático anterior (retirado).
+ * Ya no autoriza cobros: el precio viene de config/giftsCatalog vía giftCatalog.js.
+ */
 
-const GIFTS = [
+const LEGACY_STATIC_GIFTS = [
   { id: 'besito_glam', name: 'Besito Glam', emoji: '💋', coins: 1 },
   { id: 'corazon_latino', name: 'Corazón Latino', emoji: '❤️', coins: 2 },
   { id: 'cafecito', name: 'Cafecito', emoji: '☕', coins: 5 },
@@ -33,23 +36,30 @@ const GIFTS = [
   { id: 'leyenda_liveboom', name: 'Leyenda Liveboom', emoji: '💫', coins: 30000 },
   { id: 'millon_latino', name: 'Millón Latino', emoji: '💰', coins: 100000 },
   { id: 'dios_del_live', name: 'Dios del Live', emoji: '⚡', coins: 500000 },
+  { id: 'besito', name: 'Besito', emoji: '💋', coins: 1 },
+  { id: 'ar_lentes', name: 'AR Lentes', emoji: '🕶️', coins: 1 },
+  { id: 'ar_blur', name: 'AR Blur', emoji: '✨', coins: 1 },
+  { id: 'ar_dalmata', name: 'AR Dálmata', emoji: '🐶', coins: 1 },
+  { id: 'ar_koala', name: 'AR Koala', emoji: '🐨', coins: 1 },
+  { id: 'ar_leon', name: 'AR León', emoji: '🦁', coins: 1 },
+  { id: 'ar_galaxia', name: 'AR Galaxia', emoji: '🌌', coins: 1 },
 ];
 
-function findGift(giftId) {
-  const id = String(giftId || '').trim();
-  if (
-    !id ||
-    id === 'besito' ||
-    id === 'ar_lentes' ||
-    id === 'ar_blur' ||
-    id === 'ar_dalmata' ||
-    id === 'ar_koala' ||
-    id === 'ar_leon' ||
-    id === 'ar_galaxia'
-  ) {
-    return null;
-  }
-  return GIFTS.find((gift) => gift.id === id) ?? null;
+const LEGACY_STATIC_GIFT_IDS = new Set(LEGACY_STATIC_GIFTS.map((g) => g.id));
+
+/** Catálogo comercial vacío: no hay precios estáticos autorizados. */
+const GIFTS = [];
+
+/**
+ * @deprecated Use getAuthorizedGift from giftCatalog.js. Siempre null (sin cobro estático).
+ */
+function findGift() {
+  return null;
 }
 
-module.exports = { GIFTS, findGift };
+module.exports = {
+  GIFTS,
+  LEGACY_STATIC_GIFTS,
+  LEGACY_STATIC_GIFT_IDS,
+  findGift,
+};

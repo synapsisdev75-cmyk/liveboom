@@ -1,4 +1,4 @@
-const { findGift } = require('./gifts');
+const { getAuthorizedGift } = require('./giftCatalog');
 
 const ALLOWED_CALL_GIFT_VALUES = [1, 2, 5, 8, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150];
 const MAX_CALL_RATE_BLASTS = 150;
@@ -9,14 +9,14 @@ function isAllowedCallGiftValue(value) {
   return ALLOWED_CALL_GIFT_VALUES.includes(n) && n <= MAX_CALL_RATE_BLASTS;
 }
 
-function validateCallGiftId(giftId) {
-  const gift = findGift(String(giftId || '').trim());
+async function validateCallGiftId(giftId) {
+  const gift = await getAuthorizedGift(String(giftId || '').trim(), { placement: 'call', force: true });
   if (!gift) {
     const err = new Error('Regalo no válido');
     err.code = 'CALL_GIFT_INVALID';
     throw err;
   }
-  if (String(gift.id).startsWith(LIVE_ONLY_PREFIX)) {
+  if (String(gift.id).startsWith(LIVE_ONLY_PREFIX) || gift.liveOnly) {
     const err = new Error('Ese regalo solo se puede usar en LIVE');
     err.code = 'CALL_GIFT_LIVE_ONLY';
     throw err;

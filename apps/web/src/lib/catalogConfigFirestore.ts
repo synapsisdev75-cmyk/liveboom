@@ -11,11 +11,9 @@ import { db, storage } from './firebase';
 import { COIN_PACKAGES } from './coinPackages';
 import { RETIRED_GIFT_IDS } from './retiredGifts';
 import {
-  FACE_GIFT_PROPS,
   type FaceGiftProp,
 } from './faceGiftAnchors';
 import {
-  LIVEBOOM_GIFTS,
   clampGiftAnimScale,
   giftLevelFromCoins,
   type GiftLevel,
@@ -75,12 +73,7 @@ function defaultPlacements(gift: LiveGift): GiftPlacement[] {
 export function buildDefaultGiftsCatalog(): GiftsCatalogDoc {
   return {
     version: 1,
-    gifts: LIVEBOOM_GIFTS.map((gift) => ({
-      ...gift,
-      enabled: true,
-      placements: defaultPlacements(gift),
-      face: FACE_GIFT_PROPS[gift.id] ? { ...FACE_GIFT_PROPS[gift.id]! } : null,
-    })),
+    gifts: [],
   };
 }
 
@@ -150,19 +143,16 @@ function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): E
 }
 
 export function mergeGiftsCatalog(doc: GiftsCatalogDoc | null): EditableGift[] {
-  const base = buildDefaultGiftsCatalog().gifts;
-  if (!doc?.gifts?.length) return base;
-  const byDefault = new Map(base.map((gift) => [gift.id, gift]));
+  // Fuente única: solo lo publicado en Firestore. Sin reinyectar defaults.
+  if (!doc?.gifts?.length) return [];
   const merged: EditableGift[] = [];
   const seen = new Set<string>();
   for (const gift of doc.gifts) {
-    const next = normalizeGift(gift as unknown as Record<string, unknown>, byDefault.get(gift.id));
-    if (!next) continue;
+    const next = normalizeGift(gift as unknown as Record<string, unknown>);
+    if (!next || RETIRED_GIFT_IDS.has(next.id) || next.coins < 1) continue;
+    if (seen.has(next.id)) continue;
     merged.push(next);
     seen.add(next.id);
-  }
-  for (const gift of base) {
-    if (!seen.has(gift.id)) merged.push(gift);
   }
   return merged;
 }
@@ -265,6 +255,13 @@ export async function saveGiftsCatalog(config: GiftsCatalogDoc, updatedBy: strin
   const gifts = (config.gifts || [])
     .filter((gift) => !RETIRED_GIFT_IDS.has(gift.id))
     .map((gift) => serializeEditableGift(gift));
+  for (const gift of gifts) {
+    const coins = Math.floor(Number(gift.coins) || 0);
+    if (!Number.isFinite(coins) || coins < 1) {
+      throw new Error(`El precio de «${String(gift.name || gift.id)}» debe ser un entero positivo en BLAST`);
+    }
+    gift.coins = coins;
+  }
   await setDoc(
     doc(db, GIFTS_PATH),
     stripUndefinedDeep({

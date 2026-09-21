@@ -1,8 +1,10 @@
-/** Catálogo oficial Liveboom — precios en coins y niveles de animación. */
+/** Catálogo oficial Liveboom — precios y media desde config/giftsCatalog (Super Admin). */
 
 import type { CallFilterId } from './deepar';
 import type { GiftLayoutMap } from './giftLayout';
 import type { GiftMediaInfo } from './giftMedia';
+import { runtimeAllLiveGifts, runtimeCatalogLoaded, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
+import { RETIRED_GIFT_IDS } from './retiredGifts';
 
 export type GiftLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -60,141 +62,14 @@ export function clampGiftAnimScale(value: unknown, level: GiftLevel = 1): number
   return Math.min(1, Math.max(0.2, Math.round(fromLevel * 100) / 100));
 }
 
-export const LIVEBOOM_GIFTS: LiveGift[] = [
-  // Nivel 1 — Básicos (1–40)
-  {
-    id: 'besito_glam',
-    name: 'Besito Glam',
-    emoji: '💋',
-    image: '/gifts/besito_glam.png?v=20260921b',
-    video: '/gifts/besito_glam.webm?v=20260921b',
-    coins: 1,
-    level: 1,
-    animation: 'Beso glam con corazones, brillos y audio',
-    animScale: 0.52,
-    media: {
-      hasAudio: true,
-      duration: 4.04,
-      width: 720,
-      height: 720,
-      fps: 24,
-      codec: 'vp9',
-      originalAsset: '/gifts/besito_glam-original.webm',
-      processedAsset: '/gifts/besito_glam.webm?v=20260921b',
-      backgroundRemoved: true,
-      volume: 1,
-      processingStatus: 'ready',
-      hasAlpha: true,
-      alphaUsable: true,
-      alphaWarning: null,
-      needsReview: false,
-      ingestReason: 'alpha',
-      ingestMessage: null,
-    },
-  },
-  { id: 'corazon_latino', name: 'Corazón Latino', emoji: '❤️', image: '/gifts/corazon_latino.png', video: '/gifts/corazon_latino.webm', coins: 2, level: 1, animation: 'Face Mesh: pulso cerca de la cara' },
-  { id: 'cafecito', name: 'Cafecito', emoji: '☕', image: '/gifts/cafecito.png', video: '/gifts/cafecito.webm?v=20260921', coins: 5, level: 1, animation: 'Taza con vapor en forma de corazón' },
-  { id: 'arepita', name: 'Arepita', emoji: '🫓', image: '/gifts/arepita.png', video: '/gifts/arepita.webm', coins: 8, level: 1, animation: 'Gira como moneda y brillo dorado' },
-  { id: 'empanadita', name: 'Empanadita', emoji: '🥟', image: '/gifts/empanadita.png', video: '/gifts/empanadita.webm', coins: 10, level: 1, animation: 'Vuelta rápida y migas brillantes' },
-  { id: 'flor_tropical', name: 'Flor Tropical', emoji: '🌺', image: '/gifts/flor_tropical.png', video: '/gifts/flor_tropical.webm', coins: 15, level: 1, animation: 'Face Mesh: flor anclada a la frente' },
-  { id: 'maracas', name: 'Maracas', emoji: '🪇', image: '/gifts/maracas.png', video: '/gifts/maracas.webm', coins: 20, level: 1, animation: 'Agitación rítmica chispeante' },
-  { id: 'aguacate', name: 'Aguacate', emoji: '🥑', image: '/gifts/aguacate.png', video: '/gifts/aguacate.webm', coins: 25, level: 1, animation: 'Animación especial al caer' },
-  { id: 'pina_tropical', name: 'Piña Tropical', emoji: '🍍', image: '/gifts/pina_tropical.png', video: '/gifts/pina_tropical.webm', coins: 30, level: 1, animation: 'Gira y explota en destellos' },
-  { id: 'coco_caribeno', name: 'Coco Caribeño', emoji: '🥥', image: '/gifts/coco_caribeno.png', video: '/gifts/coco_caribeno.webm', coins: 40, level: 1, animation: 'Animación WebM con sonido al enviar' },
-  // Nivel 2 — Populares (50–600)
-  { id: 'cafe_colombiano', name: 'Café Colombiano', emoji: '☕', image: '/gifts/cafe_colombiano.png', video: '/gifts/cafe_colombiano.webm', coins: 50, level: 2, animation: 'Taza elegante y vapor de montaña' },
-  { id: 'arepa_venezolana', name: 'Arepa Venezolana', emoji: '🫓', image: '/gifts/arepa_venezolana.png', video: '/gifts/arepa_venezolana.webm', coins: 75, level: 2, animation: 'Bandeja dorada y brillo cálido' },
-  { id: 'sombrero_llanero', name: 'Sombrero Llanero', emoji: '👒', image: '/gifts/sombrero_llanero.png', coins: 100, level: 2, animation: 'Face Mesh: anclado a frente y sienes' },
-  { id: 'sombrero_vueltiao', name: 'Sombrero Vueltiao', emoji: '🎩', image: '/gifts/sombrero_vueltiao.png', video: '/gifts/sombrero_vueltiao.webm', coins: 150, level: 2, animation: 'Face Mesh: espiral anclada a la cabeza' },
-  { id: 'cuatro_venezolano', name: 'Cuatro Venezolano', emoji: '🎸', image: '/gifts/cuatro_venezolano.png', video: '/gifts/cuatro_venezolano.webm', coins: 200, level: 2, animation: 'Notas y ondas sonoras' },
-  { id: 'tucan_tropical', name: 'Tucán Tropical', emoji: '🦜', image: '/gifts/tucan_tropical.png', video: '/gifts/tucan_tropical.webm', coins: 250, level: 2, animation: 'Face Mesh: posado sobre la cabeza' },
-  { id: 'guacamaya', name: 'Guacamaya', emoji: '🦜', image: '/gifts/guacamaya.png', video: '/gifts/guacamaya.webm', coins: 300, level: 2, animation: 'Face Mesh: plumas ancladas a la cabeza' },
-  { id: 'tambor_caribeno', name: 'Tambor Caribeño', emoji: '🥁', image: '/gifts/tambor_caribeno.png', coins: 400, level: 2, animation: 'Tres golpes con ondas' },
-  { id: 'botas_llaneras', name: 'Botas Llaneras', emoji: '🥾', image: '/gifts/botas_llaneras.png', coins: 500, level: 2, animation: 'Zapateo con polvo brillante' },
-  {
-    id: 'boom_saludo_travieso',
-    name: 'Boom Saludo Travieso',
-    emoji: '💣',
-    image: '/gifts/boom_saludo_travieso.png',
-    video: '/assets/animations/boom_saludo_travieso.webm',
-    coins: 500,
-    level: 2,
-    animation: 'Bombita 3D saluda al centro de la pantalla',
-  },
-  { id: 'caballo_criollo', name: 'Caballo Criollo', emoji: '🐴', image: '/gifts/caballo_criollo.png', coins: 600, level: 2, animation: 'Trote y polvo al centro' },
-  // Nivel 3 — Especiales (750–5000)
-  { id: 'fiesta_latina', name: 'Fiesta Latina', emoji: '🎉', image: '/gifts/fiesta_latina.png', coins: 750, level: 3, animation: 'Confeti, serpentinas y luces de golpe' },
-  { id: 'carnaval', name: 'Carnaval', emoji: '🎊', image: '/gifts/carnaval.png', coins: 1000, level: 3, animation: 'Escena de carnaval con nombre visible' },
-  { id: 'orquesta_tropical', name: 'Orquesta Tropical', emoji: '🎺', image: '/gifts/orquesta_tropical.png', coins: 2000, level: 3, animation: 'Escena musical temática' },
-  { id: 'reina_del_live', name: 'Reina del Live', emoji: '👑', image: '/gifts/reina_del_live.png', coins: 3500, level: 3, animation: 'Face Mesh: corona anclada a frente y sienes' },
-  { id: 'rey_del_flow', name: 'Rey del Flow', emoji: '🔥', image: '/gifts/rey_del_flow.png', coins: 5000, level: 3, animation: 'Fuego y nombre protagonista' },
-  // Nivel 4 — Premium (6000–25000)
-  { id: 'yate_caribe', name: 'Yate Caribe', emoji: '🛥️', coins: 6000, level: 4, animation: 'Recorrido completo con fondo' },
-  { id: 'disco_oro', name: 'Disco de Oro', emoji: '💿', coins: 12000, level: 4, animation: 'Escena épica con golpe final' },
-  { id: 'estrella_latina', name: 'Estrella Latina', emoji: '🌟', coins: 25000, level: 4, animation: 'El live se detiene un instante' },
-  // Nivel 5 — Legendarios (30000–500000)
-  { id: 'leyenda_liveboom', name: 'Leyenda Liveboom', emoji: '💫', coins: 30000, level: 5, animation: 'Takeover cinematográfico' },
-  { id: 'millon_latino', name: 'Millón Latino', emoji: '💰', coins: 100000, level: 5, animation: 'Pantalla completa y protagonista' },
-  { id: 'dios_del_live', name: 'Dios del Live', emoji: '⚡', coins: 500000, level: 5, animation: 'Escena total — vino a facturar' },
-];
-
-import { runtimeAllLiveGifts, runtimeCatalogLoaded, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
-import { RETIRED_GIFT_IDS } from './retiredGifts';
-
-function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
-  const local = LIVEBOOM_GIFTS.find((item) => item.id === gift.id);
-  if (!local) return gift;
-  let video = gift.video || local.video;
-  let image = gift.image || local.image;
-  if (gift.id === 'cafecito' && video) {
-    const path = video.split('?')[0];
-    if (path === '/gifts/cafecito.webm') video = '/gifts/cafecito.webm?v=20260921';
-  }
-  if (gift.id === 'besito_glam' && video) {
-    const path = video.split('?')[0];
-    if (path === '/gifts/besito_glam.webm') video = '/gifts/besito_glam.webm?v=20260921b';
-  }
-  if (gift.id === 'besito_glam' && image) {
-    const path = image.split('?')[0];
-    if (path === '/gifts/besito_glam.png') image = '/gifts/besito_glam.png?v=20260921b';
-  }
-  return {
-    ...gift,
-    image,
-    video,
-  };
-}
-
-export function findLiveGift(giftId: string | undefined | null): LiveGift | null {
-  if (!giftId || RETIRED_GIFT_IDS.has(giftId)) return null;
-  const remote = runtimeFindGift(giftId);
-  if (remote) {
-    return withDefaultGiftMedia({
-      id: remote.id,
-      name: remote.name,
-      emoji: remote.emoji,
-      image: remote.image,
-      video: remote.video,
-      coins: remote.coins,
-      level: remote.level,
-      animation: remote.animation,
-      animScale: remote.animScale,
-      giftLayout: remote.giftLayout,
-      media: remote.media,
-      liveOnly: remote.liveOnly,
-      deeparFilter: remote.deeparFilter,
-    });
-  }
-  if (runtimeCatalogLoaded()) return null;
-  return LIVEBOOM_GIFTS.find((g) => g.id === giftId) ?? null;
-}
-
-export function isDeeparLiveGift(giftId: string | undefined | null): boolean {
-  return Boolean(findLiveGift(giftId)?.deeparFilter);
-}
+/**
+ * Sin semillas comerciales. El catálogo activo solo viene de Firestore
+ * (Super Admin → Guardar y publicar).
+ */
+export const LIVEBOOM_GIFTS: LiveGift[] = [];
 
 function asCatalogGift(g: LiveGift): LiveGift {
-  return withDefaultGiftMedia({
+  return {
     id: g.id,
     name: g.name,
     emoji: g.emoji,
@@ -208,68 +83,75 @@ function asCatalogGift(g: LiveGift): LiveGift {
     media: g.media,
     liveOnly: g.liveOnly,
     deeparFilter: g.deeparFilter,
+  };
+}
+
+export function findLiveGift(giftId: string | undefined | null): LiveGift | null {
+  if (!giftId || RETIRED_GIFT_IDS.has(giftId)) return null;
+  const remote = runtimeFindGift(giftId);
+  if (!remote) return null;
+  return asCatalogGift({
+    id: remote.id,
+    name: remote.name,
+    emoji: remote.emoji,
+    image: remote.image,
+    video: remote.video,
+    coins: remote.coins,
+    level: remote.level,
+    animation: remote.animation,
+    animScale: remote.animScale,
+    giftLayout: remote.giftLayout,
+    media: remote.media,
+    liveOnly: remote.liveOnly,
+    deeparFilter: remote.deeparFilter,
   });
+}
+
+export function isDeeparLiveGift(giftId: string | undefined | null): boolean {
+  return Boolean(findLiveGift(giftId)?.deeparFilter);
 }
 
 /** Catálogo para publicaciones / clips / flash — sin filtros DeepAR. */
 export function sortedLiveboomGiftCatalog(): LiveGift[] {
+  if (!runtimeCatalogLoaded()) return [];
   const remote = runtimeGiftsFor('post');
   const fromClip = runtimeGiftsFor('boom_clip');
   const fromFlash = runtimeGiftsFor('flashboom');
-  if (remote.length || fromClip.length || fromFlash.length) {
-    const map = new Map<string, LiveGift>();
-    for (const g of [...remote, ...fromClip, ...fromFlash]) {
-      if (g.deeparFilter) continue;
-      map.set(g.id, asCatalogGift(g));
-    }
-    return [...map.values()].sort((a, b) => a.coins - b.coins);
+  const map = new Map<string, LiveGift>();
+  for (const g of [...remote, ...fromClip, ...fromFlash]) {
+    if (g.deeparFilter || RETIRED_GIFT_IDS.has(g.id)) continue;
+    if (g.coins < 1) continue;
+    map.set(g.id, asCatalogGift(g));
   }
-  return LIVEBOOM_GIFTS.filter((gift) => !gift.liveOnly).sort((a, b) => a.coins - b.coins);
+  return [...map.values()].sort((a, b) => a.coins - b.coins);
 }
 
 /**
  * Catálogo de chat / llamada privada (placements `chat` + `call`).
- * Sin DeepAR ni liveOnly. Fallback: mismo set que publicaciones.
+ * Sin DeepAR ni liveOnly.
  */
 export function sortedPrivateGiftCatalog(): LiveGift[] {
+  if (!runtimeCatalogLoaded()) return [];
   const fromChat = runtimeGiftsFor('chat');
   const fromCall = runtimeGiftsFor('call');
-  if (fromChat.length || fromCall.length) {
-    const map = new Map<string, LiveGift>();
-    for (const g of [...fromChat, ...fromCall]) {
-      if (g.deeparFilter || g.liveOnly) continue;
-      map.set(g.id, asCatalogGift(g));
-    }
-    if (map.size) return [...map.values()].sort((a, b) => a.coins - b.coins);
+  const map = new Map<string, LiveGift>();
+  for (const g of [...fromChat, ...fromCall]) {
+    if (g.deeparFilter || g.liveOnly || RETIRED_GIFT_IDS.has(g.id)) continue;
+    if (g.coins < 1) continue;
+    map.set(g.id, asCatalogGift(g));
   }
-  return sortedLiveboomGiftCatalog();
+  return [...map.values()].sort((a, b) => a.coins - b.coins);
 }
 
 /** Catálogo completo del LIVE (incluye regalos DeepAR). */
 export function sortedLiveGiftCatalog(): LiveGift[] {
-  const remote = runtimeAllLiveGifts();
-  if (remote.length) {
-    return remote.map((g) => withDefaultGiftMedia({
-      id: g.id,
-      name: g.name,
-      emoji: g.emoji,
-      image: g.image,
-      video: g.video,
-      coins: g.coins,
-      level: g.level,
-      animation: g.animation,
-      animScale: g.animScale,
-      giftLayout: g.giftLayout,
-      media: g.media,
-      liveOnly: g.liveOnly,
-      deeparFilter: g.deeparFilter,
-    }));
-  }
-  return [...LIVEBOOM_GIFTS].sort((a, b) => a.coins - b.coins);
+  if (!runtimeCatalogLoaded()) return [];
+  return runtimeAllLiveGifts()
+    .filter((g) => !RETIRED_GIFT_IDS.has(g.id) && g.coins >= 1)
+    .map((g) => asCatalogGift(g))
+    .sort((a, b) => a.coins - b.coins);
 }
 
 export function giftsByLevel(level: GiftLevel) {
-  const remote = runtimeAllLiveGifts();
-  if (remote.length) return remote.filter((g) => g.level === level);
-  return LIVEBOOM_GIFTS.filter((g) => g.level === level);
+  return sortedLiveGiftCatalog().filter((g) => g.level === level);
 }

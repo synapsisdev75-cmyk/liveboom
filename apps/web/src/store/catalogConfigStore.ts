@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import {
   buildDefaultCoinPackages,
-  buildDefaultGiftsCatalog,
   listenCoinPackagesConfig,
   listenGiftsCatalog,
   mergeCoinPackages,
@@ -22,13 +21,13 @@ type State = {
 
 export const useCatalogConfigStore = create<State>((set) => ({
   ready: false,
-  gifts: buildDefaultGiftsCatalog().gifts,
+  gifts: [],
   packages: buildDefaultCoinPackages().packages,
   giftsVersion: 1,
   packsVersion: 1,
 
   hydrate: () => {
-    setRuntimeGiftCatalog(buildDefaultGiftsCatalog().gifts);
+    setRuntimeGiftCatalog([]);
     setRuntimeCoinPackages(buildDefaultCoinPackages().packages);
     const unsubGifts = listenGiftsCatalog((doc) => {
       const gifts = mergeGiftsCatalog(doc);

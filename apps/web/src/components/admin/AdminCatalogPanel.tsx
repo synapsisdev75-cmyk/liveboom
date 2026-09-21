@@ -275,11 +275,9 @@ export function AdminCatalogPanel({
 
   useEffect(() => {
     if (giftsDirtyRef.current) return;
-    if (storeGifts.length) {
-      setGifts(storeGifts.map((g) => ({ ...g, face: g.face ? { ...g.face } : null })));
-      if (!storeGifts.some((g) => g.id === selectedGiftId)) {
-        setSelectedGiftId(storeGifts[0]!.id);
-      }
+    setGifts(storeGifts.map((g) => ({ ...g, face: g.face ? { ...g.face } : null })));
+    if (!storeGifts.some((g) => g.id === selectedGiftId)) {
+      setSelectedGiftId(storeGifts[0]?.id || '');
     }
   }, [storeGifts, giftsVersion]);
 
@@ -421,10 +419,6 @@ export function AdminCatalogPanel({
     if (!gift) return;
     const giftId = gift.id;
     const next = gifts.filter((g) => g.id !== giftId);
-    if (!next.length) {
-      setDeleteError('Debe quedar al menos un regalo en el catálogo.');
-      return;
-    }
     setSaving(true);
     setDeleteError(null);
     setMessage(null);
@@ -434,7 +428,7 @@ export function AdminCatalogPanel({
       setGifts(next);
       setSelectedGiftId(next[0]?.id || '');
       setDeleteOpen(false);
-      setMessage('Regalo eliminado de todos lados.');
+      setMessage(next.length ? 'Regalo eliminado de todos lados.' : 'Catálogo vacío. Sube y publica nuevos regalos.');
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar el regalo');
     } finally {

@@ -35,7 +35,7 @@ router.post('/start', requireAuth, async (req, res) => {
   if (giftId) {
     try {
       if (!String(giftId).startsWith('platform_')) {
-        validateCallGiftId(giftId);
+        await validateCallGiftId(giftId);
       }
     } catch (error) {
       res.status(400).json({

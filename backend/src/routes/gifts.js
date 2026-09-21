@@ -2,7 +2,7 @@ const { randomUUID } = require('crypto');
 const express = require('express');
 const { asFn } = require('../lib/asFn');
 const { prisma, hasDatabase } = require('../lib/prisma');
-const { findGift } = require('../lib/gifts');
+const { getAuthorizedGift, ensureLegacyRetirement, invalidateCatalogCache } = require('../lib/giftCatalog');
 const { emitGiftReceived } = require('../lib/socket');
 const { findByUsername } = require('../lib/profileMemory');
 const liveChat = require('../lib/liveChat');
@@ -14,6 +14,24 @@ const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireDbUser = asFn(require('../middleware/requireDbUser'));
 const superAdminMod = require('../middleware/requireSuperAdmin');
 const requireGiftsAdmin = superAdminMod.requireCapability('gifts');
+
+function placementFromBody(body) {
+  const source = String(body?.source || '').trim();
+  if (source === 'private') return ['chat', 'call'];
+  if (source === 'live_gift') return ['live'];
+  if (source === 'gift') return ['post', 'boom_clip', 'flashboom'];
+  const room = String(body?.roomName || '');
+  if (room.startsWith('chat:')) return ['chat', 'call'];
+  if (room) return ['live'];
+  return ['post', 'boom_clip', 'flashboom'];
+}
+
+function giftAllowedForPlacement(gift, placements) {
+  if (!gift) return false;
+  const allowed = Array.isArray(placements) ? placements : [placements];
+  if (!gift.placements?.length) return true;
+  return allowed.some((p) => gift.placements.includes(p));
+}
 
 function withTimeout(promise, ms) {
   let timer;
@@ -360,19 +378,44 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   );
   const { isGiftDeleted } = require('../lib/giftCatalogDelete');
   if (await isGiftDeleted(giftId)) {
-    res.status(400).json({ error: 'Regalo no válido' });
+    res.status(400).json({ error: 'Regalo no válido', code: 'GIFT_RETIRED' });
     return;
   }
-  const gift = findGift(giftId);
+  const placements = placementFromBody(req.body);
+  const gift = await getAuthorizedGift(giftId, { force: true });
+  if (gift && !giftAllowedForPlacement(gift, placements)) {
+    res.status(400).json({ error: 'Regalo no disponible en este espacio', code: 'GIFT_PLACEMENT' });
+    return;
+  }
   const rawMult = Math.floor(Number(req.body?.multiplier) || 1);
   const multiplier = [1, 2, 4, 8].includes(rawMult) ? rawMult : 1;
-  const totalCoins = gift ? gift.coins * multiplier : 0;
+  const unitCoins = gift ? gift.coins : 0;
+  const totalCoins = gift ? unitCoins * multiplier : 0;
   const requestedRecipient =
     typeof req.body?.recipientUid === 'string' ? req.body.recipientUid.trim() : '';
+  const expectedRaw = req.body?.expectedUnitCoins;
+  const hasExpected = expectedRaw !== undefined && expectedRaw !== null && expectedRaw !== '';
+  const expectedUnitCoins = hasExpected ? Math.floor(Number(expectedRaw)) : null;
 
   if (!gift || !roomName) {
     res.status(400).json({
       error: !gift ? 'Regalo no válido' : 'giftId y roomName son obligatorios',
+      code: !gift ? 'GIFT_INVALID' : 'ROOM_REQUIRED',
+    });
+    return;
+  }
+
+  if (hasExpected && expectedUnitCoins !== unitCoins) {
+    res.status(409).json({
+      error: 'El precio del regalo cambió. Confirma el nuevo valor antes de enviar.',
+      code: 'PRICE_CHANGED',
+      gift: {
+        id: gift.id,
+        name: gift.name,
+        emoji: gift.emoji,
+        coins: gift.coins,
+        catalogVersion: gift.catalogVersion || null,
+      },
     });
     return;
   }
@@ -392,9 +435,11 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
     giftName: gift.name,
     emoji: gift.emoji,
     coins: totalCoins,
+    unitCoins,
     multiplier,
     senderName,
     senderUid,
+    catalogVersion: gift.catalogVersion || null,
   };
 
   try {
@@ -422,12 +467,17 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
       metadata: {
         giftId: gift.id,
         giftName: gift.name,
-        coins: gift.coins,
+        coins: unitCoins,
+        unitPriceBlast: unitCoins,
+        quantity: multiplier,
+        totalBlast: totalCoins,
         blast: totalCoins,
+        catalogVersion: gift.catalogVersion || null,
         emoji: gift.emoji,
         roomName,
         multiplier,
         clientId: payload.id,
+        placement: Array.isArray(placements) ? placements[0] : placements,
       },
     });
 
@@ -475,6 +525,19 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   } catch (error) {
     console.error('[gifts/send]', error);
     res.status(500).json({ error: 'No se pudo enviar el regalo' });
+  }
+});
+
+router.post('/migrate-retire-legacy', requireAuth, requireGiftsAdmin, async (_req, res) => {
+  try {
+    const result = await ensureLegacyRetirement();
+    invalidateCatalogCache();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('[gifts/migrate-retire-legacy]', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudo ejecutar la migración',
+    });
   }
 });
 

@@ -3,7 +3,7 @@
 const { randomUUID } = require('crypto');
 const { FieldValue } = require('firebase-admin/firestore');
 const { getAdminDb, firestoreConfigured } = require('./firestoreAdmin');
-const { findGift } = require('./gifts');
+const { getAuthorizedGift } = require('./giftCatalog');
 const liveLocks = require('./liveLocks');
 const {
   getBalances,
@@ -93,7 +93,7 @@ async function hydrateLock(roomName) {
     const giftId = String(data.requiredGiftId || data.lockGiftId || '');
     const sessionId = String(data.privateSessionId || '');
     if (!sessionIsOpen(data) || !giftId || !sessionId) return existing || null;
-    const gift = findGift(giftId);
+    const gift = await getAuthorizedGift(giftId, { placement: 'live' });
     if (!gift) return existing || null;
     const restored = liveLocks.restoreLock(roomName, {
       giftId: gift.id,
@@ -129,7 +129,7 @@ function mergeBalances(firestoreBal, memoryBal, floorFromClient) {
 }
 
 async function startSession(roomName, { hostUid, giftId }) {
-  const gift = findGift(giftId);
+  const gift = await getAuthorizedGift(giftId, { placement: 'live', force: true });
   if (!gift) {
     return { ok: false, status: 400, error: 'Regalo de candado inválido' };
   }
@@ -288,7 +288,7 @@ async function requestAccess(roomName, payload) {
 
   await hydrateLock(roomName);
   const db = getAdminDb();
-  const coinsGift = findGift(giftId);
+  const coinsGift = await getAuthorizedGift(giftId, { placement: 'live', force: true });
 
   try {
     const result = await db.runTransaction(async (tx) => {
@@ -319,7 +319,7 @@ async function requestAccess(roomName, payload) {
         err.code = 'WRONG_GIFT';
         throw err;
       }
-      const gift = coinsGift || findGift(required);
+      const gift = coinsGift;
       if (!gift) {
         const err = new Error('BAD_GIFT');
         err.code = 'BAD_GIFT';

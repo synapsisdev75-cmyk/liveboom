@@ -112,6 +112,24 @@ mount('/api/wallet', () => require('./src/routes/wallet'));
 mount('/api/verification', () => require('./src/routes/verification'));
 mount('/api/super-admin', () => require('./src/routes/superAdmin'));
 
+try {
+  const { ensureLegacyRetirement } = require('./src/lib/giftCatalog');
+  void ensureLegacyRetirement()
+    .then((result) => {
+      if (result && !result.skipped) {
+        console.log('[liveboom] gift catalog migration', {
+          already: Boolean(result.already),
+          retiredCount: result.retiredCount || 0,
+        });
+      }
+    })
+    .catch((error) => {
+      console.warn('[liveboom] gift catalog migration:', error.message);
+    });
+} catch (error) {
+  console.warn('[liveboom] gift catalog migration no iniciada:', error.message);
+}
+
 app.use((error, _req, res, _next) => {
   console.error('[liveboom] error no controlado', error);
   if (res.headersSent) return;

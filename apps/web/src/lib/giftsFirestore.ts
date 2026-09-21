@@ -104,6 +104,9 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
   if (catalog.liveOnly && !input.roomName) {
     throw new Error('Este filtro AR solo se puede usar en LIVE');
   }
+  if (catalog.coins < 1) {
+    throw new Error('Regalo no válido');
+  }
 
   const mult = [1, 2, 4, 8].includes(input.multiplier ?? 1) ? (input.multiplier as 1 | 2 | 4 | 8) : 1;
   const totalCoins = catalog.coins * mult;
@@ -132,12 +135,21 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
         currentBalance: input.senderBalance,
         multiplier: mult,
         source,
+        expectedUnitCoins: catalog.coins,
         recipientUid: input.recipientUid || undefined,
         postId: input.postId || undefined,
       }),
     });
     return { senderBalance: result.senderBalance, usedFallback: false };
   } catch (error) {
+    if (error instanceof ApiError && error.status === 409 && error.data?.code === 'PRICE_CHANGED') {
+      const nextCoins = Math.floor(Number((error.data.gift as { coins?: number } | undefined)?.coins) || 0);
+      throw new Error(
+        nextCoins > 0
+          ? `El precio cambió a ${nextCoins.toLocaleString('es-CO')} BLAST. Confirma de nuevo para enviar.`
+          : 'El precio del regalo cambió. Confirma de nuevo para enviar.',
+      );
+    }
     throw new Error(giftSendErrorMessage(error));
   }
 }
