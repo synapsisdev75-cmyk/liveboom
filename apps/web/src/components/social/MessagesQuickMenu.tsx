@@ -31,6 +31,7 @@ import {
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
 import { useCallStore } from '../../store/callStore';
+import { MESSAGE_BOXES_ENABLED } from '../../lib/messagesUiFlags';
 import {
   useMessagesMenuStore,
   type MessagesPopupPeer,
@@ -901,7 +902,7 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
         />
       ) : null}
 
-      {hostPortals ? (
+      {hostPortals && MESSAGE_BOXES_ENABLED ? (
         <MinimizedChatsDock items={minimized} onExpand={expandMinimized} />
       ) : null}
     </div>
