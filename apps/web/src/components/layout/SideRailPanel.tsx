@@ -64,6 +64,8 @@ import {
   readIgnoredSuggestionUids,
 } from '../../lib/ignoredSuggestions';
 import { useAuthStore } from '../../store/authStore';
+import { useMessagesMenuStore } from '../../store/messagesMenuStore';
+import { MessagesSideRail } from '../social/MessagesQuickMenu';
 
 type SuggestedUser = {
   uid: string;
@@ -232,6 +234,13 @@ function LiveRail({ host }: { host: string }) {
 export function SideRailPanel() {
   const liveMatch = useMatch('/stream/:username');
   const locationPath = useLocation().pathname;
+  const messagesRailOpen = useMessagesMenuStore((state) => state.railOpen);
+
+  // Botón mensajes del header: reemplaza temporalmente el rail (Publicidad/Tendencias/…).
+  if (messagesRailOpen && !locationPath.startsWith('/mensajes') && !liveMatch?.params.username) {
+    return <MessagesSideRail />;
+  }
+
   if (liveMatch?.params.username) {
     return <LiveRail host={decodeURIComponent(liveMatch.params.username)} />;
   }
