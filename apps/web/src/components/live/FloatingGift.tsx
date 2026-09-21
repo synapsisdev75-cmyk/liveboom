@@ -502,7 +502,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
     return burst;
   }
 
-  if (fillViewport && videoSrc) {
+  if (fillViewport && videoSrc && gift) {
     return (
       <AnimatePresence>
         <GiftVideoBurst
