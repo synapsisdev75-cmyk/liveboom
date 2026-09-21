@@ -67,8 +67,8 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
     id: 'besito_glam',
     name: 'Besito Glam',
     emoji: '💋',
-    image: '/gifts/besito_glam.png',
-    video: '/gifts/besito_glam.webm',
+    image: '/gifts/besito_glam.png?v=20260921b',
+    video: '/gifts/besito_glam.webm?v=20260921b',
     coins: 1,
     level: 1,
     animation: 'Beso glam con corazones, brillos y audio',
@@ -81,7 +81,7 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
       fps: 24,
       codec: 'vp9',
       originalAsset: '/gifts/besito_glam-original.webm',
-      processedAsset: '/gifts/besito_glam.webm',
+      processedAsset: '/gifts/besito_glam.webm?v=20260921b',
       backgroundRemoved: true,
       volume: 1,
       processingStatus: 'ready',
@@ -89,7 +89,7 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
       alphaUsable: true,
       alphaWarning: null,
       needsReview: false,
-      ingestReason: 'chroma',
+      ingestReason: 'alpha',
       ingestMessage: null,
     },
   },
@@ -206,13 +206,22 @@ function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
   const local = LIVEBOOM_GIFTS.find((item) => item.id === gift.id);
   if (!local) return gift;
   let video = gift.video || local.video;
+  let image = gift.image || local.image;
   if (gift.id === 'cafecito' && video) {
     const path = video.split('?')[0];
     if (path === '/gifts/cafecito.webm') video = '/gifts/cafecito.webm?v=20260921';
   }
+  if (gift.id === 'besito_glam' && video) {
+    const path = video.split('?')[0];
+    if (path === '/gifts/besito_glam.webm') video = '/gifts/besito_glam.webm?v=20260921b';
+  }
+  if (gift.id === 'besito_glam' && image) {
+    const path = image.split('?')[0];
+    if (path === '/gifts/besito_glam.png') image = '/gifts/besito_glam.png?v=20260921b';
+  }
   return {
     ...gift,
-    image: gift.image || local.image,
+    image,
     video,
   };
 }
