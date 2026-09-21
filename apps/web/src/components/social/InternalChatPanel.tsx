@@ -857,7 +857,13 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
   }, [profile?.firebaseUid, isPage]);
 
   const conUser = searchParams.get('con');
+  const conUidParam = searchParams.get('conUid');
   useEffect(() => {
+    if (conUidParam) {
+      setActiveUid(conUidParam);
+      setSearchParams({}, { replace: true });
+      return;
+    }
     if (!conUser) return;
     const pool = [...friends, ...following, ...followers, ...conversations];
     const match = pool.find((item) => item.username.toLowerCase() === conUser.toLowerCase());
@@ -865,7 +871,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       setActiveUid(match.uid);
       setSearchParams({}, { replace: true });
     }
-  }, [conUser, friends, following, followers, conversations, setSearchParams]);
+  }, [conUser, conUidParam, friends, following, followers, conversations, setSearchParams]);
 
   const people = useMemo(() => {
     const convByUid = new Map(

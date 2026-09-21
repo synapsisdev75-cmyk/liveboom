@@ -1253,6 +1253,24 @@ video.lk-participant-media-video {
   object-position: center;
 }
 
+/* Menú rápido de mensajes (header) + chat flotante estilo Messenger */
+.lb-msg-quick-popup {
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  width: min(24rem, calc(100vw - 1.5rem));
+  height: min(32rem, calc(100dvh - 5.5rem));
+}
+
+@media (max-width: 639px) {
+  .lb-msg-quick-popup {
+    right: max(0.5rem, env(safe-area-inset-right, 0px));
+    left: max(0.5rem, env(safe-area-inset-left, 0px));
+    width: auto;
+    bottom: calc(var(--lb-bottom-nav-h, 4.25rem) + max(0.5rem, env(safe-area-inset-bottom, 0px)));
+    height: min(28rem, calc(100dvh - var(--lb-bottom-nav-h, 4.25rem) - 5rem));
+  }
+}
+
 .lb-gift-layout-stage {
   overflow: visible;
   width: 100%;

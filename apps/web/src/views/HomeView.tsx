@@ -18,6 +18,7 @@ import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedVi
 import { ReelsRow } from '../components/feed/ReelsRow';
 import { CategoryChips } from '../components/search/CategoryChips';
 import { NotificationBell } from '../components/social/NotificationBell';
+import { MessagesQuickMenu } from '../components/social/MessagesQuickMenu';
 import { PostReactionButtons } from '../components/social/PostReactionButtons';
 import { PostComments, PostVideoPlayer } from '../components/social/PostVideoPlayer';
 import { ShareContentButton } from '../components/social/ShareContentButton';
@@ -738,6 +739,7 @@ export function HomeView() {
           </Link>
           {profile ? (
             <span className="hidden lg:contents">
+              <MessagesQuickMenu />
               <NotificationBell />
             </span>
           ) : null}
