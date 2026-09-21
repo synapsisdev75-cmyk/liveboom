@@ -153,9 +153,15 @@ export function mergeGiftsCatalog(doc: GiftsCatalogDoc | null): EditableGift[] {
   if (!doc?.gifts?.length) return base;
   const byDefault = new Map(base.map((gift) => [gift.id, gift]));
   const merged: EditableGift[] = [];
+  const seen = new Set<string>();
   for (const gift of doc.gifts) {
     const next = normalizeGift(gift as unknown as Record<string, unknown>, byDefault.get(gift.id));
-    if (next) merged.push(next);
+    if (!next) continue;
+    merged.push(next);
+    seen.add(next.id);
+  }
+  for (const gift of base) {
+    if (!seen.has(gift.id)) merged.push(gift);
   }
   return merged;
 }

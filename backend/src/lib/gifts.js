@@ -2,6 +2,7 @@
 
 const GIFTS = [
   { id: 'besito', name: 'Besito', emoji: '💋', coins: 1 },
+  { id: 'besito_glam', name: 'Besito Glam', emoji: '💋', coins: 1 },
   { id: 'corazon_latino', name: 'Corazón Latino', emoji: '❤️', coins: 2 },
   { id: 'cafecito', name: 'Cafecito', emoji: '☕', coins: 5 },
   { id: 'arepita', name: 'Arepita', emoji: '🫓', coins: 8 },
