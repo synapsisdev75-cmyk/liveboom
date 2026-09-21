@@ -69,9 +69,12 @@ export function GiftBoxStrip({
 
   return (
     <div
+      data-gift-panel={pendingGift ? 'confirm' : 'grid'}
       className={`gift-box-strip flex min-h-0 flex-col ${
         floating
-          ? 'h-full border-0'
+          ? pendingGift
+            ? 'h-auto border-0'
+            : 'h-full border-0'
           : `shrink-0 border-t ${compact ? 'rounded-t-xl' : 'rounded-t-2xl'}`
       }`}
     >
@@ -94,7 +97,7 @@ export function GiftBoxStrip({
       </div>
 
       {pendingGift ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-2 sm:px-3">
+        <div className="px-2.5 pb-2.5 sm:px-3">
           <GiftSendConfirm
             gift={pendingGift}
             coins={coins}

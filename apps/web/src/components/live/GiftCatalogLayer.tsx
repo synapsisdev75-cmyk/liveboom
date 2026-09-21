@@ -37,13 +37,20 @@ function readViewportBox() {
   };
 }
 
-/** Centra el panel en la zona visible del viewport (no lo ancla a un recorte del feed). */
-function fitGiftPanelCentered() {
+function catalogMaxHeight(availH: number) {
+  return Math.min(availH, Math.max(220, Math.min(Math.round(availH * 0.86), 520)));
+}
+
+/** Centra el panel. En confirmación recorta al contenido (sin vacío debajo). */
+function fitGiftPanelCentered(hug: boolean, contentH?: number) {
   const view = readViewportBox();
   const availW = Math.max(220, view.right - view.left);
   const availH = Math.max(240, view.bottom - view.top);
   const width = Math.min(PREFERRED_W, availW);
-  const height = Math.min(availH, Math.max(220, Math.min(Math.round(availH * 0.86), 520)));
+  const maxH = catalogMaxHeight(availH);
+  const height = hug
+    ? Math.min(maxH, Math.max(168, Math.round(contentH || 240)))
+    : maxH;
   const left = view.left + (availW - width) / 2;
   const top = view.top + (availH - height) / 2;
   return {
@@ -51,6 +58,8 @@ function fitGiftPanelCentered() {
     top: Math.round(top),
     width: Math.round(width),
     height: Math.round(height),
+    maxH: Math.round(maxH),
+    hug,
   };
 }
 
@@ -64,24 +73,33 @@ type Props = {
 /** Catálogo de regalos en portal: mismo panel en feed y visores, siempre dentro del viewport. */
 export function GiftCatalogLayer({ open, onClose, children }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [hug, setHug] = useState(false);
   const [coords, setCoords] = useState<{
     left: number;
     top: number;
     width: number;
     height: number;
-  } | null>(() => (typeof window === 'undefined' ? null : fitGiftPanelCentered()));
+    maxH: number;
+    hug: boolean;
+  } | null>(() => (typeof window === 'undefined' ? null : fitGiftPanelCentered(false)));
 
   useBodyScrollLock(open);
 
   const updatePosition = useCallback(() => {
-    const next = fitGiftPanelCentered();
+    const panel = panelRef.current;
+    const hugging = Boolean(panel?.querySelector('[data-gift-panel="confirm"], .lb-gift-confirm'));
+    setHug(hugging);
+    const strip = panel?.querySelector('[data-gift-panel="confirm"]') as HTMLElement | null;
+    const natural = hugging ? Math.max(strip?.scrollHeight || 0, strip?.offsetHeight || 0) : undefined;
+    const next = fitGiftPanelCentered(hugging, natural);
     setCoords((prev) => {
       if (
         prev &&
         prev.left === next.left &&
         prev.top === next.top &&
         prev.width === next.width &&
-        prev.height === next.height
+        prev.height === next.height &&
+        prev.hug === next.hug
       ) {
         return prev;
       }
@@ -90,7 +108,10 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setHug(false);
+      return;
+    }
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose();
     }
@@ -103,19 +124,32 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
   useLayoutEffect(() => {
     if (!open) return;
     updatePosition();
+    const panel = panelRef.current;
+    const strip = panel?.querySelector('[data-gift-panel="confirm"]');
+    const mo =
+      panel && typeof MutationObserver !== 'undefined'
+        ? new MutationObserver(() => updatePosition())
+        : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => updatePosition()) : null;
+    if (panel && mo) mo.observe(panel, { childList: true, subtree: true });
+    if (strip && ro) ro.observe(strip);
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     window.visualViewport?.addEventListener('resize', updatePosition);
     window.visualViewport?.addEventListener('scroll', updatePosition);
     return () => {
+      mo?.disconnect();
+      ro?.disconnect();
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
       window.visualViewport?.removeEventListener('resize', updatePosition);
       window.visualViewport?.removeEventListener('scroll', updatePosition);
     };
-  }, [open, updatePosition]);
+  }, [open, hug, updatePosition]);
 
   if (!open || typeof document === 'undefined') return null;
+
+  const hugging = hug || Boolean(coords?.hug);
 
   return createPortal(
     <div className="pointer-events-none fixed inset-0" style={{ zIndex: Z }}>
@@ -134,7 +168,7 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
           left: coords?.left ?? 0,
           width: coords?.width ?? PREFERRED_W,
           height: coords?.height ?? 320,
-          maxHeight: coords?.height,
+          maxHeight: coords?.maxH ?? coords?.height,
           visibility: 'visible',
           background: 'var(--lb-surface)',
           borderColor: 'var(--lb-line)',
@@ -147,7 +181,7 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
         onClick={(event) => event.stopPropagation()}
         onWheel={(event) => event.stopPropagation()}
       >
-        <div className="flex h-full min-h-0 flex-col">{children}</div>
+        <div className={`flex min-h-0 flex-col ${hugging ? 'h-auto' : 'h-full'}`}>{children}</div>
       </div>
     </div>,
     document.body,
