@@ -1,6 +1,8 @@
 import {
+  Gift,
   Maximize2,
   MessageCircle,
+  Minus,
   Search,
   Send,
   X,
@@ -9,6 +11,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { countInboxUnread } from '../../lib/chatNotifyContext';
+import {
+  openRechargeCoins,
+  sendPrivateGift,
+  validateCoinsBalance,
+} from '../../lib/giftsFirestore';
+import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
+import { addLevelXp } from '../../lib/profileFirestore';
 import {
   ensureChat,
   listenConversations,
@@ -19,11 +28,18 @@ import {
   type Conversation,
 } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
+import { useCallStore } from '../../store/callStore';
 import {
   useMessagesMenuStore,
   type MessagesPopupPeer,
 } from '../../store/messagesMenuStore';
+import { GiftBoxStrip } from '../live/GiftBoxStrip';
+import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
+import { FloatingGift, GiftVisual } from '../live/FloatingGift';
+import { CoinModal } from '../wallet/CoinModal';
 import { UserAvatar } from '../profile/UserAvatar';
+import { CallChatActions } from './CallChatActions';
+import { EmojiPickerButton } from './EmojiPicker';
 
 type ListTab = 'todos' | 'unread';
 
@@ -77,23 +93,41 @@ function peerFromChat(chat: Conversation): MessagesPopupPeer {
   };
 }
 
-/** Chat flotante: ver hilo + expandir a /mensajes pantalla completa. */
+/** Chat flotante: regalos, llamadas, emojis + expandir a /mensajes. */
 function FloatingDmWindow({
   peer,
   onClose,
   onExpand,
+  onMinimize,
 }: {
   peer: MessagesPopupPeer;
   onClose: () => void;
   onExpand: () => void;
+  onMinimize: () => void;
 }) {
   const profile = useAuthStore((state) => state.profile);
+  const setCoins = useAuthStore((state) => state.setCoins);
+  const callStatus = useCallStore((state) => state.status);
+  const callChatId = useCallStore((state) => state.chatId);
+  const hangup = useCallStore((state) => state.hangup);
   const [chatId, setChatId] = useState<string | null>(peer.chatId || null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [giftsOpen, setGiftsOpen] = useState(false);
+  const [sendingGift, setSendingGift] = useState<string | null>(null);
+  const [giftError, setGiftError] = useState<string | null>(null);
+  const [rechargeNeeded, setRechargeNeeded] = useState<number | null>(null);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [giftFloats, setGiftFloats] = useState<
+    Array<{ id: string; giftId: string; left: number; senderName?: string }>
+  >([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const giftTriggerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
 
   useEffect(() => {
     if (!profile) return;
@@ -129,17 +163,20 @@ function FloatingDmWindow({
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages.length, peer.uid]);
+  }, [messages.length, peer.uid, giftFloats.length]);
 
-  async function send() {
+  async function send(text = draft, extras?: { giftId?: string }) {
     if (!profile || busy) return;
-    const text = draft.trim();
-    if (!text) return;
+    const body = text.trim();
+    if (!body && !extras?.giftId) return;
     setBusy(true);
     setError(null);
     try {
-      await sendChatMessage(meFromProfile(profile), peer, text);
-      setDraft('');
+      await sendChatMessage(meFromProfile(profile), peer, body || '🎁 Regalo', {
+        giftId: extras?.giftId || null,
+      });
+      if (!extras?.giftId) setDraft('');
+      setEmojiOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo enviar');
     } finally {
@@ -147,9 +184,70 @@ function FloatingDmWindow({
     }
   }
 
+  async function sendGift(giftId: string, multiplier: 1 | 2 | 4 | 8 = 1) {
+    if (sendingGift || !profile) return;
+    const catalog = findLiveGift(giftId);
+    if (!catalog) {
+      setGiftError('Regalo no válido');
+      return;
+    }
+    const mult = ([1, 2, 4, 8] as const).includes(multiplier) ? multiplier : 1;
+    const totalCoins = catalog.coins * mult;
+    const coins = profile.coinsBalance ?? 0;
+    if (!validateCoinsBalance(coins, totalCoins)) {
+      setGiftError('No tienes Coins suficientes');
+      setRechargeNeeded(totalCoins);
+      return;
+    }
+    setGiftError(null);
+    setRechargeNeeded(null);
+    setSendingGift(giftId);
+    const senderName = profile.displayName || profile.handle || 'Liveboomer';
+    try {
+      const result = await sendPrivateGift({
+        giftId: catalog.id,
+        senderUid: profile.firebaseUid,
+        senderName,
+        senderBalance: coins,
+        recipientUsername: peer.username,
+        recipientUid: peer.uid,
+        clientId: `quick-${chatId || peer.uid}-${Date.now()}`,
+        roomName: `chat:${peer.username}`,
+        multiplier: mult,
+      });
+      setCoins(result.senderBalance);
+      void addLevelXp(profile.firebaseUid, totalCoins).catch(() => undefined);
+      await send(mult > 1 ? `🎁 ${catalog.name} x${mult}` : `🎁 ${catalog.name}`, {
+        giftId: catalog.id,
+      });
+      setGiftFloats((current) => [
+        ...current.slice(-1),
+        {
+          id: `gf-${Date.now()}`,
+          giftId: catalog.id,
+          left: 30 + Math.random() * 40,
+          senderName,
+        },
+      ]);
+      setGiftsOpen(false);
+    } catch (err) {
+      setGiftError(err instanceof Error ? err.message : 'No se pudo enviar el regalo');
+      setGiftsOpen(true);
+    } finally {
+      setSendingGift(null);
+    }
+  }
+
+  function insertEmoji(token: string) {
+    const el = inputRef.current;
+    const next = draft + token;
+    setDraft(next.slice(0, 2000));
+    window.setTimeout(() => el?.focus(), 0);
+  }
+
   return createPortal(
     <div className="lb-msg-quick-popup pointer-events-auto fixed z-[80] flex flex-col overflow-hidden rounded-2xl border border-white/12 bg-zinc-950 shadow-2xl">
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 px-2.5 py-2">
+      <div className="flex shrink-0 items-center gap-1 border-b border-white/10 px-2 py-1.5 sm:gap-1.5 sm:px-2.5 sm:py-2">
         <button
           type="button"
           onClick={onExpand}
@@ -170,62 +268,149 @@ function FloatingDmWindow({
             <span className="block truncate text-[10px] text-zinc-500">@{peer.username}</span>
           </span>
         </button>
-        <button
-          type="button"
-          onClick={onExpand}
-          className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
-          aria-label="Pantalla completa"
-          title="Pantalla completa"
-        >
-          <Maximize2 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-white"
-          aria-label="Cerrar chat"
-        >
-          <X size={16} />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {inThisCall ? (
+            <button
+              type="button"
+              onClick={() => void hangup()}
+              className="inline-flex h-9 items-center rounded-lg bg-red-500/20 px-2 text-[10px] font-bold text-red-300"
+            >
+              Colgar
+            </button>
+          ) : (
+            <CallChatActions
+              key={peer.uid}
+              chatId={chatId}
+              peer={peer}
+              inThisCall={false}
+              busy={busy}
+              callStatus={callStatus}
+              onBusy={setBusy}
+              onError={setError}
+              onStopCall={() => void hangup()}
+            />
+          )}
+          <button
+            type="button"
+            onClick={onMinimize}
+            className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
+            aria-label="Minimizar"
+            title="Minimizar"
+          >
+            <Minus size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onExpand}
+            className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
+            aria-label="Pantalla completa"
+            title="Pantalla completa"
+          >
+            <Maximize2 size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full text-zinc-400 hover:bg-white/5 hover:text-white"
+            aria-label="Cerrar chat"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2">
-        {messages.length === 0 ? (
-          <p className="py-8 text-center text-xs text-zinc-500">Sin mensajes aún. Escribe el primero.</p>
-        ) : (
-          messages.map((msg) => {
-            const mine = msg.fromUid === profile?.firebaseUid;
-            return (
-              <div key={msg.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-snug ${
-                    mine
-                      ? 'rounded-br-md bg-violet-600/90 text-white'
-                      : 'rounded-bl-md bg-zinc-800 text-zinc-100'
-                  }`}
-                >
-                  {msg.giftId ? <p className="font-semibold">🎁 Regalo</p> : null}
-                  {msg.mediaUrl ? (
-                    <p className="opacity-90">{msg.mediaType === 'image' ? '📷 Foto' : '📎 Adjunto'}</p>
-                  ) : null}
-                  {msg.text ? <p className="whitespace-pre-wrap break-words">{msg.text}</p> : null}
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} className="absolute inset-0 space-y-2 overflow-y-auto px-3 py-2">
+          {messages.length === 0 ? (
+            <p className="py-8 text-center text-xs text-zinc-500">Sin mensajes aún. Escribe el primero.</p>
+          ) : (
+            messages.map((msg) => {
+              const mine = msg.fromUid === profile?.firebaseUid;
+              const gift = msg.giftId ? findLiveGift(msg.giftId) : null;
+              return (
+                <div key={msg.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-snug ${
+                      mine
+                        ? 'rounded-br-md bg-violet-600/90 text-white'
+                        : 'rounded-bl-md bg-zinc-800 text-zinc-100'
+                    }`}
+                  >
+                    {gift ? (
+                      <div className="mb-1 flex items-center gap-1.5">
+                        <GiftVisual gift={gift} size={28} />
+                        <span className="font-semibold">{gift.name}</span>
+                      </div>
+                    ) : null}
+                    {msg.mediaUrl ? (
+                      <p className="opacity-90">{msg.mediaType === 'image' ? '📷 Foto' : '📎 Adjunto'}</p>
+                    ) : null}
+                    {msg.text ? <p className="whitespace-pre-wrap break-words">{msg.text}</p> : null}
+                  </div>
                 </div>
-              </div>
-            );
-          })
-        )}
+              );
+            })
+          )}
+        </div>
+        {giftFloats.length > 0 ? (
+          <div className="pointer-events-none absolute inset-0 z-[70] overflow-visible">
+            {giftFloats.map((item) => (
+              <FloatingGift
+                key={item.id}
+                giftId={item.giftId}
+                senderName={item.senderName}
+                left={item.left}
+                layoutContext="chat"
+                onComplete={() =>
+                  setGiftFloats((current) => current.filter((row) => row.id !== item.id))
+                }
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {error ? <p className="shrink-0 px-3 pb-1 text-[11px] text-rose-300">{error}</p> : null}
+      {giftError ? <p className="shrink-0 px-3 pb-1 text-[11px] text-rose-300">{giftError}</p> : null}
 
       <form
-        className="flex shrink-0 items-center gap-1.5 border-t border-white/10 px-2.5 py-2"
+        className="flex shrink-0 items-center gap-1 border-t border-white/10 px-2 py-2 sm:gap-1.5 sm:px-2.5"
         onSubmit={(event) => {
           event.preventDefault();
           void send();
         }}
       >
+        <button
+          ref={giftTriggerRef}
+          type="button"
+          onClick={() => {
+            setGiftsOpen((v) => !v);
+            setEmojiOpen(false);
+          }}
+          className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
+            giftsOpen ? 'bg-fuchsia-500/25 text-fuchsia-200' : 'text-zinc-400 hover:bg-white/5 hover:text-fuchsia-300'
+          }`}
+          aria-label="Regalos"
+          title="Regalos"
+        >
+          <Gift size={18} />
+        </button>
+        <EmojiPickerButton
+          open={emojiOpen}
+          onOpenChange={(next) => {
+            setEmojiOpen(next);
+            if (next) setGiftsOpen(false);
+          }}
+          title="Emoji"
+          placement="above"
+          showUnicode
+          buttonClassName={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
+            emojiOpen ? 'bg-amber-500/20 text-amber-200' : 'text-zinc-400 hover:bg-white/5 hover:text-amber-200'
+          }`}
+          onPick={(id) => insertEmoji(id)}
+        />
         <input
+          ref={inputRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value.slice(0, 2000))}
           placeholder="Escribe un mensaje..."
@@ -240,6 +425,81 @@ function FloatingDmWindow({
           <Send size={16} />
         </button>
       </form>
+
+      {giftsOpen ? (
+        <GiftCatalogLayer open={giftsOpen} triggerRef={giftTriggerRef} onClose={() => setGiftsOpen(false)}>
+          <GiftBoxStrip
+            gifts={sortedLiveboomGiftCatalog()}
+            sendingGiftId={sendingGift}
+            coins={profile?.coinsBalance}
+            error={giftError}
+            rechargeNeeded={rechargeNeeded}
+            onRecharge={() => {
+              setRechargeOpen(true);
+              openRechargeCoins();
+            }}
+            compact
+            floating
+            onSelect={(id, multiplier) => void sendGift(id, multiplier ?? 1)}
+            onClose={() => setGiftsOpen(false)}
+          />
+        </GiftCatalogLayer>
+      ) : null}
+      {rechargeOpen
+        ? createPortal(
+            <div className="pointer-events-auto fixed inset-0 z-[124]">
+              <CoinModal onClose={() => setRechargeOpen(false)} />
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>,
+    document.body,
+  );
+}
+
+/** Pastillas minimizadas: solo foto + nombre; clic para reabrir. */
+function MinimizedChatsDock({
+  items,
+  onExpand,
+  onClose,
+}: {
+  items: MessagesPopupPeer[];
+  onExpand: (uid: string) => void;
+  onClose: (uid: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return createPortal(
+    <div className="lb-msg-min-dock pointer-events-none fixed z-[79] flex flex-col-reverse items-end gap-2">
+      {items.map((peer) => (
+        <div key={peer.uid} className="pointer-events-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onExpand(peer.uid)}
+            className="lb-msg-min-chip flex max-w-[12rem] items-center gap-2 rounded-full border border-white/15 bg-zinc-950/95 py-1.5 pl-1.5 pr-3 shadow-lg backdrop-blur-md transition hover:border-cyan-400/40"
+            title={`Abrir chat con ${peer.displayName || peer.username}`}
+          >
+            <UserAvatar
+              uid={peer.uid}
+              src={peer.avatarUrl}
+              username={peer.username}
+              displayName={peer.displayName}
+              size={32}
+            />
+            <span className="min-w-0 truncate text-xs font-semibold text-white">
+              {peer.displayName || peer.username}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onClose(peer.uid)}
+            className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
+            aria-label={`Cerrar chat de ${peer.displayName || peer.username}`}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ))}
     </div>,
     document.body,
   );
@@ -451,10 +711,14 @@ export function MessagesQuickMenu() {
   const desktop = useDesktopRail();
   const railOpen = useMessagesMenuStore((state) => state.railOpen);
   const popupPeer = useMessagesMenuStore((state) => state.popupPeer);
+  const minimized = useMessagesMenuStore((state) => state.minimized);
   const setRailOpen = useMessagesMenuStore((state) => state.setRailOpen);
   const toggleRail = useMessagesMenuStore((state) => state.toggleRail);
-  const setPopupPeer = useMessagesMenuStore((state) => state.setPopupPeer);
   const openChatFromList = useMessagesMenuStore((state) => state.openChatFromList);
+  const expandMinimized = useMessagesMenuStore((state) => state.expandMinimized);
+  const closeMinimized = useMessagesMenuStore((state) => state.closeMinimized);
+  const closePopup = useMessagesMenuStore((state) => state.closePopup);
+  const minimizeCurrent = useMessagesMenuStore((state) => state.minimizeCurrent);
   const closeAll = useMessagesMenuStore((state) => state.closeAll);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -470,9 +734,10 @@ export function MessagesQuickMenu() {
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
-    closeAll();
+    setRailOpen(false);
     setSheetOpen(false);
-  }, [location.pathname, closeAll]);
+    closePopup();
+  }, [location.pathname, setRailOpen, closePopup]);
 
   useEffect(() => {
     if (!railOpen && !sheetOpen) return;
@@ -567,10 +832,17 @@ export function MessagesQuickMenu() {
       {popupPeer ? (
         <FloatingDmWindow
           peer={popupPeer}
-          onClose={() => setPopupPeer(null)}
+          onClose={closePopup}
+          onMinimize={minimizeCurrent}
           onExpand={() => openFullscreen(popupPeer)}
         />
       ) : null}
+
+      <MinimizedChatsDock
+        items={minimized}
+        onExpand={expandMinimized}
+        onClose={closeMinimized}
+      />
     </div>
   );
 }
