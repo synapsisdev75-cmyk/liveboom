@@ -226,7 +226,7 @@ function playThematic(giftId: string | undefined, t: number) {
     tone(t + 0.3, 587.33, 0.22, 0.09, 'sine');
     return;
   }
-  if (giftId === 'besito' || giftId === 'corazon_latino' || giftId === 'flor_tropical') {
+  if (giftId === 'corazon_latino' || giftId === 'flor_tropical') {
     tone(t, 880, 0.1, 0.08, 'sine');
     tone(t + 0.08, 1320, 0.14, 0.07, 'sine');
   }

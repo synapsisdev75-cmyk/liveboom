@@ -9,6 +9,7 @@ import {
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from './firebase';
 import { COIN_PACKAGES } from './coinPackages';
+import { RETIRED_GIFT_IDS } from './retiredGifts';
 import {
   FACE_GIFT_PROPS,
   type FaceGiftProp,
@@ -101,7 +102,7 @@ export function buildDefaultCoinPackages(): CoinPackagesDoc {
 
 function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): EditableGift | null {
   const id = String(raw.id || fallback?.id || '').trim();
-  if (!id) return null;
+  if (!id || RETIRED_GIFT_IDS.has(id)) return null;
   const coins = Math.max(0, Math.floor(Number(raw.coins ?? fallback?.coins) || 0));
   const level = (Math.min(5, Math.max(1, Math.floor(Number(raw.level) || giftLevelFromCoins(coins)))) ||
     1) as GiftLevel;
@@ -261,7 +262,9 @@ export function serializeEditableGift(gift: EditableGift): Record<string, unknow
 }
 
 export async function saveGiftsCatalog(config: GiftsCatalogDoc, updatedBy: string) {
-  const gifts = (config.gifts || []).map((gift) => serializeEditableGift(gift));
+  const gifts = (config.gifts || [])
+    .filter((gift) => !RETIRED_GIFT_IDS.has(gift.id))
+    .map((gift) => serializeEditableGift(gift));
   await setDoc(
     doc(db, GIFTS_PATH),
     stripUndefinedDeep({

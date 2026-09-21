@@ -1,7 +1,6 @@
 /** Catálogo oficial Liveboom — sincronizado con apps/web/src/lib/liveboomGifts.ts */
 
 const GIFTS = [
-  { id: 'besito', name: 'Besito', emoji: '💋', coins: 1 },
   { id: 'besito_glam', name: 'Besito Glam', emoji: '💋', coins: 1 },
   { id: 'corazon_latino', name: 'Corazón Latino', emoji: '❤️', coins: 2 },
   { id: 'cafecito', name: 'Cafecito', emoji: '☕', coins: 5 },
@@ -14,17 +13,11 @@ const GIFTS = [
   { id: 'coco_caribeno', name: 'Coco Caribeño', emoji: '🥥', coins: 40 },
   { id: 'cafe_colombiano', name: 'Café Colombiano', emoji: '☕', coins: 50 },
   { id: 'arepa_venezolana', name: 'Arepa Venezolana', emoji: '🫓', coins: 75 },
-  { id: 'ar_lentes', name: 'Filtro Lentes', emoji: '🕶️', coins: 80 },
-  { id: 'ar_blur', name: 'Filtro Fondo Blur', emoji: '🌫️', coins: 100 },
   { id: 'sombrero_llanero', name: 'Sombrero Llanero', emoji: '👒', coins: 100 },
-  { id: 'ar_dalmata', name: 'Filtro Dálmata', emoji: '🐶', coins: 120 },
   { id: 'sombrero_vueltiao', name: 'Sombrero Vueltiao', emoji: '🎩', coins: 150 },
-  { id: 'ar_koala', name: 'Filtro Koala', emoji: '🐨', coins: 150 },
-  { id: 'ar_leon', name: 'Filtro León', emoji: '🦁', coins: 200 },
   { id: 'cuatro_venezolano', name: 'Cuatro Venezolano', emoji: '🎸', coins: 200 },
   { id: 'tucan_tropical', name: 'Tucán Tropical', emoji: '🦜', coins: 250 },
   { id: 'guacamaya', name: 'Guacamaya', emoji: '🦜', coins: 300 },
-  { id: 'ar_galaxia', name: 'Filtro Galaxia', emoji: '🌌', coins: 350 },
   { id: 'tambor_caribeno', name: 'Tambor Caribeño', emoji: '🥁', coins: 400 },
   { id: 'botas_llaneras', name: 'Botas Llaneras', emoji: '🥾', coins: 500 },
   { id: 'boom_saludo_travieso', name: 'Boom Saludo Travieso', emoji: '💣', coins: 500 },
@@ -43,7 +36,20 @@ const GIFTS = [
 ];
 
 function findGift(giftId) {
-  return GIFTS.find((gift) => gift.id === giftId) ?? null;
+  const id = String(giftId || '').trim();
+  if (
+    !id ||
+    id === 'besito' ||
+    id === 'ar_lentes' ||
+    id === 'ar_blur' ||
+    id === 'ar_dalmata' ||
+    id === 'ar_koala' ||
+    id === 'ar_leon' ||
+    id === 'ar_galaxia'
+  ) {
+    return null;
+  }
+  return GIFTS.find((gift) => gift.id === id) ?? null;
 }
 
 module.exports = { GIFTS, findGift };

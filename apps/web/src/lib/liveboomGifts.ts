@@ -62,7 +62,6 @@ export function clampGiftAnimScale(value: unknown, level: GiftLevel = 1): number
 
 export const LIVEBOOM_GIFTS: LiveGift[] = [
   // Nivel 1 — Básicos (1–40)
-  { id: 'besito', name: 'Besito', emoji: '💋', image: '/gifts/besito.png', video: '/gifts/besito.webm', coins: 1, level: 1, animation: 'Face Mesh: beso en labios + rastro' },
   {
     id: 'besito_glam',
     name: 'Besito Glam',
@@ -105,72 +104,11 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
   // Nivel 2 — Populares (50–600)
   { id: 'cafe_colombiano', name: 'Café Colombiano', emoji: '☕', image: '/gifts/cafe_colombiano.png', video: '/gifts/cafe_colombiano.webm', coins: 50, level: 2, animation: 'Taza elegante y vapor de montaña' },
   { id: 'arepa_venezolana', name: 'Arepa Venezolana', emoji: '🫓', image: '/gifts/arepa_venezolana.png', video: '/gifts/arepa_venezolana.webm', coins: 75, level: 2, animation: 'Bandeja dorada y brillo cálido' },
-  // DeepAR — solo LIVE
-  {
-    id: 'ar_lentes',
-    name: 'Filtro Lentes',
-    emoji: '🕶️',
-    coins: 80,
-    level: 2,
-    animation: 'DeepAR: lentes en la cara del host',
-    liveOnly: true,
-    deeparFilter: 'aviators',
-  },
-  {
-    id: 'ar_blur',
-    name: 'Filtro Fondo Blur',
-    emoji: '🌫️',
-    coins: 100,
-    level: 2,
-    animation: 'DeepAR: difumina el fondo del LIVE',
-    liveOnly: true,
-    deeparFilter: 'blur',
-  },
   { id: 'sombrero_llanero', name: 'Sombrero Llanero', emoji: '👒', image: '/gifts/sombrero_llanero.png', coins: 100, level: 2, animation: 'Face Mesh: anclado a frente y sienes' },
-  {
-    id: 'ar_dalmata',
-    name: 'Filtro Dálmata',
-    emoji: '🐶',
-    coins: 120,
-    level: 2,
-    animation: 'DeepAR: máscara dálmata en el host',
-    liveOnly: true,
-    deeparFilter: 'dalmatian',
-  },
   { id: 'sombrero_vueltiao', name: 'Sombrero Vueltiao', emoji: '🎩', image: '/gifts/sombrero_vueltiao.png', video: '/gifts/sombrero_vueltiao.webm', coins: 150, level: 2, animation: 'Face Mesh: espiral anclada a la cabeza' },
-  {
-    id: 'ar_koala',
-    name: 'Filtro Koala',
-    emoji: '🐨',
-    coins: 150,
-    level: 2,
-    animation: 'DeepAR: máscara koala en el host',
-    liveOnly: true,
-    deeparFilter: 'koala',
-  },
-  {
-    id: 'ar_leon',
-    name: 'Filtro León',
-    emoji: '🦁',
-    coins: 200,
-    level: 2,
-    animation: 'DeepAR: máscara león en el host',
-    liveOnly: true,
-    deeparFilter: 'lion',
-  },
   { id: 'cuatro_venezolano', name: 'Cuatro Venezolano', emoji: '🎸', image: '/gifts/cuatro_venezolano.png', video: '/gifts/cuatro_venezolano.webm', coins: 200, level: 2, animation: 'Notas y ondas sonoras' },
   { id: 'tucan_tropical', name: 'Tucán Tropical', emoji: '🦜', image: '/gifts/tucan_tropical.png', video: '/gifts/tucan_tropical.webm', coins: 250, level: 2, animation: 'Face Mesh: posado sobre la cabeza' },
   { id: 'guacamaya', name: 'Guacamaya', emoji: '🦜', image: '/gifts/guacamaya.png', video: '/gifts/guacamaya.webm', coins: 300, level: 2, animation: 'Face Mesh: plumas ancladas a la cabeza' },
-  {
-    id: 'ar_galaxia',
-    name: 'Filtro Galaxia',
-    emoji: '🌌',
-    coins: 350,
-    level: 2,
-    animation: 'DeepAR: fondo galaxia en el LIVE',
-    liveOnly: true,
-    deeparFilter: 'galaxy',
-  },
   { id: 'tambor_caribeno', name: 'Tambor Caribeño', emoji: '🥁', image: '/gifts/tambor_caribeno.png', coins: 400, level: 2, animation: 'Tres golpes con ondas' },
   { id: 'botas_llaneras', name: 'Botas Llaneras', emoji: '🥾', image: '/gifts/botas_llaneras.png', coins: 500, level: 2, animation: 'Zapateo con polvo brillante' },
   {
@@ -201,6 +139,7 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
 ];
 
 import { runtimeAllLiveGifts, runtimeCatalogLoaded, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
+import { RETIRED_GIFT_IDS } from './retiredGifts';
 
 function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
   const local = LIVEBOOM_GIFTS.find((item) => item.id === gift.id);
@@ -227,7 +166,7 @@ function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
 }
 
 export function findLiveGift(giftId: string | undefined | null): LiveGift | null {
-  if (!giftId) return null;
+  if (!giftId || RETIRED_GIFT_IDS.has(giftId)) return null;
   const remote = runtimeFindGift(giftId);
   if (remote) {
     return withDefaultGiftMedia({

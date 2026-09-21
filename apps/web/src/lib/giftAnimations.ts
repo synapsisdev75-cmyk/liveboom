@@ -9,13 +9,6 @@ export type GiftMotion = {
 };
 
 const byId: Record<string, GiftMotion> = {
-  besito: {
-    initial: { x: -90, opacity: 0, rotate: -25, scale: 0.5 },
-    animate: { x: [-90, 8, 18], y: [0, -24, -88], opacity: [0, 1, 1, 0], rotate: [-25, 18, 6], scale: [0.5, 1.25, 1] },
-    particles: ['💕', '💗', '✨'],
-    particleCount: 6,
-    trail: '💕',
-  },
   corazon_latino: {
     initial: { y: 70, opacity: 0, scale: 0.4 },
     animate: { y: [70, -8, -18, -18, -110], opacity: [0, 1, 1, 1, 0], scale: [0.4, 1.35, 1.05, 1.3, 0.85] },

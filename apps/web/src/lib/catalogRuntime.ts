@@ -1,6 +1,7 @@
 import type { FaceGiftProp } from './faceGiftAnchors';
 import type { LiveGift } from './liveboomGifts';
 import type { GiftPlacement } from './catalogConfigFirestore';
+import { RETIRED_GIFT_IDS } from './retiredGifts';
 
 type RuntimeGift = LiveGift & {
   enabled?: boolean;
@@ -23,7 +24,7 @@ let gifts: RuntimeGift[] | null = null;
 let packs: RuntimePack[] | null = null;
 
 export function setRuntimeGiftCatalog(next: RuntimeGift[] | null) {
-  gifts = next;
+  gifts = next ? next.filter((g) => !RETIRED_GIFT_IDS.has(g.id)) : null;
 }
 
 export function runtimeCatalogLoaded(): boolean {

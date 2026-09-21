@@ -1037,7 +1037,7 @@ export function AdminCatalogPanel({
                       const value = e.target.value.trim();
                       patchGift(gift.id, { image: value || undefined });
                     }}
-                    placeholder="/gifts/besito.png o https://…"
+                    placeholder="/gifts/cafecito.png o https://…"
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
                   />
                 </label>

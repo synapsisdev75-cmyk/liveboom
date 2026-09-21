@@ -30,7 +30,6 @@ export const FACE_GIFT_PROPS: Record<string, FaceGiftProp> = {
   sombrero_llanero: { emoji: '👒', anchor: 'hat', scale: 1.55, offsetY: -0.85 },
   sombrero_vueltiao: { emoji: '🎩', anchor: 'hat', scale: 1.45, offsetY: -0.9 },
   reina_del_live: { emoji: '👑', anchor: 'crown', scale: 1.35, offsetY: -0.95 },
-  besito: { emoji: '💋', anchor: 'kiss', scale: 0.45, offsetY: 0.35 },
   corazon_latino: { emoji: '❤️', anchor: 'kiss', scale: 0.4, offsetY: 0.15 },
   flor_tropical: { emoji: '🌺', anchor: 'hat', scale: 0.7, offsetY: -0.7 },
   guacamaya: { emoji: '🦜', anchor: 'hat', scale: 1.1, offsetY: -0.75 },
