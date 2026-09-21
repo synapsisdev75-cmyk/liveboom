@@ -11,6 +11,7 @@ import {
   Mic,
   MicOff,
   PhoneOff,
+  SwitchCamera,
   Video,
   VideoOff,
   Volume2,
@@ -507,7 +508,7 @@ function PrivateCallLiveKitRoom({
           window.removeEventListener('click', unlockAudio);
         };
         if (cancelled) return;
-        if (publishCameraRef.current) {
+        if (publishCameraRef.current && videoCamWantedRef.current) {
           void enableRoomCamera(room);
         }
       } catch (error) {
@@ -527,7 +528,7 @@ function PrivateCallLiveKitRoom({
   }, [room, token, serverUrl]);
 
   useEffect(() => {
-    if (!publishCamera || room.state !== 'connected') return;
+    if (!publishCamera || room.state !== 'connected' || !videoCamWantedRef.current) return;
     void enableRoomCamera(room);
   }, [publishCamera, room]);
 
@@ -1111,7 +1112,11 @@ async function enableRoomMicrophone(room: Room) {
 
 const cameraEnableInflight = new WeakMap<Room, Promise<boolean>>();
 
+/** Preferencia del usuario: no reactivar la cámara tras reconnect si la apagó a propósito. */
+const videoCamWantedRef = { current: true };
+
 async function enableRoomCamera(room: Room) {
+  if (!videoCamWantedRef.current) return false;
   const local = room.localParticipant;
   if (!local) return false;
   if (pickLocalCameraTrack(room)) {
@@ -1122,6 +1127,7 @@ async function enableRoomCamera(room: Room) {
   if (pending) return pending;
   const run = (async () => {
     try {
+      if (!videoCamWantedRef.current) return false;
       await local.setCameraEnabled(true);
       for (let i = 0; i < 40; i += 1) {
         if (pickLocalCameraTrack(room)) {
@@ -1740,6 +1746,9 @@ function VideoCallStage({
   const [camOn, setCamOn] = useState(true);
   const camOnRef = useRef(true);
   camOnRef.current = camOn;
+  const camBusyRef = useRef(false);
+  const [camBusy, setCamBusy] = useState(false);
+  const [flipBusy, setFlipBusy] = useState(false);
   const [picker, setPicker] = useState<null | 'camera' | 'mic'>(null);
   const [camHint, setCamHint] = useState<string | null>(null);
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
@@ -1750,6 +1759,13 @@ function VideoCallStage({
   const [pip, setPip] = useState({ x: 0, y: 0 });
   const pipDrag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const pipReady = useRef(false);
+
+  useEffect(() => {
+    if (!mediaActive) return;
+    videoCamWantedRef.current = true;
+    camOnRef.current = true;
+    setCamOn(true);
+  }, [mediaActive]);
 
   function clampPipPos(x: number, y: number) {
     const stage = stageRef.current;
@@ -1989,22 +2005,87 @@ function VideoCallStage({
   }
 
   async function toggleCam() {
-    const nextOn = !camOn;
-    camOnRef.current = nextOn;
-    setCamOn(nextOn);
-    applyLocalVideoEnabled(nextOn);
-    if (!nextOn) return;
-    const wantedId = cameraDeviceId || activeVideoId;
-    const currentId =
-      publishedRef.current?.mediaStreamTrack.getSettings().deviceId ||
-      pickLocalCameraTrack(room)?.mediaStreamTrack.getSettings().deviceId ||
-      null;
-    if (wantedId && currentId && wantedId !== currentId) {
-      await applyCameraDevice(wantedId, facing).catch(() => undefined);
+    if (camBusyRef.current) return;
+    camBusyRef.current = true;
+    setCamBusy(true);
+    const nextOn = !camOnRef.current;
+    try {
+      const local = callLocalParticipant(room);
+      if (!nextOn) {
+        videoCamWantedRef.current = false;
+        if (local) {
+          await local.setCameraEnabled(false);
+        } else {
+          applyLocalVideoEnabled(false);
+        }
+        publishedRef.current = null;
+        const el = localVideoRef.current;
+        if (el) {
+          el.srcObject = null;
+        }
+        camOnRef.current = false;
+        setCamOn(false);
+        setError(null);
+        return;
+      }
+
+      videoCamWantedRef.current = true;
+      if (!room || !local) {
+        setError('Sala de video no lista');
+        return;
+      }
+      const wantedId = cameraDeviceId || activeVideoId;
+      try {
+        if (wantedId) {
+          await local.setCameraEnabled(true, { deviceId: wantedId });
+        } else {
+          await local.setCameraEnabled(true, { facingMode: facing });
+        }
+      } catch {
+        await local.setCameraEnabled(true);
+      }
+      let track = pickLocalCameraTrack(room);
+      let media = track?.mediaStreamTrack;
+      if (!track || !media) {
+        const ok = await enableRoomCamera(room);
+        track = pickLocalCameraTrack(room);
+        media = track?.mediaStreamTrack;
+        if (!ok || !track || !media) {
+          videoCamWantedRef.current = false;
+          setError('Cámara no disponible');
+          return;
+        }
+      }
+      publishedRef.current = track;
+      bindLocalVideoEl(localVideoRef.current, media, facing === 'user');
+      const currentId = media.getSettings().deviceId || null;
+      setActiveVideoId(currentId || wantedId);
+      if (wantedId && currentId && wantedId !== currentId) {
+        await applyCameraDevice(wantedId, facing).catch(() => undefined);
+      }
+      camOnRef.current = true;
+      setCamOn(true);
+      setError(null);
+    } catch (err) {
+      console.warn('[VIDEO CALL] toggle camera', err);
+      setError(callMediaDeniedMessage(err, true) || 'No se pudo cambiar la cámara');
+      if (nextOn) {
+        videoCamWantedRef.current = false;
+        camOnRef.current = false;
+        setCamOn(false);
+      }
+    } finally {
+      camBusyRef.current = false;
+      setCamBusy(false);
     }
   }
 
   async function flipCamera() {
+    if (flipBusy || camBusyRef.current) return;
+    if (videoInputs.length <= 1) {
+      setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'Solo hay una cámara');
+      return;
+    }
     const nextFacing = facing === 'user' ? 'environment' : 'user';
     const opposite = videoInputs.find((device) => {
       const inferred = inferCallCameraFacing(device.label || '');
@@ -2022,21 +2103,27 @@ function VideoCallStage({
       return;
     }
     if (!target) {
-      setFacing(nextFacing);
-      setCamHint(nextFacing === 'user' ? 'Cámara frontal' : 'Cámara trasera');
+      setCamHint('No hay otra cámara disponible');
       return;
     }
+    setFlipBusy(true);
     try {
       await applyCameraDevice(target.deviceId, nextFacing);
       setCamHint(nextFacing === 'user' ? 'Cámara frontal' : 'Cámara trasera');
+      setError(null);
     } catch (err) {
-      setFacing(nextFacing);
       setError(callMediaDeniedMessage(err, true));
+    } finally {
+      setFlipBusy(false);
     }
   }
 
   function onFlipCameraClick() {
-    // Touch / móvil: alterna frontal ↔ trasera. Escritorio con varias cámaras: panel de elección.
+    if (videoInputs.length <= 1) {
+      setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'Solo hay una cámara');
+      return;
+    }
+    // Escritorio con varias cámaras: selector. Touch / 2 cámaras: alterna frontal ↔ trasera.
     if (finePointer && videoInputs.length > 2) {
       setPicker((current) => (current === 'camera' ? null : 'camera'));
       return;
@@ -2118,6 +2205,7 @@ function VideoCallStage({
   }
 
   async function selectCamera(deviceId: string) {
+    if (flipBusy || camBusyRef.current) return;
     if (deviceId && deviceId === (activeVideoId || cameraDeviceId)) {
       setPicker(null);
       return;
@@ -2139,6 +2227,7 @@ function VideoCallStage({
       setPicker(null);
       return;
     }
+    setFlipBusy(true);
     try {
       await applyCameraDevice(deviceId, nextFacing);
       setCamHint(hint);
@@ -2146,6 +2235,8 @@ function VideoCallStage({
       setError(null);
     } catch (err) {
       setError(callMediaDeniedMessage(err, true));
+    } finally {
+      setFlipBusy(false);
     }
   }
 
@@ -2201,16 +2292,40 @@ function VideoCallStage({
         onMaximize={onMaximize}
         onClose={onClose}
         maximized={maximized}
-        onFlipCamera={onFlipCameraClick}
-        flipCameraLabel={
-          finePointer && videoInputs.length > 2
-            ? 'Elegir cámara'
-            : 'Alternar cámara frontal y trasera'
-        }
-        flipPickerOpen={finePointer && videoInputs.length > 2 ? picker === 'camera' : undefined}
         stageRef={stageRef}
         stage={
           <>
+        <button
+          type="button"
+          className={`lb-video-flip-fab${picker === 'camera' ? ' is-open' : ''}${flipBusy ? ' is-busy' : ''}`}
+          data-no-drag
+          disabled={flipBusy || camBusy || videoInputs.length <= 1}
+          onClick={(event) => {
+            event.stopPropagation();
+            onFlipCameraClick();
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          aria-label={
+            videoInputs.length <= 1
+              ? videoInputs.length === 0
+                ? 'No hay cámaras disponibles'
+                : 'Solo hay una cámara'
+              : finePointer && videoInputs.length > 2
+                ? 'Cambiar cámara'
+                : 'Cambiar cámara'
+          }
+          title={
+            videoInputs.length <= 1
+              ? videoInputs.length === 0
+                ? 'No hay cámaras disponibles'
+                : 'Solo hay una cámara'
+              : 'Cambiar cámara'
+          }
+          aria-expanded={finePointer && videoInputs.length > 2 ? picker === 'camera' : undefined}
+          aria-haspopup={finePointer && videoInputs.length > 2 ? 'listbox' : undefined}
+        >
+          <SwitchCamera size={16} aria-hidden />
+        </button>
         {camHint ? (
           <p className="lb-call-cam-hint" role="status">
             {camHint}
@@ -2284,10 +2399,10 @@ function VideoCallStage({
             </p>
           ) : null}
           {!camOn ? (
-            <p className="pointer-events-none absolute inset-0 grid place-items-center text-[10px] text-zinc-400">
-              Cámara apagada
-          </p>
-        ) : null}
+            <div className="lb-call-video-camoff" aria-live="polite">
+              <p className="lb-call-video-camoff__name">Cámara apagada</p>
+            </div>
+          ) : null}
           {connected ? (
             <span className="lb-video-connected-you" aria-hidden>
               Tú
@@ -2299,7 +2414,8 @@ function VideoCallStage({
         footer={
         <ConnectedVideoCallBar
           camOn={camOn}
-          onToggleCam={toggleCam}
+          camBusy={camBusy}
+          onToggleCam={() => void toggleCam()}
           onHangup={onHangup}
         />
         }

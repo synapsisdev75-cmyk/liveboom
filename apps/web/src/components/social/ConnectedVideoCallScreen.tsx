@@ -1,4 +1,4 @@
-import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
+import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useMaybeRoomContext } from '@livekit/components-react';
 import { UserAvatar } from '../profile/UserAvatar';
@@ -61,9 +61,6 @@ export function ConnectedVideoCallHeader({
   onMaximize,
   onClose: _onClose,
   maximized,
-  onFlipCamera,
-  flipCameraLabel,
-  flipPickerOpen,
 }: {
   person: ConnectedVideoPerson;
   elapsedLabel: string;
@@ -72,12 +69,8 @@ export function ConnectedVideoCallHeader({
   onMaximize?: () => void;
   onClose?: () => void;
   maximized?: boolean;
-  onFlipCamera?: () => void;
-  flipCameraLabel?: string;
-  flipPickerOpen?: boolean;
 }) {
   const handle = person.handle.replace(/^@/, '');
-  const flipLabel = flipCameraLabel || 'Alternar cámara frontal y trasera';
   return (
     <header className="lb-video-connected-head" data-call-drag>
       <div className="lb-video-connected-peer">
@@ -105,20 +98,6 @@ export function ConnectedVideoCallHeader({
         </div>
       </div>
       <div className="lb-video-connected-head__tools">
-        {onFlipCamera ? (
-          <button
-            type="button"
-            className={`lb-video-connected-flip${flipPickerOpen ? ' is-open' : ''}`}
-            data-no-drag
-            onClick={onFlipCamera}
-            aria-label={flipLabel}
-            title={flipLabel}
-            aria-expanded={flipPickerOpen}
-            aria-haspopup={flipPickerOpen === undefined ? undefined : 'listbox'}
-          >
-            <SwitchCamera size={18} aria-hidden />
-          </button>
-        ) : null}
         <CallWinBar
           showLogo={false}
           onMinimize={onMinimize}
@@ -139,9 +118,6 @@ export function VideoCallShell({
   onMaximize,
   onClose,
   maximized,
-  onFlipCamera,
-  flipCameraLabel,
-  flipPickerOpen,
   stageRef,
   stage,
   footer,
@@ -154,9 +130,6 @@ export function VideoCallShell({
   onMaximize?: () => void;
   onClose?: () => void;
   maximized?: boolean;
-  onFlipCamera?: () => void;
-  flipCameraLabel?: string;
-  flipPickerOpen?: boolean;
   stageRef?: Ref<HTMLDivElement | null>;
   stage: ReactNode;
   footer: ReactNode;
@@ -172,9 +145,6 @@ export function VideoCallShell({
         onMaximize={onMaximize}
         onClose={onClose}
         maximized={maximized}
-        onFlipCamera={onFlipCamera}
-        flipCameraLabel={flipCameraLabel}
-        flipPickerOpen={flipPickerOpen}
       />
       <div className="lb-call-video-stage" data-call-drag ref={stageRef}>
         {stage}
@@ -186,10 +156,12 @@ export function VideoCallShell({
 
 export function ConnectedVideoCallBar({
   camOn,
+  camBusy,
   onToggleCam,
   onHangup,
 }: {
   camOn: boolean;
+  camBusy?: boolean;
   onToggleCam: () => void;
   onHangup: () => void;
 }) {
@@ -238,14 +210,16 @@ export function ConnectedVideoCallBar({
       <div className="lb-video-connected-action">
         <button
           type="button"
-          className={`lb-video-connected-btn${camOn ? '' : ' is-off'}`}
+          className={`lb-video-connected-btn${camOn ? '' : ' is-off'}${camBusy ? ' is-busy' : ''}`}
           onClick={onToggleCam}
+          disabled={camBusy}
           aria-label={camOn ? 'Apagar cámara' : 'Encender cámara'}
           aria-pressed={!camOn}
+          aria-busy={camBusy || undefined}
         >
           {camOn ? <Video size={18} /> : <VideoOff size={18} />}
         </button>
-        <span>{camOn ? 'Cámara' : 'Cámara OFF'}</span>
+        <span>{camBusy ? 'Espera…' : camOn ? 'Cámara' : 'Cámara OFF'}</span>
       </div>
       <div className="lb-video-connected-action">
         <button
