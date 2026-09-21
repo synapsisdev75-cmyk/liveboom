@@ -67,6 +67,8 @@ async function cancelGiftJobs(db, giftId) {
 async function isGiftDeleted(giftId) {
   const id = safeGiftId(giftId);
   if (!id || !firestoreConfigured()) return false;
+  const { findGift } = require('./gifts');
+  if (findGift(id)) return false;
   const snap = await getAdminDb().collection(TOMBSTONES).doc(id).get();
   return snap.exists;
 }
