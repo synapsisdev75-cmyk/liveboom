@@ -76,6 +76,7 @@ import { ConnectedVideoCallBar, VideoCallShell } from './ConnectedVideoCallScree
 import { PrivateCallRemoteVideo } from './PrivateCallRemoteVideo';
 import { VideoCallSessionFrame, VoiceCallSessionFrame } from './CallSessionFrames';
 import { CallHeaderDock } from './CallHeaderDock';
+import { CallGiftPanel } from './CallGiftPanel';
 import {
   FloatingCallFrame,
   clearCallChrome,
@@ -3365,6 +3366,7 @@ export function CallOverlay() {
       {hintUi}
       {headerDock && matchingDock ? createPortal(headerDock, matchingDock) : null}
       {callFrame}
+      <CallGiftPanel />
     </>
   );
 }

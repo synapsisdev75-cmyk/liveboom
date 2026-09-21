@@ -10,7 +10,8 @@ import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 
 const PAD = 8;
-const Z = 118;
+/** Por encima del float de llamada (z 80) y del chat flotante. */
+const Z = 150;
 const PREFERRED_W = 360;
 
 function cssPx(value: string) {

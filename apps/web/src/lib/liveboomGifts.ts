@@ -193,6 +193,24 @@ export function isDeeparLiveGift(giftId: string | undefined | null): boolean {
   return Boolean(findLiveGift(giftId)?.deeparFilter);
 }
 
+function asCatalogGift(g: LiveGift): LiveGift {
+  return withDefaultGiftMedia({
+    id: g.id,
+    name: g.name,
+    emoji: g.emoji,
+    image: g.image,
+    video: g.video,
+    coins: g.coins,
+    level: g.level,
+    animation: g.animation,
+    animScale: g.animScale,
+    giftLayout: g.giftLayout,
+    media: g.media,
+    liveOnly: g.liveOnly,
+    deeparFilter: g.deeparFilter,
+  });
+}
+
 /** Catálogo para publicaciones / clips / flash — sin filtros DeepAR. */
 export function sortedLiveboomGiftCatalog(): LiveGift[] {
   const remote = runtimeGiftsFor('post');
@@ -202,25 +220,29 @@ export function sortedLiveboomGiftCatalog(): LiveGift[] {
     const map = new Map<string, LiveGift>();
     for (const g of [...remote, ...fromClip, ...fromFlash]) {
       if (g.deeparFilter) continue;
-      map.set(g.id, withDefaultGiftMedia({
-        id: g.id,
-        name: g.name,
-        emoji: g.emoji,
-        image: g.image,
-        video: g.video,
-        coins: g.coins,
-        level: g.level,
-        animation: g.animation,
-        animScale: g.animScale,
-        giftLayout: g.giftLayout,
-        media: g.media,
-        liveOnly: g.liveOnly,
-        deeparFilter: g.deeparFilter,
-      }));
+      map.set(g.id, asCatalogGift(g));
     }
     return [...map.values()].sort((a, b) => a.coins - b.coins);
   }
   return LIVEBOOM_GIFTS.filter((gift) => !gift.liveOnly).sort((a, b) => a.coins - b.coins);
+}
+
+/**
+ * Catálogo de chat / llamada privada (placements `chat` + `call`).
+ * Sin DeepAR ni liveOnly. Fallback: mismo set que publicaciones.
+ */
+export function sortedPrivateGiftCatalog(): LiveGift[] {
+  const fromChat = runtimeGiftsFor('chat');
+  const fromCall = runtimeGiftsFor('call');
+  if (fromChat.length || fromCall.length) {
+    const map = new Map<string, LiveGift>();
+    for (const g of [...fromChat, ...fromCall]) {
+      if (g.deeparFilter || g.liveOnly) continue;
+      map.set(g.id, asCatalogGift(g));
+    }
+    if (map.size) return [...map.values()].sort((a, b) => a.coins - b.coins);
+  }
+  return sortedLiveboomGiftCatalog();
 }
 
 /** Catálogo completo del LIVE (incluye regalos DeepAR). */

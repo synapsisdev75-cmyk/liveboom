@@ -76,6 +76,9 @@ function lookupRoomName(input: SendGiftInput): string {
 export function giftSendErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error || '');
   const status = error instanceof ApiError ? error.status : 0;
+  if (/tardó demasiado|timeout/i.test(raw)) {
+    return raw.includes('tardó') ? raw : 'El envío del regalo tardó demasiado. Intenta de nuevo.';
+  }
   if (/insufficient permissions|permission-denied|Missing or insufficient/i.test(raw)) {
     return 'No se pudo completar el envío. Intenta de nuevo en un momento.';
   }

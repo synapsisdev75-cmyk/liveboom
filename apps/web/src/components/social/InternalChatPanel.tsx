@@ -53,13 +53,9 @@ import {
 import { listenMyGroups, type LiveGroup } from '../../lib/groupsFirestore';
 import { uploadChatAttachment, uploadChatMedia } from '../../lib/storage';
 import type { ComposerGif } from '../../lib/composerGifs';
-import {
-  openRechargeCoins,
-  sendPrivateGift,
-  validateCoinsBalance,
-} from '../../lib/giftsFirestore';
-import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
-import { addLevelXp } from '../../lib/profileFirestore';
+import { openRechargeCoins, validateCoinsBalance } from '../../lib/giftsFirestore';
+import { findLiveGift, sortedPrivateGiftCatalog } from '../../lib/liveboomGifts';
+import { sendPrivateGiftToPeer } from '../../lib/privateGiftSend';
 import { FloatingGift, GiftVisual } from '../live/FloatingGift';
 import { isGiftLayoutVariantId, type GiftLayoutVariantId } from '../../lib/giftLayout';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
@@ -107,6 +103,7 @@ import { ChatSafetyMenu } from './ChatSafetyMenu';
 import { ChatTypingIndicator } from './ChatTypingIndicator';
 import { useAuthStore } from '../../store/authStore';
 import { formatCallClock, useCallElapsed, useCallStore } from '../../store/callStore';
+import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { registerChatCallSurface } from '../../lib/chatCallSurface';
 import { profileHref } from '../../lib/profileFirestore';
 import { StickerPickerSheet } from './StickerPickerSheet';
@@ -910,7 +907,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       });
   }, [friends, following, followers, conversations]);
 
-  const giftCatalog = useMemo(() => sortedLiveboomGiftCatalog(), []);
+  const giftsVersion = useCatalogConfigStore((state) => state.giftsVersion);
+  const giftCatalog = useMemo(() => sortedPrivateGiftCatalog(), [giftsVersion]);
   const coins = profile?.coinsBalance ?? 0;
 
   const totalUnread = useMemo(
@@ -1122,6 +1120,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   useEffect(() => {
     function openGiftsFromCall(event: Event) {
+      if (useCallStore.getState().status === 'active') return;
       const detail = (event as CustomEvent<{ layoutContext?: string }>).detail;
       setGiftLayoutContext(
         isGiftLayoutVariantId(detail?.layoutContext) ? detail.layoutContext : 'llamadas_video',
@@ -1290,7 +1289,8 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       replyTo?: ChatReplyTo | null;
     },
   ) {
-    if (!profile || !activeFriend || busy) return;
+    if (!profile || !activeFriend) return;
+    if (busy && !extras?.giftId) return;
     setBusy(true);
     setError(null);
     try {
@@ -1495,7 +1495,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
       setGiftError('Regalo no válido');
       return;
     }
-    const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
+    const mult = ([1, 2, 4, 8] as const).includes(multiplier) ? multiplier : 1;
     const totalCoins = catalog.coins * mult;
     const coins = profile.coinsBalance ?? 0;
     if (!validateCoinsBalance(coins, totalCoins)) {
@@ -1508,20 +1508,14 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
     setSendingGift(giftId);
     const senderName = profile.displayName || profile.handle || 'Liveboomer';
     try {
-      const result = await sendPrivateGift({
+      const result = await sendPrivateGiftToPeer({
         giftId: catalog.id,
-        senderUid: profile.firebaseUid,
-        senderName,
-        senderBalance: coins,
-        recipientUsername: activeFriend.username,
-        recipientUid: activeFriend.uid,
-        clientId: `chat-${chatId || activeFriend.uid}-${Date.now()}`,
-        roomName: `chat:${activeFriend.username}`,
+        sender: profile,
+        peer: activeFriend,
         multiplier: mult,
+        clientId: `chat-${chatId || activeFriend.uid}-${Date.now()}`,
       });
       setCoins(result.senderBalance);
-      void addLevelXp(profile.firebaseUid, totalCoins).catch(() => undefined);
-      await send(mult > 1 ? `🎁 ${catalog.name} x${mult}` : `🎁 ${catalog.name}`, { giftId: catalog.id });
       animateGiftInChat(catalog.id, senderName);
       scrollChatToBottom(true);
       setGiftsOpen(false);

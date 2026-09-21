@@ -11,13 +11,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { countInboxUnread } from '../../lib/chatNotifyContext';
-import {
-  openRechargeCoins,
-  sendPrivateGift,
-  validateCoinsBalance,
-} from '../../lib/giftsFirestore';
-import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
-import { addLevelXp } from '../../lib/profileFirestore';
+import { openRechargeCoins, validateCoinsBalance } from '../../lib/giftsFirestore';
+import { findLiveGift, sortedPrivateGiftCatalog } from '../../lib/liveboomGifts';
+import { sendPrivateGiftToPeer } from '../../lib/privateGiftSend';
 import { playIncomingMessageSound } from '../../lib/alertSound';
 import {
   ensureChat,
@@ -36,6 +32,7 @@ import {
   useMessagesMenuStore,
   type MessagesPopupPeer,
 } from '../../store/messagesMenuStore';
+import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
 import { FloatingGift, GiftVisual } from '../live/FloatingGift';
@@ -135,6 +132,8 @@ function FloatingDmWindow({
   const giftSeededRef = useRef<string | null>(null);
   const giftWatchStartedRef = useRef(0);
   const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
+  const giftsVersion = useCatalogConfigStore((state) => state.giftsVersion);
+  const giftCatalog = useMemo(() => sortedPrivateGiftCatalog(), [giftsVersion]);
 
   useEffect(() => {
     setChatId(peer.chatId || null);
@@ -264,22 +263,14 @@ function FloatingDmWindow({
     setSendingGift(giftId);
     const senderName = profile.displayName || profile.handle || 'Liveboomer';
     try {
-      const result = await sendPrivateGift({
+      const result = await sendPrivateGiftToPeer({
         giftId: catalog.id,
-        senderUid: profile.firebaseUid,
-        senderName,
-        senderBalance: coins,
-        recipientUsername: peer.username,
-        recipientUid: peer.uid,
-        clientId: `quick-${chatId || peer.uid}-${Date.now()}`,
-        roomName: `chat:${peer.username}`,
+        sender: profile,
+        peer,
         multiplier: mult,
+        clientId: `quick-${chatId || peer.uid}-${Date.now()}`,
       });
       setCoins(result.senderBalance);
-      void addLevelXp(profile.firebaseUid, totalCoins).catch(() => undefined);
-      await send(mult > 1 ? `🎁 ${catalog.name} x${mult}` : `🎁 ${catalog.name}`, {
-        giftId: catalog.id,
-      });
       setGiftFloats((current) => [
         ...current.slice(-1),
         {
@@ -504,7 +495,7 @@ function FloatingDmWindow({
       {giftsOpen ? (
         <GiftCatalogLayer open={giftsOpen} triggerRef={giftTriggerRef} onClose={() => setGiftsOpen(false)}>
           <GiftBoxStrip
-            gifts={sortedLiveboomGiftCatalog()}
+            gifts={giftCatalog}
             sendingGiftId={sendingGift}
             coins={profile?.coinsBalance}
             error={giftError}
