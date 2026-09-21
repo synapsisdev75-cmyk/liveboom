@@ -64,7 +64,7 @@ export const LIVEBOOM_GIFTS: LiveGift[] = [
   // Nivel 1 — Básicos (1–40)
   { id: 'besito', name: 'Besito', emoji: '💋', image: '/gifts/besito.png', video: '/gifts/besito.webm', coins: 1, level: 1, animation: 'Face Mesh: beso en labios + rastro' },
   { id: 'corazon_latino', name: 'Corazón Latino', emoji: '❤️', image: '/gifts/corazon_latino.png', video: '/gifts/corazon_latino.webm', coins: 2, level: 1, animation: 'Face Mesh: pulso cerca de la cara' },
-  { id: 'cafecito', name: 'Cafecito', emoji: '☕', image: '/gifts/cafecito.png', video: '/gifts/cafecito.webm', coins: 5, level: 1, animation: 'Taza con vapor en forma de corazón' },
+  { id: 'cafecito', name: 'Cafecito', emoji: '☕', image: '/gifts/cafecito.png', video: '/gifts/cafecito.webm?v=20260921', coins: 5, level: 1, animation: 'Taza con vapor en forma de corazón' },
   { id: 'arepita', name: 'Arepita', emoji: '🫓', image: '/gifts/arepita.png', video: '/gifts/arepita.webm', coins: 8, level: 1, animation: 'Gira como moneda y brillo dorado' },
   { id: 'empanadita', name: 'Empanadita', emoji: '🥟', image: '/gifts/empanadita.png', video: '/gifts/empanadita.webm', coins: 10, level: 1, animation: 'Vuelta rápida y migas brillantes' },
   { id: 'flor_tropical', name: 'Flor Tropical', emoji: '🌺', image: '/gifts/flor_tropical.png', video: '/gifts/flor_tropical.webm', coins: 15, level: 1, animation: 'Face Mesh: flor anclada a la frente' },
@@ -175,10 +175,15 @@ import { runtimeAllLiveGifts, runtimeCatalogLoaded, runtimeFindGift, runtimeGift
 function withDefaultGiftMedia<T extends LiveGift>(gift: T): T {
   const local = LIVEBOOM_GIFTS.find((item) => item.id === gift.id);
   if (!local) return gift;
+  let video = gift.video || local.video;
+  if (gift.id === 'cafecito' && video) {
+    const path = video.split('?')[0];
+    if (path === '/gifts/cafecito.webm') video = '/gifts/cafecito.webm?v=20260921';
+  }
   return {
     ...gift,
     image: gift.image || local.image,
-    video: gift.video || local.video,
+    video,
   };
 }
 

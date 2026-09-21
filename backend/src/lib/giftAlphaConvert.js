@@ -443,8 +443,17 @@ function scaleFilter(width, height) {
     const h = evenDim(height, maxEdge);
     if (w === width && h === height) return null;
     return `scale=${w}:${h}:flags=lanczos`;
-  };
+  }
   return `scale='min(${maxEdge},iw)':'min(${maxEdge},ih)':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2`;
+}
+
+/** rgba ANTES de scale: si no, libswscale tira el canal alfa y el WebM queda opaco. */
+function buildConvertVf(hasAlpha, scale) {
+  const parts = [];
+  if (hasAlpha) parts.push('format=rgba');
+  if (scale) parts.push(scale);
+  parts.push(hasAlpha ? 'format=yuva420p' : 'format=yuv420p');
+  return parts.join(',');
 }
 
 async function muxAudioOntoWebm(ffmpegPath, videoPath, audioSourcePath, destPath) {
@@ -568,10 +577,8 @@ async function convertWithProgress({
   encoder = 'libvpx-vp9',
   onProgress,
 }) {
-  const vfParts = [];
   const scale = scaleFilter(inspect.width, inspect.height);
-  if (scale) vfParts.push(scale);
-  vfParts.push(hasAlpha ? 'format=yuva420p' : 'format=yuv420p');
+  const vf = buildConvertVf(hasAlpha, scale);
   const wantAudio = keepAudio !== false && Boolean(inspect.hasAudio);
   const videoOnly = `${tmpOut}.vonly.webm`;
   const videoTarget = wantAudio ? videoOnly : tmpOut;
@@ -606,7 +613,7 @@ async function convertWithProgress({
     '-threads',
     '2',
     '-vf',
-    vfParts.join(','),
+    vf,
   ];
   if (hasAlpha) args.push('-metadata:s:v:0', 'alpha_mode=1');
   args.push('-progress', 'pipe:1', '-nostats', '-f', 'webm', videoTarget);
@@ -1413,5 +1420,11 @@ module.exports = {
   kickGiftAlphaJob,
   storagePathFromGiftUrl,
   restoreSilentGiftAudio,
+  buildConvertVf,
+  scaleFilter,
+  convertWithProgress,
+  probeFile,
+  ffmpegBin,
+  verifyWebm,
 };
 module.exports.default = module.exports;

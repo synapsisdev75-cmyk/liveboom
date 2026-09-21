@@ -2036,7 +2036,7 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
 
   const threadPane = activeFriend ? (
       <div
-        className={`lb-chat-pane min-h-0 min-w-0 flex-1 flex-col bg-[#0a0a0b] ${
+        className={`lb-chat-pane relative min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-[#0a0a0b] ${
           isPage ? (chatOpen ? 'flex' : 'hidden md:flex') : 'flex'
         }`}
       >
@@ -2869,6 +2869,23 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
           </>
         )}
         </div>
+        {giftFloats.length > 0 ? (
+          <div className="pointer-events-none absolute inset-0 z-[70] overflow-visible">
+            {giftFloats.map((item) => (
+              <FloatingGift
+                key={item.id}
+                giftId={item.giftId}
+                senderName={item.senderName}
+                left={item.left}
+                lite
+                layoutContext={giftLayoutContext}
+                onComplete={() =>
+                  setGiftFloats((current) => current.filter((row) => row.id !== item.id))
+                }
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
     ) : isPage ? (
       <div className="hidden min-h-0 flex-1 place-items-center bg-[#0a0a0b] text-sm text-zinc-500 md:grid">
@@ -2958,26 +2975,6 @@ export function InternalChatPanel({ compact = false, page = false, fullscreen = 
         ? createPortal(
             <div className="pointer-events-auto fixed inset-0 z-[124]">
               <CoinModal onClose={() => setRechargeOpen(false)} />
-            </div>,
-            document.body,
-          )
-        : null}
-      {giftFloats.length > 0 && typeof document !== 'undefined'
-        ? createPortal(
-            <div className="pointer-events-none fixed inset-0 z-[116] overflow-visible">
-              {giftFloats.map((item) => (
-                <FloatingGift
-                  key={item.id}
-                  giftId={item.giftId}
-                  senderName={item.senderName}
-                  left={item.left}
-                  lite
-                  layoutContext={giftLayoutContext}
-                  onComplete={() =>
-                    setGiftFloats((current) => current.filter((row) => row.id !== item.id))
-                  }
-                />
-              ))}
             </div>,
             document.body,
           )

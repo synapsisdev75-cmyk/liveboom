@@ -19,7 +19,7 @@ import {
 } from '../../lib/giftLayout';
 import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
-import { giftPlaybackDurationMs } from '../../lib/giftMedia';
+import { giftPlaybackDurationMs, giftPlaybackSrc } from '../../lib/giftMedia';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 export function GiftVisual({
@@ -141,6 +141,7 @@ function GiftVideoBurst({
   combo,
   animScale = 0.72,
   fillViewport = false,
+  fillParent = false,
   slot,
   volume = 1,
   durationMs,
@@ -153,6 +154,8 @@ function GiftVideoBurst({
   combo?: number;
   animScale?: number;
   fillViewport?: boolean;
+  /** Chat: llena el hilo, no toda la ventana. */
+  fillParent?: boolean;
   slot?: GiftLayoutSlot;
   volume?: number;
   durationMs?: number;
@@ -168,14 +171,15 @@ function GiftVideoBurst({
   const hasAspect = (mediaWidth || 0) > 1 && (mediaHeight || 0) > 1;
   const portrait = hasAspect && (mediaHeight as number) >= (mediaWidth as number);
   const aspectRatio = hasAspect ? `${mediaWidth} / ${mediaHeight}` : undefined;
+  const containInBox = fillViewport || fillParent;
   const mediaStyle = layoutStyle
     ? { ...layoutStyle, background: 'transparent' as const }
-    : fillViewport
+    : containInBox
       ? {
           background: 'transparent' as const,
           aspectRatio,
-          width: portrait ? 'auto' : 'min(100%, 100vw)',
-          height: portrait || !hasAspect ? 'min(100%, 100dvh)' : 'auto',
+          width: portrait ? 'auto' : 'min(100%, 100%)',
+          height: portrait || !hasAspect ? 'min(100%, 100%)' : 'auto',
           maxWidth: '100%',
           maxHeight: '100%',
           objectFit: 'contain' as const,
@@ -189,7 +193,11 @@ function GiftVideoBurst({
             objectFit: 'contain' as const,
           }
         : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
-  const useFillClass = fillViewport && !slot;
+  const useFillClass = fillViewport && !slot && !fillParent;
+  const pinToViewport = Boolean(
+    (fillViewport || (slot && (slot.displayArea === 'global' || slot.fullscreenMode === 'global'))) &&
+      !fillParent,
+  );
 
   const finish = () => {
     if (doneRef.current) return;
@@ -266,7 +274,7 @@ function GiftVideoBurst({
   return (
     <motion.div
       className={`pointer-events-none flex flex-col items-center justify-center ${
-        fillViewport || (slot && (slot.displayArea === 'global' || slot.fullscreenMode === 'global'))
+        pinToViewport
           ? 'fixed inset-0 z-[114]'
           : 'absolute inset-0 z-[60]'
       } ${bleed ? 'lb-gift-layout-stage--bleed' : ''}`}
@@ -413,6 +421,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
 
   if (globalAnim) return null;
 
+  const videoSrc = giftPlaybackSrc(gift?.media, gift?.video);
   const device = giftLayoutDeviceFromViewport();
   const variant =
     layoutContext && isGiftLayoutVariantId(layoutContext)
@@ -430,18 +439,18 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       liveFormat: liveAspect ? giftLiveFormatFromAspect(liveAspect) : giftPlaybackLiveFormat(device),
       variant,
     });
+    const chatLike = variant === 'chat' || variant === 'llamadas_voz' || variant === 'llamadas_video';
     const unconfiguredChatOrCall =
-      (variant === 'chat' || variant === 'llamadas_voz' || variant === 'llamadas_video') &&
-      (cell.source === 'legacy' || cell.source === 'default');
-    if (unconfiguredChatOrCall && gift.video) {
+      chatLike && (cell.source === 'legacy' || cell.source === 'default');
+    if (unconfiguredChatOrCall && videoSrc) {
       return (
         <AnimatePresence>
           <GiftVideoBurst
-            src={gift.video}
+            src={videoSrc}
             senderName={senderName}
             combo={combo}
             animScale={clampGiftAnimScale(gift.animScale, level)}
-            fillViewport
+            fillParent
             volume={gift.media?.volume ?? 1}
             durationMs={giftPlaybackDurationMs(gift.media)}
             mediaWidth={gift.media?.width}
@@ -453,14 +462,16 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
     }
     const slot = cell.slot;
     const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
-    const burst = gift.video ? (
+    const pinGlobal = globalArea && !chatLike;
+    const burst = videoSrc ? (
       <AnimatePresence>
         <GiftVideoBurst
-          src={gift.video}
+          src={videoSrc}
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}
-          fillViewport={globalArea}
+          fillViewport={pinGlobal}
+          fillParent={chatLike && globalArea}
           slot={slot}
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
@@ -477,7 +488,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           senderName={senderName}
           combo={combo}
           slot={slot}
-          globalArea={globalArea}
+          globalArea={pinGlobal}
           durationMs={Math.max(1200, fx.duration * 1000)}
           mediaWidth={gift.media?.width}
           mediaHeight={gift.media?.height}
@@ -485,17 +496,17 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
         />
       </AnimatePresence>
     );
-    if (globalArea && typeof document !== 'undefined') {
+    if (pinGlobal && typeof document !== 'undefined') {
       return createPortal(burst, document.body);
     }
     return burst;
   }
 
-  if (fillViewport && gift?.video) {
+  if (fillViewport && videoSrc) {
     return (
       <AnimatePresence>
         <GiftVideoBurst
-          src={gift.video}
+          src={videoSrc}
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}

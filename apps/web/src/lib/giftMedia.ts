@@ -79,7 +79,7 @@ export function serializeGiftMedia(media: GiftMediaInfo | undefined): GiftMediaI
 export function giftPlaybackSrc(media: GiftMediaInfo | undefined, video?: string, prefer: 'active' | 'original' | 'processed' = 'active'): string {
   if (prefer === 'original') return media?.originalAsset || video || '';
   if (prefer === 'processed') return media?.processedAsset || video || '';
-  if (media?.backgroundRemoved && media.processedAsset) return media.processedAsset;
+  if (media?.processedAsset && (media.backgroundRemoved || media.hasAlpha)) return media.processedAsset;
   return video || media?.originalAsset || '';
 }
 

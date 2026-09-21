@@ -43,6 +43,16 @@ describe('conversión MOV ProRes 4444 → WebM', () => {
     assert.equal(storagePathFromGiftUrl('config/gifts/botas_llaneras-video-1.webm'), 'config/gifts/botas_llaneras-video-1.webm');
   });
 
+  it('conserva el alfa al escalar: rgba antes de scale', () => {
+    const { buildConvertVf } = require('./giftAlphaConvert');
+    assert.equal(
+      buildConvertVf(true, "scale='min(1080,iw)':'min(1080,ih)':flags=lanczos"),
+      "format=rgba,scale='min(1080,iw)':'min(1080,ih)':flags=lanczos,format=yuva420p",
+    );
+    assert.equal(buildConvertVf(true, null), 'format=rgba,format=yuva420p');
+    assert.equal(buildConvertVf(false, 'scale=720:720'), 'scale=720:720,format=yuv420p');
+  });
+
   it('detecta alfa por formato de píxel, no por el nombre 4444', () => {
     assert.equal(pixFmtHasAlpha('yuva444p10le'), true);
     assert.equal(pixFmtHasAlpha('yuva420p'), true);
