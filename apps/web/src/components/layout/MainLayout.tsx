@@ -26,7 +26,7 @@ import { VP_LG } from '../../responsive/viewport';
 import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { CoinModal } from '../wallet/CoinModal';
 import { NotificationBell } from '../social/NotificationBell';
-import { MessagesQuickMenu } from '../social/MessagesQuickMenu';
+import { MessagesFloatingHost, MessagesQuickMenu } from '../social/MessagesQuickMenu';
 import { useUnreadMessageCount } from '../social/MessageInboxBadge';
 import { SideRailPanel } from './SideRailPanel';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
@@ -408,7 +408,7 @@ export function MainLayout() {
           <AppearanceControl />
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-          {profile ? <MessagesQuickMenu hostPortals /> : null}
+          {profile ? <MessagesQuickMenu /> : null}
           {profile ? <NotificationBell /> : null}
           {profile ? (
             <button
@@ -545,6 +545,8 @@ export function MainLayout() {
       ) : null}
 
       {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
+
+      {profile ? <MessagesFloatingHost /> : null}
 
       {toast ? (
         <div

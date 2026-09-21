@@ -737,6 +737,7 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
 export function MessagesSideRail() {
   const navigate = useNavigate();
   const inboxVisible = useMessagesInboxVisible();
+  const boxesVisible = useMessageBoxesVisible();
   const setRailOpen = useMessagesMenuStore((state) => state.setRailOpen);
   const openChatFromList = useMessagesMenuStore((state) => state.openChatFromList);
 
@@ -756,9 +757,67 @@ export function MessagesSideRail() {
         embedded
         onClose={close}
         onExpandAll={expandAll}
-        onSelect={(chat) => openChatFromList(peerFromChat(chat))}
+        onSelect={(chat) => {
+          if (!boxesVisible) return;
+          openChatFromList(peerFromChat(chat));
+        }}
       />
     </aside>
+  );
+}
+
+/**
+ * Host único (siempre montado en el shell): caja flotante + pastillas minimizadas.
+ * En laptop/PC/tablet landscape se cierra y no renderiza (el escritorio queda libre).
+ */
+export function MessagesFloatingHost() {
+  const profile = useAuthStore((state) => state.profile);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const inboxVisible = useMessagesInboxVisible();
+  const boxesVisible = useMessageBoxesVisible();
+  const popupPeer = useMessagesMenuStore((state) => state.popupPeer);
+  const minimized = useMessagesMenuStore((state) => state.minimized);
+  const setRailOpen = useMessagesMenuStore((state) => state.setRailOpen);
+  const expandMinimized = useMessagesMenuStore((state) => state.expandMinimized);
+  const closePopup = useMessagesMenuStore((state) => state.closePopup);
+  const minimizeCurrent = useMessagesMenuStore((state) => state.minimizeCurrent);
+  const closeAll = useMessagesMenuStore((state) => state.closeAll);
+
+  useEffect(() => {
+    setRailOpen(false);
+    closePopup();
+  }, [location.pathname, setRailOpen, closePopup]);
+
+  useEffect(() => {
+    if (!boxesVisible) closeAll();
+  }, [boxesVisible, closeAll]);
+
+  if (!profile || !boxesVisible) return null;
+
+  function openFullscreen(peer?: MessagesPopupPeer | null) {
+    if (!inboxVisible) return;
+    closeAll();
+    if (peer?.username) {
+      navigate(`/mensajes?con=${encodeURIComponent(peer.username)}`);
+      return;
+    }
+    navigate('/mensajes');
+  }
+
+  return (
+    <>
+      {popupPeer ? (
+        <FloatingDmWindow
+          key={popupPeer.uid}
+          peer={popupPeer}
+          onClose={closePopup}
+          onMinimize={minimizeCurrent}
+          onExpand={() => openFullscreen(popupPeer)}
+        />
+      ) : null}
+      <MinimizedChatsDock items={minimized} onExpand={expandMinimized} />
+    </>
   );
 }
 
@@ -766,9 +825,9 @@ export function MessagesSideRail() {
  * Botón de mensajes en header:
  * - Desktop: reemplaza el rail derecho con la lista de chats hasta cerrar.
  * - Móvil: sheet inferior (sin rail).
- * - `hostPortals`: solo una instancia debe montar el chat flotante (evita doble listener en PC).
+ * Los portales flotantes van en MessagesFloatingHost (una sola instancia).
  */
-export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boolean }) {
+export function MessagesQuickMenu() {
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
   const location = useLocation();
@@ -776,14 +835,9 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
   const inboxVisible = useMessagesInboxVisible();
   const boxesVisible = useMessageBoxesVisible();
   const railOpen = useMessagesMenuStore((state) => state.railOpen);
-  const popupPeer = useMessagesMenuStore((state) => state.popupPeer);
-  const minimized = useMessagesMenuStore((state) => state.minimized);
   const setRailOpen = useMessagesMenuStore((state) => state.setRailOpen);
   const toggleRail = useMessagesMenuStore((state) => state.toggleRail);
   const openChatFromList = useMessagesMenuStore((state) => state.openChatFromList);
-  const expandMinimized = useMessagesMenuStore((state) => state.expandMinimized);
-  const closePopup = useMessagesMenuStore((state) => state.closePopup);
-  const minimizeCurrent = useMessagesMenuStore((state) => state.minimizeCurrent);
   const closeAll = useMessagesMenuStore((state) => state.closeAll);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -799,16 +853,9 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
-    if (!hostPortals) return;
     setRailOpen(false);
     setSheetOpen(false);
-    closePopup();
-  }, [location.pathname, setRailOpen, closePopup, hostPortals]);
-
-  useEffect(() => {
-    if (!hostPortals) return;
-    if (!boxesVisible) closeAll();
-  }, [boxesVisible, closeAll, hostPortals]);
+  }, [location.pathname, setRailOpen]);
 
   useEffect(() => {
     if (!railOpen && !sheetOpen) return;
@@ -845,6 +892,12 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
     }
     setRailOpen(false);
     setSheetOpen((v) => !v);
+  }
+
+  function onSelectChat(chat: Conversation) {
+    setSheetOpen(false);
+    if (!boxesVisible) return;
+    openChatFromList(peerFromChat(chat));
   }
 
   return (
@@ -890,30 +943,13 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
                 <MessagesChatListPanel
                   onClose={() => setSheetOpen(false)}
                   onExpandAll={() => openFullscreen(null)}
-                  onSelect={(chat) => {
-                    setSheetOpen(false);
-                    openChatFromList(peerFromChat(chat));
-                  }}
+                  onSelect={onSelectChat}
                 />
               </div>
             </>,
             document.body,
           )
         : null}
-
-      {hostPortals && boxesVisible && popupPeer ? (
-        <FloatingDmWindow
-          key={popupPeer.uid}
-          peer={popupPeer}
-          onClose={closePopup}
-          onMinimize={minimizeCurrent}
-          onExpand={() => openFullscreen(popupPeer)}
-        />
-      ) : null}
-
-      {hostPortals && boxesVisible ? (
-        <MinimizedChatsDock items={minimized} onExpand={expandMinimized} />
-      ) : null}
     </div>
   );
 }

@@ -1285,6 +1285,14 @@ aside.chat-scroll::-webkit-scrollbar {
   max-width: calc(100vw - 1.5rem);
 }
 
+/* Laptop/PC/tablet landscape: sin caja ni pastillas minimizadas (espacio libre al borde). */
+html.lb-msg-boxes-off .lb-msg-quick-popup,
+html.lb-msg-boxes-off .lb-msg-min-dock {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* PC/escritorio: caja pegada al borde inferior del viewport disponible */
 @media (min-width: 1024px) {
   .lb-msg-quick-popup {

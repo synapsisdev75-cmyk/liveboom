@@ -18,8 +18,8 @@ export const MESSAGES_INBOX_ENABLED = true;
 export const MESSAGES_INBOX_WIDE_ENABLED = false;
 
 /**
- * Pastillas flotantes de chat minimizado (foto + nombre).
- * Sigue la misma regla de layout que la caja de mensajes.
+ * Pastillas flotantes de chat minimizado (foto + nombre) y caja abierta.
+ * Misma regla de layout: ocultas en laptop/PC/tablet horizontal hasta «Habilitar caja de mensajes».
  */
 export const MESSAGE_BOXES_ENABLED = true;
 
@@ -46,4 +46,8 @@ export function isMessagesInboxVisibleNow(): boolean {
 export function isMessageBoxesVisibleNow(): boolean {
   if (!MESSAGE_BOXES_ENABLED) return false;
   return !isMessagesInboxHiddenByLayout();
+}
+
+if (typeof document !== 'undefined') {
+  document.documentElement.classList.toggle('lb-msg-boxes-off', !isMessageBoxesVisibleNow());
 }
