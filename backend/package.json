@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "test": "node --test src/lib/walletEngine.test.js src/lib/moneyDecimal.test.js src/lib/payoutConversion.test.js src/lib/blastPurchase.test.js src/lib/withdrawalExcel.test.js src/lib/verification.test.js src/lib/giftAlphaConvert.test.js src/lib/giftBgRemove.test.js src/lib/giftAnimIngest.test.js src/lib/promoPackages.test.js src/lib/promoInspect.test.js",
+    "test": "node --test src/lib/walletEngine.test.js src/lib/moneyDecimal.test.js src/lib/payoutConversion.test.js src/lib/blastPurchase.test.js src/lib/withdrawalExcel.test.js src/lib/verification.test.js src/lib/giftAlphaConvert.test.js src/lib/giftBgRemove.test.js src/lib/giftAnimIngest.test.js src/lib/promoPackages.test.js src/lib/promoInspect.test.js src/lib/superAdminCapabilities.test.js src/lib/adminAudit.test.js src/lib/adminUsersService.test.js src/lib/walletAdminAdjust.test.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {

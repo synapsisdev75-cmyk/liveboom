@@ -326,6 +326,44 @@ function applyRefund(balances, split) {
   return { ok: true, balances: next, refundedPurchased: purchased, refundedEarned: earned };
 }
 
+/**
+ * Débito administrativo de un solo bucket. Nunca cruza comprados/ganados ni toca reserved.
+ */
+function applyDebitPurchased(balances, amount) {
+  const take = floorNonNeg(amount);
+  const cur = normalizeBlastBalances(balances);
+  if (take <= 0) return fail('INVALID_AMOUNT', cur);
+  if (take > cur.purchasedBlastBalance) {
+    return fail('INSUFFICIENT_PURCHASED', cur, { requested: take });
+  }
+  return {
+    ok: true,
+    balances: normalizeBlastBalances({
+      ...cur,
+      purchasedBlastBalance: cur.purchasedBlastBalance - take,
+    }),
+    amount: take,
+  };
+}
+
+function applyDebitEarned(balances, amount) {
+  const take = floorNonNeg(amount);
+  const cur = normalizeBlastBalances(balances);
+  if (take <= 0) return fail('INVALID_AMOUNT', cur);
+  if (take > cur.earnedBlastBalance) {
+    return fail('INSUFFICIENT_EARNED', cur, { requested: take });
+  }
+  return {
+    ok: true,
+    balances: normalizeBlastBalances({
+      ...cur,
+      earnedBlastBalance: cur.earnedBlastBalance - take,
+      earnedBlastSpent: cur.earnedBlastSpent + take,
+    }),
+    amount: take,
+  };
+}
+
 function spendLedgerEntries({ userId, amountPurchased, amountEarned, idempotencyKey, referenceType, referenceId, metadata }) {
   const entries = [];
   if (amountPurchased > 0) {
@@ -378,6 +416,8 @@ module.exports = {
   applyConfirmWithdrawal,
   applyRejectWithdrawal,
   applyRefund,
+  applyDebitPurchased,
+  applyDebitEarned,
   spendLedgerEntries,
 };
 module.exports.default = module.exports;

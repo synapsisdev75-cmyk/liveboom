@@ -8,6 +8,7 @@ import {
 import { Copy, ImagePlus, RotateCcw, Trash2, Type, Upload, Users } from 'lucide-react';
 import { CommunityOrbitNeonFrame } from '../community/CommunityOrbitNeonFrame';
 import { useAuthStore } from '../../store/authStore';
+import { logAdminAction } from '../../lib/superAdminSecurity';
 import { useCommunityHeaderStore } from '../../store/communityHeaderStore';
 import {
   buildDefaultCommunityHeader,
@@ -156,6 +157,14 @@ export function CommunityHeaderEditor() {
       const nextVersion = Math.max(1, (liveConfig.version ?? draft.version) + 1);
       const next = { ...draft, version: nextVersion };
       await saveCommunityHeader(next, profile?.email ?? 'super-admin');
+      if (profile?.id && profile?.email) {
+        void logAdminAction({
+          action: 'community_header_publish',
+          uid: profile.id,
+          email: profile.email,
+          meta: { version: nextVersion },
+        });
+      }
       setDraft(next);
       setMessage('Header de Comunidad publicado. Los usuarios lo verán al instante.');
     } catch (err) {

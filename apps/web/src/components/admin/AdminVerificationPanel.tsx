@@ -74,6 +74,21 @@ export function AdminVerificationPanel() {
 
   async function decide(action: 'approve' | 'correct' | 'reject') {
     if (!selectedUid) return;
+    if (action === 'correct' && !reason.trim()) {
+      setNote('Indica la corrección concreta para el usuario.');
+      return;
+    }
+    if (action === 'reject' && !reason.trim()) {
+      setNote('Documenta el motivo de rechazo.');
+      return;
+    }
+    const confirms = {
+      approve:
+        '¿Aprobar identidad y cuenta? El usuario podrá solicitar un retiro. No se transfiere dinero.',
+      correct: '¿Pedir corrección? El usuario deberá reemplazar las evidencias marcadas.',
+      reject: '¿Rechazar el expediente con el motivo indicado? No se transfiere dinero.',
+    };
+    if (!window.confirm(confirms[action])) return;
     setBusy(true);
     setNote(null);
     try {
@@ -119,7 +134,7 @@ export function AdminVerificationPanel() {
             </p>
             <p className="mt-1 text-xs text-zinc-500">
               Distinto de la solicitud financiera de retiro.{' '}
-              <Link to="/super-admin" className="text-cyan-300">
+              <Link to="/super-admin?tab=withdrawals" className="text-cyan-300">
                 Ir a retiros
               </Link>
             </p>

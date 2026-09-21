@@ -10,6 +10,8 @@ const {
   applyConfirmWithdrawal,
   applyRejectWithdrawal,
   applyRefund,
+  applyDebitPurchased,
+  applyDebitEarned,
 } = require('./walletEngine');
 
 describe('walletEngine', () => {
@@ -182,5 +184,27 @@ describe('walletEngine', () => {
     assert.equal(first.ok, true);
     assert.equal(second.ok, false);
     assert.equal(toSummary(second.balances).purchasedBalance, 0);
+  });
+
+  it('ajuste admin debita un bucket sin tocar el otro ni reserved', () => {
+    const start = normalizeBlastBalances({
+      purchasedBlastBalance: 200,
+      earnedBlastBalance: 80,
+      earnedBlastReserved: 40,
+    });
+    const purchased = applyDebitPurchased(start, 50);
+    assert.equal(purchased.ok, true);
+    assert.equal(purchased.balances.purchasedBlastBalance, 150);
+    assert.equal(purchased.balances.earnedBlastBalance, 80);
+    assert.equal(purchased.balances.earnedBlastReserved, 40);
+    const earned = applyDebitEarned(start, 80);
+    assert.equal(earned.ok, true);
+    assert.equal(earned.balances.earnedBlastBalance, 0);
+    assert.equal(earned.balances.purchasedBlastBalance, 200);
+    assert.equal(earned.balances.earnedBlastReserved, 40);
+    const tooMuch = applyDebitEarned(start, 81);
+    assert.equal(tooMuch.ok, false);
+    assert.equal(tooMuch.code, 'INSUFFICIENT_EARNED');
+    assert.equal(tooMuch.balances.earnedBlastBalance, 80);
   });
 });

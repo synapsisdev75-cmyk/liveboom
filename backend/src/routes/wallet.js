@@ -267,6 +267,16 @@ router.post('/admin/withdrawals/:id/status', requireAuth, requireWithdrawalsAdmi
       return;
     }
     sendPublic(res, { ok: true, summary: result.summary ? publicWalletSummary(result.summary) : null });
+    void require('../lib/adminAudit').writeAdminAudit({
+      actorUid: req.user?.uid,
+      actorEmail: email,
+      action: 'withdrawal_status',
+      resourceType: 'withdrawal',
+      resourceId: req.params.id,
+      result: 'ok',
+      reason: req.body?.observations,
+      meta: { status: req.body?.status },
+    });
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : 'No se pudo actualizar el retiro',

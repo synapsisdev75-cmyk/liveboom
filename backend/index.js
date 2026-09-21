@@ -110,6 +110,7 @@ mount('/api/translate', () => require('./src/routes/translate'));
 mount('/api/push', () => require('./src/routes/push'));
 mount('/api/wallet', () => require('./src/routes/wallet'));
 mount('/api/verification', () => require('./src/routes/verification'));
+mount('/api/super-admin', () => require('./src/routes/superAdmin'));
 
 app.use((error, _req, res, _next) => {
   console.error('[liveboom] error no controlado', error);

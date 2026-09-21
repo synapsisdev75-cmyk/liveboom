@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageSquare, RefreshCw, Search } from 'lucide-react';
 import {
   chatParticipantLabel,
-  listAllPrivateChats,
-  listChatMessagesAdmin,
+  fetchAdminChatMessages,
+  fetchAdminChatsPage,
   type AdminChatMessage,
   type AdminChatRow,
-} from '../../lib/adminChatsFirestore';
-import { profileHref } from '../../lib/profileFirestore';
+} from '../../admin/api';
 
 function formatWhen(iso: string | null) {
   if (!iso) return '—';
@@ -26,73 +25,74 @@ function formatWhen(iso: string | null) {
 
 export function AdminMessagesPanel() {
   const [chats, setChats] = useState<AdminChatRow[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AdminChatMessage[]>([]);
   const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [qApplied, setQApplied] = useState('');
+  const chatsGen = useRef(0);
+  const msgsGen = useRef(0);
 
-  const loadChats = useCallback(async () => {
-    setLoadingChats(true);
-    setError(null);
-    try {
-      const rows = await listAllPrivateChats(200);
-      setChats(rows);
-      if (selectedId && !rows.some((c) => c.chatId === selectedId)) {
-        setSelectedId(null);
-        setMessages([]);
+  const loadChats = useCallback(
+    async (opts?: { append?: boolean; cursor?: string | null; q?: string }) => {
+      const gen = ++chatsGen.current;
+      const append = Boolean(opts?.append);
+      if (append) setLoadingMore(true);
+      else setLoadingChats(true);
+      setError(null);
+      try {
+        const page = await fetchAdminChatsPage({ q: opts?.q, cursor: opts?.cursor || null });
+        if (gen !== chatsGen.current) return;
+        setChats((prev) => (append ? [...prev, ...page.chats] : page.chats));
+        setNextCursor(page.nextCursor || null);
+        setSelectedId((current) => {
+          if (current && !(append ? true : page.chats.some((c) => c.chatId === current))) {
+            setMessages([]);
+            return null;
+          }
+          return current;
+        });
+      } catch (err) {
+        if (gen !== chatsGen.current) return;
+        setError(err instanceof Error ? err.message : 'No se pudieron cargar chats');
+      } finally {
+        if (gen === chatsGen.current) {
+          setLoadingChats(false);
+          setLoadingMore(false);
+        }
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron cargar chats');
-    } finally {
-      setLoadingChats(false);
-    }
-  }, [selectedId]);
+    },
+    [],
+  );
 
   useEffect(() => {
-    void loadChats();
-    // solo al montar
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void loadChats({ q: qApplied });
+  }, [loadChats, qApplied]);
 
   const selected = useMemo(
     () => chats.find((c) => c.chatId === selectedId) ?? null,
     [chats, selectedId],
   );
 
-  const visibleChats = useMemo(() => {
-    const needle = q.trim().toLowerCase().replace(/^@/, '');
-    if (!needle) return chats;
-    return chats.filter((c) => {
-      const names = c.participants
-        .map((uid) => chatParticipantLabel(c, uid).toLowerCase())
-        .join(' ');
-      const usernames = c.participants
-        .map((uid) => String(c.profiles[uid]?.username || '').toLowerCase())
-        .join(' ');
-      return (
-        names.includes(needle) ||
-        usernames.includes(needle) ||
-        String(c.lastMessage || '')
-          .toLowerCase()
-          .includes(needle)
-      );
-    });
-  }, [chats, q]);
-
   async function openChat(chatId: string) {
+    const gen = ++msgsGen.current;
     setSelectedId(chatId);
     setLoadingMsgs(true);
     setError(null);
     try {
-      const msgs = await listChatMessagesAdmin(chatId);
-      setMessages(msgs);
+      const page = await fetchAdminChatMessages(chatId);
+      if (gen !== msgsGen.current) return;
+      setMessages(page.messages);
     } catch (err) {
+      if (gen !== msgsGen.current) return;
       setError(err instanceof Error ? err.message : 'No se pudieron cargar mensajes');
       setMessages([]);
     } finally {
-      setLoadingMsgs(false);
+      if (gen === msgsGen.current) setLoadingMsgs(false);
     }
   }
 
@@ -105,47 +105,51 @@ export function AdminMessagesPanel() {
             Mensajes privados
           </h2>
           <p className="mt-1 text-xs text-zinc-500">
-            {chats.length} conversaciones · lectura total (incl. privadas)
+            {chats.length} conversaciones en esta página · lectura autorizada
           </p>
         </div>
         <button
           type="button"
-          onClick={() => void loadChats()}
+          onClick={() => void loadChats({ q: qApplied })}
           disabled={loadingChats}
-          className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
         >
           <RefreshCw size={14} className={loadingChats ? 'animate-spin' : ''} />
           Actualizar
         </button>
       </div>
 
-      <label className="lb-panel relative block rounded-2xl p-2">
-        <Search
-          size={14}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"
-        />
+      <form
+        className="lb-panel relative flex gap-2 rounded-2xl p-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setQApplied(q.trim());
+        }}
+      >
+        <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar chat por usuario o texto…"
-          className="w-full rounded-xl border border-transparent bg-transparent py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-700 focus:outline-none"
+          placeholder="Filtrar esta página por usuario o texto…"
+          className="min-h-11 w-full rounded-xl border border-transparent bg-transparent py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-700 focus:outline-none"
         />
-      </label>
+        <button type="submit" className="min-h-11 shrink-0 rounded-xl bg-fuchsia-500/20 px-4 text-sm font-semibold text-fuchsia-100">
+          Buscar
+        </button>
+      </form>
 
       {error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
-        </p>
+        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <ul className="lb-panel max-h-[70dvh] space-y-1 overflow-y-auto rounded-2xl p-2">
           {loadingChats && chats.length === 0 ? (
             <li className="px-3 py-8 text-center text-sm text-zinc-500">Cargando chats…</li>
-          ) : visibleChats.length === 0 ? (
+          ) : chats.length === 0 ? (
             <li className="px-3 py-8 text-center text-sm text-zinc-500">Sin conversaciones</li>
           ) : (
-            visibleChats.map((c) => {
+            chats.map((c) => {
               const a = c.participants[0] || '';
               const b = c.participants[1] || '';
               const label = `${chatParticipantLabel(c, a)} ↔ ${chatParticipantLabel(c, b)}`;
@@ -154,7 +158,7 @@ export function AdminMessagesPanel() {
                   <button
                     type="button"
                     onClick={() => void openChat(c.chatId)}
-                    className={`w-full rounded-xl px-3 py-2.5 text-left transition ${
+                    className={`min-h-11 w-full rounded-xl px-3 py-2.5 text-left transition ${
                       selectedId === c.chatId
                         ? 'bg-fuchsia-500/20 text-fuchsia-100'
                         : 'text-zinc-300 hover:bg-zinc-800'
@@ -169,6 +173,18 @@ export function AdminMessagesPanel() {
               );
             })
           )}
+          {nextCursor ? (
+            <li>
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={() => void loadChats({ append: true, cursor: nextCursor, q: qApplied })}
+                className="min-h-11 w-full text-sm text-cyan-300 disabled:opacity-50"
+              >
+                {loadingMore ? 'Cargando…' : 'Cargar más'}
+              </button>
+            </li>
+          ) : null}
         </ul>
 
         <div className="lb-panel flex max-h-[70dvh] flex-col rounded-2xl">
@@ -180,19 +196,13 @@ export function AdminMessagesPanel() {
             <>
               <div className="border-b border-white/5 px-4 py-3">
                 <p className="text-sm font-semibold text-white">
-                  {selected.participants
-                    .map((uid) => chatParticipantLabel(selected, uid))
-                    .join(' ↔ ')}
+                  {selected.participants.map((uid) => chatParticipantLabel(selected, uid)).join(' ↔ ')}
                 </p>
                 <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-zinc-500">
                   {selected.participants.map((uid) => {
                     const uname = selected.profiles[uid]?.username || '';
                     return (
-                      <Link
-                        key={uid}
-                        to={profileHref(uname || 'user', uid)}
-                        className="text-cyan-400 hover:underline"
-                      >
+                      <Link key={uid} to={`/u/${encodeURIComponent(uname || 'user')}?uid=${encodeURIComponent(uid)}`} className="min-h-11 text-cyan-400 hover:underline">
                         @{uname || uid.slice(0, 8)}
                       </Link>
                     );
@@ -206,9 +216,7 @@ export function AdminMessagesPanel() {
                   <p className="py-8 text-center text-sm text-zinc-500">Sin mensajes</p>
                 ) : (
                   messages.map((m) => {
-                    const fromName = selected
-                      ? chatParticipantLabel(selected, m.fromUid)
-                      : m.fromUid.slice(0, 8);
+                    const fromName = selected ? chatParticipantLabel(selected, m.fromUid) : m.fromUid.slice(0, 8);
                     return (
                       <div
                         key={m.id}
@@ -226,7 +234,7 @@ export function AdminMessagesPanel() {
                             href={m.mediaUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="mt-1 inline-block text-[11px] text-fuchsia-300 hover:underline"
+                            className="mt-1 inline-block min-h-11 text-[11px] text-fuchsia-300 hover:underline"
                           >
                             Ver adjunto ({m.mediaType || 'media'})
                           </a>

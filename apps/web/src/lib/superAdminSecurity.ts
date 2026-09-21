@@ -309,6 +309,20 @@ export async function fetchAdminSession(
   return { ...data, expiresAtMs };
 }
 
+export async function logAdminAction(input: {
+  action: string;
+  uid: string;
+  email: string;
+  meta?: Record<string, unknown>;
+}): Promise<void> {
+  await writeAudit({
+    action: input.action,
+    uid: input.uid,
+    email: input.email,
+    meta: input.meta || {},
+  });
+}
+
 async function writeAudit(input: {
   action: string;
   uid: string;
@@ -323,6 +337,7 @@ async function writeAudit(input: {
       meta: input.meta,
       ownerEmail: SUPER_ADMIN_OWNER_EMAIL,
       createdAt: serverTimestamp(),
+      createdAtMs: Date.now(),
       ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 240) : '',
     });
   } catch {

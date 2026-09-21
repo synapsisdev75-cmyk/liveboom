@@ -137,8 +137,7 @@ router.get('/admin/:uid', requireAuth, requireVerificationAdmin, async (req, res
 
 router.post('/admin/:uid/decision', requireAuth, requireVerificationAdmin, async (req, res) => {
   try {
-    res.json(
-      await verification.decideCase({
+    const decided = await verification.decideCase({
         uid: String(req.params.uid || ''),
         actorId: uidOf(req),
         actorEmail: req.user?.email || '',
@@ -146,8 +145,17 @@ router.post('/admin/:uid/decision', requireAuth, requireVerificationAdmin, async
         reason: req.body?.reason,
         internalNote: req.body?.internalNote,
         slots: req.body?.slots,
-      }),
-    );
+      });
+    void require('../lib/adminAudit').writeAdminAudit({
+      actorUid: uidOf(req),
+      actorEmail: req.user?.email || '',
+      action: `verification_${String(req.body?.action || '')}`,
+      resourceType: 'verification',
+      resourceId: String(req.params.uid || ''),
+      result: 'ok',
+      reason: req.body?.reason,
+    });
+    res.json(decided);
   } catch (error) {
     sendError(res, error);
   }

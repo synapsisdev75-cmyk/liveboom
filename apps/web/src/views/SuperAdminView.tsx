@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { logAdminAction } from '../lib/superAdminSecurity';
 import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
 import { AdminCatalogPanel } from '../components/admin/AdminCatalogPanel';
@@ -56,6 +57,27 @@ const TAB_CAPABILITY: Partial<Record<AdminTab, SuperAdminCapability>> = {
   withdrawals: 'withdrawals',
   verifications: 'verification',
 };
+
+const ALL_TABS: AdminTab[] = [
+  'users',
+  'delegate',
+  'messages',
+  'gifts',
+  'blast',
+  'ads',
+  'levels',
+  'community',
+  'requests',
+  'withdrawals',
+  'verifications',
+  'security',
+];
+
+function tabFromLocation(pathname: string, searchTab: string | null): AdminTab | null {
+  if (/withdrawal-verifications|verificaciones-retiro/.test(pathname)) return 'verifications';
+  if (searchTab && ALL_TABS.includes(searchTab as AdminTab)) return searchTab as AdminTab;
+  return null;
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -150,26 +172,35 @@ export function SuperAdminView() {
   );
 
   const location = useLocation();
-  const [tab, setTab] = useState<AdminTab>(() =>
-    /withdrawal-verifications|verificaciones-retiro/.test(location.pathname)
-      ? 'verifications'
-      : 'users',
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<AdminTab>(
+    () => tabFromLocation(location.pathname, searchParams.get('tab')) || (owner ? 'users' : 'messages'),
+  );
+
+  const goTab = useCallback(
+    (id: AdminTab) => {
+      setTab(id);
+      const params = new URLSearchParams(searchParams);
+      params.set('tab', id);
+      navigate({ pathname: '/super-admin', search: `?${params.toString()}` }, { replace: true });
+    },
+    [navigate, searchParams],
   );
 
   useEffect(() => {
+    const fromUrl = tabFromLocation(location.pathname, searchParams.get('tab'));
+    if (fromUrl && fromUrl !== tab && tabAllowed(fromUrl)) {
+      setTab(fromUrl);
+      return;
+    }
     if (tabAllowed(tab)) return;
     const fallback: AdminTab[] = owner
       ? ['users', 'delegate', 'messages', 'gifts', 'blast', 'ads', 'levels', 'community', 'requests', 'withdrawals', 'verifications', 'security']
       : ['messages', 'gifts', 'blast', 'ads', 'levels', 'community', 'requests', 'withdrawals', 'verifications'];
     const next = fallback.find((id) => tabAllowed(id));
     if (next) setTab(next);
-  }, [tab, tabAllowed, owner]);
-
-  useEffect(() => {
-    if (/withdrawal-verifications|verificaciones-retiro/.test(location.pathname)) {
-      setTab('verifications');
-    }
-  }, [location.pathname]);
+  }, [tab, tabAllowed, owner, location.pathname, searchParams]);
   const [draft, setDraft] = useState<LevelsConfigDoc>(() => buildDefaultConfig());
   const [selectedTier, setSelectedTier] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -230,6 +261,14 @@ export function SuperAdminView() {
     try {
       const nextVersion = Math.max(1, (liveConfig?.version ?? draft.version) + 1);
       await saveLevelsConfig({ ...draft, version: nextVersion }, profile?.email ?? 'super-admin');
+      if (firebaseUser?.uid && profile?.email) {
+        void logAdminAction({
+          action: 'levels_publish',
+          uid: firebaseUser.uid,
+          email: profile.email,
+          meta: { version: nextVersion },
+        });
+      }
       levelsDirtyRef.current = false;
       setDraft((prev) => ({ ...prev, version: nextVersion }));
       setMessage('Publicado en Firestore. Todos los usuarios verán los cambios al recargar.');
@@ -314,7 +353,7 @@ export function SuperAdminView() {
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => goTab(id)}
             className={`min-h-11 rounded-xl px-4 py-2 text-sm font-semibold transition ${
               tab === id
                 ? 'bg-fuchsia-500/20 text-fuchsia-100 ring-1 ring-fuchsia-400/40'

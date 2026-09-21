@@ -476,6 +476,14 @@ router.post('/admin/campaigns/:id/approve', requireAuth, requireAdsAdmin, async 
       campaignId: req.params.id,
       actorEmail: req.user?.email,
     });
+    void require('../lib/adminAudit').writeAdminAudit({
+      actorUid: req.user?.uid,
+      actorEmail: req.user?.email,
+      action: 'ads_approve',
+      resourceType: 'campaign',
+      resourceId: req.params.id,
+      result: 'ok',
+    });
     res.json({ ok: true, campaign });
   } catch (error) {
     const code = error && error.code ? String(error.code) : '';
@@ -490,6 +498,15 @@ router.post('/admin/campaigns/:id/reject', requireAuth, requireAdsAdmin, async (
     await promo.rejectCampaign({
       campaignId: req.params.id,
       actorEmail: req.user?.email,
+      reason: req.body?.reason,
+    });
+    void require('../lib/adminAudit').writeAdminAudit({
+      actorUid: req.user?.uid,
+      actorEmail: req.user?.email,
+      action: 'ads_reject',
+      resourceType: 'campaign',
+      resourceId: req.params.id,
+      result: 'ok',
       reason: req.body?.reason,
     });
     res.json({ ok: true });

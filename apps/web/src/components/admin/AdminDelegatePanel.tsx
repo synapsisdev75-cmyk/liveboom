@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Shield, Trash2, UserPlus } from 'lucide-react';
-import { listAdminUsers, type AdminUserRow } from '../../lib/adminUsersFirestore';
+import { fetchAdminUsersPage, type AdminUserRow } from '../../admin/api';
 import {
   SUPER_ADMIN_CAPABILITIES,
   SUPER_ADMIN_CAPABILITY_LABELS,
@@ -12,6 +12,7 @@ import {
   type SuperAdminGrants,
 } from '../../lib/superAdmin';
 import { listenSuperAdmins, saveSuperAdminDelegation } from '../../lib/superAdminsFirestore';
+import { logAdminAction } from '../../lib/superAdminSecurity';
 import { useAuthStore } from '../../store/authStore';
 
 function capsFor(email: string, grants: SuperAdminGrants): SuperAdminCapability[] {
@@ -123,9 +124,9 @@ export function AdminDelegatePanel() {
     if (!owner) return;
     let cancelled = false;
     setLoadingUsers(true);
-    void listAdminUsers(300)
-      .then((rows) => {
-        if (!cancelled) setUsers(rows);
+    void fetchAdminUsersPage({ q })
+      .then((page) => {
+        if (!cancelled) setUsers(page.users);
       })
       .catch(() => {
         if (!cancelled) setUsers([]);
@@ -136,7 +137,7 @@ export function AdminDelegatePanel() {
     return () => {
       cancelled = true;
     };
-  }, [owner]);
+  }, [owner, q]);
 
   const delegated = useMemo(
     () => superEmails.filter((e) => !isOwnerEmail(e)),
@@ -167,6 +168,14 @@ export function AdminDelegatePanel() {
       await saveSuperAdminDelegation(nextEmails, nextGrants, email);
       setGrants(nextGrants);
       setNote(okMsg);
+      if (profile?.id) {
+        void logAdminAction({
+          action: 'delegation_save',
+          uid: profile.id,
+          email,
+          meta: { emails: nextEmails.length },
+        });
+      }
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo guardar la delegación');
     } finally {

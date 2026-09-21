@@ -44,7 +44,10 @@ export function AdminAdsPanel() {
   const [projection, setProjection] = useState<ProjectionRes | null>(null);
   const [customMau, setCustomMau] = useState('25000');
   const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
 
   async function loadCampaigns() {
     const res = await api<{ campaigns: Campaign[] }>('/api/ads/admin/campaigns');
@@ -58,20 +61,48 @@ export function AdminAdsPanel() {
   }
 
   useEffect(() => {
-    void loadCampaigns().catch((err) => setNote(err instanceof Error ? err.message : 'Error'));
-    void loadProjection().catch(() => undefined);
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        await loadCampaigns();
+        try {
+          await loadProjection();
+        } catch {
+          /* proyección opcional */
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'No se pudieron cargar campañas');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function decide(id: string, action: 'approve' | 'reject') {
+    if (action === 'approve' && !window.confirm('¿Aprobar y publicar esta campaña? El plazo contratado empieza ahora.')) {
+      return;
+    }
+    if (action === 'reject') {
+      const reason = rejectReason.trim() || 'Rechazado por Super Admin';
+      if (!window.confirm(`¿Rechazar esta campaña? Motivo: ${reason}`)) return;
+    }
     setBusy(true);
     setNote(null);
     try {
       await api(`/api/ads/admin/campaigns/${encodeURIComponent(id)}/${action}`, {
         method: 'POST',
-        body: JSON.stringify({ reason: action === 'reject' ? 'Rechazado por Super Admin' : undefined }),
+        body: JSON.stringify({
+          reason: action === 'reject' ? rejectReason.trim() || 'Rechazado por Super Admin' : undefined,
+        }),
       });
       await loadCampaigns();
       setNote(action === 'approve' ? 'Campaña aprobada. El plazo empieza ahora.' : 'Campaña rechazada.');
+      setRejectReason('');
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo actualizar');
     } finally {
@@ -120,13 +151,15 @@ export function AdminAdsPanel() {
       </div>
 
       {note ? <p className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">{note}</p> : null}
+      {error ? <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</p> : null}
 
       {sub === 'campaigns' ? (
         <div className="space-y-3">
           <p className="text-xs text-zinc-400">
             Pago, revisión y publicación van por separado. El tiempo contratado empieza al aprobar, no mientras espera revisión.
           </p>
-          {campaigns.length === 0 ? (
+          {loading ? <p className="text-sm text-zinc-500">Cargando campañas…</p> : null}
+          {!loading && campaigns.length === 0 ? (
             <p className="text-sm text-zinc-500">No hay campañas pendientes ni activas.</p>
           ) : (
             campaigns.map((ad) => (
@@ -145,29 +178,43 @@ export function AdminAdsPanel() {
                   </span>
                 </div>
                 {ad.reviewStatus === 'pending' ? (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void decide(ad.id, 'approve')}
-                      className="min-h-11 rounded-xl bg-emerald-500/20 px-3 text-xs font-semibold text-emerald-100"
-                    >
-                      Aprobar y publicar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void decide(ad.id, 'reject')}
-                      className="min-h-11 rounded-xl bg-rose-500/15 px-3 text-xs font-semibold text-rose-200"
-                    >
-                      Rechazar
-                    </button>
+                  <div className="mt-2 space-y-2">
+                    <label className="block text-xs text-zinc-400">
+                      Motivo si rechazas
+                      <input
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        className="mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm text-white"
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void decide(ad.id, 'approve')}
+                        className="min-h-11 rounded-xl bg-emerald-500/20 px-3 text-xs font-semibold text-emerald-100"
+                      >
+                        Aprobar y publicar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void decide(ad.id, 'reject')}
+                        className="min-h-11 rounded-xl bg-rose-500/15 px-3 text-xs font-semibold text-rose-200"
+                      >
+                        Rechazar
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </div>
             ))
           )}
         </div>
+      ) : null}
+
+      {sub === 'projection' && !projection ? (
+        <p className="text-sm text-zinc-500">No se pudo cargar la proyección. Revisa la red e intenta de nuevo.</p>
       ) : null}
 
       {sub === 'projection' && projection ? (

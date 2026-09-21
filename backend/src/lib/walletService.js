@@ -233,6 +233,73 @@ async function spend({
   });
 }
 
+async function adminAdjustBlast({
+  userId,
+  bucket,
+  delta,
+  idempotencyKey,
+  actorEmail,
+  reason,
+}) {
+  const amount = Math.floor(Number(delta) || 0);
+  if (!amount) return { ok: false, code: 'INVALID_AMOUNT' };
+  const kind = String(bucket || '').toLowerCase();
+  if (kind !== 'purchased' && kind !== 'earned') {
+    return { ok: false, code: 'INVALID_BUCKET' };
+  }
+  const key = String(idempotencyKey || '').trim();
+  if (!key) return { ok: false, code: 'IDEMPOTENCY_REQUIRED' };
+  const abs = Math.abs(amount);
+  return runMutation(
+    userId,
+    key,
+    ({ current }) => {
+      const before = engine.toSummary(current);
+      let next;
+      if (amount > 0) {
+        next =
+          kind === 'purchased'
+            ? { ok: true, balances: engine.applyCreditPurchased(current, abs), amount: abs }
+            : { ok: true, balances: engine.applyCreditEarned(current, abs), amount: abs };
+      } else {
+        next =
+          kind === 'purchased'
+            ? engine.applyDebitPurchased(current, abs)
+            : engine.applyDebitEarned(current, abs);
+      }
+      if (!next?.ok) return next;
+      return {
+        ok: true,
+        balances: next.balances,
+        extra: {
+          bucket: kind,
+          delta: amount,
+          before,
+          after: engine.toSummary(next.balances),
+        },
+        ledger: [
+          {
+            userId,
+            transactionType: engine.TX.ADJUSTMENT,
+            bucket: kind === 'purchased' ? engine.BUCKET.PURCHASED : engine.BUCKET.EARNED,
+            amount: abs,
+            direction: amount > 0 ? engine.DIRECTION.CREDIT : engine.DIRECTION.DEBIT,
+            idempotencyKey: key,
+            referenceType: 'admin_adjust',
+            referenceId: actorEmail || null,
+            metadata: {
+              reason: String(reason || '').slice(0, 200),
+              bucket: kind,
+              delta: amount,
+            },
+          },
+        ],
+      };
+    },
+    { fingerprint: `${kind}:${amount}` },
+  );
+}
+
 async function refund({
   userId,
   purchased = 0,
@@ -1107,6 +1174,7 @@ module.exports = {
   getSummary,
   creditPurchased,
   creditEarned,
+  adminAdjustBlast,
   spend,
   refund,
   transferGift,

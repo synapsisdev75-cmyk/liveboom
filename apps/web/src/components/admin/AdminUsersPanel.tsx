@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Minus, Plus, RefreshCw, Search, Shield, Users, Coins, ChevronDown } from 'lucide-react';
-import { listAdminUsers, subscribeAdminUserBalances, type AdminUserRow } from '../../lib/adminUsersFirestore';
+import { ChevronDown, Coins, ExternalLink, Minus, Plus, RefreshCw, Search, Shield, Users } from 'lucide-react';
 import {
-  adjustLevelXp,
-  clearLevelXpPin,
-  profileHref,
-  setLevelXp,
-  setFirestoreCoins,
-  addFirestoreCoins,
-} from '../../lib/profileFirestore';
+  fetchAdminUsersPage,
+  newIdempotencyKey,
+  patchAdminUserBlast,
+  patchAdminUserXp,
+  type AdminUserRow,
+} from '../../admin/api';
 import { isOwnerEmail } from '../../lib/superAdmin';
 import { listenSuperAdmins, saveSuperAdminEmails } from '../../lib/superAdminsFirestore';
 import { useAuthStore } from '../../store/authStore';
@@ -30,22 +28,46 @@ function formatWhen(iso: string | null) {
   }
 }
 
+function applyBlastSummary(
+  row: AdminUserRow,
+  summary: {
+    purchasedBalance: number;
+    earnedAvailable: number;
+    earnedReserved: number;
+    coinsBalance: number;
+  },
+): AdminUserRow {
+  return {
+    ...row,
+    purchasedBlastBalance: summary.purchasedBalance,
+    earnedBlastBalance: summary.earnedAvailable,
+    earnedBlastReserved: summary.earnedReserved,
+    coinsBalance: summary.coinsBalance,
+  };
+}
+
 export function AdminUsersPanel() {
   const profile = useAuthStore((s) => s.profile);
   const owner = isOwnerEmail(profile?.email);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
+  const [qApplied, setQApplied] = useState('');
   const [xpDraft, setXpDraft] = useState<Record<string, string>>({});
-  const [blastDraft, setBlastDraft] = useState<Record<string, string>>({});
+  const [purchasedDraft, setPurchasedDraft] = useState<Record<string, string>>({});
+  const [earnedDraft, setEarnedDraft] = useState<Record<string, string>>({});
   const [blastExpanded, setBlastExpanded] = useState<Record<string, boolean>>({});
   const [xpBusy, setXpBusy] = useState<string | null>(null);
   const [blastBusy, setBlastBusy] = useState<string | null>(null);
   const [xpMsg, setXpMsg] = useState<string | null>(null);
   const [superEmails, setSuperEmails] = useState<string[]>([]);
   const [delegateBusy, setDelegateBusy] = useState<string | null>(null);
+  const loadGen = useRef(0);
 
   useEffect(() => {
     if (!owner) return;
@@ -57,143 +79,95 @@ export function AdminUsersPanel() {
     [superEmails],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = await listAdminUsers(250);
-      setUsers(rows);
-      setXpDraft((prev) => {
-        const next = { ...prev };
-        for (const u of rows) {
-          if (next[u.uid] === undefined) next[u.uid] = String(u.levelXp);
-        }
-        return next;
-      });
-      setBlastDraft((prev) => {
-        const next = { ...prev };
-        for (const u of rows) {
-          if (next[u.uid] === undefined) next[u.uid] = String(u.coinsBalance);
-        }
-        return next;
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron cargar usuarios');
-    } finally {
-      setLoading(false);
-    }
+  const mergeDrafts = useCallback((rows: AdminUserRow[]) => {
+    setXpDraft((prev) => {
+      const next = { ...prev };
+      for (const u of rows) {
+        if (next[u.uid] === undefined) next[u.uid] = String(u.levelXp);
+      }
+      return next;
+    });
+    setPurchasedDraft((prev) => {
+      const next = { ...prev };
+      for (const u of rows) {
+        if (next[u.uid] === undefined) next[u.uid] = String(u.purchasedBlastBalance);
+      }
+      return next;
+    });
+    setEarnedDraft((prev) => {
+      const next = { ...prev };
+      for (const u of rows) {
+        if (next[u.uid] === undefined) next[u.uid] = String(u.earnedBlastBalance);
+      }
+      return next;
+    });
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const load = useCallback(
+    async (opts?: { append?: boolean; cursor?: string | null; q?: string }) => {
+      const gen = ++loadGen.current;
+      const append = Boolean(opts?.append);
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        const page = await fetchAdminUsersPage({
+          q: opts?.q,
+          cursor: opts?.cursor || null,
+        });
+        if (gen !== loadGen.current) return;
+        setUsers((prev) => (append ? [...prev, ...page.users] : page.users));
+        setNextCursor(page.nextCursor || null);
+        setTotal(page.total || 0);
+        mergeDrafts(page.users);
+      } catch (err) {
+        if (gen !== loadGen.current) return;
+        setError(err instanceof Error ? err.message : 'No se pudieron cargar usuarios');
+      } finally {
+        if (gen === loadGen.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [mergeDrafts],
+  );
 
   useEffect(() => {
-    return subscribeAdminUserBalances((balances) => {
-      setUsers((prev) =>
-        prev.map((u) => {
-          const blast = balances[u.uid];
-          return blast !== undefined ? { ...u, coinsBalance: blast } : u;
-        }),
-      );
-      setBlastDraft((prev) => {
-        const next = { ...prev };
-        for (const [uid, blast] of Object.entries(balances)) {
-          if (blastBusy !== uid) next[uid] = String(blast);
-        }
-        return next;
-      });
-    });
-  }, [blastBusy]);
+    void load({ q: qApplied });
+  }, [load, qApplied]);
 
   const onlineCount = users.filter((u) => u.online).length;
   const offlineCount = users.length - onlineCount;
 
   const visible = useMemo(() => {
-    const needle = q.trim().toLowerCase().replace(/^@/, '');
     return users.filter((u) => {
       if (filter === 'online' && !u.online) return false;
       if (filter === 'offline' && u.online) return false;
-      if (!needle) return true;
-      return (
-        u.username.toLowerCase().includes(needle) ||
-        u.displayName.toLowerCase().includes(needle) ||
-        u.email.toLowerCase().includes(needle)
-      );
+      return true;
     });
-  }, [users, filter, q]);
+  }, [users, filter]);
 
-  function patchUserXp(
-    uid: string,
-    nextXp: number,
-    opts?: { pinned?: number | null; organic?: number },
-  ) {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.uid === uid
-          ? {
-              ...u,
-              levelXp: nextXp,
-              levelXpPinned: opts?.pinned !== undefined ? opts.pinned : u.levelXpPinned,
-              levelXpOrganic: opts?.organic ?? u.levelXpOrganic,
-            }
-          : u,
-      ),
-    );
-    setXpDraft((prev) => ({ ...prev, [uid]: String(nextXp) }));
-  }
-
-  function patchUserBlast(uid: string, nextBlast: number) {
-    setUsers((prev) =>
-      prev.map((u) => (u.uid === uid ? { ...u, coinsBalance: nextBlast } : u)),
-    );
-    setBlastDraft((prev) => ({ ...prev, [uid]: String(nextBlast) }));
-  }
-
-  async function onSetBlast(uid: string) {
-    const raw = blastDraft[uid];
-    const value = Math.max(0, Math.floor(Number(raw) || 0));
-    setBlastBusy(uid);
-    setXpMsg(null);
-    try {
-      await setFirestoreCoins(uid, value);
-      patchUserBlast(uid, value);
-      setXpMsg(`Blast fijado en ${value.toLocaleString('es-CO')}`);
-    } catch (err) {
-      setXpMsg(err instanceof Error ? err.message : 'Error al guardar Blast');
-    } finally {
-      setBlastBusy(null);
-    }
-  }
-
-  async function onAdjustBlast(uid: string, delta: number) {
-    setBlastBusy(uid);
-    setXpMsg(null);
-    try {
-      const next = await addFirestoreCoins(uid, delta);
-      if (next == null) return;
-      patchUserBlast(uid, next);
-      setXpMsg(
-        delta >= 0
-          ? `+${delta} Blast → ${next.toLocaleString('es-CO')}`
-          : `${delta} Blast → ${next.toLocaleString('es-CO')}`,
-      );
-    } catch (err) {
-      setXpMsg(err instanceof Error ? err.message : 'Error al ajustar Blast');
-    } finally {
-      setBlastBusy(null);
-    }
+  function patchUser(uid: string, patch: Partial<AdminUserRow>) {
+    setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, ...patch } : u)));
   }
 
   async function onSetXp(uid: string) {
-    const raw = xpDraft[uid];
-    const value = Math.max(0, Math.floor(Number(raw) || 0));
+    const value = Math.max(0, Math.floor(Number(xpDraft[uid]) || 0));
+    if (!window.confirm(`¿Fijar el nivel de este usuario en ${value.toLocaleString('es-CO')} XP? Dejará de subir con regalos hasta que lo liberes.`)) {
+      return;
+    }
     setXpBusy(uid);
     setXpMsg(null);
     try {
-      const next = await setLevelXp(uid, value);
-      patchUserXp(uid, next, { pinned: next });
-      setXpMsg(`Nivel fijado en ${next.toLocaleString('es-CO')} XP (no cambia con regalos/compras)`);
+      const res = await patchAdminUserXp(uid, { mode: 'set', value });
+      patchUser(uid, {
+        levelXp: res.after.effective,
+        levelXpPinned: res.after.pinned,
+        levelXpOrganic: res.after.organic,
+      });
+      setXpDraft((prev) => ({ ...prev, [uid]: String(res.after.effective) }));
+      setXpMsg(`Nivel fijado en ${res.after.effective.toLocaleString('es-CO')} XP`);
     } catch (err) {
       setXpMsg(err instanceof Error ? err.message : 'Error al guardar XP');
     } finally {
@@ -205,17 +179,14 @@ export function AdminUsersPanel() {
     setXpBusy(uid);
     setXpMsg(null);
     try {
-      const next = await adjustLevelXp(uid, delta);
-      if (next == null) return;
-      const row = users.find((u) => u.uid === uid);
-      patchUserXp(uid, next, {
-        pinned: row?.levelXpPinned != null ? next : null,
+      const res = await patchAdminUserXp(uid, { mode: 'adjust', value: delta });
+      patchUser(uid, {
+        levelXp: res.after.effective,
+        levelXpPinned: res.after.pinned,
+        levelXpOrganic: res.after.organic,
       });
-      setXpMsg(
-        delta >= 0
-          ? `+${delta} XP → ${next.toLocaleString('es-CO')}`
-          : `${delta} XP → ${next.toLocaleString('es-CO')}`,
-      );
+      setXpDraft((prev) => ({ ...prev, [uid]: String(res.after.effective) }));
+      setXpMsg(`${delta >= 0 ? '+' : ''}${delta} XP → ${res.after.effective.toLocaleString('es-CO')}`);
     } catch (err) {
       setXpMsg(err instanceof Error ? err.message : 'Error al ajustar XP');
     } finally {
@@ -227,9 +198,14 @@ export function AdminUsersPanel() {
     setXpBusy(uid);
     setXpMsg(null);
     try {
-      const next = await clearLevelXpPin(uid);
-      patchUserXp(uid, next, { pinned: null, organic: next });
-      setXpMsg(`Nivel liberado → ${next.toLocaleString('es-CO')} XP (orgánico)`);
+      const res = await patchAdminUserXp(uid, { mode: 'clear' });
+      patchUser(uid, {
+        levelXp: res.after.effective,
+        levelXpPinned: null,
+        levelXpOrganic: res.after.organic,
+      });
+      setXpDraft((prev) => ({ ...prev, [uid]: String(res.after.effective) }));
+      setXpMsg(`Nivel liberado → ${res.after.effective.toLocaleString('es-CO')} XP (orgánico)`);
     } catch (err) {
       setXpMsg(err instanceof Error ? err.message : 'Error al liberar nivel');
     } finally {
@@ -237,10 +213,63 @@ export function AdminUsersPanel() {
     }
   }
 
+  async function onAdjustBlast(uid: string, bucket: 'purchased' | 'earned', delta: number) {
+    const label = bucket === 'purchased' ? 'BLAST comprados (no retirables)' : 'BLAST ganados (retirables)';
+    if (
+      !window.confirm(
+        `¿Aplicar ${delta >= 0 ? '+' : ''}${delta} a ${label}? Esta operación usa la billetera oficial y queda en auditoría.`,
+      )
+    ) {
+      return;
+    }
+    setBlastBusy(uid);
+    setXpMsg(null);
+    try {
+      const res = await patchAdminUserBlast(uid, {
+        bucket,
+        delta,
+        idempotencyKey: newIdempotencyKey('admin-blast'),
+      });
+      const row = users.find((u) => u.uid === uid);
+      if (row && res.summary) {
+        const next = applyBlastSummary(row, res.summary);
+        patchUser(uid, next);
+        setPurchasedDraft((prev) => ({ ...prev, [uid]: String(next.purchasedBlastBalance) }));
+        setEarnedDraft((prev) => ({ ...prev, [uid]: String(next.earnedBlastBalance) }));
+      }
+      setXpMsg(
+        `${delta >= 0 ? '+' : ''}${delta} ${bucket === 'purchased' ? 'comprados' : 'ganados'} → total ${res.summary.coinsBalance.toLocaleString('es-CO')}${
+          res.duplicate ? ' (idempotente)' : ''
+        }`,
+      );
+    } catch (err) {
+      setXpMsg(err instanceof Error ? err.message : 'Error al ajustar Blast');
+    } finally {
+      setBlastBusy(null);
+    }
+  }
+
+  async function onSetBucket(uid: string, bucket: 'purchased' | 'earned') {
+    const row = users.find((u) => u.uid === uid);
+    if (!row) return;
+    const raw = bucket === 'purchased' ? purchasedDraft[uid] : earnedDraft[uid];
+    const target = Math.max(0, Math.floor(Number(raw) || 0));
+    const current = bucket === 'purchased' ? row.purchasedBlastBalance : row.earnedBlastBalance;
+    const delta = target - current;
+    if (!delta) {
+      setXpMsg('El valor ya coincide con el saldo oficial.');
+      return;
+    }
+    await onAdjustBlast(uid, bucket, delta);
+  }
+
   async function onDelegate(user: AdminUserRow) {
     if (!owner || !profile?.email) return;
     const em = user.email.trim().toLowerCase();
     if (!em || isOwnerEmail(em) || superSet.has(em)) return;
+    if (!window.confirm(`¿Delegar Super Admin a ${em}? Recibirá todas las funciones hasta que las limites en Delegar.`)) {
+      return;
+    }
     setDelegateBusy(user.uid);
     setXpMsg(null);
     try {
@@ -257,6 +286,7 @@ export function AdminUsersPanel() {
     if (!owner || !profile?.email) return;
     const em = user.email.trim().toLowerCase();
     if (!em || isOwnerEmail(em)) return;
+    if (!window.confirm(`¿Quitar Super Admin a ${em}?`)) return;
     setDelegateBusy(user.uid);
     setXpMsg(null);
     try {
@@ -281,21 +311,24 @@ export function AdminUsersPanel() {
             Usuarios registrados
           </h2>
           <p className="mt-1 text-xs text-zinc-500">
-            {users.length} registrados ·{' '}
-            <span className="text-emerald-400">{onlineCount} en línea</span> ·{' '}
-            <span className="text-zinc-400">{offlineCount} desconectados</span>
+            {total.toLocaleString('es-CO')} en Firestore · esta vista {users.length}
+            {' · '}
+            <span className="text-emerald-400">{onlineCount} en línea (página)</span>
+            {' · '}
+            <span className="text-zinc-400">{offlineCount} desconectados (página)</span>
             {owner ? (
               <span className="mt-1 block">
-                “Delegar super” da todas las funciones. Para limitarlas, usa la pestaña Delegar.
+                BLAST comprados y ganados se ajustan por separado en la billetera oficial. Los comprados no son
+                retirables.
               </span>
             ) : null}
           </p>
         </div>
         <button
           type="button"
-          onClick={() => void load()}
+          onClick={() => void load({ q: qApplied })}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           Actualizar
@@ -303,9 +336,7 @@ export function AdminUsersPanel() {
       </div>
 
       {xpMsg ? (
-        <p className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200">
-          {xpMsg}
-        </p>
+        <p className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200">{xpMsg}</p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
@@ -320,7 +351,7 @@ export function AdminUsersPanel() {
             key={id}
             type="button"
             onClick={() => setFilter(id)}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+            className={`min-h-11 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
               filter === id
                 ? 'bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-400/40'
                 : 'bg-zinc-800/80 text-zinc-400 hover:text-zinc-200'
@@ -331,23 +362,30 @@ export function AdminUsersPanel() {
         ))}
       </div>
 
-      <label className="lb-panel relative block rounded-2xl p-2">
-        <Search
-          size={14}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"
-        />
+      <form
+        className="lb-panel relative flex gap-2 rounded-2xl p-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setQApplied(q.trim());
+        }}
+      >
+        <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por nombre, @usuario o email…"
-          className="w-full rounded-xl border border-transparent bg-transparent py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-700 focus:outline-none"
+          placeholder="Buscar por @usuario, email o UID exacto…"
+          className="min-h-11 w-full rounded-xl border border-transparent bg-transparent py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-zinc-600 focus:border-zinc-700 focus:outline-none"
         />
-      </label>
+        <button
+          type="submit"
+          className="min-h-11 shrink-0 rounded-xl bg-cyan-500/20 px-4 text-sm font-semibold text-cyan-100"
+        >
+          Buscar
+        </button>
+      </form>
 
       {error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
-        </p>
+        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p>
       ) : null}
 
       {loading && users.length === 0 ? (
@@ -362,11 +400,7 @@ export function AdminUsersPanel() {
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="relative shrink-0">
                     {u.avatarUrl ? (
-                      <img
-                        src={u.avatarUrl}
-                        alt=""
-                        className="h-11 w-11 rounded-full object-cover ring-1 ring-white/10"
-                      />
+                      <img src={u.avatarUrl} alt="" className="h-11 w-11 rounded-full object-cover ring-1 ring-white/10" />
                     ) : (
                       <span className="grid h-11 w-11 place-items-center rounded-full bg-zinc-800 text-sm font-bold text-cyan-200">
                         {(u.displayName || u.username || '?').slice(0, 1).toUpperCase()}
@@ -387,9 +421,7 @@ export function AdminUsersPanel() {
                           EN LÍNEA
                         </span>
                       ) : (
-                        <span className="ml-2 rounded bg-zinc-700/80 px-1.5 py-px text-[10px] font-bold text-zinc-400">
-                          OFF
-                        </span>
+                        <span className="ml-2 rounded bg-zinc-700/80 px-1.5 py-px text-[10px] font-bold text-zinc-400">OFF</span>
                       )}
                     </p>
                     <p className="truncate text-xs text-zinc-500">
@@ -398,14 +430,7 @@ export function AdminUsersPanel() {
                     <p className="mt-0.5 text-[10px] text-zinc-600">
                       XP {u.levelXp.toLocaleString('es-CO')}
                       {u.levelXpPinned != null ? (
-                        <span className="ml-1 rounded bg-amber-500/20 px-1 py-px font-bold text-amber-300">
-                          FIJADO
-                        </span>
-                      ) : null}
-                      {u.levelXpPinned != null && u.levelXpOrganic !== u.levelXp ? (
-                        <span className="ml-1 text-zinc-500">
-                          (orgánico {u.levelXpOrganic.toLocaleString('es-CO')})
-                        </span>
+                        <span className="ml-1 rounded bg-amber-500/20 px-1 py-px font-bold text-amber-300">FIJADO</span>
                       ) : null}
                       {' · '}
                       <button
@@ -416,14 +441,12 @@ export function AdminUsersPanel() {
                             [u.uid]: !prev[u.uid],
                           }))
                         }
-                        className="inline-flex items-center gap-0.5 font-semibold text-amber-300 hover:text-amber-200"
+                        className="inline-flex min-h-11 items-center gap-0.5 font-semibold text-amber-300 hover:text-amber-200"
                       >
                         <Coins size={10} className="inline" />
-                        Blast {u.coinsBalance.toLocaleString('es-CO')}
-                        <ChevronDown
-                          size={10}
-                          className={`transition ${blastExpanded[u.uid] ? 'rotate-180' : ''}`}
-                        />
+                        Total {u.coinsBalance.toLocaleString('es-CO')} · ganados {u.earnedBlastBalance.toLocaleString('es-CO')} ·
+                        comprados {u.purchasedBlastBalance.toLocaleString('es-CO')}
+                        <ChevronDown size={10} className={`transition ${blastExpanded[u.uid] ? 'rotate-180' : ''}`} />
                       </button>
                       {' · Alta '}
                       {formatWhen(u.createdAt)}
@@ -437,7 +460,7 @@ export function AdminUsersPanel() {
                         type="button"
                         disabled={delegateBusy === u.uid}
                         onClick={() => void onRevoke(u)}
-                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 disabled:opacity-50"
                       >
                         <Shield size={12} />
                         Quitar super
@@ -447,7 +470,7 @@ export function AdminUsersPanel() {
                         type="button"
                         disabled={delegateBusy === u.uid}
                         onClick={() => void onDelegate(u)}
-                        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 text-xs font-semibold text-fuchsia-200 disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 text-xs font-semibold text-fuchsia-200 disabled:opacity-50"
                       >
                         <Shield size={12} />
                         Delegar super
@@ -455,13 +478,13 @@ export function AdminUsersPanel() {
                     )
                   ) : null}
                   {owner && isOwnerEmail(u.email) ? (
-                    <span className="inline-flex min-h-10 items-center rounded-xl bg-fuchsia-500/20 px-3 text-[10px] font-bold uppercase text-fuchsia-200">
+                    <span className="inline-flex min-h-11 items-center rounded-xl bg-fuchsia-500/20 px-3 text-[10px] font-bold uppercase text-fuchsia-200">
                       Dueño
                     </span>
                   ) : null}
                   <Link
-                    to={u.profilePath || profileHref(u.username, u.uid)}
-                    className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-200"
+                    to={u.profilePath}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-200"
                   >
                     Ver perfil
                     <ExternalLink size={12} />
@@ -470,15 +493,12 @@ export function AdminUsersPanel() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 rounded-xl bg-zinc-900/60 p-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                  XP
-                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">XP</span>
                 <button
                   type="button"
                   disabled={xpBusy === u.uid}
                   onClick={() => void onAdjustXp(u.uid, -100)}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 text-xs font-bold text-red-200 disabled:opacity-50"
-                  title="Quitar 100 XP"
+                  className="inline-flex h-11 items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 text-xs font-bold text-red-200 disabled:opacity-50"
                 >
                   <Minus size={12} /> 100
                 </button>
@@ -486,8 +506,7 @@ export function AdminUsersPanel() {
                   type="button"
                   disabled={xpBusy === u.uid}
                   onClick={() => void onAdjustXp(u.uid, -10)}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/5 px-2 text-xs font-semibold text-red-200/90 disabled:opacity-50"
-                  title="Quitar 10 XP"
+                  className="inline-flex h-11 items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/5 px-2 text-xs font-semibold text-red-200/90 disabled:opacity-50"
                 >
                   <Minus size={12} /> 10
                 </button>
@@ -495,17 +514,14 @@ export function AdminUsersPanel() {
                   type="number"
                   min={0}
                   value={xpDraft[u.uid] ?? String(u.levelXp)}
-                  onChange={(e) =>
-                    setXpDraft((prev) => ({ ...prev, [u.uid]: e.target.value }))
-                  }
-                  className="h-9 w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-2 text-sm text-white"
+                  onChange={(e) => setXpDraft((prev) => ({ ...prev, [u.uid]: e.target.value }))}
+                  className="h-11 w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-2 text-sm text-white"
                 />
                 <button
                   type="button"
                   disabled={xpBusy === u.uid}
                   onClick={() => void onSetXp(u.uid)}
-                  className="h-9 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
-                  title="Fija el nivel aunque gane XP por regalos o compras"
+                  className="h-11 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
                 >
                   Fijar
                 </button>
@@ -514,8 +530,7 @@ export function AdminUsersPanel() {
                     type="button"
                     disabled={xpBusy === u.uid}
                     onClick={() => void onClearPin(u.uid)}
-                    className="h-9 rounded-lg border border-zinc-600 px-3 text-xs font-semibold text-zinc-300 disabled:opacity-50"
-                    title="Vuelve al nivel según XP orgánico acumulado"
+                    className="h-11 rounded-lg border border-zinc-600 px-3 text-xs font-semibold text-zinc-300 disabled:opacity-50"
                   >
                     Liberar
                   </button>
@@ -524,8 +539,7 @@ export function AdminUsersPanel() {
                   type="button"
                   disabled={xpBusy === u.uid}
                   onClick={() => void onAdjustXp(u.uid, 10)}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2 text-xs font-semibold text-emerald-200/90 disabled:opacity-50"
-                  title="Sumar 10 XP"
+                  className="inline-flex h-11 items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2 text-xs font-semibold text-emerald-200/90 disabled:opacity-50"
                 >
                   <Plus size={12} /> 10
                 </button>
@@ -533,121 +547,96 @@ export function AdminUsersPanel() {
                   type="button"
                   disabled={xpBusy === u.uid}
                   onClick={() => void onAdjustXp(u.uid, 100)}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 text-xs font-bold text-emerald-200 disabled:opacity-50"
-                  title="Sumar 100 XP"
+                  className="inline-flex h-11 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 text-xs font-bold text-emerald-200 disabled:opacity-50"
                 >
                   <Plus size={12} /> 100
-                </button>
-                <button
-                  type="button"
-                  disabled={xpBusy === u.uid}
-                  onClick={() => {
-                    void (async () => {
-                      setXpBusy(u.uid);
-                      try {
-                        const next = await setLevelXp(u.uid, 0);
-                        patchUserXp(u.uid, next, { pinned: 0 });
-                        setXpMsg('Nivel fijado en 0 XP');
-                      } catch (err) {
-                        setXpMsg(err instanceof Error ? err.message : 'Error');
-                      } finally {
-                        setXpBusy(null);
-                      }
-                    })();
-                  }}
-                  className="h-9 rounded-lg border border-amber-500/40 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
-                >
-                  Reset 0
                 </button>
               </div>
 
               {blastExpanded[u.uid] ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-2">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">
-                    <Coins size={11} />
-                    Blast
-                  </span>
-                  <button
-                    type="button"
-                    disabled={blastBusy === u.uid}
-                    onClick={() => void onAdjustBlast(u.uid, -100)}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 text-xs font-bold text-red-200 disabled:opacity-50"
-                    title="Quitar 100 Blast"
-                  >
-                    <Minus size={12} /> 100
-                  </button>
-                  <button
-                    type="button"
-                    disabled={blastBusy === u.uid}
-                    onClick={() => void onAdjustBlast(u.uid, -10)}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/5 px-2 text-xs font-semibold text-red-200/90 disabled:opacity-50"
-                    title="Quitar 10 Blast"
-                  >
-                    <Minus size={12} /> 10
-                  </button>
-                  <input
-                    type="number"
-                    min={0}
-                    value={blastDraft[u.uid] ?? String(u.coinsBalance)}
-                    onChange={(e) =>
-                      setBlastDraft((prev) => ({ ...prev, [u.uid]: e.target.value }))
-                    }
-                    className="h-9 w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-2 text-sm text-white"
-                  />
-                  <button
-                    type="button"
-                    disabled={blastBusy === u.uid}
-                    onClick={() => void onSetBlast(u.uid)}
-                    className="h-9 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
-                    title="Fijar saldo Blast exacto"
-                  >
-                    Fijar
-                  </button>
-                  <button
-                    type="button"
-                    disabled={blastBusy === u.uid}
-                    onClick={() => void onAdjustBlast(u.uid, 10)}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2 text-xs font-semibold text-emerald-200/90 disabled:opacity-50"
-                    title="Sumar 10 Blast"
-                  >
-                    <Plus size={12} /> 10
-                  </button>
-                  <button
-                    type="button"
-                    disabled={blastBusy === u.uid}
-                    onClick={() => void onAdjustBlast(u.uid, 100)}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 text-xs font-bold text-emerald-200 disabled:opacity-50"
-                    title="Sumar 100 Blast"
-                  >
-                    <Plus size={12} /> 100
-                  </button>
-                  <button
-                    type="button"
-                    disabled={blastBusy === u.uid}
-                    onClick={() => {
-                      void (async () => {
-                        setBlastBusy(u.uid);
-                        try {
-                          await setFirestoreCoins(u.uid, 0);
-                          patchUserBlast(u.uid, 0);
-                          setXpMsg('Blast reseteado a 0');
-                        } catch (err) {
-                          setXpMsg(err instanceof Error ? err.message : 'Error');
-                        } finally {
-                          setBlastBusy(null);
-                        }
-                      })();
-                    }}
-                    className="h-9 rounded-lg border border-amber-500/40 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
-                  >
-                    Reset 0
-                  </button>
+                <div className="space-y-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-2">
+                  {u.earnedBlastReserved > 0 ? (
+                    <p className="text-[11px] text-amber-100">
+                      Reservado en retiro: {u.earnedBlastReserved.toLocaleString('es-CO')} (no se toca desde aquí).
+                    </p>
+                  ) : null}
+                  {(
+                    [
+                      ['earned', 'Ganados (retirables)', earnedDraft, setEarnedDraft],
+                      ['purchased', 'Comprados (no retirables)', purchasedDraft, setPurchasedDraft],
+                    ] as const
+                  ).map(([bucket, label, draft, setDraft]) => (
+                    <div key={bucket} className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex min-w-[9.5rem] items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                        <Coins size={11} />
+                        {label}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={blastBusy === u.uid}
+                        onClick={() => void onAdjustBlast(u.uid, bucket, -100)}
+                        className="inline-flex h-11 items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 text-xs font-bold text-red-200 disabled:opacity-50"
+                      >
+                        <Minus size={12} /> 100
+                      </button>
+                      <button
+                        type="button"
+                        disabled={blastBusy === u.uid}
+                        onClick={() => void onAdjustBlast(u.uid, bucket, -10)}
+                        className="inline-flex h-11 items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/5 px-2 text-xs font-semibold text-red-200/90 disabled:opacity-50"
+                      >
+                        <Minus size={12} /> 10
+                      </button>
+                      <input
+                        type="number"
+                        min={0}
+                        value={draft[u.uid] ?? String(bucket === 'earned' ? u.earnedBlastBalance : u.purchasedBlastBalance)}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, [u.uid]: e.target.value }))}
+                        className="h-11 w-28 rounded-lg border border-zinc-700 bg-zinc-950 px-2 text-sm text-white"
+                      />
+                      <button
+                        type="button"
+                        disabled={blastBusy === u.uid}
+                        onClick={() => void onSetBucket(u.uid, bucket)}
+                        className="h-11 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50"
+                      >
+                        Fijar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={blastBusy === u.uid}
+                        onClick={() => void onAdjustBlast(u.uid, bucket, 10)}
+                        className="inline-flex h-11 items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2 text-xs font-semibold text-emerald-200/90 disabled:opacity-50"
+                      >
+                        <Plus size={12} /> 10
+                      </button>
+                      <button
+                        type="button"
+                        disabled={blastBusy === u.uid}
+                        onClick={() => void onAdjustBlast(u.uid, bucket, 100)}
+                        className="inline-flex h-11 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 text-xs font-bold text-emerald-200 disabled:opacity-50"
+                      >
+                        <Plus size={12} /> 100
+                      </button>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </li>
           ))}
         </ul>
       )}
+
+      {nextCursor && !qApplied ? (
+        <button
+          type="button"
+          disabled={loadingMore}
+          onClick={() => void load({ append: true, cursor: nextCursor, q: qApplied })}
+          className="min-h-11 w-full rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 disabled:opacity-50"
+        >
+          {loadingMore ? 'Cargando…' : 'Cargar más'}
+        </button>
+      ) : null}
     </div>
   );
 }
