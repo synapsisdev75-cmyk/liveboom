@@ -7,6 +7,7 @@ import {
   SUPER_ADMIN_OWNER_EMAIL,
   allSuperAdminCapabilities,
   isOwnerEmail,
+  listedGrantCaps,
   type SuperAdminCapability,
   type SuperAdminGrants,
 } from '../../lib/superAdmin';
@@ -14,8 +15,7 @@ import { listenSuperAdmins, saveSuperAdminDelegation } from '../../lib/superAdmi
 import { useAuthStore } from '../../store/authStore';
 
 function capsFor(email: string, grants: SuperAdminGrants): SuperAdminCapability[] {
-  if (Object.prototype.hasOwnProperty.call(grants, email)) return grants[email] || [];
-  return allSuperAdminCapabilities();
+  return listedGrantCaps(email, grants) ?? allSuperAdminCapabilities();
 }
 
 function CapabilityGrid({

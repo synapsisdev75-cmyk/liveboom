@@ -226,8 +226,7 @@ service firebase.storage {
 
     match /admin/levels/{slug}/{fileName} {
       allow read: if true;
-      allow write: if signedIn()
-        && request.auth.token.email == 'synapsisdev75@gmail.com'
+      allow write: if hasStorageCapability('levels')
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
@@ -245,24 +244,26 @@ service firebase.storage {
 
     // Catálogo Super Admin — regalos / Blast (AdminCatalogPanel)
     // Owner: sin depender de firestore.get (si falla el bridge Storage→Firestore, bloqueaba todo).
+    function storageAuthEmail() {
+      return signedIn() && request.auth.token.email is string
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
     function isOwnerStorage() {
       return signedIn()
         && (
           request.auth.uid == 'OcfxoCApNAUtso0hZ3VID5kzOVd2'
-          || (
-            request.auth.token.email is string
-            && request.auth.token.email == 'synapsisdev75@gmail.com'
-          )
+          || storageAuthEmail() == 'synapsisdev75@gmail.com'
         );
     }
 
     function isSuperAdminStorage() {
       return isOwnerStorage()
         || (
-          signedIn()
-          && request.auth.token.email is string
+          storageAuthEmail() != ''
           && firestore.exists(/databases/(default)/documents/config/superAdmins)
-          && request.auth.token.email in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
+          && storageAuthEmail() in firestore.get(/databases/(default)/documents/config/superAdmins).data.get('emails', [])
         );
     }
 
@@ -289,8 +290,8 @@ service firebase.storage {
           isSuperAdminStorage()
           && hasValidAdminSessionStorage()
           && (
-            !(request.auth.token.email in storageGrantsMap())
-            || cap in storageGrantsMap().get(request.auth.token.email, [])
+            !(storageAuthEmail() in storageGrantsMap())
+            || cap in storageGrantsMap().get(storageAuthEmail(), [])
           )
         );
     }

@@ -14,9 +14,9 @@ const superAdminMod = require('../middleware/requireSuperAdmin');
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const requireWithdrawalsAdmin = superAdminMod.requireCapability('withdrawals');
-const isSuperAdminEmail =
-  typeof superAdminMod.isSuperAdminEmail === 'function'
-    ? superAdminMod.isSuperAdminEmail
+const emailHasCapability =
+  typeof superAdminMod.emailHasCapability === 'function'
+    ? superAdminMod.emailHasCapability
     : async () => false;
 
 function sendPublic(res, payload) {
@@ -274,13 +274,9 @@ router.post('/admin/withdrawals/:id/status', requireAuth, requireWithdrawalsAdmi
   }
 });
 
-router.post('/withdrawals/:id/confirm', requireAuth, async (req, res) => {
+router.post('/withdrawals/:id/confirm', requireAuth, requireWithdrawalsAdmin, async (req, res) => {
   try {
     const email = req.user?.email;
-    if (!(await isSuperAdminEmail(email))) {
-      res.status(403).json({ error: 'No autorizado' });
-      return;
-    }
     const withdrawal = await wallet.readWithdrawal(req.params.id);
     if (!withdrawal) {
       res.status(404).json({ error: 'Retiro no encontrado' });
@@ -324,7 +320,7 @@ router.post('/withdrawals/:id/reject', requireAuth, async (req, res) => {
     }
     const uid = req.user?.uid;
     const email = req.user?.email;
-    const admin = await isSuperAdminEmail(email);
+    const admin = await emailHasCapability(email, 'withdrawals');
     const result = await wallet.rejectWithdrawal({
       userId: withdrawal.userId,
       amount: withdrawal.earnedBlastAmount || withdrawal.coins,

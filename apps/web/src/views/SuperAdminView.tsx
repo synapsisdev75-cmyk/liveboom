@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
@@ -176,8 +176,10 @@ export function SuperAdminView() {
   const [uploading, setUploading] = useState<'frame' | 'badge' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [previewXp, setPreviewXp] = useState(0);
+  const levelsDirtyRef = useRef(false);
 
   useEffect(() => {
+    if (levelsDirtyRef.current) return;
     if (liveConfig?.tiers?.length) {
       setDraft({
         version: liveConfig.version,
@@ -189,6 +191,7 @@ export function SuperAdminView() {
   const tier = draft.tiers.find((t) => t.tier === selectedTier) ?? draft.tiers[0]!;
 
   const updateTier = useCallback((patch: Partial<RemoteTierConfig>) => {
+    levelsDirtyRef.current = true;
     setDraft((prev) => ({
       ...prev,
       tiers: prev.tiers.map((row) => (row.tier === selectedTier ? { ...row, ...patch } : row)),
@@ -227,6 +230,7 @@ export function SuperAdminView() {
     try {
       const nextVersion = Math.max(1, (liveConfig?.version ?? draft.version) + 1);
       await saveLevelsConfig({ ...draft, version: nextVersion }, profile?.email ?? 'super-admin');
+      levelsDirtyRef.current = false;
       setDraft((prev) => ({ ...prev, version: nextVersion }));
       setMessage('Publicado en Firestore. Todos los usuarios verán los cambios al recargar.');
     } catch (err) {
@@ -237,6 +241,7 @@ export function SuperAdminView() {
   }
 
   function handleResetDefaults() {
+    levelsDirtyRef.current = true;
     setDraft(buildDefaultConfig());
     setMessage('Borrador restaurado a valores por defecto (sin publicar).');
   }

@@ -8,7 +8,9 @@ import {
   hasSuperAdminCapability,
   isOwnerEmail,
   isSuperAdminEmail,
+  listedGrantCaps,
   normalizeCapabilities,
+  normalizeGrantsMap,
   type SuperAdminCapability,
   type SuperAdminGrants,
 } from './superAdmin';
@@ -51,5 +53,23 @@ const all = allSuperAdminCapabilities();
 assert(all.length === 9, 'nine capabilities');
 const asCaps: SuperAdminCapability[] = all;
 assert(asCaps.includes('withdrawals'), 'retiro');
+
+assert(
+  hasSuperAdminCapability('Ana@X.com', 'gifts', { 'ana@x.com': ['gifts', 'blast'] }, ['ana@x.com']),
+  'mixed-case login vs lowercase grants',
+);
+assert(
+  hasSuperAdminCapability('ana@x.com', 'blast', { 'Ana@X.com': ['gifts', 'blast'] }, ['ANA@X.COM']),
+  'mixed-case grant keys',
+);
+assert(
+  !hasSuperAdminCapability('ana@x.com', 'ads', { 'Ana@X.com': ['gifts', 'blast'] }, ['ana@x.com']),
+  'mixed-case still respects subset',
+);
+
+const mapped = normalizeGrantsMap({ 'Ana@X.com': ['gifts', 'nope'] }, ['ana@x.com']);
+assert(mapped['ana@x.com']?.join(',') === 'gifts', 'normalize grants keys');
+assert(listedGrantCaps('ANA@x.com', mapped)?.join(',') === 'gifts', 'listedGrantCaps');
+assert(listedGrantCaps('otro@x.com', mapped) == null, 'missing key is legacy');
 
 console.log('superAdmin capability tests ok');

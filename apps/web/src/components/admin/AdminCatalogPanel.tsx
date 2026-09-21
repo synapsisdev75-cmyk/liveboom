@@ -234,8 +234,11 @@ export function AdminCatalogPanel({
   const [bgBusy, setBgBusy] = useState(false);
   const [adjustMode, setAdjustMode] = useState(false);
   const animGenRef = useRef<Record<string, number>>({});
+  const giftsDirtyRef = useRef(false);
+  const packsDirtyRef = useRef(false);
 
   useEffect(() => {
+    if (giftsDirtyRef.current) return;
     if (storeGifts.length) {
       setGifts(storeGifts.map((g) => ({ ...g, face: g.face ? { ...g.face } : null })));
       if (!storeGifts.some((g) => g.id === selectedGiftId)) {
@@ -245,6 +248,7 @@ export function AdminCatalogPanel({
   }, [storeGifts, giftsVersion]);
 
   useEffect(() => {
+    if (packsDirtyRef.current) return;
     if (storePacks.length) {
       setPacks(storePacks.map((p) => ({ ...p })));
       if (!storePacks.some((p) => p.id === selectedPackId)) {
@@ -299,6 +303,7 @@ export function AdminCatalogPanel({
   }, [selectedGiftId]);
 
   function patchGift(id: string, patch: Partial<EditableGift>) {
+    giftsDirtyRef.current = true;
     setGifts((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
@@ -313,6 +318,7 @@ export function AdminCatalogPanel({
   }
 
   function patchPack(id: string, patch: Partial<EditableCoinPackage>) {
+    packsDirtyRef.current = true;
     setPacks((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
 
@@ -333,6 +339,7 @@ export function AdminCatalogPanel({
     };
     setGifts((prev) => [...prev, next]);
     setSelectedGiftId(id);
+    giftsDirtyRef.current = true;
     setMessage('Regalo agregado en borrador. Publica para guardar.');
   }
 
@@ -349,6 +356,7 @@ export function AdminCatalogPanel({
     };
     setGifts((prev) => [...prev, copy]);
     setSelectedGiftId(nextId);
+    giftsDirtyRef.current = true;
     setMessage('Copia creada en borrador. Publica para guardar.');
   }
 
@@ -365,6 +373,7 @@ export function AdminCatalogPanel({
     setMessage(null);
     try {
       await deleteGiftPermanentlyApi(giftId);
+      giftsDirtyRef.current = true;
       setGifts(next);
       setSelectedGiftId(next[0]?.id || '');
       setDeleteOpen(false);
@@ -399,6 +408,7 @@ export function AdminCatalogPanel({
     try {
       const version = Math.max(1, giftsVersion + 1);
       await saveGiftsCatalog({ version, gifts }, email);
+      giftsDirtyRef.current = false;
       setMessage(`Regalos publicados (v${version}).`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'No se pudo publicar regalos');
@@ -413,6 +423,7 @@ export function AdminCatalogPanel({
     try {
       const version = Math.max(1, packsVersion + 1);
       await saveCoinPackagesConfig({ version, packages: packs }, email);
+      packsDirtyRef.current = false;
       setMessage(`Paquetes Blast publicados (v${version}).`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'No se pudo publicar paquetes');

@@ -12,9 +12,14 @@ service cloud.firestore {
       return value is string && value.size() >= 3 && value.size() <= 24;
     }
 
+    function authEmail() {
+      return signedIn() && request.auth.token.email is string
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
     function isOwner() {
-      return signedIn()
-        && request.auth.token.email == 'synapsisdev75@gmail.com';
+      return authEmail() == 'synapsisdev75@gmail.com';
     }
 
     function superAdminEmails() {
@@ -25,7 +30,7 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return isOwner()
-        || (signedIn() && request.auth.token.email in superAdminEmails());
+        || (authEmail() != '' && authEmail() in superAdminEmails());
     }
 
     /** Sesión de bóveda Super Admin (PIN + código + anti-replay en cliente). */
@@ -33,7 +38,8 @@ service cloud.firestore {
       return signedIn()
         && exists(/databases/$(database)/documents/adminSessions/$(request.auth.uid))
         && get(/databases/$(database)/documents/adminSessions/$(request.auth.uid)).data.expiresAt > request.time
-        && get(/databases/$(database)/documents/adminSessions/$(request.auth.uid)).data.email == request.auth.token.email;
+        && get(/databases/$(database)/documents/adminSessions/$(request.auth.uid)).data.email is string
+        && get(/databases/$(database)/documents/adminSessions/$(request.auth.uid)).data.email.lower() == authEmail();
     }
 
     function isUnlockedSuperAdmin() {
@@ -51,8 +57,8 @@ service cloud.firestore {
       return isUnlockedSuperAdmin()
         && (
           isOwner()
-          || !(request.auth.token.email in superAdminGrantsMap())
-          || cap in superAdminGrantsMap().get(request.auth.token.email, [])
+          || !(authEmail() in superAdminGrantsMap())
+          || cap in superAdminGrantsMap().get(authEmail(), [])
         );
     }
 
@@ -123,7 +129,7 @@ service cloud.firestore {
 
     match /config/superAdmins {
       allow read: if isOwner()
-        || (signedIn() && request.auth.token.email in resource.data.get('emails', []));
+        || (authEmail() != '' && authEmail() in resource.data.get('emails', []));
       allow create, update: if isOwner()
         && hasValidAdminSession()
         && request.resource.data.ownerEmail == 'synapsisdev75@gmail.com'
@@ -137,15 +143,17 @@ service cloud.firestore {
       allow read: if isSelf(userId) || isOwner();
       allow create: if isSelf(userId)
         && isSuperAdmin()
-        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.email is string
+        && request.resource.data.email.lower() == authEmail()
         && request.resource.data.sessionId is string
         && request.resource.data.deviceId is string
         && request.resource.data.expiresAt is timestamp
         && request.resource.data.expiresAt <= request.time + duration.value(2, 'h');
       allow update: if isSelf(userId)
         && isSuperAdmin()
-        && resource.data.email == request.auth.token.email
-        && request.resource.data.email == resource.data.email
+        && resource.data.email.lower() == authEmail()
+        && request.resource.data.email is string
+        && request.resource.data.email.lower() == resource.data.email.lower()
         && request.resource.data.expiresAt is timestamp
         && request.resource.data.expiresAt <= request.time + duration.value(2, 'h');
       allow delete: if isSelf(userId) || isOwner();

@@ -35,12 +35,18 @@ function normalizeCapabilities(raw) {
 
 function parseGrants(raw, emails) {
   const map = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const byEmail = {};
+  for (const [key, value] of Object.entries(map)) {
+    const e = normalizeEmail(key);
+    if (!e || isOwnerEmail(e)) continue;
+    byEmail[e] = normalizeCapabilities(value);
+  }
   const grants = {};
   for (const email of emails) {
     const e = normalizeEmail(email);
     if (!e || isOwnerEmail(e)) continue;
-    if (Object.prototype.hasOwnProperty.call(map, e)) {
-      grants[e] = normalizeCapabilities(map[e]);
+    if (Object.prototype.hasOwnProperty.call(byEmail, e)) {
+      grants[e] = byEmail[e];
     }
   }
   return grants;

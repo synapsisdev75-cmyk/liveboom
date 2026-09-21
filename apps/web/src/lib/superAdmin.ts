@@ -68,6 +68,38 @@ export function normalizeCapabilities(raw: unknown): SuperAdminCapability[] {
 
 export type SuperAdminGrants = Record<string, SuperAdminCapability[]>;
 
+/** Grants indexados por email en minúsculas. `null` = sin clave (acceso legado completo). */
+export function listedGrantCaps(
+  email: string | null | undefined,
+  grants: SuperAdminGrants | undefined,
+): SuperAdminCapability[] | null {
+  if (!grants) return null;
+  const e = normalizeEmail(email);
+  if (!e) return null;
+  if (Object.prototype.hasOwnProperty.call(grants, e)) return grants[e] || [];
+  const hit = Object.keys(grants).find((key) => normalizeEmail(key) === e);
+  return hit ? grants[hit] || [] : null;
+}
+
+export function normalizeGrantsMap(raw: unknown, emails: string[]): SuperAdminGrants {
+  const map = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const byEmail: SuperAdminGrants = {};
+  for (const [key, value] of Object.entries(map)) {
+    const e = normalizeEmail(key);
+    if (!e || isOwnerEmail(e)) continue;
+    byEmail[e] = normalizeCapabilities(value);
+  }
+  const grants: SuperAdminGrants = {};
+  for (const email of emails) {
+    const e = normalizeEmail(email);
+    if (!e || isOwnerEmail(e)) continue;
+    if (Object.prototype.hasOwnProperty.call(byEmail, e)) {
+      grants[e] = byEmail[e] ?? [];
+    }
+  }
+  return grants;
+}
+
 /**
  * El dueño tiene todo.
  * Si el delegado está en la lista y no hay grants propios, conserva acceso completo (delegados anteriores).
@@ -81,7 +113,7 @@ export function hasSuperAdminCapability(
 ): boolean {
   if (isOwnerEmail(email)) return true;
   if (!isSuperAdminEmail(email, allowlist)) return false;
-  const e = normalizeEmail(email);
-  if (!grants || !Object.prototype.hasOwnProperty.call(grants, e)) return true;
-  return (grants[e] || []).includes(capability);
+  const listed = listedGrantCaps(email, grants);
+  if (listed == null) return true;
+  return listed.includes(capability);
 }

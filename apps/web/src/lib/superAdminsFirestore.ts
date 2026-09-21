@@ -6,6 +6,7 @@ import {
   isOwnerEmail,
   normalizeCapabilities,
   normalizeEmail,
+  normalizeGrantsMap,
   type SuperAdminCapability,
   type SuperAdminGrants,
 } from './superAdmin';
@@ -31,15 +32,7 @@ function uniqueEmails(raw: unknown): string[] {
 }
 
 function parseGrants(raw: unknown, emails: string[]): SuperAdminGrants {
-  const map = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const grants: SuperAdminGrants = {};
-  for (const email of emails) {
-    if (isOwnerEmail(email)) continue;
-    if (Object.prototype.hasOwnProperty.call(map, email)) {
-      grants[email] = normalizeCapabilities(map[email]);
-    }
-  }
-  return grants;
+  return normalizeGrantsMap(raw, emails);
 }
 
 function fromSnap(data: Record<string, unknown> | undefined): SuperAdminsDoc {

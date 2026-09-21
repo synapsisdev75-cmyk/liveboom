@@ -44,3 +44,13 @@ test('delegate can receive all or a subset', () => {
 test('unknown email is never super admin', () => {
   assert.equal(hasCapability('intruso@x.com', 'gifts', { emails: ['ana@x.com'] }), false);
 });
+
+test('grant keys and login email are case-insensitive', () => {
+  const doc = {
+    emails: ['Ana@X.com'],
+    grants: { 'Ana@X.com': ['gifts', 'blast'] },
+  };
+  assert.equal(hasCapability('ana@x.com', 'gifts', doc), true);
+  assert.equal(hasCapability('ANA@X.COM', 'blast', doc), true);
+  assert.equal(hasCapability('ana@x.com', 'ads', doc), false);
+});
