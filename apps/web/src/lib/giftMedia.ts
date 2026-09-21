@@ -14,6 +14,10 @@ export type GiftMediaInfo = {
   backgroundRemoved: boolean;
   volume: number;
   processingStatus: GiftProcessingStatus;
+  /** Canal alfa real (yuva / ALPHA_MODE), no solo la extensión. */
+  hasAlpha?: boolean;
+  alphaUsable?: boolean | null;
+  alphaWarning?: string | null;
 };
 
 export function clampGiftVolume(value: unknown, fallback = 1): number {
@@ -35,6 +39,9 @@ export function defaultGiftMedia(): GiftMediaInfo {
     backgroundRemoved: false,
     volume: 1,
     processingStatus: 'idle',
+    hasAlpha: false,
+    alphaUsable: null,
+    alphaWarning: null,
   };
 }
 
@@ -59,6 +66,9 @@ export function normalizeGiftMedia(raw: unknown): GiftMediaInfo {
     backgroundRemoved: Boolean(row.backgroundRemoved),
     volume: clampGiftVolume(row.volume, 1),
     processingStatus: processingStatus === 'uploading' || processingStatus === 'processing' ? 'idle' : processingStatus,
+    hasAlpha: Boolean(row.hasAlpha),
+    alphaUsable: row.alphaUsable == null ? null : Boolean(row.alphaUsable),
+    alphaWarning: row.alphaWarning ? String(row.alphaWarning) : null,
   };
 }
 

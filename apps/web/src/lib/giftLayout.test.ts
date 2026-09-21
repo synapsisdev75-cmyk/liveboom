@@ -101,6 +101,18 @@ function testContainDoesNotStretch() {
   assert(style.transform?.includes('translate(-50%, -50%)'), 'centered transform');
 }
 
+function testAspectAvoidsSquareLetterbox() {
+  const slot = defaultGiftLayoutSlot(0.72);
+  const portrait = giftLayoutMediaStyle(slot, { width: 720, height: 1280 });
+  assert(portrait.height === '72%', 'portrait uses height');
+  assert(portrait.width === 'auto', 'portrait width follows alpha frame');
+  assert(portrait.aspectRatio === '720 / 1280', 'portrait aspect');
+  const landscape = giftLayoutMediaStyle(slot, { width: 1920, height: 1080 });
+  assert(landscape.width === '72%', 'landscape uses width');
+  assert(landscape.height === 'auto', 'landscape height follows alpha frame');
+  assert(landscape.background === 'transparent', 'no opaque box');
+}
+
 function testRoundtrip() {
   const original = patchGiftLayout(undefined, 'tablet', 'portrait916', {
     fit: 'height',
@@ -255,6 +267,7 @@ testCopy();
 testDetect();
 testResolveAndBleed();
 testContainDoesNotStretch();
+testAspectAvoidsSquareLetterbox();
 testRoundtrip();
 testScaleClamp();
 testVariantsIndependent();

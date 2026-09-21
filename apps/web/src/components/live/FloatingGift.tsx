@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { playGiftAlert } from '../../lib/alertSound';
 import { giftMotionFor } from '../../lib/giftAnimations';
@@ -20,6 +20,7 @@ import {
 import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 import { giftPlaybackDurationMs } from '../../lib/giftMedia';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 export function GiftVisual({
   gift,
@@ -36,7 +37,6 @@ export function GiftVisual({
     return (
       <GiftAnimThumb
         src={gift.video}
-        poster={gift.image}
         alt={gift.name}
         size={size}
         className={className}
@@ -68,13 +68,11 @@ export function GiftVisual({
 
 function GiftAnimThumb({
   src,
-  poster,
   alt,
   size,
   className,
 }: {
   src: string;
-  poster?: string;
   alt: string;
   size: number;
   className: string;
@@ -111,7 +109,7 @@ function GiftAnimThumb({
     <video
       ref={ref}
       src={src}
-      poster={poster}
+      poster={TRANSPARENT_VIDEO_POSTER}
       muted
       loop
       playsInline
@@ -139,7 +137,6 @@ export function GiftIcon({
 
 function GiftVideoBurst({
   src,
-  poster,
   senderName,
   combo,
   animScale = 0.72,
@@ -147,10 +144,11 @@ function GiftVideoBurst({
   slot,
   volume = 1,
   durationMs,
+  mediaWidth,
+  mediaHeight,
   onComplete,
 }: {
   src: string;
-  poster?: string;
   senderName?: string;
   combo?: number;
   animScale?: number;
@@ -158,19 +156,39 @@ function GiftVideoBurst({
   slot?: GiftLayoutSlot;
   volume?: number;
   durationMs?: number;
+  mediaWidth?: number;
+  mediaHeight?: number;
   onComplete?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const doneRef = useRef(false);
-  const [ready, setReady] = useState(false);
   const scale = clampGiftAnimScale(animScale);
   const bleed = slot ? isGiftLayoutBleed(slot) : fillViewport;
-  const layoutStyle = slot ? giftLayoutMediaStyle(slot) : undefined;
+  const layoutStyle = slot ? giftLayoutMediaStyle(slot, { width: mediaWidth, height: mediaHeight }) : undefined;
+  const hasAspect = (mediaWidth || 0) > 1 && (mediaHeight || 0) > 1;
+  const portrait = hasAspect && (mediaHeight as number) >= (mediaWidth as number);
+  const aspectRatio = hasAspect ? `${mediaWidth} / ${mediaHeight}` : undefined;
   const mediaStyle = layoutStyle
     ? { ...layoutStyle, background: 'transparent' as const }
     : fillViewport
-      ? { background: 'transparent' as const }
-      : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
+      ? {
+          background: 'transparent' as const,
+          aspectRatio,
+          width: portrait ? 'auto' : 'min(100%, 100vw)',
+          height: portrait || !hasAspect ? 'min(100%, 100dvh)' : 'auto',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          objectFit: 'contain' as const,
+        }
+      : hasAspect
+        ? {
+            width: portrait ? 'auto' : `${scale * 100}%`,
+            height: portrait ? `${scale * 100}%` : 'auto',
+            aspectRatio,
+            background: 'transparent' as const,
+            objectFit: 'contain' as const,
+          }
+        : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
   const useFillClass = fillViewport && !slot;
 
   const finish = () => {
@@ -189,7 +207,6 @@ function GiftVideoBurst({
 
     const startPlayback = () => {
       if (doneRef.current) return;
-      setReady(true);
       video.volume = Math.min(1, Math.max(0, volume));
       video.muted = true;
       const playPromise = video.play();
@@ -258,20 +275,10 @@ function GiftVideoBurst({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      {!ready && poster ? (
-        <img
-          src={poster}
-          alt=""
-          className={`absolute inset-0 m-auto bg-transparent ${
-            useFillClass ? 'lb-gift-burst-video--fill object-contain' : ''
-          } ${bleed && !useFillClass ? 'object-cover' : useFillClass ? '' : 'object-contain'}`}
-          style={mediaStyle}
-          draggable={false}
-        />
-      ) : null}
       <video
         ref={videoRef}
         src={src}
+        poster={TRANSPARENT_VIDEO_POSTER}
         className={`lb-gift-burst-video bg-transparent ${
           useFillClass ? 'lb-gift-burst-video--fill object-contain' : 'lb-gift-layout-media'
         }`}
@@ -280,6 +287,9 @@ function GiftVideoBurst({
         muted
         autoPlay
         preload="auto"
+        disablePictureInPicture
+        disableRemotePlayback
+        controls={false}
         onEnded={finish}
       />
       {senderName ? (
@@ -306,6 +316,8 @@ function GiftStillBurst({
   slot,
   globalArea,
   durationMs,
+  mediaWidth,
+  mediaHeight,
   onComplete,
 }: {
   src?: string;
@@ -315,6 +327,8 @@ function GiftStillBurst({
   slot: GiftLayoutSlot;
   globalArea: boolean;
   durationMs: number;
+  mediaWidth?: number;
+  mediaHeight?: number;
   onComplete?: () => void;
 }) {
   const doneRef = useRef(false);
@@ -337,7 +351,7 @@ function GiftStillBurst({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      <GiftLayoutMedia src={src} poster={src} emoji={emoji} slot={slot} />
+      <GiftLayoutMedia src={src} emoji={emoji} slot={slot} mediaWidth={mediaWidth} mediaHeight={mediaHeight} />
       {senderName ? (
         <span className="absolute bottom-[12%] z-[61] text-[11px] font-semibold text-cyan-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
           {senderName}
@@ -424,13 +438,14 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
         <AnimatePresence>
           <GiftVideoBurst
             src={gift.video}
-            poster={gift.image}
             senderName={senderName}
             combo={combo}
             animScale={clampGiftAnimScale(gift.animScale, level)}
             fillViewport
             volume={gift.media?.volume ?? 1}
             durationMs={giftPlaybackDurationMs(gift.media)}
+            mediaWidth={gift.media?.width}
+            mediaHeight={gift.media?.height}
             onComplete={onComplete}
           />
         </AnimatePresence>
@@ -442,7 +457,6 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       <AnimatePresence>
         <GiftVideoBurst
           src={gift.video}
-          poster={gift.image}
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}
@@ -450,6 +464,8 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           slot={slot}
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
+          mediaWidth={gift.media?.width}
+          mediaHeight={gift.media?.height}
           onComplete={onComplete}
         />
       </AnimatePresence>
@@ -463,6 +479,8 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           slot={slot}
           globalArea={globalArea}
           durationMs={Math.max(1200, fx.duration * 1000)}
+          mediaWidth={gift.media?.width}
+          mediaHeight={gift.media?.height}
           onComplete={onComplete}
         />
       </AnimatePresence>
@@ -478,13 +496,14 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       <AnimatePresence>
         <GiftVideoBurst
           src={gift.video}
-          poster={gift.image}
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}
           fillViewport
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
+          mediaWidth={gift.media?.width}
+          mediaHeight={gift.media?.height}
           onComplete={onComplete}
         />
       </AnimatePresence>

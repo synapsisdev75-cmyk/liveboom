@@ -35,6 +35,32 @@ test('inspectMedia reports audio and duration', () => {
   assert.ok(Math.abs(info.durationSec - 8.2) < 0.01);
 });
 
+test('inspectMedia detects WebM alpha from ALPHA_MODE even if pix_fmt is yuv420p', () => {
+  const info = inspectMedia({
+    format: { duration: '3.1', format_name: 'matroska,webm' },
+    streams: [
+      {
+        codec_type: 'video',
+        codec_name: 'vp9',
+        width: 512,
+        height: 512,
+        duration: '3.1',
+        avg_frame_rate: '30/1',
+        pix_fmt: 'yuv420p',
+        tags: { ALPHA_MODE: '1' },
+      },
+    ],
+  });
+  assert.equal(info.hasAlphaChannel, true);
+});
+
+test('black and white keys stay conservative so sparkles survive', () => {
+  const black = buildKeyFilter({ hex: '0x000000', kind: 'black', similarity: 0.16, blend: 0.08 });
+  assert.match(black, /colorkey=0x000000:0\.100:0\.120/);
+  const white = buildKeyFilter({ hex: '0xf4f4f5', kind: 'white', similarity: 0.16, blend: 0.08 });
+  assert.match(white, /colorkey=0xf4f4f5:0\.100:0\.120/);
+});
+
 test('delete helpers keep shared and public assets', () => {
   const gift = {
     id: 'nuevo',

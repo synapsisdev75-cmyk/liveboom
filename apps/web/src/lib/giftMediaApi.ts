@@ -15,6 +15,8 @@ export type GiftBgJob = {
   error?: string | null;
   url?: string | null;
   hasAlpha?: boolean;
+  alphaUsable?: boolean | null;
+  preservedOriginal?: boolean;
   hasAudio?: boolean;
   durationSec?: number;
   width?: number;
@@ -120,6 +122,7 @@ export async function uploadGiftSource(
     storagePath,
     media: {
       ...inspected,
+      hasAlpha: Boolean(inspected.hasAlpha),
       originalAsset: url,
       processedAsset: null,
       backgroundRemoved: false,

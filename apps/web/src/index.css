@@ -1217,27 +1217,38 @@ video.lk-participant-media-video {
 
 .lb-gift-burst-video {
   background: transparent !important;
+  background-color: transparent !important;
   border: 0;
   outline: 0;
   box-shadow: none;
+  mix-blend-mode: normal;
+}
+
+.lb-gift-burst-video::-webkit-media-controls,
+.lb-gift-layout-media::-webkit-media-controls {
+  display: none !important;
 }
 
 .lb-gift-burst-video--fill {
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  max-width: 100vw;
-  max-height: 100dvh;
+  width: auto;
+  height: auto;
+  max-width: min(100%, 100vw);
+  max-height: min(100%, 100dvh);
   object-fit: contain;
   object-position: center;
+  background: transparent !important;
+  mix-blend-mode: normal;
 }
 
 .lb-gift-layout-stage {
-  overflow: hidden;
+  overflow: visible;
   width: 100%;
   height: 100%;
   min-height: 0;
   background: transparent;
+  outline: none;
+  box-shadow: none;
+  border: 0;
 }
 
 .lb-gift-layout-stage--bleed {
@@ -1247,9 +1258,21 @@ video.lk-participant-media-video {
   overflow: hidden;
 }
 
-.lb-gift-layout-stage.is-interactive {
+.lb-gift-layout-stage.is-interactive:not(.is-final) {
   touch-action: none;
   cursor: grab;
+  outline: 1px dashed rgba(255, 255, 255, 0.22);
+}
+
+.lb-gift-layout-stage.is-interactive:not(.is-final):active {
+  cursor: grabbing;
+}
+
+.lb-gift-layout-stage.is-final,
+.lb-gift-layout-stage.is-playback {
+  outline: none;
+  cursor: default;
+  pointer-events: none;
 }
 
 .lb-gift-layout-stage.is-cropping {
@@ -1268,6 +1291,7 @@ video.lk-participant-media-video {
 .lb-gift-layout-media,
 .lb-gift-layout-emoji {
   background: transparent !important;
+  background-color: transparent !important;
   border: 0;
   outline: 0;
   box-shadow: none;

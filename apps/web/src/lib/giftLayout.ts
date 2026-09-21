@@ -684,7 +684,10 @@ export function giftLayoutObjectFit(slot: GiftLayoutSlot): 'contain' | 'cover' {
   return 'contain';
 }
 
-export function giftLayoutMediaStyle(slot: GiftLayoutSlot): CSSProperties {
+export function giftLayoutMediaStyle(
+  slot: GiftLayoutSlot,
+  mediaSize?: { width?: number; height?: number } | null,
+): CSSProperties {
   const bleed = isGiftLayoutBleed(slot);
   const objectFit = giftLayoutObjectFit(slot);
   const objectPosition = `${slot.cropX}% ${slot.cropY}%`;
@@ -693,6 +696,11 @@ export function giftLayoutMediaStyle(slot: GiftLayoutSlot): CSSProperties {
   const originX = `${slot.x}%`;
   const originY = `${slot.y}%`;
   const translate = `translate(-${anchorX * 100}%, -${anchorY * 100}%)`;
+  const mw = Number(mediaSize?.width) || 0;
+  const mh = Number(mediaSize?.height) || 0;
+  const hasAspect = mw > 1 && mh > 1;
+  const aspectRatio = hasAspect ? `${mw} / ${mh}` : undefined;
+  const portrait = hasAspect && mh >= mw;
 
   if (bleed) {
     return {
@@ -720,6 +728,7 @@ export function giftLayoutMediaStyle(slot: GiftLayoutSlot): CSSProperties {
       top: `${slot.y}%`,
       width: `${slot.scale * 100}%`,
       height: 'auto',
+      aspectRatio,
       maxWidth: 'none',
       maxHeight: 'none',
       transform: translate,
@@ -736,6 +745,7 @@ export function giftLayoutMediaStyle(slot: GiftLayoutSlot): CSSProperties {
       top: `${slot.y}%`,
       width: 'auto',
       height: `${slot.scale * 100}%`,
+      aspectRatio,
       maxWidth: 'none',
       maxHeight: 'none',
       transform: translate,
@@ -747,6 +757,23 @@ export function giftLayoutMediaStyle(slot: GiftLayoutSlot): CSSProperties {
 
   const widthPct = slot.fit === 'free' && slot.widthRatio ? slot.widthRatio * 100 : slot.scale * 100;
   const heightPct = slot.scale * 100;
+
+  if (hasAspect) {
+    return {
+      position: 'absolute',
+      left: `${slot.x}%`,
+      top: `${slot.y}%`,
+      width: portrait ? 'auto' : `${widthPct}%`,
+      height: portrait ? `${heightPct}%` : 'auto',
+      aspectRatio,
+      maxWidth: 'none',
+      maxHeight: 'none',
+      transform: translate,
+      objectFit: 'contain',
+      objectPosition,
+      background: 'transparent',
+    };
+  }
 
   return {
     position: 'absolute',
@@ -762,3 +789,4 @@ export function giftLayoutMediaStyle(slot: GiftLayoutSlot): CSSProperties {
     background: 'transparent',
   };
 }
+

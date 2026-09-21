@@ -182,6 +182,7 @@ export function GiftCatalogPreview({
   const [safeGuides, setSafeGuides] = useState(false);
   const [playToken, setPlayToken] = useState(0);
   const [previewMuted, setPreviewMuted] = useState(true);
+  const [finalPreview, setFinalPreview] = useState(false);
   const layout = useMemo(
     () => normalizeGiftLayout(gift.giftLayout, gift.animScale),
     [gift.giftLayout, gift.animScale],
@@ -280,11 +281,21 @@ export function GiftCatalogPreview({
       </div>
 
       <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-        <p className="text-[11px] font-semibold text-white">{editingLine}</p>
-        <p className="text-[10px] text-zinc-400">{sourceLabel}</p>
+        <p className="text-[11px] font-semibold text-white">
+          {finalPreview ? 'Resultado final (sin guías ni cuadrícula)' : editingLine}
+        </p>
+        <p className="text-[10px] text-zinc-400">
+          {finalPreview ? 'Así se verá publicado sobre LiveBoom.' : sourceLabel}
+        </p>
         {!enabledHere ? (
           <p className="mt-1 text-[10px] font-semibold text-amber-200">
             Esta ubicación todavía no está habilitada para publicación.
+          </p>
+        ) : null}
+        {/\.webm(\?|$)/i.test(mediaSrc || '') ? (
+          <p className="mt-1 text-[10px] text-amber-200/80">
+            Chrome, Android y escritorio reproducen el alfa WebM VP9. Safari/iOS no está comprobado: si
+            falla, se conserva la versión aprobada.
           </p>
         ) : null}
       </div>
@@ -518,8 +529,20 @@ export function GiftCatalogPreview({
         >
           Restablecer
         </Chip>
-        <Chip active={safeGuides} onClick={() => setSafeGuides((v) => !v)}>
+        <Chip active={safeGuides && !finalPreview} onClick={() => setSafeGuides((v) => !v)}>
           Área segura
+        </Chip>
+        <Chip active={finalPreview} onClick={() => {
+          setFinalPreview((v) => {
+            const next = !v;
+            if (next) {
+              setCropMode(false);
+              setSafeGuides(false);
+            }
+            return next;
+          });
+        }}>
+          Ver resultado final
         </Chip>
         <Chip active={false} onClick={() => setPlayToken((n) => n + 1)}>
           Reiniciar animación
@@ -589,7 +612,12 @@ export function GiftCatalogPreview({
           }`}
           style={{ width: displayW, height: displayH }}
         >
-          <div className="absolute inset-0" style={BACKDROP_META[backdrop].style} />
+          <div
+            className="absolute inset-0"
+            style={
+              finalPreview && backdrop === 'checker' ? BACKDROP_META.dark.style : BACKDROP_META[backdrop].style
+            }
+          />
 
           <GiftContextStage
             placement={previewPlacement}
@@ -610,15 +638,17 @@ export function GiftCatalogPreview({
                   ) : null}
                   <GiftLayoutMedia
                     src={mediaSrc}
-                    poster={gift.image}
                     isVideo={isVideo}
                     emoji={gift.emoji}
                     slot={slot}
                     interactive
                     cropMode={cropMode}
+                    finalPreview={finalPreview}
                     playToken={playToken}
                     muted={previewMuted}
                     volume={gift.media?.volume ?? 1}
+                    mediaWidth={gift.media?.width}
+                    mediaHeight={gift.media?.height}
                     className="absolute inset-0 z-10"
                     onSlotChange={patchSlot}
                   />
@@ -630,21 +660,23 @@ export function GiftCatalogPreview({
           {globalArea ? (
             <GiftLayoutMedia
               src={mediaSrc}
-              poster={gift.image}
               isVideo={isVideo}
               emoji={gift.emoji}
               slot={slot}
               interactive
               cropMode={cropMode}
+              finalPreview={finalPreview}
               playToken={playToken}
               muted={previewMuted}
               volume={gift.media?.volume ?? 1}
+              mediaWidth={gift.media?.width}
+              mediaHeight={gift.media?.height}
               className="absolute inset-0 z-20"
               onSlotChange={patchSlot}
             />
           ) : null}
 
-          {safeGuides ? (
+          {safeGuides && !finalPreview ? (
             <div className="pointer-events-none absolute inset-0 z-30">
               <div className="absolute inset-x-[6%] top-[8%] h-[9%] rounded-md border border-dashed border-amber-300/50" />
               <div className="absolute bottom-[14%] left-[4%] h-[28%] w-[38%] rounded-md border border-dashed border-sky-300/45" />

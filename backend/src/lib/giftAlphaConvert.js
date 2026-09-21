@@ -1402,6 +1402,7 @@ module.exports = {
   parseFfmpegProgress,
   parseSignalStats,
   classifyAlphaSamples,
+  sampleAlpha,
   publicJob,
   enqueueGiftAlphaJob,
   processGiftAlphaJob,

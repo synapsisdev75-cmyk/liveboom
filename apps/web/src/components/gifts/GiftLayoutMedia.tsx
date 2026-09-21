@@ -6,6 +6,7 @@ import {
   isGiftLayoutBleed,
   type GiftLayoutSlot,
 } from '../../lib/giftLayout';
+import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 
 type Props = {
   src?: string;
@@ -20,13 +21,16 @@ type Props = {
   muted?: boolean;
   volume?: number;
   className?: string;
+  mediaWidth?: number;
+  mediaHeight?: number;
+  /** Solo en el editor: muestra el marco de arrastre. En producción no se pasa. */
+  finalPreview?: boolean;
   onEnded?: () => void;
   onSlotChange?: (patch: Partial<GiftLayoutSlot>) => void;
 };
 
 export function GiftLayoutMedia({
   src,
-  poster,
   isVideo,
   emoji = '🎁',
   slot,
@@ -37,6 +41,9 @@ export function GiftLayoutMedia({
   muted = true,
   volume = 1,
   className = '',
+  mediaWidth,
+  mediaHeight,
+  finalPreview = false,
   onEnded,
   onSlotChange,
 }: Props) {
@@ -45,13 +52,15 @@ export function GiftLayoutMedia({
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
   const bleed = isGiftLayoutBleed(slot);
+  const editing = interactive && !finalPreview;
   const style = {
-    ...giftLayoutMediaStyle(slot),
-    willChange: interactive ? 'transform' : undefined,
+    ...giftLayoutMediaStyle(slot, { width: mediaWidth, height: mediaHeight }),
+    willChange: editing ? 'transform' : undefined,
+    background: 'transparent' as const,
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!interactive || !onSlotChange) return;
+    if (!editing || !onSlotChange) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -118,7 +127,7 @@ export function GiftLayoutMedia({
   };
 
   const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
-    if (!interactive || !onSlotChange || !event.ctrlKey) return;
+    if (!editing || !onSlotChange || !event.ctrlKey) return;
     event.preventDefault();
     const next = clampGiftLayoutScale(slot.scale - event.deltaY * 0.001, slot.scale);
     onSlotChange({ scale: next });
@@ -130,8 +139,8 @@ export function GiftLayoutMedia({
     <div
       ref={stageRef}
       className={`lb-gift-layout-stage ${bleed ? 'lb-gift-layout-stage--bleed' : ''} ${
-        interactive ? 'is-interactive' : ''
-      } ${cropMode ? 'is-cropping' : ''} ${className}`}
+        editing ? 'is-interactive' : 'is-playback'
+      } ${finalPreview ? 'is-final' : ''} ${cropMode && editing ? 'is-cropping' : ''} ${className}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
@@ -142,11 +151,14 @@ export function GiftLayoutMedia({
         <video
           key={`${src}-${playToken}`}
           src={src}
-          poster={poster}
+          poster={TRANSPARENT_VIDEO_POSTER}
           autoPlay
           loop={loop}
           muted={muted}
           playsInline
+          disablePictureInPicture
+          disableRemotePlayback
+          controls={false}
           className={mediaClass}
           style={style}
           draggable={false}
@@ -164,7 +176,7 @@ export function GiftLayoutMedia({
           {emoji}
         </span>
       )}
-      {cropMode ? <div className="lb-gift-layout-crop-frame" aria-hidden /> : null}
+      {cropMode && editing ? <div className="lb-gift-layout-crop-frame" aria-hidden /> : null}
     </div>
   );
 }

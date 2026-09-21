@@ -11,7 +11,7 @@ const path = require('path');
 const { FieldValue } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
 const { getAdminDb, firestoreConfigured } = require('./firestoreAdmin');
-const { LIMITS, safeGiftId, pixFmtHasAlpha, parseFfmpegProgress } = require('./giftAlphaConvert');
+const { LIMITS, safeGiftId, pixFmtHasAlpha, probeReportsAlpha, parseFfmpegProgress, sampleAlpha } = require('./giftAlphaConvert');
 
 const STORAGE_BUCKET =
   process.env.FIREBASE_STORAGE_BUCKET || 'liveboom-app.firebasestorage.app';
@@ -137,7 +137,7 @@ function inspectMedia(probe) {
     durationSec: Number.isFinite(durationSec) ? durationSec : 0,
     fps: Number.isFinite(fps) ? fps : 0,
     pixFmt: String(video?.pix_fmt || ''),
-    hasAlphaChannel: pixFmtHasAlpha(video?.pix_fmt),
+    hasAlphaChannel: pixFmtHasAlpha(video?.pix_fmt) || probeReportsAlpha(probe),
     hasAudio: Boolean(audio),
     audioCodec: String(audio?.codec_name || ''),
     audioDuration: Number(audio?.duration || format.duration || 0),
@@ -237,7 +237,8 @@ async function sampleCorner(ffmpegPath, src, ss, crop) {
 async function detectBackground(ffmpegPath, src, inspect) {
   const w = inspect.width;
   const h = inspect.height;
-  const ss = Math.min(0.35, Math.max(0.04, inspect.durationSec * 0.12));
+  const duration = Math.max(0.12, Number(inspect.durationSec) || 0.12);
+  const times = [0.08, 0.42, 0.78].map((t) => Math.min(Math.max(0.02, duration * t), Math.max(0.02, duration - 0.04)));
   const cw = Math.max(4, Math.min(16, Math.floor(w * 0.04)));
   const ch = Math.max(4, Math.min(16, Math.floor(h * 0.04)));
   const insetX = Math.max(2, Math.floor(w * 0.02));
@@ -249,12 +250,19 @@ async function detectBackground(ffmpegPath, src, inspect) {
     { x: w - insetX - cw, y: h - insetY - ch, w: cw, h: ch },
   ];
   const samples = [];
-  for (const crop of spots) {
-    const rgb = await sampleCorner(ffmpegPath, src, ss, crop);
-    if (rgb) samples.push(rgb);
+  for (const ss of times) {
+    for (const crop of spots) {
+      const rgb = await sampleCorner(ffmpegPath, src, ss, crop);
+      if (rgb) samples.push(rgb);
+    }
   }
   if (!samples.length) {
-    return { color: { r: 0, g: 255, b: 0 }, kind: 'green', uniform: false, warning: 'No se pudo muestrear el fondo; se usa croma verde.' };
+    return {
+      color: { r: 0, g: 255, b: 0 },
+      kind: 'green',
+      uniform: false,
+      warning: 'No se pudo muestrear el fondo; usa Ajustar o conserva el original.',
+    };
   }
   const avg = samples.reduce(
     (acc, s) => ({ r: acc.r + s.r, g: acc.g + s.g, b: acc.b + s.b }),
@@ -272,12 +280,12 @@ async function detectBackground(ffmpegPath, src, inspect) {
     }
   }
   const uniform = maxD < 48;
-  return {
-    color,
-    kind: classifyBg(color),
-    uniform,
-    warning: uniform ? null : 'Fondo complejo: revisa el recorte. Puedes usar Ajustar.',
-  };
+  const kind = classifyBg(color);
+  let warning = uniform ? null : 'Fondo complejo: no se recortó en automático. Usa Ajustar.';
+  if (uniform && (kind === 'black' || kind === 'white')) {
+    warning = 'Fondo plano detectado. Revisa destellos y sombras; usa Ajustar si se recortó de más.';
+  }
+  return { color, kind, uniform, warning };
 }
 
 function buildKeyFilter({ hex, kind, similarity, blend }) {
@@ -286,7 +294,10 @@ function buildKeyFilter({ hex, kind, similarity, blend }) {
   if (kind === 'green' || kind === 'red') {
     return `chromakey=${hex}:${sim.toFixed(3)}:${bl.toFixed(3)},format=yuva420p`;
   }
-  return `colorkey=${hex}:${sim.toFixed(3)}:${bl.toFixed(3)},format=yuva420p`;
+  const conservative = kind === 'black' || kind === 'white';
+  const sim2 = conservative ? Math.min(sim, 0.1) : sim;
+  const bl2 = conservative ? Math.max(bl, 0.12) : bl;
+  return `colorkey=${hex}:${sim2.toFixed(3)}:${bl2.toFixed(3)},format=yuva420p`;
 }
 
 function evenDim(value, maxEdge) {
@@ -318,6 +329,8 @@ function publicJob(doc) {
     error: doc.error || null,
     url: doc.url || null,
     hasAlpha: Boolean(doc.hasAlpha),
+    alphaUsable: doc.alphaUsable == null ? null : Boolean(doc.alphaUsable),
+    preservedOriginal: Boolean(doc.preservedOriginal),
     hasAudio: Boolean(doc.hasAudio),
     durationSec: doc.durationSec || 0,
     width: doc.width || 0,
@@ -412,6 +425,23 @@ async function inspectStorageMedia(storagePath) {
     await file.download({ destination: tmpIn });
     const inspect = inspectMedia(await probeFile(tmpIn));
     if (inspect.error) throw Object.assign(new Error(inspect.error), { code: 'UNSUPPORTED' });
+    let alphaUsable = inspect.hasAlphaChannel ? true : null;
+    let alphaWarning = null;
+    if (inspect.hasAlphaChannel) {
+      const sampled = await sampleAlpha(ffmpegPath, tmpIn);
+      if (sampled.opaque) {
+        alphaUsable = false;
+        alphaWarning =
+          'El archivo declara canal alfa, pero los fotogramas muestreados están opacos. Revisa el video; no se recortó el fondo.';
+      } else if (sampled.fullyTransparent) {
+        alphaUsable = true;
+        alphaWarning =
+          'El muestreo inicial salió vacío. Eso no significa que la animación esté vacía: la forma puede aparecer más tarde. Se conservó la transparencia.';
+      } else if (sampled.usable === false) {
+        alphaUsable = false;
+        alphaWarning = 'No se pudo validar el canal alfa. Se conservó el original.';
+      }
+    }
     return {
       hasAudio: inspect.hasAudio,
       duration: inspect.durationSec,
@@ -420,6 +450,8 @@ async function inspectStorageMedia(storagePath) {
       fps: Math.round(inspect.fps * 100) / 100,
       codec: inspect.codec,
       hasAlpha: inspect.hasAlphaChannel,
+      alphaUsable,
+      alphaWarning,
       storagePath: sourcePath,
     };
   } finally {
@@ -524,6 +556,7 @@ async function convertKeyed({ ffmpegPath, tmpIn, tmpOut, inspect, vf, keepAudio,
     '-vf',
     vf,
   );
+  args.push('-metadata:s:v:0', 'alpha_mode=1');
   if (keepAudio && inspect.hasAudio) {
     args.push('-c:a', 'libopus', '-b:a', '96k', '-ac', '2');
   }
@@ -576,15 +609,62 @@ async function processGiftBgJob(jobId) {
     const inspect = inspectMedia(await probeFile(tmpIn));
     if (inspect.error) throw Object.assign(new Error(inspect.error), { code: 'UNSUPPORTED' });
 
+    const srcPath = String(job.sourcePath || '').toLowerCase();
+    const alreadyWebmAlpha =
+      inspect.hasAlphaChannel && (srcPath.endsWith('.webm') || /^(vp8|vp9|libvpx)/.test(inspect.codec));
+
+    if (alreadyWebmAlpha) {
+      const [meta] = await sourceFile.getMetadata();
+      let token = String(meta.metadata?.firebaseStorageDownloadTokens || '').split(',')[0];
+      if (!token) {
+        token = randomUUID();
+        await sourceFile.setMetadata({
+          metadata: { ...(meta.metadata || {}), firebaseStorageDownloadTokens: token },
+        });
+      }
+      const url = downloadUrlFor(STORAGE_BUCKET, job.sourcePath, token);
+      const sampled = await sampleAlpha(ffmpegPath, tmpIn);
+      await writeJob(id, {
+        status: 'done',
+        stage: STAGE.done,
+        progressPercent: 100,
+        indeterminate: false,
+        url,
+        resultPath: job.sourcePath,
+        preservedOriginal: true,
+        hasAlpha: true,
+        alphaUsable: sampled.usable !== false && !sampled.opaque,
+        hasAudio: inspect.hasAudio,
+        durationSec: inspect.durationSec,
+        width: inspect.width,
+        height: inspect.height,
+        fps: inspect.fps,
+        codec: inspect.codec,
+        warning: sampled.opaque
+          ? 'El archivo declara transparencia, pero los fotogramas muestreados están opacos. Se conservó el original; usa Ajustar solo si el fondo va pegado.'
+          : sampled.fullyTransparent
+            ? 'Hay canal alfa; el muestreo inicial salió vacío (la forma puede aparecer más tarde). Se conservó el original sin recortar.'
+            : 'El original ya tenía transparencia real. Se conservó sin recortar ni reconvertir.',
+        error: null,
+      });
+      return publicJob(await readJob(id));
+    }
+
     const scale = scaleFilter(inspect.width, inspect.height);
     let vf;
     let warning = null;
     if (inspect.hasAlphaChannel) {
       vf = [scale, 'format=yuva420p'].filter(Boolean).join(',');
-      warning = 'El original ya tenía transparencia; se conservó el canal alpha y el audio.';
+      warning = 'El original ya tenía transparencia; se pasó a WebM VP9 con alfa y se conservó el audio.';
     } else {
       const detected = await detectBackground(ffmpegPath, tmpIn, inspect);
       const mode = job.mode === 'adjust' ? 'adjust' : 'auto';
+      if (mode === 'auto' && !detected.uniform) {
+        throw Object.assign(
+          new Error('Fondo complejo: no se recortó en automático. Usa Ajustar. El original sigue disponible.'),
+          { code: 'NEEDS_ADJUST' },
+        );
+      }
       let similarity = Number(job.similarity);
       let blend = Number(job.blend);
       if (!Number.isFinite(similarity) || similarity <= 0) {
@@ -635,7 +715,7 @@ async function processGiftBgJob(jobId) {
     const outProbe = await probeFile(tmpOut);
     const out = inspectMedia(outProbe);
     if (!out || !out.codec) throw Object.assign(new Error('El WebM no contiene video.'), { code: 'VERIFY' });
-    if (!pixFmtHasAlpha(out.pixFmt)) {
+    if (!pixFmtHasAlpha(out.pixFmt) && !probeReportsAlpha(outProbe)) {
       throw Object.assign(new Error('La conversión no generó canal alpha. El original sigue disponible.'), {
         code: 'VERIFY',
       });
@@ -672,7 +752,9 @@ async function processGiftBgJob(jobId) {
       indeterminate: false,
       url,
       resultPath: job.destPath,
+      preservedOriginal: false,
       hasAlpha: true,
+      alphaUsable: true,
       hasAudio: out.hasAudio,
       durationSec: out.durationSec || inspect.durationSec,
       width: out.width,

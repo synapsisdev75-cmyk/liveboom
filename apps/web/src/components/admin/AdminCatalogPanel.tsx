@@ -621,6 +621,11 @@ export function AdminCatalogPanel() {
       setMessage('Sube un video para quitar el fondo.');
       return;
     }
+    const preserveAlpha = Boolean(gift.media?.hasAlpha) && gift.media?.alphaUsable !== false;
+    if (preserveAlpha && mode === 'auto') {
+      setMessage('Esta animación ya tiene transparencia real. No se volvió a recortar ni se sustituye el original.');
+      return;
+    }
     const storagePath =
       giftStoragePathFromUrl(gift.media?.originalAsset || gift.video) ||
       giftStoragePathFromUrl(gift.video);
@@ -665,21 +670,31 @@ export function AdminCatalogPanel() {
       if (job.hasAudio === false && gift.media?.hasAudio) {
         throw new Error('El WebM procesado quedó mudo. El original sigue disponible.');
       }
+      const preserved = Boolean(job.preservedOriginal);
       const nextMedia: GiftMediaInfo = {
         ...(gift.media || defaultGiftMedia()),
         originalAsset: gift.media?.originalAsset || gift.video,
-        processedAsset: job.url,
-        backgroundRemoved: true,
+        processedAsset: preserved ? gift.media?.processedAsset || null : job.url,
+        backgroundRemoved: preserved ? Boolean(gift.media?.backgroundRemoved) : true,
         hasAudio: Boolean(job.hasAudio || gift.media?.hasAudio),
         duration: job.durationSec || gift.media?.duration || 0,
         width: job.width || gift.media?.width || 0,
         height: job.height || gift.media?.height || 0,
         fps: job.fps || gift.media?.fps || 0,
-        codec: job.codec || 'vp9',
+        codec: job.codec || gift.media?.codec || 'vp9',
+        hasAlpha: job.hasAlpha !== false,
+        alphaUsable: job.alphaUsable == null ? true : Boolean(job.alphaUsable),
+        alphaWarning: job.warning || null,
         processingStatus: 'ready',
       };
-      patchGift(gift.id, { video: job.url, media: nextMedia });
-      setMessage(job.warning ? `${job.warning} Publica para aplicar.` : 'Fondo quitado. Publica para aplicar.');
+      patchGift(gift.id, { video: preserved ? gift.video : job.url, media: nextMedia });
+      setMessage(
+        job.warning
+          ? `${job.warning} Publica para aplicar.`
+          : preserved
+            ? 'Transparencia conservada. Publica para aplicar.'
+            : 'Fondo quitado. Publica para aplicar.',
+      );
     } catch (err) {
       patchGift(gift.id, {
         media: {
@@ -983,10 +998,28 @@ export function AdminCatalogPanel() {
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Quitar fondo
                   </p>
+                  {gift.media?.hasAlpha && gift.media?.alphaUsable !== false ? (
+                    <p className="text-[11px] text-emerald-200/90">
+                      Esta animación ya tiene transparencia real. No se volverá a recortar el fondo ni se
+                      sustituye el original.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-zinc-400">
+                      Úsalo solo si el fondo va pegado a los píxeles. Si el recorte sale mal, restaura el
+                      original y usa Ajustar.
+                    </p>
+                  )}
+                  {gift.media?.alphaWarning ? (
+                    <p className="text-[11px] text-amber-200/90">{gift.media.alphaWarning}</p>
+                  ) : null}
                   <div className="flex flex-wrap gap-1">
                     <button
                       type="button"
-                      disabled={bgBusy || !gift.video}
+                      disabled={
+                        bgBusy ||
+                        !gift.video ||
+                        Boolean(gift.media?.hasAlpha && gift.media?.alphaUsable !== false)
+                      }
                       onClick={() => void removeBackground('auto')}
                       className="min-h-11 rounded-lg bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/30 disabled:opacity-40"
                     >
@@ -994,7 +1027,11 @@ export function AdminCatalogPanel() {
                     </button>
                     <button
                       type="button"
-                      disabled={bgBusy || !gift.video}
+                      disabled={
+                        bgBusy ||
+                        !gift.video ||
+                        Boolean(gift.media?.hasAlpha && gift.media?.alphaUsable === true)
+                      }
                       onClick={() => setAdjustMode((v) => !v)}
                       className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
                         adjustMode ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-800 text-zinc-300'
