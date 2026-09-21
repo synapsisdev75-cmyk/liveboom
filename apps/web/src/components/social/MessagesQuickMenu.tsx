@@ -470,13 +470,13 @@ function MinimizedChatsDock({
 }) {
   if (items.length === 0) return null;
   return createPortal(
-    <div className="lb-msg-min-dock pointer-events-none fixed z-[79] flex flex-col-reverse items-end gap-2">
+    <div className="lb-msg-min-dock pointer-events-none fixed z-[79] flex flex-row flex-wrap items-end justify-end gap-2">
       {items.map((peer) => (
-        <div key={peer.uid} className="pointer-events-auto flex items-center gap-1">
+        <div key={peer.uid} className="pointer-events-auto flex max-w-[min(100%,14rem)] items-center gap-1">
           <button
             type="button"
             onClick={() => onExpand(peer.uid)}
-            className="lb-msg-min-chip flex max-w-[12rem] items-center gap-2 rounded-full border border-white/15 bg-zinc-950/95 py-1.5 pl-1.5 pr-3 shadow-lg backdrop-blur-md transition hover:border-cyan-400/40"
+            className="lb-msg-min-chip flex min-h-11 max-w-[12rem] items-center gap-2 rounded-full border border-white/15 bg-zinc-950/95 py-1.5 pl-1.5 pr-3 shadow-lg backdrop-blur-md transition hover:border-cyan-400/40"
             title={`Abrir chat con ${peer.displayName || peer.username}`}
           >
             <UserAvatar
@@ -493,7 +493,7 @@ function MinimizedChatsDock({
           <button
             type="button"
             onClick={() => onClose(peer.uid)}
-            className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
             aria-label={`Cerrar chat de ${peer.displayName || peer.username}`}
           >
             <X size={14} />

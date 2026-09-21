@@ -1264,15 +1264,25 @@ video.lk-participant-media-video {
 .lb-msg-min-dock {
   right: max(0.75rem, env(safe-area-inset-right, 0px));
   bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  left: max(0.75rem, env(safe-area-inset-left, 0px));
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: flex-end;
+  max-width: calc(100vw - 1.5rem);
 }
 
-/* Con chat abierto: pastillas a la izquierda del popup */
-body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
-  right: calc(min(24rem, calc(100vw - 1.5rem)) + 1rem);
-  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+/* PC/escritorio: pastillas en fila a la izquierda del chat flotante */
+@media (min-width: 1024px) {
+  body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
+    left: auto;
+    right: calc(min(24rem, calc(100vw - 1.5rem)) + 1rem);
+    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    max-width: min(36rem, calc(100vw - min(24rem, calc(100vw - 1.5rem)) - 2.5rem));
+  }
 }
 
-@media (max-width: 639px) {
+@media (max-width: 1023px) {
   .lb-msg-quick-popup {
     right: max(0.5rem, env(safe-area-inset-right, 0px));
     left: max(0.5rem, env(safe-area-inset-left, 0px));
@@ -1282,20 +1292,18 @@ body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
   }
 
   .lb-msg-min-dock {
+    left: max(0.5rem, env(safe-area-inset-left, 0px));
     right: max(0.5rem, env(safe-area-inset-right, 0px));
     bottom: calc(var(--lb-bottom-nav-h, 4.25rem) + max(0.5rem, env(safe-area-inset-bottom, 0px)));
+    max-width: none;
   }
 
+  /* Móvil: misma fila; si hay popup, encima del chat */
   body:has(.lb-msg-quick-popup) .lb-msg-min-dock {
-    right: max(0.5rem, env(safe-area-inset-right, 0px));
-    left: max(0.5rem, env(safe-area-inset-left, 0px));
     bottom: calc(
       var(--lb-bottom-nav-h, 4.25rem) + max(0.5rem, env(safe-area-inset-bottom, 0px)) +
         min(28rem, calc(100dvh - var(--lb-bottom-nav-h, 4.25rem) - 5rem)) + 0.5rem
     );
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: flex-end;
   }
 }
 
