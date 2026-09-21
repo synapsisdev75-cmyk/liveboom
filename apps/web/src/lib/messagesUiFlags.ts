@@ -4,4 +4,4 @@
  * false = ocultas. El código no se borra.
  * Para reactivar, la orden del usuario es: «Habilitar caja de mensajes».
  */
-export const MESSAGE_BOXES_ENABLED = false;
+export const MESSAGE_BOXES_ENABLED = true;
