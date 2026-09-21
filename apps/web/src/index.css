@@ -1239,6 +1239,20 @@ video.lk-participant-media-video {
   mix-blend-mode: normal;
 }
 
+/* LIVE 9:16: animación vertical contenida en el stage (no estirar al desktop). */
+.lb-gift-burst-frame916 {
+  overflow: hidden;
+}
+
+.lb-gift-burst-frame916 .lb-gift-burst-video--fill {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
 .lb-gift-layout-stage {
   overflow: visible;
   width: 100%;

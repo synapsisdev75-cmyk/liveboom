@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { playGiftAlert } from '../../lib/alertSound';
 import { giftMotionFor } from '../../lib/giftAnimations';
@@ -21,6 +21,30 @@ import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 import { giftPlaybackDurationMs, giftPlaybackSrc } from '../../lib/giftMedia';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
+
+/** Fallback cuando el catálogo no trae width/height: todas las animaciones de regalo son 9:16. */
+const GIFT_ANIM_FALLBACK_W = 720;
+const GIFT_ANIM_FALLBACK_H = 1280;
+
+function resolveGiftMediaSize(
+  width?: number,
+  height?: number,
+  preferPortrait916 = false,
+): { width: number; height: number; fromFallback: boolean } {
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  if (w > 1 && h > 1) {
+    // En LIVE/chat 9:16 el catálogo a veces guarda 1920×1080 por error; usamos 9:16 hasta el intrínseco.
+    if (preferPortrait916 && w > h) {
+      return { width: GIFT_ANIM_FALLBACK_W, height: GIFT_ANIM_FALLBACK_H, fromFallback: true };
+    }
+    return { width: w, height: h, fromFallback: false };
+  }
+  if (preferPortrait916) {
+    return { width: GIFT_ANIM_FALLBACK_W, height: GIFT_ANIM_FALLBACK_H, fromFallback: true };
+  }
+  return { width: 0, height: 0, fromFallback: false };
+}
 
 export function GiftVisual({
   gift,
@@ -142,6 +166,8 @@ function GiftVideoBurst({
   animScale = 0.72,
   fillViewport = false,
   fillParent = false,
+  /** LIVE vertical: marco 9:16 contenido en el stage (estilo Messenger), no full desktop. */
+  frame916 = false,
   slot,
   volume = 1,
   durationMs,
@@ -156,6 +182,7 @@ function GiftVideoBurst({
   fillViewport?: boolean;
   /** Chat: llena el hilo, no toda la ventana. */
   fillParent?: boolean;
+  frame916?: boolean;
   slot?: GiftLayoutSlot;
   volume?: number;
   durationMs?: number;
@@ -166,23 +193,47 @@ function GiftVideoBurst({
   const videoRef = useRef<HTMLVideoElement>(null);
   const doneRef = useRef(false);
   const scale = clampGiftAnimScale(animScale);
-  const bleed = slot ? isGiftLayoutBleed(slot) : fillViewport;
-  const layoutStyle = slot ? giftLayoutMediaStyle(slot, { width: mediaWidth, height: mediaHeight }) : undefined;
-  const hasAspect = (mediaWidth || 0) > 1 && (mediaHeight || 0) > 1;
-  const portrait = hasAspect && (mediaHeight as number) >= (mediaWidth as number);
-  const aspectRatio = hasAspect ? `${mediaWidth} / ${mediaHeight}` : undefined;
-  const containInBox = fillViewport || fillParent;
+  const catalogSize = resolveGiftMediaSize(mediaWidth, mediaHeight, frame916);
+  const [playbackSize, setPlaybackSize] = useState(catalogSize);
+
+  useEffect(() => {
+    setPlaybackSize(resolveGiftMediaSize(mediaWidth, mediaHeight, frame916));
+  }, [src, mediaWidth, mediaHeight, frame916]);
+
+  const mw = playbackSize.width;
+  const mh = playbackSize.height;
+  const hasAspect = mw > 1 && mh > 1;
+  const portrait = hasAspect ? mh >= mw : frame916;
+  const aspectRatio = hasAspect ? `${mw} / ${mh}` : frame916 ? '9 / 16' : undefined;
+
+  // En LIVE 9:16 evitamos cover/global: el video queda en el marco vertical del stage.
+  const stageSlot =
+    frame916 && slot && (slot.displayArea === 'global' || slot.fullscreenMode === 'global')
+      ? {
+          ...slot,
+          displayArea: 'live' as const,
+          fullscreenMode: 'none' as const,
+          fit: slot.fit === 'cover' ? ('contain' as const) : slot.fit,
+        }
+      : slot;
+
+  const bleed = stageSlot ? isGiftLayoutBleed(stageSlot) : fillViewport && !frame916;
+  const layoutStyle = stageSlot
+    ? giftLayoutMediaStyle(stageSlot, { width: mw || undefined, height: mh || undefined })
+    : undefined;
+  const containInBox = fillViewport || fillParent || frame916;
   const mediaStyle = layoutStyle
     ? { ...layoutStyle, background: 'transparent' as const }
     : containInBox
       ? {
           background: 'transparent' as const,
           aspectRatio,
-          width: portrait ? 'auto' : 'min(100%, 100%)',
-          height: portrait || !hasAspect ? 'min(100%, 100%)' : 'auto',
+          width: portrait || frame916 ? 'auto' : 'min(100%, 100%)',
+          height: portrait || frame916 || !hasAspect ? '100%' : 'auto',
           maxWidth: '100%',
           maxHeight: '100%',
           objectFit: 'contain' as const,
+          objectPosition: 'center',
         }
       : hasAspect
         ? {
@@ -193,9 +244,11 @@ function GiftVideoBurst({
             objectFit: 'contain' as const,
           }
         : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
-  const useFillClass = fillViewport && !slot && !fillParent;
+  const useFillClass = (fillViewport || frame916) && !stageSlot && !fillParent;
   const pinToViewport = Boolean(
-    (fillViewport || (slot && (slot.displayArea === 'global' || slot.fullscreenMode === 'global'))) &&
+    !frame916 &&
+      (fillViewport ||
+        (stageSlot && (stageSlot.displayArea === 'global' || stageSlot.fullscreenMode === 'global'))) &&
       !fillParent,
   );
 
@@ -213,8 +266,17 @@ function GiftVideoBurst({
     const capMs = durationMs && durationMs > 400 ? durationMs : 32_000;
     const hardCapTimer = window.setTimeout(finish, capMs);
 
+    const syncSize = () => {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (vw > 1 && vh > 1) {
+        setPlaybackSize({ width: vw, height: vh, fromFallback: false });
+      }
+    };
+
     const startPlayback = () => {
       if (doneRef.current) return;
+      syncSize();
       video.volume = Math.min(1, Math.max(0, volume));
       video.muted = true;
       const playPromise = video.play();
@@ -249,11 +311,13 @@ function GiftVideoBurst({
         startPlayback();
       }
     };
+    const onLoadedMeta = () => syncSize();
     const onError = () => {
       console.warn('[gift-video] load failed', src);
       finish();
     };
 
+    video.addEventListener('loadedmetadata', onLoadedMeta);
     video.addEventListener('canplay', onCanPlay);
     video.addEventListener('loadeddata', onLoadedData);
     video.addEventListener('canplaythrough', onCanPlay);
@@ -261,6 +325,7 @@ function GiftVideoBurst({
     video.load();
 
     return () => {
+      video.removeEventListener('loadedmetadata', onLoadedMeta);
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('canplaythrough', onCanPlay);
@@ -277,7 +342,7 @@ function GiftVideoBurst({
         pinToViewport
           ? 'fixed inset-0 z-[114]'
           : 'absolute inset-0 z-[60]'
-      } ${bleed ? 'lb-gift-layout-stage--bleed' : ''}`}
+      } ${bleed ? 'lb-gift-layout-stage--bleed' : ''} ${frame916 ? 'lb-gift-burst-frame916' : ''}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -323,6 +388,7 @@ function GiftStillBurst({
   combo,
   slot,
   globalArea,
+  frame916 = false,
   durationMs,
   mediaWidth,
   mediaHeight,
@@ -334,6 +400,7 @@ function GiftStillBurst({
   combo?: number;
   slot: GiftLayoutSlot;
   globalArea: boolean;
+  frame916?: boolean;
   durationMs: number;
   mediaWidth?: number;
   mediaHeight?: number;
@@ -349,17 +416,36 @@ function GiftStillBurst({
     return () => window.clearTimeout(timer);
   }, [durationMs, onComplete]);
 
+  const size = resolveGiftMediaSize(mediaWidth, mediaHeight, frame916);
+  const stageSlot =
+    frame916 && (slot.displayArea === 'global' || slot.fullscreenMode === 'global')
+      ? {
+          ...slot,
+          displayArea: 'live' as const,
+          fullscreenMode: 'none' as const,
+          fit: slot.fit === 'cover' ? ('contain' as const) : slot.fit,
+        }
+      : slot;
+
   return (
     <motion.div
       className={`pointer-events-none ${
-        globalArea ? 'fixed inset-0 z-[114]' : 'absolute inset-0 z-[60]'
-      } ${isGiftLayoutBleed(slot) ? 'lb-gift-layout-stage--bleed' : ''}`}
+        globalArea && !frame916 ? 'fixed inset-0 z-[114]' : 'absolute inset-0 z-[60]'
+      } ${isGiftLayoutBleed(stageSlot) ? 'lb-gift-layout-stage--bleed' : ''} ${
+        frame916 ? 'lb-gift-burst-frame916' : ''
+      }`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
-      <GiftLayoutMedia src={src} emoji={emoji} slot={slot} mediaWidth={mediaWidth} mediaHeight={mediaHeight} />
+      <GiftLayoutMedia
+        src={src}
+        emoji={emoji}
+        slot={stageSlot}
+        mediaWidth={size.width || undefined}
+        mediaHeight={size.height || undefined}
+      />
       {senderName ? (
         <span className="absolute bottom-[12%] z-[61] text-[11px] font-semibold text-cyan-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
           {senderName}
@@ -440,6 +526,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       variant,
     });
     const chatLike = variant === 'chat' || variant === 'llamadas_voz' || variant === 'llamadas_video';
+    const frame916 = variant === 'live_9_16' || liveAspect === '9:16';
     const unconfiguredChatOrCall =
       chatLike && (cell.source === 'legacy' || cell.source === 'default');
     if (unconfiguredChatOrCall && videoSrc) {
@@ -451,6 +538,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
             combo={combo}
             animScale={clampGiftAnimScale(gift.animScale, level)}
             fillParent
+            frame916
             volume={gift.media?.volume ?? 1}
             durationMs={giftPlaybackDurationMs(gift.media)}
             mediaWidth={gift.media?.width}
@@ -462,7 +550,8 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
     }
     const slot = cell.slot;
     const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
-    const pinGlobal = globalArea && !chatLike;
+    // LIVE 9:16: siempre dentro del stage vertical (no portal al desktop completo).
+    const pinGlobal = globalArea && !chatLike && !frame916;
     const burst = videoSrc ? (
       <AnimatePresence>
         <GiftVideoBurst
@@ -472,6 +561,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           animScale={clampGiftAnimScale(gift.animScale, level)}
           fillViewport={pinGlobal}
           fillParent={chatLike && globalArea}
+          frame916={frame916}
           slot={slot}
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
@@ -489,6 +579,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           combo={combo}
           slot={slot}
           globalArea={pinGlobal}
+          frame916={frame916}
           durationMs={Math.max(1200, fx.duration * 1000)}
           mediaWidth={gift.media?.width}
           mediaHeight={gift.media?.height}
@@ -503,6 +594,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
   }
 
   if (fillViewport && videoSrc && gift) {
+    const frame916 = liveAspect === '9:16';
     return (
       <AnimatePresence>
         <GiftVideoBurst
@@ -510,7 +602,8 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}
-          fillViewport
+          fillViewport={!frame916}
+          frame916={frame916}
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
           mediaWidth={gift.media?.width}
