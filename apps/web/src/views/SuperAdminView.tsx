@@ -286,7 +286,7 @@ export function SuperAdminView() {
   }
 
   return (
-    <div className="lb-page mx-auto max-w-6xl space-y-4 pb-24 pt-2">
+    <div className="lb-page mx-auto max-w-6xl space-y-4 overflow-x-hidden pb-24 pt-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       <header className="lb-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-400">

@@ -128,11 +128,7 @@ function SidebarBody({ profile, onRecharge, onNavigate, rail = false }: SidebarB
       </div>
 
       <nav
-        className={`lb-side-nav flex min-h-0 shrink flex-col overflow-x-clip ${
-          rail
-            ? 'overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
-            : 'overflow-y-auto'
-        }`}
+        className="lb-side-nav flex min-h-0 shrink flex-col overflow-x-clip overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {sideNavItems.map((item) => {
           const Icon = item.icon;

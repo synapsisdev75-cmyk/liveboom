@@ -11,6 +11,8 @@ import {
   type EditableGift,
   type GiftPlacement,
 } from '../../lib/catalogConfigFirestore';
+import { emojiToken, resolveEmoji } from '../../lib/liveboomEmojis';
+import { EmojiPickerButton } from '../social/EmojiPicker';
 import { giftLevelFromCoins, type GiftLevel } from '../../lib/liveboomGifts';
 import { packageCopLabel } from '../../lib/coinPackages';
 import { useAuthStore } from '../../store/authStore';
@@ -48,7 +50,42 @@ const PLACEMENT_LABELS: Record<GiftPlacement, string> = {
   chat: 'Chat',
 };
 
+const ADMIN_HIDE_SCROLL =
+  '[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden';
+
 type SubTab = 'gifts' | 'coins';
+
+function catalogEmojiId(value: string): string | null {
+  const trimmed = value.trim();
+  const wrapped = trimmed.match(/^:([a-z0-9_]+):$/i)?.[1];
+  if (wrapped && resolveEmoji(wrapped)) return wrapped;
+  if (resolveEmoji(trimmed)) return trimmed;
+  return null;
+}
+
+function encodeCatalogEmojiPick(id: string): string {
+  return resolveEmoji(id) ? emojiToken(id) : id;
+}
+
+function GiftEmojiMark({ value, size = 24 }: { value: string; size?: number }) {
+  const item = resolveEmoji(catalogEmojiId(value) || '');
+  if (item) {
+    return (
+      <img
+        src={item.file}
+        alt=""
+        draggable={false}
+        className="shrink-0 object-contain"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  return (
+    <span className="lb-unicode-emoji shrink-0 leading-none" style={{ fontSize: size }}>
+      {value || '🎁'}
+    </span>
+  );
+}
 
 function AssetDropZone({
   label,
@@ -799,7 +836,9 @@ export function AdminCatalogPanel({
 
       {sub === 'gifts' && gift ? (
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-          <aside className="lb-panel max-h-[70dvh] space-y-2 overflow-y-auto rounded-2xl p-3">
+          <aside
+            className={`lb-panel max-h-[70dvh] space-y-2 overflow-x-hidden overflow-y-auto rounded-2xl p-3 ${ADMIN_HIDE_SCROLL}`}
+          >
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -824,16 +863,18 @@ export function AdminCatalogPanel({
                     : 'text-zinc-300 hover:bg-zinc-800'
                 }`}
               >
-                <span className="text-lg">{row.emoji}</span>
+                <GiftEmojiMark value={row.emoji} size={22} />
                 <span className="min-w-0 flex-1 truncate">{row.name}</span>
                 {!row.enabled ? <span className="text-[10px] text-rose-300">off</span> : null}
               </button>
             ))}
           </aside>
 
-          <section className="lb-panel space-y-4 rounded-2xl p-4">
+          <section
+            className={`lb-panel max-h-[70dvh] space-y-4 overflow-x-hidden overflow-y-auto rounded-2xl p-4 ${ADMIN_HIDE_SCROLL}`}
+          >
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-3xl">{gift.emoji}</span>
+              <GiftEmojiMark value={gift.emoji} size={32} />
               <div>
                 <h2 className="text-lg font-bold text-white">{gift.name}</h2>
                 <p className="text-xs text-zinc-500">{gift.id}</p>
@@ -874,14 +915,24 @@ export function AdminCatalogPanel({
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
                 />
               </label>
-              <label className="block space-y-1 text-xs text-zinc-400">
+              <div className="block space-y-1 text-xs text-zinc-400">
                 Emoji
-                <input
-                  value={gift.emoji}
-                  onChange={(e) => patchGift(gift.id, { emoji: e.target.value })}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
-                />
-              </label>
+                <div className="flex min-h-11 items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1">
+                  <GiftEmojiMark value={gift.emoji} size={22} />
+                  <input
+                    value={gift.emoji}
+                    onChange={(e) => patchGift(gift.id, { emoji: e.target.value })}
+                    aria-label="Emoji del regalo"
+                    className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm text-white outline-none"
+                  />
+                  <EmojiPickerButton
+                    placement="below"
+                    title="Emojis LiveBoom"
+                    onPick={(id) => patchGift(gift.id, { emoji: encodeCatalogEmojiPick(id) })}
+                    buttonClassName="grid h-11 w-11 min-h-11 min-w-11 shrink-0 place-items-center rounded-lg text-zinc-300 hover:bg-white/10"
+                  />
+                </div>
+              </div>
               <label className="block space-y-1 text-xs text-zinc-400">
                 Precio (Blast)
                 <input
@@ -1270,7 +1321,9 @@ export function AdminCatalogPanel({
 
       {sub === 'coins' && pack ? (
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-          <aside className="lb-panel max-h-[70dvh] space-y-1 overflow-y-auto rounded-2xl p-2">
+          <aside
+            className={`lb-panel max-h-[70dvh] space-y-1 overflow-x-hidden overflow-y-auto rounded-2xl p-2 ${ADMIN_HIDE_SCROLL}`}
+          >
             {packs.map((row) => (
               <button
                 key={row.id}
