@@ -18,10 +18,12 @@ import {
 } from '../../lib/giftsFirestore';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { addLevelXp } from '../../lib/profileFirestore';
+import { playIncomingMessageSound } from '../../lib/alertSound';
 import {
   ensureChat,
   listenConversations,
   listenMessages,
+  markMessagesDelivered,
   markMessagesRead,
   sendChatMessage,
   type ChatMessage,
@@ -127,7 +129,23 @@ function FloatingDmWindow({
   const scrollRef = useRef<HTMLDivElement>(null);
   const giftTriggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastMsgCount = useRef(0);
+  const seenGiftAnimRef = useRef<Set<string>>(new Set());
+  const giftSeededRef = useRef<string | null>(null);
+  const giftWatchStartedRef = useRef(0);
   const inThisCall = Boolean(chatId && callChatId === chatId && callStatus !== 'idle');
+
+  useEffect(() => {
+    setChatId(peer.chatId || null);
+    setMessages([]);
+    setDraft('');
+    setError(null);
+    lastMsgCount.current = 0;
+    seenGiftAnimRef.current.clear();
+    giftSeededRef.current = null;
+    giftWatchStartedRef.current = 0;
+    setGiftFloats([]);
+  }, [peer.uid, peer.chatId]);
 
   useEffect(() => {
     if (!profile) return;
@@ -149,15 +167,56 @@ function FloatingDmWindow({
 
   useEffect(() => {
     if (!chatId || !profile) return;
+    // listenMessages ya entrega orden cronológico (antiguo → nuevo). No invertir otra vez.
     return listenMessages(chatId, profile.firebaseUid, (list) => {
-      setMessages([...list].reverse());
+      if (list.length > lastMsgCount.current && lastMsgCount.current > 0) {
+        const newest = list[list.length - 1];
+        if (newest && newest.fromUid !== profile.firebaseUid) {
+          playIncomingMessageSound(document.visibilityState === 'visible');
+        }
+      }
+      lastMsgCount.current = list.length;
+      setMessages(list);
+      void (async () => {
+        await markMessagesDelivered(chatId, profile.firebaseUid, list);
+        if (document.visibilityState === 'visible') {
+          await markMessagesRead(chatId, profile.firebaseUid, list);
+        }
+      })();
     });
   }, [chatId, profile?.firebaseUid]);
 
   useEffect(() => {
-    if (!chatId || !profile || messages.length === 0) return;
-    void markMessagesRead(chatId, profile.firebaseUid, messages);
-  }, [chatId, profile?.firebaseUid, messages]);
+    if (!chatId) return;
+    if (giftSeededRef.current !== chatId) {
+      if (messages.length === 0) return;
+      giftSeededRef.current = chatId;
+      giftWatchStartedRef.current = Date.now();
+      messages.forEach((message) => {
+        if (message.giftId) seenGiftAnimRef.current.add(message.id);
+      });
+      return;
+    }
+    for (const message of messages) {
+      if (!message.giftId || seenGiftAnimRef.current.has(message.id)) continue;
+      seenGiftAnimRef.current.add(message.id);
+      if (message.fromUid === profile?.firebaseUid) continue;
+      const createdAt = Date.parse(message.createdAt);
+      if (!Number.isFinite(createdAt)) continue;
+      if (createdAt < giftWatchStartedRef.current - 1500) continue;
+      if (Date.now() - createdAt > 15_000) continue;
+      const incomingGiftId = message.giftId;
+      setGiftFloats((current) => [
+        ...current.slice(-1),
+        {
+          id: `gf-in-${message.id}`,
+          giftId: incomingGiftId,
+          left: 30 + Math.random() * 40,
+          senderName: peer.displayName || peer.username,
+        },
+      ]);
+    }
+  }, [chatId, messages, peer.displayName, peer.username, profile?.firebaseUid]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -342,8 +401,21 @@ function FloatingDmWindow({
                         <span className="font-semibold">{gift.name}</span>
                       </div>
                     ) : null}
-                    {msg.mediaUrl ? (
-                      <p className="opacity-90">{msg.mediaType === 'image' ? '📷 Foto' : '📎 Adjunto'}</p>
+                    {msg.mediaUrl && msg.mediaType === 'image' ? (
+                      <img
+                        src={msg.mediaUrl}
+                        alt=""
+                        className="mb-1 max-h-40 w-full rounded-xl object-contain"
+                        loading="lazy"
+                      />
+                    ) : msg.mediaUrl ? (
+                      <p className="opacity-90">
+                        {msg.mediaType === 'audio'
+                          ? '🎤 Nota de voz'
+                          : msg.mediaType === 'video'
+                            ? '🎬 Video'
+                            : '📎 Adjunto'}
+                      </p>
                     ) : null}
                     {msg.text ? <p className="whitespace-pre-wrap break-words">{msg.text}</p> : null}
                   </div>
@@ -703,8 +775,9 @@ export function MessagesSideRail() {
  * Botón de mensajes en header:
  * - Desktop: reemplaza el rail derecho con la lista de chats hasta cerrar.
  * - Móvil: sheet inferior (sin rail).
+ * - `hostPortals`: solo una instancia debe montar el chat flotante (evita doble listener en PC).
  */
-export function MessagesQuickMenu() {
+export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boolean }) {
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
   const location = useLocation();
@@ -734,10 +807,11 @@ export function MessagesQuickMenu() {
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
+    if (!hostPortals) return;
     setRailOpen(false);
     setSheetOpen(false);
     closePopup();
-  }, [location.pathname, setRailOpen, closePopup]);
+  }, [location.pathname, setRailOpen, closePopup, hostPortals]);
 
   useEffect(() => {
     if (!railOpen && !sheetOpen) return;
@@ -829,8 +903,9 @@ export function MessagesQuickMenu() {
           )
         : null}
 
-      {popupPeer ? (
+      {hostPortals && popupPeer ? (
         <FloatingDmWindow
+          key={popupPeer.uid}
           peer={popupPeer}
           onClose={closePopup}
           onMinimize={minimizeCurrent}
@@ -838,11 +913,13 @@ export function MessagesQuickMenu() {
         />
       ) : null}
 
-      <MinimizedChatsDock
-        items={minimized}
-        onExpand={expandMinimized}
-        onClose={closeMinimized}
-      />
+      {hostPortals ? (
+        <MinimizedChatsDock
+          items={minimized}
+          onExpand={expandMinimized}
+          onClose={closeMinimized}
+        />
+      ) : null}
     </div>
   );
 }

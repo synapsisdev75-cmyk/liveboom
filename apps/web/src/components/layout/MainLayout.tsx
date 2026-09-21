@@ -405,7 +405,7 @@ export function MainLayout() {
           <AppearanceControl />
         </div>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-          {profile ? <MessagesQuickMenu /> : null}
+          {profile ? <MessagesQuickMenu hostPortals /> : null}
           {profile ? <NotificationBell /> : null}
           {profile ? (
             <button
