@@ -828,7 +828,7 @@ export function AdminCatalogPanel({
         </p>
       ) : null}
 
-      {sub === 'gifts' && gift ? (
+      {sub === 'gifts' ? (
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
           <aside
             className={`lb-panel max-h-[70dvh] space-y-2 overflow-x-hidden overflow-y-auto rounded-2xl p-3 ${ADMIN_HIDE_SCROLL}`}
@@ -846,13 +846,18 @@ export function AdminCatalogPanel({
             >
               + Agregar regalo
             </button>
+            {filteredGifts.length === 0 ? (
+              <p className="rounded-xl border border-zinc-700/60 bg-zinc-900/50 px-3 py-3 text-xs text-zinc-400">
+                Catálogo vacío. Agrega un regalo nuevo para editarlo y publicarlo.
+              </p>
+            ) : null}
             {filteredGifts.map((row) => (
               <button
                 key={row.id}
                 type="button"
                 onClick={() => setSelectedGiftId(row.id)}
                 className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${
-                  row.id === gift.id
+                  gift && row.id === gift.id
                     ? 'bg-fuchsia-500/20 font-semibold text-fuchsia-100'
                     : 'text-zinc-300 hover:bg-zinc-800'
                 }`}
@@ -864,6 +869,7 @@ export function AdminCatalogPanel({
             ))}
           </aside>
 
+          {gift ? (
           <section
             className={`lb-panel max-h-[70dvh] space-y-4 overflow-x-hidden overflow-y-auto rounded-2xl p-4 ${ADMIN_HIDE_SCROLL}`}
           >
@@ -1267,6 +1273,25 @@ export function AdminCatalogPanel({
               )}
             </div>
           </section>
+          ) : (
+            <section
+              className={`lb-panel flex max-h-[70dvh] flex-col items-start justify-center gap-3 overflow-x-hidden rounded-2xl p-6 ${ADMIN_HIDE_SCROLL}`}
+            >
+              <h2 className="text-lg font-bold text-white">Editor de regalos listo</h2>
+              <p className="max-w-md text-sm text-zinc-400">
+                El catálogo comercial está vacío. Sube animaciones nuevas con «+ Agregar regalo»,
+                configura nombre, precio y disponibilidad, y publica. El editor (audio, transparencia,
+                escala y previsualización) sigue completo.
+              </p>
+              <button
+                type="button"
+                onClick={addGift}
+                className="min-h-11 rounded-xl border border-dashed border-fuchsia-400/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-100 hover:bg-fuchsia-500/20"
+              >
+                + Agregar regalo
+              </button>
+            </section>
+          )}
         </div>
       ) : null}
 
