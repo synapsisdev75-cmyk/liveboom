@@ -534,43 +534,32 @@ function FloatingDmWindow({
 function MinimizedChatsDock({
   items,
   onExpand,
-  onClose,
 }: {
   items: MessagesPopupPeer[];
   onExpand: (uid: string) => void;
-  onClose: (uid: string) => void;
 }) {
   if (items.length === 0) return null;
   return createPortal(
     <div className="lb-msg-min-dock pointer-events-none fixed z-[79] flex flex-row flex-wrap items-end justify-end gap-2">
       {items.map((peer) => (
-        <div key={peer.uid} className="pointer-events-auto flex max-w-[min(100%,14rem)] items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onExpand(peer.uid)}
-            className="lb-msg-min-chip flex min-h-11 max-w-[12rem] items-center gap-2 rounded-full border border-white/15 bg-zinc-950/95 py-1.5 pl-1.5 pr-3 shadow-lg backdrop-blur-md transition hover:border-cyan-400/40"
-            title={`Abrir chat con ${peer.displayName || peer.username}`}
-          >
-            <UserAvatar
-              uid={peer.uid}
-              src={peer.avatarUrl}
-              username={peer.username}
-              displayName={peer.displayName}
-              size={32}
-            />
-            <span className="min-w-0 truncate text-xs font-semibold text-white">
-              {peer.displayName || peer.username}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onClose(peer.uid)}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
-            aria-label={`Cerrar chat de ${peer.displayName || peer.username}`}
-          >
-            <X size={14} />
-          </button>
-        </div>
+        <button
+          key={peer.uid}
+          type="button"
+          onClick={() => onExpand(peer.uid)}
+          className="lb-msg-min-chip pointer-events-auto flex min-h-11 max-w-[min(100%,12rem)] items-center gap-2 rounded-full border border-white/15 bg-zinc-950/95 py-1.5 pl-1.5 pr-3 shadow-lg backdrop-blur-md transition hover:border-cyan-400/40"
+          title={`Abrir chat con ${peer.displayName || peer.username}`}
+        >
+          <UserAvatar
+            uid={peer.uid}
+            src={peer.avatarUrl}
+            username={peer.username}
+            displayName={peer.displayName}
+            size={32}
+          />
+          <span className="min-w-0 truncate text-xs font-semibold text-white">
+            {peer.displayName || peer.username}
+          </span>
+        </button>
       ))}
     </div>,
     document.body,
@@ -789,7 +778,6 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
   const toggleRail = useMessagesMenuStore((state) => state.toggleRail);
   const openChatFromList = useMessagesMenuStore((state) => state.openChatFromList);
   const expandMinimized = useMessagesMenuStore((state) => state.expandMinimized);
-  const closeMinimized = useMessagesMenuStore((state) => state.closeMinimized);
   const closePopup = useMessagesMenuStore((state) => state.closePopup);
   const minimizeCurrent = useMessagesMenuStore((state) => state.minimizeCurrent);
   const closeAll = useMessagesMenuStore((state) => state.closeAll);
@@ -914,11 +902,7 @@ export function MessagesQuickMenu({ hostPortals = false }: { hostPortals?: boole
       ) : null}
 
       {hostPortals ? (
-        <MinimizedChatsDock
-          items={minimized}
-          onExpand={expandMinimized}
-          onClose={closeMinimized}
-        />
+        <MinimizedChatsDock items={minimized} onExpand={expandMinimized} />
       ) : null}
     </div>
   );
