@@ -297,23 +297,13 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/adminSessions/$(request.auth.uid)).data.expiresAt > request.time;
     }
 
-    function storageGrantsMap() {
-      return firestore.exists(/databases/(default)/documents/config/superAdmins)
-        ? firestore.get(/databases/(default)/documents/config/superAdmins).data.get('grants', {})
-        : {};
-    }
-
     function hasStorageCapability(cap) {
+      // Dueño, lista fija y Super Admin con bóveda: misma delegación, sin recortar por grants.
       return isOwnerStorage()
         || isListedSuperAdminStorage()
-        || hasValidAdminSessionStorage()
         || (
           isSuperAdminStorage()
           && hasValidAdminSessionStorage()
-          && (
-            !(storageAuthEmail() in storageGrantsMap())
-            || cap in storageGrantsMap().get(storageAuthEmail(), [])
-          )
         );
     }
 

@@ -37,7 +37,7 @@ assert(
 
 const grants: SuperAdminGrants = { 'ana@x.com': ['messages', 'ads'] };
 assert(hasSuperAdminCapability('ana@x.com', 'messages', grants, ['ana@x.com']), 'subset on');
-assert(!hasSuperAdminCapability('ana@x.com', 'gifts', grants, ['ana@x.com']), 'subset off');
+assert(hasSuperAdminCapability('ana@x.com', 'gifts', grants, ['ana@x.com']), 'listed has gifts');
 assert(hasSuperAdminCapability('ana@x.com', 'ads', grants, ['ana@x.com']), 'ads on');
 
 assert(
@@ -45,8 +45,8 @@ assert(
   'legacy full',
 );
 assert(
-  !hasSuperAdminCapability('limitado@x.com', 'gifts', { 'limitado@x.com': [] }, ['limitado@x.com']),
-  'empty means none',
+  hasSuperAdminCapability('limitado@x.com', 'gifts', { 'limitado@x.com': [] }, ['limitado@x.com']),
+  'listed keeps gifts even if grants empty',
 );
 
 const all = allSuperAdminCapabilities();
@@ -63,8 +63,8 @@ assert(
   'mixed-case grant keys',
 );
 assert(
-  !hasSuperAdminCapability('ana@x.com', 'ads', { 'Ana@X.com': ['gifts', 'blast'] }, ['ana@x.com']),
-  'mixed-case still respects subset',
+  hasSuperAdminCapability('ana@x.com', 'ads', { 'Ana@X.com': ['gifts', 'blast'] }, ['ana@x.com']),
+  'listed has all caps',
 );
 
 const mapped = normalizeGrantsMap({ 'Ana@X.com': ['gifts', 'nope'] }, ['ana@x.com']);

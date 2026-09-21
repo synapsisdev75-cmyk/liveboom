@@ -262,16 +262,33 @@ export async function saveGiftsCatalog(config: GiftsCatalogDoc, updatedBy: strin
     }
     gift.coins = coins;
   }
-  await setDoc(
-    doc(db, GIFTS_PATH),
-    stripUndefinedDeep({
-      version: Math.max(1, Math.floor(Number(config.version) || 1)),
-      gifts,
-      updatedBy: updatedBy || 'admin',
-      updatedAt: serverTimestamp(),
-    }),
-    { merge: true },
-  );
+  const catalogRef = doc(db, GIFTS_PATH);
+  const remote = await getDoc(catalogRef);
+  const remoteVersion = remote.exists()
+    ? Math.max(1, Math.floor(Number((remote.data() as GiftsCatalogDoc | undefined)?.version) || 1))
+    : 0;
+  const requested = Math.max(1, Math.floor(Number(config.version) || 1));
+  const version = Math.max(requested, remoteVersion + 1);
+  try {
+    await setDoc(
+      catalogRef,
+      stripUndefinedDeep({
+        version,
+        gifts,
+        updatedBy: updatedBy || 'admin',
+        updatedAt: serverTimestamp(),
+      }),
+      { merge: true },
+    );
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error || '');
+    if (/insufficient permissions|permission-denied|Missing or insufficient/i.test(raw)) {
+      throw new Error(
+        'No se pudo publicar el catálogo. Abre la bóveda Super Admin e inténtalo de nuevo.',
+      );
+    }
+    throw error;
+  }
 }
 
 export async function saveCoinPackagesConfig(config: CoinPackagesDoc, updatedBy: string) {

@@ -242,7 +242,8 @@ export function AdminDelegatePanel() {
   if (!owner) {
     return (
       <div className="lb-panel rounded-2xl p-6 text-center text-sm text-zinc-400">
-        Solo el dueño ({SUPER_ADMIN_OWNER_EMAIL}) decide qué hace cada Super Admin.
+        Solo el dueño ({SUPER_ADMIN_OWNER_EMAIL}) agrega Super Admins. Quien esté en la lista
+        puede usar todas las funciones del panel con la bóveda abierta (misma delegación).
       </div>
     );
   }

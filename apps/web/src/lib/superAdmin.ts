@@ -102,8 +102,8 @@ export function normalizeGrantsMap(raw: unknown, emails: string[]): SuperAdminGr
 
 /**
  * El dueño tiene todo.
- * Si el delegado está en la lista y no hay grants propios, conserva acceso completo (delegados anteriores).
- * Si hay lista (aunque vacía), solo esas funciones.
+ * Cualquier Super Admin de la lista (misma delegación) tiene todas las funciones:
+ * el dueño ya autorizó al agregarlo. Los grants siguen como referencia en el panel.
  */
 export function hasSuperAdminCapability(
   email: string | null | undefined,
@@ -113,7 +113,7 @@ export function hasSuperAdminCapability(
 ): boolean {
   if (isOwnerEmail(email)) return true;
   if (!isSuperAdminEmail(email, allowlist)) return false;
-  const listed = listedGrantCaps(email, grants);
-  if (listed == null) return true;
-  return listed.includes(capability);
+  void capability;
+  void grants;
+  return true;
 }

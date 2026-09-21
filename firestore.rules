@@ -46,20 +46,9 @@ service cloud.firestore {
       return isSuperAdmin() && hasValidAdminSession();
     }
 
-    function superAdminGrantsMap() {
-      return exists(/databases/$(database)/documents/config/superAdmins)
-        ? get(/databases/$(database)/documents/config/superAdmins).data.get('grants', {})
-        : {};
-    }
-
-    /** Dueño: todas. Delegado: las que el dueño guardó; sin grants = acceso completo anterior. */
+    /** Super Admin con bóveda abierta: acceso completo a la misma delegación. */
     function hasCapability(cap) {
-      return isUnlockedSuperAdmin()
-        && (
-          isOwner()
-          || !(authEmail() in superAdminGrantsMap())
-          || cap in superAdminGrantsMap().get(authEmail(), [])
-        );
+      return isUnlockedSuperAdmin();
     }
 
     function walletBalancesUnchanged() {

@@ -74,10 +74,8 @@ function hasCapability(email, capability, doc) {
   const emails = emailsFromDoc(doc);
   if (!isListed(email, emails)) return false;
   if (!isCapability(capability)) return false;
-  const grants = parseGrants(doc?.grants, emails);
-  const e = normalizeEmail(email);
-  if (!Object.prototype.hasOwnProperty.call(grants, e)) return true;
-  return grants[e].includes(capability);
+  // Misma delegación: listado = todas las funciones (el dueño ya autorizó al agregarlo).
+  return true;
 }
 
 module.exports = {
