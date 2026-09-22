@@ -2,7 +2,6 @@ import {
   ChevronRight,
   Clock,
   Home,
-  Hash,
   Menu,
   MessageCircle,
   Compass,
@@ -13,6 +12,7 @@ import {
   Radio,
   Search,
   Settings,
+  UserPlus,
   UserRound,
   Users,
   Wallet,
@@ -32,7 +32,7 @@ import { NotificationBell } from '../social/NotificationBell';
 import { MessagesFloatingHost } from '../social/MessagesQuickMenu';
 import { useUnreadMessageCount } from '../social/MessageInboxBadge';
 import { SideRailPanel } from './SideRailPanel';
-import { SidebarTrendsCard } from './SidebarTrendsCard';
+import { SidebarSuggestedCreatorsCard } from './SidebarSuggestedCreatorsCard';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { LiquidBottomNav } from './LiquidBottomNav';
 import { Logo } from '../brand/Logo';
@@ -229,13 +229,13 @@ function SidebarBody({
         {rail ? (
           <>
             <Link
-              to="/tendencias"
+              to="/buscar"
               onClick={onNavigate}
-              title="Tendencias"
-              aria-label="Tendencias"
+              title="Creadores sugeridos"
+              aria-label="Creadores sugeridos"
               className="lb-sidebar-cta lb-sidebar-cta--rail mx-auto"
             >
-              <Hash size={18} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
+              <UserPlus size={18} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
             </Link>
             {profile ? (
               <Link
@@ -281,7 +281,7 @@ function SidebarBody({
               </NavLink>
             ) : null}
 
-            <SidebarTrendsCard onNavigate={onNavigate} />
+            <SidebarSuggestedCreatorsCard onNavigate={onNavigate} />
 
             {profile ? (
               <Link

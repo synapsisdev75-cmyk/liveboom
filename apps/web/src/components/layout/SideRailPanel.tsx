@@ -1356,7 +1356,6 @@ function DiscoveryRail() {
   const [location, setLocation] = useState<PrivateUserLocation | null>(null);
   const [ads, setAds] = useState<PromotionAd[]>([]);
   const [myAds, setMyAds] = useState<PromotionAd[]>([]);
-  const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5);
   const [publicGroups, setPublicGroups] = useState<LiveGroup[]>([]);
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [joinBusy, setJoinBusy] = useState(false);
@@ -1509,7 +1508,7 @@ function DiscoveryRail() {
 
         <SidebarWalletDock />
 
-        {/* Arrow 3: Grupos sugeridos + Actividad — entre billetera y Creadores */}
+        {/* Arrow 3: Grupos sugeridos + Actividad — entre billetera y promo */}
         {onGroups ? (
           <>
             <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3">
@@ -1589,57 +1588,6 @@ function DiscoveryRail() {
             </section>
           </>
         ) : null}
-
-        <section className="lb-panel rounded-2xl p-3">
-          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-            <UserPlus size={12} className="text-cyan-300" /> Creadores sugeridos
-          </p>
-          {suggested.length === 0 ? (
-            <p className="mt-2 text-xs text-zinc-500">
-              <Link to="/buscar" className="text-cyan-400 underline">
-                Busca amigos
-              </Link>{' '}
-              para descubrir creadores.
-            </p>
-          ) : (
-            <ul className="mt-2 space-y-2.5">
-              {suggested.map((user) => (
-                <li key={user.uid || user.username} className="flex items-center gap-2">
-                  <Link
-                    to={`/u/${encodeURIComponent(user.username)}`}
-                    className="flex min-w-0 flex-1 items-center gap-2"
-                  >
-                    {user.avatarUrl ? (
-                      <img
-                        src={user.avatarUrl}
-                        alt=""
-                        className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-white/10"
-                      />
-                    ) : (
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-800 text-xs font-bold text-cyan-200">
-                        {user.username.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                    <span className="min-w-0">
-                      <span className="block truncate text-xs font-semibold text-white">
-                        {user.displayName || user.username}
-                      </span>
-                      <span className="block truncate text-[10px] text-zinc-500">@{user.username}</span>
-                    </span>
-                  </Link>
-                  <SuggestedCreatorActions
-                    user={user}
-                    profile={profile}
-                    onFollow={onSuggestedFollow}
-                    onIgnore={onSuggestedIgnore}
-                    variant="default"
-                    loginClassName="shrink-0 rounded-full bg-fuchsia-500/20 px-2.5 py-1 text-[10px] font-bold text-fuchsia-200"
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
 
         <section
           className="lb-card lb-promo-banner rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/20 via-violet-600/15 to-fuchsia-500/10 p-3.5"
