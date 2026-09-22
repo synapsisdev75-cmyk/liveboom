@@ -839,6 +839,22 @@ aside.chat-scroll::-webkit-scrollbar {
   display: none;
 }
 
+/* Lista de Chats (rail / popup): scroll sin barra visible. */
+.lb-msg-chat-list,
+.lb-msg-side-rail .lb-msg-chat-list,
+.lb-msg-quick-popup .lb-msg-chat-list {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lb-msg-chat-list::-webkit-scrollbar,
+.lb-msg-side-rail .lb-msg-chat-list::-webkit-scrollbar,
+.lb-msg-quick-popup .lb-msg-chat-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .lb-chat-thread-scroll {
   display: flex;
   flex-direction: column-reverse;

@@ -224,7 +224,7 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
         ))}
       </div>
 
-      <ul className="mt-2 min-h-0 flex-1 overflow-y-auto px-1.5 pb-1">
+      <ul className="lb-msg-chat-list mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {list.length === 0 ? (
           <li className="px-3 py-8 text-center text-xs text-zinc-500">
             {tab === 'unread' ? 'No hay mensajes sin leer.' : 'Aún no tienes conversaciones.'}
