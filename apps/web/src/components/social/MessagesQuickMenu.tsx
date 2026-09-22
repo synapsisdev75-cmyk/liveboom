@@ -27,6 +27,7 @@ const MSG_OUTSIDE_KEEP_SEL = [
   '.lb-msg-min-dock',
   '.lb-msg-side-rail',
   '.lb-msg-quick-menu',
+  '.lb-msg-menu-trigger',
   '.lb-msg-overlay',
   '.lb-gift-catalog-layer',
   '.lb-chat-attach-menu',
@@ -43,6 +44,9 @@ const MSG_OUTSIDE_KEEP_SEL = [
   '.lb-voice-chrome-face',
   '[aria-label="Selector de emojis"]',
 ].join(',');
+
+/** Clics que no cierran la lista de Chats (rail / sheet). */
+const MSG_LIST_KEEP_SEL = ['.lb-msg-side-rail', '.lb-msg-quick-menu', '.lb-msg-menu-trigger'].join(',');
 
 type ListTab = 'todos' | 'unread';
 
@@ -464,6 +468,27 @@ export function MessagesQuickMenu() {
     return () => window.removeEventListener('keydown', onKey);
   }, [railOpen, sheetOpen, setRailOpen]);
 
+  /** Tocar fuera de la lista de Chats → cerrar rail / sheet. */
+  useEffect(() => {
+    if (!railOpen && !sheetOpen) return;
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(MSG_LIST_KEEP_SEL)) return;
+      setRailOpen(false);
+      setSheetOpen(false);
+    }
+
+    const timer = window.setTimeout(() => {
+      document.addEventListener('pointerdown', onPointerDown);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [railOpen, sheetOpen, setRailOpen]);
+
   if (!profile) return null;
 
   const menuOpen = desktop ? railOpen : sheetOpen;
@@ -496,7 +521,7 @@ export function MessagesQuickMenu() {
   }
 
   return (
-    <div className="relative shrink-0">
+    <div className="lb-msg-menu-trigger relative shrink-0">
       <button
         type="button"
         onClick={onButtonClick}
