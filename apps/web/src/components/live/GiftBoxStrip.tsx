@@ -1,5 +1,5 @@
 import { Coins, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LiveGift } from '../../lib/liveboomGifts';
 import { findLiveGift } from '../../lib/liveboomGifts';
 import { GiftIcon } from './FloatingGift';
@@ -8,6 +8,51 @@ import {
   normalizeGiftMultiplier,
   type GiftMultiplier,
 } from './GiftSendConfirm';
+
+/** Solo monta el icono cuando entra en viewport (abre el panel más rápido). */
+function LazyGiftThumb({ giftId, size }: { giftId: string; size: number }) {
+  const hostRef = useRef<HTMLSpanElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return;
+    }
+    const root = el.closest('.gift-catalog-scroll, .gift-box-row, .gift-row');
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      {
+        root: root instanceof Element ? root : null,
+        rootMargin: '140px 0px',
+        threshold: 0.01,
+      },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <span
+      ref={hostRef}
+      className="gift-box-item__thumb grid place-items-center"
+      style={{ width: size, height: size }}
+    >
+      {visible ? (
+        <GiftIcon giftId={giftId} size={size} />
+      ) : (
+        <span className="gift-box-item__skeleton block h-full w-full rounded-lg bg-white/5" aria-hidden />
+      )}
+    </span>
+  );
+}
 
 type Props = {
   gifts: LiveGift[];
@@ -50,6 +95,19 @@ export function GiftBoxStrip({
     setMultiplier(1);
   }, [preselectGiftId]);
 
+  /** Prefetch de las primeras celdas visibles para que el grid no “parpadee” vacío. */
+  useEffect(() => {
+    const urls = gifts
+      .slice(0, 12)
+      .map((g) => g.image)
+      .filter((u): u is string => Boolean(u));
+    for (const url of urls) {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
+    }
+  }, [gifts]);
+
   const pendingGift = pendingId
     ? findLiveGift(pendingId) ?? gifts.find((g) => g.id === pendingId) ?? null
     : null;
@@ -66,6 +124,8 @@ export function GiftBoxStrip({
     setMultiplier(1);
     onCancelConfirm?.();
   }
+
+  const thumbSize = compact || floating ? 42 : 40;
 
   return (
     <div
@@ -146,7 +206,7 @@ export function GiftBoxStrip({
                     compact ? 'w-full snap-none' : 'w-[4.35rem] snap-start sm:w-[4.85rem]'
                   } ${busy ? 'is-busy' : ''}`}
                 >
-                  <GiftIcon giftId={gift.id} size={compact || floating ? 42 : 40} />
+                  <LazyGiftThumb giftId={gift.id} size={thumbSize} />
                   <span className="gift-box-item__name mt-1 w-full truncate px-0.5 text-center text-[8px] font-medium leading-tight">
                     {gift.name}
                   </span>

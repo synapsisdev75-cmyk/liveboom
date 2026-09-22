@@ -97,20 +97,10 @@ function commentComposerMinPx() {
   return 2 * 16;
 }
 
+/** Chat: crece hasta 2 líneas; desde la 3.ª hace scroll invisible. */
 function messageComposerMaxPx(lineHeight: number) {
-  const width = window.innerWidth;
-  const viewH = window.visualViewport?.height ?? window.innerHeight;
-  const lines = width < 768 ? 7 : width < 1024 ? 9 : 11;
-  const lineCap = Math.max(lineHeight, lines * lineHeight);
-  const viewCap =
-    viewH < 520
-      ? viewH * 0.2
-      : width < 768
-        ? viewH * 0.22
-        : width < 1024
-          ? viewH * 0.3
-          : viewH * 0.36;
-  return Math.round(Math.min(lineCap, Math.max(lineHeight, viewCap)));
+  const pad = 4;
+  return Math.round(Math.max(lineHeight, lineHeight * 2 + pad));
 }
 
 function visualCaretBox(
@@ -701,6 +691,16 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                       : ''
               }`}
               style={fieldStyle}
+              onScroll={
+                resolvedGrow === 'message'
+                  ? () => {
+                      const field = fieldRef.current;
+                      const mirror = mirrorRef.current;
+                      if (field && mirror) mirror.scrollTop = field.scrollTop;
+                      refreshCaret();
+                    }
+                  : undefined
+              }
             />
             {caretEl}
           </div>

@@ -1248,6 +1248,12 @@ aside.chat-scroll::-webkit-scrollbar {
   min-height: 5rem;
 }
 
+/* Quita fondos negros opacos de iconos (p. ej. avión de papel) sobre la tarjeta oscura. */
+.gift-box-item .lb-gift-icon-img {
+  background: transparent !important;
+  mix-blend-mode: lighten;
+}
+
 .gift-box-item video {
   display: block;
   background: transparent;
@@ -1257,6 +1263,7 @@ aside.chat-scroll::-webkit-scrollbar {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  mix-blend-mode: screen;
 }
 
 .lb-gift-burst-video {
@@ -15897,40 +15904,33 @@ a.lb-entity:active,
   overscroll-behavior: contain;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--text-muted, #a1a1aa) 55%, transparent) transparent;
+  /* Scroll invisible al pasar de 2 a 3+ líneas */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .lb-chat-composer-input::-webkit-scrollbar {
-  width: 3px;
-  height: 3px;
-}
-
-.lb-chat-composer-input::-webkit-scrollbar-track {
-  margin: 0.35rem 0;
+  width: 0;
+  height: 0;
+  display: none;
   background: transparent;
 }
 
-.lb-chat-composer-input::-webkit-scrollbar-thumb {
-  min-height: 1.25rem;
-  border-radius: 99px;
-  background: color-mix(in srgb, var(--text-muted, #a1a1aa) 48%, transparent);
-}
-
-.lb-chat-composer-input::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--text-muted, #a1a1aa) 72%, transparent);
-}
-
+.lb-chat-composer-input::-webkit-scrollbar-track,
+.lb-chat-composer-input::-webkit-scrollbar-thumb,
 .lb-chat-composer-input::-webkit-scrollbar-button,
 .lb-chat-composer-input::-webkit-scrollbar-corner {
   display: none;
   width: 0;
   height: 0;
+  background: transparent;
 }
 
 .lb-chat-composer-mirror {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
   scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .lb-chat-composer-mirror::-webkit-scrollbar {
@@ -15950,10 +15950,6 @@ a.lb-entity:active,
   .lb-chat-composer-field {
     min-height: 2.5rem;
     padding: 0.04rem 0.1rem 0.04rem 0.55rem;
-  }
-
-  .lb-chat-composer-input::-webkit-scrollbar {
-    width: 2.5px;
   }
 }
 

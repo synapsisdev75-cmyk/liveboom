@@ -52,11 +52,14 @@ export function GiftVisual({
   size = 16,
   className = '',
   animated = false,
+  priority = 'low',
 }: {
   gift: LiveGift | null | undefined;
   size?: number;
   className?: string;
   animated?: boolean;
+  /** first-screen icons load sooner when opening the catalog */
+  priority?: 'high' | 'low';
 }) {
   if (animated && gift?.video) {
     return (
@@ -75,8 +78,11 @@ export function GiftVisual({
         alt={gift.name}
         width={size}
         height={size}
-        className={`inline-block shrink-0 object-contain ${className}`}
-        style={{ width: size, height: size }}
+        loading={priority === 'high' ? 'eager' : 'lazy'}
+        decoding="async"
+        fetchPriority={priority === 'high' ? 'high' : 'low'}
+        className={`lb-gift-icon-img inline-block shrink-0 object-contain ${className}`}
+        style={{ width: size, height: size, background: 'transparent' }}
         draggable={false}
       />
     );
@@ -139,7 +145,7 @@ function GiftAnimThumb({
       loop
       playsInline
       autoPlay
-      preload="auto"
+      preload="metadata"
       className={`inline-block shrink-0 bg-transparent object-contain ${className}`}
       style={{ width: size, height: size, background: 'transparent' }}
       aria-label={alt}
@@ -151,13 +157,15 @@ export function GiftIcon({
   giftId,
   size = 16,
   animated = false,
+  priority = 'low',
 }: {
   giftId?: string;
   size?: number;
   animated?: boolean;
+  priority?: 'high' | 'low';
 }) {
   const gift = findLiveGift(giftId);
-  return <GiftVisual gift={gift} size={size} animated={animated} />;
+  return <GiftVisual gift={gift} size={size} animated={animated} priority={priority} />;
 }
 
 function GiftVideoBurst({
