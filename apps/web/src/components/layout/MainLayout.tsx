@@ -7,6 +7,8 @@ import {
   MessageCircle,
   Compass,
   LogOut,
+  PanelLeft,
+  PanelLeftClose,
   Plus,
   Radio,
   Search,
@@ -96,20 +98,47 @@ const activeClass =
 const idleClass =
   'lb-nav-item flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-medium leading-tight tracking-[0.01em] text-white/88';
 
+type SidebarMode = 'retract' | 'fixed';
+const SIDEBAR_MODE_KEY = 'lb-sidebar-mode';
+
+function readSidebarMode(): SidebarMode {
+  try {
+    return localStorage.getItem(SIDEBAR_MODE_KEY) === 'fixed' ? 'fixed' : 'retract';
+  } catch {
+    return 'retract';
+  }
+}
+
 type SidebarBodyProps = {
   profile: ReturnType<typeof useAuthStore.getState>['profile'];
   onNavigate?: () => void;
   /** Escritorio/tablet: true = solo iconos (rail). */
   rail?: boolean;
+  /** Solo escritorio: mostrar control retractil / fijo. */
+  modeToggle?: boolean;
+  sidebarMode?: SidebarMode;
+  onSidebarModeChange?: (mode: SidebarMode) => void;
 };
 
 /** Sidebar compacto: 100% alto viewport, sin scroll, todos los ítems visibles. */
-function SidebarBody({ profile, onNavigate, rail = false }: SidebarBodyProps) {
+function SidebarBody({
+  profile,
+  onNavigate,
+  rail = false,
+  modeToggle = false,
+  sidebarMode = 'retract',
+  onSidebarModeChange,
+}: SidebarBodyProps) {
   const t = useT();
   const sideNavItems = useSideNavItems();
+  const fixed = sidebarMode === 'fixed';
   return (
     <div className="lb-sidebar-body flex h-full min-h-0 flex-col overflow-x-clip overflow-y-visible">
-      <div className={`mb-2 flex shrink-0 items-center ${rail ? 'flex-col gap-2' : 'gap-1'}`}>
+      <div
+        className={`mb-2 flex shrink-0 items-center ${
+          rail ? 'flex-col gap-2' : 'gap-1'
+        }`}
+      >
         <Link
           to="/"
           onClick={onNavigate}
@@ -127,7 +156,25 @@ function SidebarBody({ profile, onNavigate, rail = false }: SidebarBodyProps) {
             }
           />
         </Link>
-        <AppearanceControl />
+        <div className={`flex shrink-0 items-center gap-1 ${rail ? 'flex-col' : ''}`}>
+          {modeToggle && onSidebarModeChange ? (
+            <button
+              type="button"
+              className={`lb-sidebar-mode-toggle${fixed ? ' is-fixed' : ' is-retract'}`}
+              aria-pressed={fixed}
+              aria-label={fixed ? 'Modo fijo (cambiar a retractil)' : 'Modo retractil (cambiar a fijo)'}
+              title={fixed ? 'Fijo · clic para retractil' : 'Retractil · clic para fijo'}
+              onClick={() => onSidebarModeChange(fixed ? 'retract' : 'fixed')}
+            >
+              {fixed ? (
+                <PanelLeftClose size={15} strokeWidth={2.2} aria-hidden />
+              ) : (
+                <PanelLeft size={15} strokeWidth={2.2} aria-hidden />
+              )}
+            </button>
+          ) : null}
+          <AppearanceControl />
+        </div>
       </div>
 
       <nav
@@ -294,7 +341,9 @@ export function MainLayout() {
   const toastTone = useUiStore((state) => state.toastTone);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  /** Sidebar escritorio: iconos por defecto; se expande al pasar / tocar. */
+  /** retract = iconos + expandir al pasar; fixed = sidebar siempre abierto. */
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => readSidebarMode());
+  /** Solo aplica en modo retractil. */
   const [sidebarPeek, setSidebarPeek] = useState(false);
   const sidebarPeekTimer = useRef(0);
   const location = useLocation();
@@ -314,14 +363,29 @@ export function MainLayout() {
     onRefresh: reloadApp,
     enabled: pullToRefreshEnabled,
   });
-  const sidebarRail = !sidebarPeek;
+  const sidebarRail = sidebarMode === 'retract' && !sidebarPeek;
+
+  function setSidebarModePersist(next: SidebarMode) {
+    setSidebarMode(next);
+    try {
+      localStorage.setItem(SIDEBAR_MODE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+    if (next === 'fixed') {
+      window.clearTimeout(sidebarPeekTimer.current);
+      setSidebarPeek(false);
+    }
+  }
 
   function openSidebarPeek() {
+    if (sidebarMode !== 'retract') return;
     window.clearTimeout(sidebarPeekTimer.current);
     setSidebarPeek(true);
   }
 
   function closeSidebarPeek() {
+    if (sidebarMode !== 'retract') return;
     window.clearTimeout(sidebarPeekTimer.current);
     sidebarPeekTimer.current = window.setTimeout(() => setSidebarPeek(false), 140);
   }
@@ -422,6 +486,9 @@ export function MainLayout() {
         <SidebarBody
           profile={profile}
           rail={sidebarRail}
+          modeToggle
+          sidebarMode={sidebarMode}
+          onSidebarModeChange={setSidebarModePersist}
         />
       </aside>
 

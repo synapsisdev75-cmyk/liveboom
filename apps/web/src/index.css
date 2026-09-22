@@ -2833,6 +2833,48 @@ html:has(.lb-auth-page) #root {
 
 /* Sidebar escritorio/tablet: iconos por defecto; al pasar/tocar se expande. */
 @media (min-width: 1024px) {
+  .lb-sidebar-mode-toggle {
+    display: grid;
+    place-items: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    min-width: 2.15rem;
+    min-height: 2.15rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--lb-accent-mid, #a855f7) 40%, transparent);
+    background: color-mix(in srgb, var(--lb-bg-sidebar, #0a0a0b) 88%, #000);
+    color: #e4e4e7;
+    touch-action: manipulation;
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .lb-sidebar-mode-toggle:hover {
+    border-color: color-mix(in srgb, var(--lb-accent-primary, #00e5ff) 70%, transparent);
+    color: #fff;
+  }
+
+  .lb-sidebar-mode-toggle:focus-visible {
+    outline: 2px solid var(--lb-accent-secondary, #22d3ee);
+    outline-offset: 2px;
+  }
+
+  .lb-sidebar-mode-toggle.is-fixed {
+    border-color: color-mix(in srgb, var(--lb-accent-secondary, #22d3ee) 55%, transparent);
+    color: var(--lb-accent-secondary, #22d3ee);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--lb-accent-secondary, #22d3ee) 28%, transparent);
+  }
+
+  .lb-sidebar--rail .lb-sidebar-mode-toggle {
+    width: 2rem;
+    height: 2rem;
+    min-width: 2rem;
+    min-height: 2rem;
+  }
+
   .lb-sidebar {
     transition:
       width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
