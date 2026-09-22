@@ -21,6 +21,7 @@ import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 import { giftPlaybackDurationMs, giftPlaybackSrc } from '../../lib/giftMedia';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
+import { GiftComboBadge } from './GiftComboBadge';
 
 /** Fallback cuando el catálogo no trae width/height: todas las animaciones de regalo son 9:16. */
 const GIFT_ANIM_FALLBACK_W = 720;
@@ -368,15 +369,9 @@ function GiftVideoBurst({
       {senderName ? (
         <span className="absolute bottom-[12%] z-[61] text-[11px] font-semibold text-cyan-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
           {senderName}
-          {combo && combo > 1 ? (
-            <span className="ml-1 font-black text-amber-300">x{combo}</span>
-          ) : null}
-        </span>
-      ) : combo && combo > 1 ? (
-        <span className="absolute bottom-[12%] z-[61] text-sm font-black text-amber-300 drop-shadow">
-          x{combo}
         </span>
       ) : null}
+      {combo && combo > 1 ? <GiftComboBadge combo={combo} size="md" /> : null}
     </motion.div>
   );
 }
@@ -449,11 +444,9 @@ function GiftStillBurst({
       {senderName ? (
         <span className="absolute bottom-[12%] z-[61] text-[11px] font-semibold text-cyan-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
           {senderName}
-          {combo && combo > 1 ? (
-            <span className="ml-1 font-black text-amber-300">x{combo}</span>
-          ) : null}
         </span>
       ) : null}
+      {combo && combo > 1 ? <GiftComboBadge combo={combo} size="md" /> : null}
     </motion.div>
   );
 }
@@ -668,9 +661,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
         <span className="relative drop-shadow-[0_0_18px_rgba(0,240,255,0.65)]">
           <GiftVisual gift={gift} size={sizePx} />
           {combo && combo > 1 ? (
-            <span className="absolute -right-2 -top-2 rounded-full bg-amber-400 px-1.5 py-0.5 text-[11px] font-black text-zinc-950 shadow-lg">
-              x{combo}
-            </span>
+            <GiftComboBadge combo={combo} size="sm" className="lb-gift-combo-badge--corner" />
           ) : null}
         </span>
         {senderName ? (

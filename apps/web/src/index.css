@@ -1266,6 +1266,86 @@ aside.chat-scroll::-webkit-scrollbar {
   object-position: center;
 }
 
+/* Multiplicador x1–x10: aparece pequeño → pop (misma animación, no tapa el regalo). */
+.lb-gift-combo-badge {
+  position: absolute;
+  z-index: 70;
+  top: 8%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: clamp(4.25rem, 16vmin, 7rem);
+  height: clamp(4.25rem, 16vmin, 7rem);
+  pointer-events: none;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.35));
+}
+
+.lb-gift-combo-badge--sm {
+  width: clamp(3.4rem, 12vmin, 5.25rem);
+  height: clamp(3.4rem, 12vmin, 5.25rem);
+  top: 6%;
+}
+
+.lb-gift-combo-badge--lg {
+  width: clamp(5rem, 18vmin, 8rem);
+  height: clamp(5rem, 18vmin, 8rem);
+}
+
+.lb-gift-combo-badge__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  mix-blend-mode: screen;
+  animation: lb-gift-combo-pop 1.15s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+.lb-gift-combo-badge--corner {
+  top: auto;
+  bottom: 14%;
+  left: auto;
+  right: max(0.35rem, 4%);
+  transform: none;
+  width: clamp(3.6rem, 14vmin, 6.25rem);
+  height: clamp(3.6rem, 14vmin, 6.25rem);
+}
+
+@keyframes lb-gift-combo-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.12) rotate(-8deg);
+    filter: brightness(1.6) saturate(1.35);
+  }
+  38% {
+    opacity: 1;
+    transform: scale(1.14) rotate(3deg);
+    filter: brightness(1.25) saturate(1.2);
+  }
+  62% {
+    transform: scale(0.94) rotate(-1.5deg);
+    filter: brightness(1.05) saturate(1.05);
+  }
+  82% {
+    transform: scale(1.04) rotate(0.6deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1) saturate(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-gift-combo-badge__img {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Menú rápido de mensajes (header) + chat flotante estilo Messenger */
 .lb-msg-quick-popup {
   right: max(0.75rem, env(safe-area-inset-right, 0px));
