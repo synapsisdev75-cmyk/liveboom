@@ -2815,17 +2815,19 @@ html:has(.lb-auth-page) #root {
   background: color-mix(in srgb, var(--success, #34d399) 16%, var(--lb-surface));
 }
 
-/* Mensajes (escritorio): rail de iconos + transición suave encoger/recoger */
+/* Sidebar escritorio/tablet: iconos por defecto; al pasar/tocar se expande. */
 @media (min-width: 1024px) {
   .lb-sidebar {
     transition:
       width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
       min-width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
       max-width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
-      padding 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      padding 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.28s ease;
   }
 
-  .lb-shell--messages .lb-sidebar--messages-rail {
+  .lb-sidebar--rail,
+  .lb-shell--messages .lb-sidebar--messages-rail.lb-sidebar--rail {
     width: 3.75rem;
     min-width: 3.75rem;
     max-width: 3.75rem;
@@ -2833,18 +2835,29 @@ html:has(.lb-auth-page) #root {
     padding-right: 0.3rem;
   }
 
+  .lb-sidebar--expanded {
+    width: min(22%, 280px);
+    min-width: 220px;
+    max-width: 280px;
+    z-index: 36;
+    box-shadow: 8px 0 28px rgba(0, 0, 0, 0.35);
+  }
+
+  .lb-sidebar--rail .lb-side-nav,
   .lb-shell--messages .lb-sidebar--messages-rail .lb-side-nav {
     overflow-y: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
 
+  .lb-sidebar--rail .lb-side-nav::-webkit-scrollbar,
   .lb-shell--messages .lb-sidebar--messages-rail .lb-side-nav::-webkit-scrollbar {
     display: none;
     width: 0;
     height: 0;
   }
 
+  .lb-sidebar--rail .lb-nav-item--rail,
   .lb-shell--messages .lb-nav-item--rail {
     min-height: 2.35rem;
     margin-inline: 0.05rem;
@@ -2854,6 +2867,7 @@ html:has(.lb-auth-page) #root {
     gap: 0;
   }
 
+  .lb-sidebar--rail .lb-nav-item--rail .lb-nav-icon,
   .lb-shell--messages .lb-nav-item--rail .lb-nav-icon {
     width: 1.05rem;
     height: 1.05rem;
@@ -2900,17 +2914,20 @@ html:has(.lb-auth-page) #root {
 
 /* Pantallas más bajas / estrechas: iconos aún más compactos */
 @media (min-width: 1024px) and (max-height: 820px) {
-  .lb-shell--messages .lb-sidebar--messages-rail {
+  .lb-sidebar--rail,
+  .lb-shell--messages .lb-sidebar--messages-rail.lb-sidebar--rail {
     width: 3.35rem;
     min-width: 3.35rem;
     max-width: 3.35rem;
   }
 
+  .lb-sidebar--rail .lb-nav-item--rail,
   .lb-shell--messages .lb-nav-item--rail {
     min-height: 2rem;
     padding-block: 0.1rem;
   }
 
+  .lb-sidebar--rail .lb-nav-item--rail .lb-nav-icon,
   .lb-shell--messages .lb-nav-item--rail .lb-nav-icon {
     width: 0.95rem;
     height: 0.95rem;
@@ -2926,12 +2943,14 @@ html:has(.lb-auth-page) #root {
 }
 
 @media (min-width: 1024px) and (max-width: 1280px) {
-  .lb-shell--messages .lb-sidebar--messages-rail {
+  .lb-sidebar--rail,
+  .lb-shell--messages .lb-sidebar--messages-rail.lb-sidebar--rail {
     width: 3.35rem;
     min-width: 3.35rem;
     max-width: 3.35rem;
   }
 
+  .lb-sidebar--rail .lb-nav-item--rail .lb-nav-icon,
   .lb-shell--messages .lb-nav-item--rail .lb-nav-icon {
     width: 0.95rem;
     height: 0.95rem;

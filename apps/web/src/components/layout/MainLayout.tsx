@@ -98,7 +98,7 @@ type SidebarBodyProps = {
   profile: ReturnType<typeof useAuthStore.getState>['profile'];
   onRecharge: () => void;
   onNavigate?: () => void;
-  /** Solo escritorio /mensajes: rail de iconos para maximizar el chat. */
+  /** Escritorio/tablet: true = solo iconos (rail). */
   rail?: boolean;
 };
 
@@ -351,6 +351,9 @@ export function MainLayout() {
   const toastTone = useUiStore((state) => state.toastTone);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** Sidebar escritorio: iconos por defecto; se expande al pasar / tocar. */
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const sidebarPeekTimer = useRef(0);
   const location = useLocation();
   const onMessages = isMessagesPath(location.pathname);
   const onExplore = location.pathname.startsWith('/explorar');
@@ -368,6 +371,21 @@ export function MainLayout() {
     onRefresh: reloadApp,
     enabled: pullToRefreshEnabled,
   });
+  const sidebarRail = !sidebarPeek;
+
+  function openSidebarPeek() {
+    window.clearTimeout(sidebarPeekTimer.current);
+    setSidebarPeek(true);
+  }
+
+  function closeSidebarPeek() {
+    window.clearTimeout(sidebarPeekTimer.current);
+    sidebarPeekTimer.current = window.setTimeout(() => setSidebarPeek(false), 140);
+  }
+
+  useEffect(() => {
+    return () => window.clearTimeout(sidebarPeekTimer.current);
+  }, []);
 
   useEffect(() => {
     patchChatNotifyContext({ inMessagesRoute: onMessages });
@@ -441,13 +459,21 @@ export function MainLayout() {
 
       <aside
         className={`lb-sidebar hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex ${
-          onMessages ? 'lb-sidebar--messages-rail' : ''
-        }`}
+          sidebarRail ? 'lb-sidebar--rail' : 'lb-sidebar--expanded'
+        }${onMessages ? ' lb-sidebar--messages-rail' : ''}`}
+        onPointerEnter={openSidebarPeek}
+        onPointerLeave={closeSidebarPeek}
+        onFocusCapture={openSidebarPeek}
+        onBlurCapture={(event) => {
+          const next = event.relatedTarget as Node | null;
+          if (next && event.currentTarget.contains(next)) return;
+          closeSidebarPeek();
+        }}
       >
         <SidebarBody
           profile={profile}
           onRecharge={() => setRechargeOpen(true)}
-          rail={onMessages}
+          rail={sidebarRail}
         />
       </aside>
 
