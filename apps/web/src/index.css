@@ -2969,15 +2969,16 @@ html:has(.lb-auth-page) #root {
     transition: flex-basis 2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  /* Textos: aparecen/desaparecen rápido; solo el ancho del cuadro va a 2s. */
   .lb-sidebar .lb-nav-item__label,
   .lb-sidebar .lb-nav-item__label-badge {
     max-width: 12rem;
     opacity: 1;
     overflow: hidden;
     transition:
-      opacity 0.9s ease 0.35s,
-      max-width 2s cubic-bezier(0.4, 0, 0.2, 1),
-      margin 2s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity 0.18s ease,
+      max-width 0.22s ease,
+      margin 0.22s ease;
   }
 
   .lb-sidebar--rail .lb-nav-item__label,
@@ -2989,16 +2990,16 @@ html:has(.lb-auth-page) #root {
     margin: 0;
     pointer-events: none;
     transition:
-      opacity 0.55s ease,
-      max-width 2s cubic-bezier(0.4, 0, 0.2, 1),
-      margin 2s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity 0.12s ease,
+      max-width 0.18s ease,
+      margin 0.18s ease;
   }
 
   .lb-sidebar .lb-nav-icon {
     transition:
-      width 0.7s ease,
-      height 0.7s ease,
-      opacity 0.7s ease;
+      width 0.2s ease,
+      height 0.2s ease,
+      opacity 0.2s ease;
   }
 }
 
