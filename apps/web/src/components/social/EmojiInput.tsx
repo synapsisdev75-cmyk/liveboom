@@ -623,7 +623,10 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
           style={{
             left: caretBox.left,
             top: caretBox.top,
-            height: Math.max(caretBox.height, emojiSize),
+            height: Math.min(
+              Math.max(Math.min(emojiSize, 18), 14),
+              Math.min(caretBox.height || lineHeightPx, lineHeightPx),
+            ),
           }}
           aria-hidden
         />

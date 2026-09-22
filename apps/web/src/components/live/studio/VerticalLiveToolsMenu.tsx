@@ -10,6 +10,7 @@ import {
   MonitorUp,
   Plus,
   Swords,
+  SwitchCamera,
   Users,
   X,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ export type VerticalLiveToolId =
   | 'screen'
   | 'mic'
   | 'camera'
+  | 'flip'
   | 'mirror'
   | 'notify'
   | 'wishlist'
@@ -35,6 +37,7 @@ type Props = {
   notifyBusy: boolean;
   wishlistCount: number;
   lockActive: boolean;
+  flipBusy?: boolean;
   /** Oculta Compartir pantalla (móvil / Espacio Gaming). */
   hideScreenShare?: boolean;
   /** Oculta Cámara durante Mobile Gaming Screen Share. */
@@ -46,6 +49,8 @@ type Props = {
   onScreen: () => void;
   onMic: () => void;
   onCamera: () => void;
+  /** Frontal ↔ trasera (móvil / APK). */
+  onFlipCamera?: () => void;
   onMirror: () => void;
   onNotify: () => void;
   onWishlist: () => void;
@@ -62,6 +67,7 @@ const TOOLS: {
   { id: 'screen', label: 'Pantalla', tone: 'cyan' },
   { id: 'mic', label: 'Micrófono', tone: 'emerald' },
   { id: 'camera', label: 'Cámara', tone: 'amber' },
+  { id: 'flip', label: 'Girar', tone: 'cyan' },
   { id: 'mirror', label: 'Espejo', tone: 'lavender' },
   { id: 'notify', label: 'Avisar', tone: 'rose' },
   { id: 'wishlist', label: 'Deseos', tone: 'cyan' },
@@ -69,7 +75,7 @@ const TOOLS: {
 ];
 
 const TOGGLE_IDS = new Set<VerticalLiveToolId>(['mic', 'camera', 'mirror', 'screen', 'lock']);
-const KEEP_OPEN_IDS = new Set<VerticalLiveToolId>(['camera', 'mirror', 'screen']);
+const KEEP_OPEN_IDS = new Set<VerticalLiveToolId>(['camera', 'flip', 'mirror', 'screen']);
 const ICON_SIZE = 22;
 const TAP_GUARD_MS = 220;
 
@@ -77,10 +83,12 @@ function ToolIcon({
   id,
   micOn,
   cameraOn,
+  flipBusy,
 }: {
   id: VerticalLiveToolId;
   micOn: boolean;
   cameraOn: boolean;
+  flipBusy?: boolean;
 }) {
   switch (id) {
     case 'invite':
@@ -93,6 +101,8 @@ function ToolIcon({
       return micOn ? <Mic size={ICON_SIZE} /> : <MicOff size={ICON_SIZE} />;
     case 'camera':
       return cameraOn ? <Camera size={ICON_SIZE} /> : <CameraOff size={ICON_SIZE} />;
+    case 'flip':
+      return <SwitchCamera size={ICON_SIZE} className={flipBusy ? 'animate-spin' : ''} />;
     case 'mirror':
       return <FlipHorizontal size={ICON_SIZE} />;
     case 'notify':
@@ -114,6 +124,7 @@ export function VerticalLiveToolsMenu({
   notifyBusy,
   wishlistCount,
   lockActive,
+  flipBusy = false,
   hideScreenShare = false,
   hideCamera = false,
   screenToolLabel,
@@ -122,6 +133,7 @@ export function VerticalLiveToolsMenu({
   onScreen,
   onMic,
   onCamera,
+  onFlipCamera,
   onMirror,
   onNotify,
   onWishlist,
@@ -177,6 +189,9 @@ export function VerticalLiveToolsMenu({
       case 'camera':
         onCamera();
         break;
+      case 'flip':
+        onFlipCamera?.();
+        break;
       case 'mirror':
         onMirror();
         break;
@@ -209,6 +224,7 @@ export function VerticalLiveToolsMenu({
   function toolLabel(id: VerticalLiveToolId, label: string) {
     if (id === 'notify' && notifyBusy) return 'Avisando';
     if (id === 'camera') return cameraOn ? 'Cámara ON' : 'Cámara OFF';
+    if (id === 'flip' && flipBusy) return 'Girando…';
     if (id === 'mirror') return mirrorOn ? 'Espejo ON' : 'Espejo OFF';
     if (id === 'wishlist' && wishlistCount) return `Deseos (${wishlistCount})`;
     if (id === 'screen' && screenSharing) return screenToolLabel ? `${screenToolLabel} ON` : 'Pantalla ON';
@@ -221,6 +237,7 @@ export function VerticalLiveToolsMenu({
       if (tool.id === 'vs') return Boolean(onVs);
       if (tool.id === 'screen') return !hideScreenShare;
       if (tool.id === 'camera') return !hideCamera;
+      if (tool.id === 'flip') return Boolean(onFlipCamera) && !hideCamera;
       return true;
     }),
   ];
@@ -244,17 +261,21 @@ export function VerticalLiveToolsMenu({
               <button
                 key={tool.id}
                 type="button"
-                disabled={disabled}
+                disabled={disabled || (tool.id === 'flip' && flipBusy)}
                 tabIndex={open ? 0 : -1}
                 aria-pressed={isToggle ? active : undefined}
-                aria-busy={tool.id === 'notify' && notifyBusy ? true : undefined}
+                aria-busy={
+                  (tool.id === 'notify' && notifyBusy) || (tool.id === 'flip' && flipBusy)
+                    ? true
+                    : undefined
+                }
                 onClick={() => withSingleTap(() => run(tool.id))}
                 className={`lb-live-vtools-item is-${tool.tone}${active ? ' is-on' : ''}${
                   isToggle && !active ? ' is-off' : ''
                 }${tool.id === 'lock' ? ' is-lock' : ''}`}
               >
                 <span className="lb-live-vtools-icon" aria-hidden>
-                  <ToolIcon id={tool.id} micOn={micOn} cameraOn={cameraOn} />
+                  <ToolIcon id={tool.id} micOn={micOn} cameraOn={cameraOn} flipBusy={flipBusy} />
                 </span>
                 <span className="lb-live-vtools-label">{toolLabel(tool.id, tool.label)}</span>
               </button>

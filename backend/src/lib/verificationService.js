@@ -1,5 +1,6 @@
 const { FieldValue } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
+const { randomUUID } = require('crypto');
 const { firestoreConfigured, getAdminDb } = require('./firestoreAdmin');
 const config = require('./verificationConfig');
 const filesLib = require('./verificationFiles');
@@ -15,6 +16,11 @@ const {
 const CASES = 'wallet_verification_cases';
 const STORAGE_BUCKET =
   process.env.FIREBASE_STORAGE_BUCKET || 'liveboom-app.firebasestorage.app';
+
+function downloadUrlFor(bucketName, objectPath, token) {
+  const encoded = encodeURIComponent(objectPath);
+  return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encoded}?alt=media&token=${encodeURIComponent(token)}`;
+}
 
 const CASE_STATUS = {
   NOT_STARTED: 'not_started',
@@ -308,11 +314,17 @@ async function saveFile({ uid, slot, buffer, declaredType }) {
   if (firestoreConfigured()) {
     const bucket = getStorage().bucket(STORAGE_BUCKET);
     const object = bucket.file(path);
+    const downloadToken = randomUUID();
     await object.save(buffer, {
       resumable: false,
       metadata: {
         contentType: mime,
-        metadata: { uid: String(uid), slot: String(slot), caseId: row.caseId },
+        metadata: {
+          uid: String(uid),
+          slot: String(slot),
+          caseId: row.caseId,
+          firebaseStorageDownloadTokens: downloadToken,
+        },
       },
     });
   }
@@ -764,12 +776,46 @@ async function signedFileUrl({ uid, fileId, actorId, isAdmin }) {
     return { url: '', expiresAtMs: Date.now() + 120000 };
   }
   const bucket = getStorage().bucket(STORAGE_BUCKET);
-  const [url] = await bucket.file(file.storagePath).getSignedUrl({
-    version: 'v4',
-    action: 'read',
-    expires: Date.now() + 5 * 60 * 1000,
-  });
-  return { url, expiresAtMs: Date.now() + 5 * 60 * 1000, contentType: file.contentType, slot: file.slot };
+  const object = bucket.file(file.storagePath);
+  const expiresAtMs = Date.now() + 5 * 60 * 1000;
+
+  // Prefer V4 signed URL when the runtime SA can signBlob.
+  try {
+    const [url] = await object.getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: expiresAtMs,
+    });
+    return { url, expiresAtMs, contentType: file.contentType, slot: file.slot };
+  } catch (err) {
+    console.warn(
+      '[verification] getSignedUrl failed; using download token',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Fallback: Firebase download token (no iam.serviceAccounts.signBlob required).
+  const [meta] = await object.getMetadata();
+  const existing = String(meta.metadata?.firebaseStorageDownloadTokens || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  let token = existing[0] || '';
+  if (!token) {
+    token = randomUUID();
+    await object.setMetadata({
+      metadata: {
+        ...(meta.metadata || {}),
+        firebaseStorageDownloadTokens: token,
+      },
+    });
+  }
+  return {
+    url: downloadUrlFor(STORAGE_BUCKET, file.storagePath, token),
+    expiresAtMs,
+    contentType: file.contentType,
+    slot: file.slot,
+  };
 }
 
 async function requireVerifiedPayout(uid, { fullName, documentId, payoutMethod, accountNumber, accountType, accountId }) {

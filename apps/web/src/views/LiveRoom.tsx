@@ -3585,6 +3585,17 @@ function CreatorStage({
         if (ok) return;
       }
       const nextFacing = facing === 'user' ? 'environment' : 'user';
+      const opposite = videoInputs.find((device) => {
+        const inferred = liveCameraFacing(device.label || '');
+        return inferred === nextFacing;
+      });
+      const fallback = videoInputs.find((device) => device.deviceId !== cameraDeviceId);
+      const target = opposite || fallback;
+      if (target?.deviceId) {
+        await switchCameraDevice(target.deviceId);
+        setFacing(nextFacing);
+        return;
+      }
       const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
         (item) => item.source === Track.Source.Camera,
       );
@@ -3604,7 +3615,16 @@ function CreatorStage({
     } finally {
       setFlipping(false);
     }
-  }, [canPublish, flipping, facing, room, hostDeepAr]);
+  }, [
+    canPublish,
+    flipping,
+    facing,
+    room,
+    hostDeepAr,
+    videoInputs,
+    cameraDeviceId,
+    switchCameraDevice,
+  ]);
 
   const toggleMic = useCallback(async () => {
     if (!canPublish) return;
@@ -5142,6 +5162,7 @@ function CreatorStage({
                   !canUseClassicScreenShare() && !showScreenShareComingSoonButton()
                 }
                 hideCamera={Boolean(screenSharing && isNativeAndroidApp())}
+                flipBusy={flipping}
                 screenToolLabel={
                   showScreenShareComingSoonButton()
                     ? 'Pantalla'
@@ -5178,6 +5199,7 @@ function CreatorStage({
                 }}
                 onMic={() => void toggleMic()}
                 onCamera={() => void toggleCamera()}
+                onFlipCamera={() => void flipCamera()}
                 onMirror={toggleMirror}
                 onNotify={() => void notifyFollowers()}
                 onWishlist={() => {
@@ -5981,6 +6003,22 @@ function CreatorStage({
         <p className="pointer-events-none absolute left-3 right-3 top-[8.5rem] z-10 text-[11px] text-cyan-200 max-lg:top-[calc(max(0.75rem,env(safe-area-inset-top))+6.5rem)] sm:left-4 sm:max-w-md">
           {liveStatusNote}
         </p>
+      ) : null}
+      {canPublish && isHost && !Boolean(screenSharing && isNativeAndroidApp()) ? (
+        <div
+          className={`pointer-events-auto absolute right-3 z-30 flex flex-col gap-2 lg:hidden ${liveHostControlsBottomClass(liveViewport)}`}
+        >
+          <button
+            type="button"
+            onClick={() => void flipCamera()}
+            disabled={flipping}
+            className="grid h-12 w-12 place-items-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur ring-1 ring-white/20 disabled:opacity-50"
+            aria-label={facing === 'user' ? 'Cambiar a cámara trasera' : 'Cambiar a cámara frontal'}
+            title={facing === 'user' ? 'Cámara trasera' : 'Cámara frontal'}
+          >
+            <SwitchCamera size={20} className={flipping ? 'animate-spin' : ''} />
+          </button>
+        </div>
       ) : null}
       {canPublish && !isHost ? (
         <div
