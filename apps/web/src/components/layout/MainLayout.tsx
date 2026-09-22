@@ -118,6 +118,8 @@ type SidebarBodyProps = {
   modeToggle?: boolean;
   sidebarMode?: SidebarMode;
   onSidebarModeChange?: (mode: SidebarMode) => void;
+  /** Transmitir en este panel (p. ej. menú móvil; en PC va en el rail derecho). */
+  showGoLive?: boolean;
 };
 
 /** Sidebar compacto: 100% alto viewport, sin scroll, todos los ítems visibles. */
@@ -128,6 +130,7 @@ function SidebarBody({
   modeToggle = false,
   sidebarMode = 'retract',
   onSidebarModeChange,
+  showGoLive = false,
 }: SidebarBodyProps) {
   const t = useT();
   const sideNavItems = useSideNavItems();
@@ -225,21 +228,6 @@ function SidebarBody({
       <div className="lb-sidebar-footer mt-auto flex shrink-0 flex-col gap-3 overflow-visible pt-2">
         {rail ? (
           <>
-            <NavLink
-              to="/transmitir"
-              onClick={onNavigate}
-              title={t('nav.goLive')}
-              aria-label={t('nav.goLive')}
-              onPointerEnter={() => {
-                prefetchRoute('/transmitir');
-                prefetchRoute('/stream');
-              }}
-              className={({ isActive }) =>
-                `lb-sidebar-cta lb-sidebar-cta--rail${isActive ? ' is-active' : ''}`
-              }
-            >
-              <Radio size={18} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
-            </NavLink>
             <Link
               to="/tendencias"
               onClick={onNavigate}
@@ -276,21 +264,22 @@ function SidebarBody({
           </>
         ) : (
           <>
-            {/* En móvil no hay rail derecho: mantener Transmitir aquí. */}
-            <NavLink
-              to="/transmitir"
-              onClick={onNavigate}
-              onPointerEnter={() => {
-                prefetchRoute('/transmitir');
-                prefetchRoute('/stream');
-              }}
-              className={({ isActive }) =>
-                `lb-sidebar-cta lg:hidden${isActive ? ' is-active' : ''}`
-              }
-            >
-              <Radio size={15} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
-              {t('nav.goLive')}
-            </NavLink>
+            {showGoLive ? (
+              <NavLink
+                to="/transmitir"
+                onClick={onNavigate}
+                onPointerEnter={() => {
+                  prefetchRoute('/transmitir');
+                  prefetchRoute('/stream');
+                }}
+                className={({ isActive }) =>
+                  `lb-sidebar-cta${isActive ? ' is-active' : ''}`
+                }
+              >
+                <Radio size={15} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
+                {t('nav.goLive')}
+              </NavLink>
+            ) : null}
 
             <SidebarTrendsCard onNavigate={onNavigate} />
 
@@ -561,6 +550,7 @@ export function MainLayout() {
               <SidebarBody
                 profile={profile}
                 onNavigate={() => setMenuOpen(false)}
+                showGoLive
               />
             </div>
             {profile ? (
