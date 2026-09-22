@@ -37,8 +37,9 @@ export function releasePendingCallMicrophone() {
 
 /**
  * Abre el micrófono en el clic (gesto) y lo deja vivo.
- * No se detiene aquí: en Windows/Chrome stop()+reopen deja el dispositivo ocupado y LiveKit publica silencio.
- * La cámara no se toca.
+ * En videollamada también pide cámara en el mismo gesto (obligatorio en iOS/Android);
+ * la pista de video se suelta tras conceder el permiso; LiveKit la vuelve a abrir.
+ * No se detiene el mic aquí: en Windows/Chrome stop()+reopen deja el dispositivo ocupado.
  */
 export async function ensureCallMediaPermission(video: boolean): Promise<string | null> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -55,20 +56,47 @@ export async function ensureCallMediaPermission(video: boolean): Promise<string 
     const status = await navigator.permissions?.query?.({ name: 'microphone' as PermissionName });
     if (status?.state === 'denied') {
       return video
-        ? 'LiveBoom necesita acceso al micrófono. Revisa los permisos del navegador.'
+        ? 'LiveBoom necesita acceso al micrófono. Revisa los permisos del navegador o de la app.'
         : micDeniedMessage(new DOMException('', 'NotAllowedError'));
     }
   } catch {
     /* Safari / Firefox no siempre exponen permissions.query. */
   }
+  if (video) {
+    try {
+      const camStatus = await navigator.permissions?.query?.({ name: 'camera' as PermissionName });
+      if (camStatus?.state === 'denied') {
+        return 'LiveBoom necesita acceso a la cámara. Revisa los permisos del navegador o de la app.';
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const constraints: MediaStreamConstraints = video
+      ? { audio: true, video: { facingMode: 'user' } }
+      : { audio: true, video: false };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
     const track = stream.getAudioTracks()[0] || null;
+    // Liberar video ya: el permiso queda concedido; LiveKit publica la cámara al conectar.
+    stream.getVideoTracks().forEach((item) => {
+      try {
+        item.stop();
+      } catch {
+        /* ignore */
+      }
+    });
     stream.getTracks().forEach((item) => {
-      if (item !== track) item.stop();
+      if (item !== track && item.kind !== 'video') item.stop();
     });
     if (!track || track.readyState !== 'live') {
-      stream.getTracks().forEach((item) => item.stop());
+      stream.getTracks().forEach((item) => {
+        try {
+          item.stop();
+        } catch {
+          /* ignore */
+        }
+      });
       return micDeniedMessage(new DOMException('', 'NotFoundError'));
     }
     stopPendingCallMic();
@@ -82,6 +110,36 @@ export async function ensureCallMediaPermission(video: boolean): Promise<string 
     );
     return null;
   } catch (error) {
+    if (video) {
+      const name = error instanceof DOMException ? error.name : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        return 'LiveBoom necesita acceso a la cámara y al micrófono. Revisa los permisos del navegador o de la app.';
+      }
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        return 'No se encontró cámara o micrófono en este dispositivo.';
+      }
+      // Fallback: al menos micrófono (algunos móviles niegan video en background tabs).
+      try {
+        const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        const track = audioOnly.getAudioTracks()[0] || null;
+        if (track && track.readyState === 'live') {
+          stopPendingCallMic();
+          pendingCallMic = track;
+          track.addEventListener(
+            'ended',
+            () => {
+              if (pendingCallMic === track) pendingCallMic = null;
+            },
+            { once: true },
+          );
+          return null;
+        }
+        audioOnly.getTracks().forEach((item) => item.stop());
+      } catch {
+        /* ignore */
+      }
+      return callMediaDeniedMessage(error, true);
+    }
     return micDeniedMessage(error);
   }
 }

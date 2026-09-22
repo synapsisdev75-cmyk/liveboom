@@ -122,7 +122,12 @@ export function CallChatActions({
       if (localStatus === 'idle') {
         void releaseOwnCallPresence(profile.firebaseUid);
       }
-      const mediaPromise = ensureCallMediaPermission(video);
+      // Permisos en el mismo gesto del usuario (móvil: audio+video). Si fallan, no crear la llamada.
+      const denied = await ensureCallMediaPermission(video);
+      if (denied) {
+        onError(denied);
+        return;
+      }
       const session = await createCall(peer.uid, video ? 'video' : 'audio', {
         authorizationId: authId,
         giftId: pricing?.giftId?.startsWith('platform_') ? null : pricing?.giftId || null,
@@ -152,12 +157,6 @@ export function CallChatActions({
         serverUrl: session.serverUrl,
       });
       void claimOwnCallBusy(profile.firebaseUid, { callId, chatId, peerUid: peer.uid });
-      const denied = await mediaPromise;
-      if (denied) {
-        onError(denied);
-        void useCallStore.getState().hangup('cancelled');
-        return;
-      }
       setAuthId(null);
     } catch (err) {
       releasePendingCallMicrophone();

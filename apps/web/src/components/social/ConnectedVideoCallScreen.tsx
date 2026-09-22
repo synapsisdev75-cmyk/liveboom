@@ -1,5 +1,5 @@
 import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode, type Ref, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useMaybeRoomContext } from '@livekit/components-react';
 import { Track, RoomEvent, type LocalVideoTrack } from 'livekit-client';
 import { UserAvatar } from '../profile/UserAvatar';
@@ -178,9 +178,7 @@ export function ConnectedVideoCallBar({
   const [micOn, setMicOn] = useState(true);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [micError, setMicError] = useState<string | null>(null);
-  const [camMenuOpen, setCamMenuOpen] = useState(false);
   const micHoldRef = useRef(0);
-  const camMenuRef = useRef<HTMLDivElement>(null);
   const flipEnabled = Boolean(onFlipCamera) && !flipDisabled;
 
   useEffect(() => {
@@ -191,32 +189,6 @@ export function ConnectedVideoCallBar({
   useEffect(() => {
     return () => window.clearTimeout(micHoldRef.current);
   }, []);
-
-  useEffect(() => {
-    if (!camMenuOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setCamMenuOpen(false);
-    };
-    const onPointer = (event: PointerEvent) => {
-      const node = camMenuRef.current;
-      if (node && event.target instanceof Node && node.contains(event.target)) return;
-      setCamMenuOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    // bubble: el menú detiene el pointerdown de sus ítems antes de llegar aquí
-    window.addEventListener('pointerdown', onPointer);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('pointerdown', onPointer);
-    };
-  }, [camMenuOpen]);
-
-  function runCamAction(event: SyntheticEvent, action?: () => void) {
-    event.preventDefault();
-    event.stopPropagation();
-    setCamMenuOpen(false);
-    action?.();
-  }
 
   async function toggleMic() {
     const next = !micOn;
@@ -232,89 +204,49 @@ export function ConnectedVideoCallBar({
   }
 
   return (
-    <div className="lb-video-connected-actions" data-no-drag>
+    <div className={`lb-video-connected-actions${flipEnabled ? ' has-flip' : ''}`} data-no-drag>
       <div className="lb-video-connected-action">
         <button
           type="button"
-          className={`lb-video-connected-btn${micOn ? '' : ' is-off'}`}
+          className={`lb-video-connected-btn${micOn ? ' is-on' : ' is-off'}`}
           onClick={() => void toggleMic()}
           aria-label={micOn ? 'Silenciar micrófono' : 'Activar micrófono'}
           aria-pressed={!micOn}
         >
           {micOn ? <Mic size={18} /> : <MicOff size={18} />}
         </button>
-        <span>Micrófono</span>
-      </div>
-      <div className="lb-video-connected-action lb-video-connected-action--cam" ref={camMenuRef}>
-        {camMenuOpen ? (
-          <div
-            className="lb-video-cam-menu"
-            role="menu"
-            aria-label="Opciones de cámara"
-            data-no-drag
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              className="lb-video-cam-menu__item"
-              disabled={camBusy}
-              data-no-drag
-              onPointerDown={(event) => {
-                if (camBusy) return;
-                runCamAction(event, onToggleCam);
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-            >
-              {camOn ? <VideoOff size={15} aria-hidden /> : <Video size={15} aria-hidden />}
-              <span className="lb-video-cam-menu__label">{camOn ? 'Cerrar cámara' : 'Encender cámara'}</span>
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="lb-video-cam-menu__item"
-              disabled={!flipEnabled || Boolean(flipBusy)}
-              data-no-drag
-              onPointerDown={(event) => {
-                if (!flipEnabled || flipBusy) return;
-                runCamAction(event, onFlipCamera);
-              }}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-            >
-              <SwitchCamera size={15} aria-hidden />
-              <span className="lb-video-cam-menu__label">{flipLabel}</span>
-            </button>
-          </div>
-        ) : null}
-        <button
-          type="button"
-          className={`lb-video-connected-btn${camOn ? '' : ' is-off'}${camBusy ? ' is-busy' : ''}${camMenuOpen ? ' is-on' : ''}`}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setCamMenuOpen((open) => !open);
-          }}
-          onPointerDown={(event) => event.stopPropagation()}
-          disabled={camBusy}
-          aria-label="Opciones de cámara"
-          aria-haspopup="menu"
-          aria-expanded={camMenuOpen}
-          aria-busy={camBusy || undefined}
-        >
-          {camOn ? <Video size={18} /> : <VideoOff size={18} />}
-        </button>
-        <span>{camBusy ? 'Espera…' : camOn ? 'Cámara' : 'Cámara OFF'}</span>
       </div>
       <div className="lb-video-connected-action">
         <button
           type="button"
-          className={`lb-video-connected-btn${speakerOn ? '' : ' is-off'}`}
+          className={`lb-video-connected-btn${camOn ? ' is-on' : ' is-off'}${camBusy ? ' is-busy' : ''}`}
+          onClick={() => onToggleCam()}
+          disabled={camBusy}
+          aria-label={camOn ? 'Cerrar cámara' : 'Encender cámara'}
+          aria-pressed={!camOn}
+          aria-busy={camBusy || undefined}
+        >
+          {camOn ? <Video size={18} /> : <VideoOff size={18} />}
+        </button>
+      </div>
+      {flipEnabled ? (
+        <div className="lb-video-connected-action">
+          <button
+            type="button"
+            className={`lb-video-connected-btn is-on${flipBusy ? ' is-busy' : ''}`}
+            onClick={() => onFlipCamera?.()}
+            disabled={Boolean(flipBusy)}
+            aria-label={flipLabel}
+            aria-busy={flipBusy || undefined}
+          >
+            <SwitchCamera size={18} />
+          </button>
+        </div>
+      ) : null}
+      <div className="lb-video-connected-action">
+        <button
+          type="button"
+          className={`lb-video-connected-btn${speakerOn ? ' is-on' : ' is-off'}`}
           onClick={() => {
             const next = !speakerOn;
             setSpeakerOn(next);
@@ -325,12 +257,11 @@ export function ConnectedVideoCallBar({
         >
           {speakerOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
         </button>
-        <span>Altavoz</span>
       </div>
       <div className="lb-video-connected-action is-gift">
         <button
           type="button"
-          className="lb-video-connected-btn is-gift"
+          className="lb-video-connected-btn is-gift is-on"
           onClick={() =>
             window.dispatchEvent(
               new CustomEvent('liveboom:open-chat-gifts', { detail: { layoutContext: 'llamadas_video' } }),
@@ -340,13 +271,11 @@ export function ConnectedVideoCallBar({
         >
           <Gift size={18} />
         </button>
-        <span>Regalos</span>
       </div>
       <div className="lb-video-connected-action is-end">
         <button type="button" className="lb-video-connected-end" onClick={onHangup} aria-label="Finalizar">
           <PhoneOff size={22} />
         </button>
-        <span>Finalizar</span>
       </div>
       {micError ? <p className="lb-video-connected-error">{micError}</p> : null}
     </div>
