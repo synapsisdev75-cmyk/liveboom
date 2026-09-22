@@ -7,6 +7,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -14,6 +15,7 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
   writeBatch,
   type DocumentData,
@@ -795,72 +797,138 @@ export function listenLiveRoomEarnings(
   );
 }
 
-/** Acumula coins ganados y top gifters en la sala (durable). */
+/** Acumula coins: ledger append-only + gifterStats shard + room ligero (sin map gifters gigante). */
+const topGifterRefreshTimers = new Map<string, number>();
+
+async function refreshLiveTopGifters(roomName: string) {
+  const key = roomKey(roomName);
+  const q = query(
+    collection(db, 'liveRooms', key, 'gifterStats'),
+    orderBy('coins', 'desc'),
+    limit(5),
+  );
+  const snap = await getDocs(q);
+  const topGifters = snap.docs.map((item) => {
+    const data = item.data();
+    return {
+      uid: String(data.uid || item.id),
+      name: String(data.name || 'Liveboomer'),
+      coins: Number(data.coins || 0),
+    };
+  });
+  await setDoc(
+    doc(db, 'liveRooms', key),
+    { topGifters, updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
+
+function scheduleTopGifterRefresh(roomName: string) {
+  const key = roomKey(roomName);
+  const prev = topGifterRefreshTimers.get(key);
+  const clear =
+    typeof window !== 'undefined' ? window.clearTimeout.bind(window) : clearTimeout;
+  const schedule =
+    typeof window !== 'undefined' ? window.setTimeout.bind(window) : setTimeout;
+  if (prev) clear(prev);
+  const timer = schedule(() => {
+    topGifterRefreshTimers.delete(key);
+    void refreshLiveTopGifters(roomName).catch((err) =>
+      console.error('[gift] topGifters refresh', err),
+    );
+  }, 400) as unknown as number;
+  topGifterRefreshTimers.set(key, timer);
+}
+
 export async function recordLiveGiftEarnings(
   roomName: string,
   gift: { coins: number; senderUid: string; senderName: string },
 ) {
-  const roomRef = doc(db, 'liveRooms', roomKey(roomName));
+  const coins = Math.max(0, Math.floor(Number(gift.coins) || 0));
+  const senderUid = String(gift.senderUid || '').trim();
+  const senderName = String(gift.senderName || 'Liveboomer').slice(0, 60);
+  if (!coins || !senderUid) return;
+
+  const key = roomKey(roomName);
+  const roomRef = doc(db, 'liveRooms', key);
+  const gifterRef = doc(db, 'liveRooms', key, 'gifterStats', senderUid);
+  const ledgerCol = collection(db, 'liveRooms', key, 'giftLedger');
+
+  // 1) Append ledger + shard por gifter (sin contender el doc padre).
+  await Promise.all([
+    addDoc(ledgerCol, {
+      senderUid,
+      senderName,
+      coins,
+      createdAtMs: Date.now(),
+      createdAt: serverTimestamp(),
+    }),
+    setDoc(
+      gifterRef,
+      {
+        uid: senderUid,
+        name: senderName,
+        coins: increment(coins),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ),
+  ]);
+
+  // 2) Room: increment coinsEarned (write pequeño, alto throughput).
+  try {
+    await updateDoc(roomRef, {
+      coinsEarned: increment(coins),
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    await setDoc(
+      roomRef,
+      { coinsEarned: coins, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  }
+
+  // 3) Top 5: debounce (no en cada gift bajo tormenta).
+  scheduleTopGifterRefresh(roomName);
+
+  // 4) Meta de coins: solo si hay ciclo ACTIVE (transaction acotada).
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(roomRef);
     const data = (snap.exists() ? snap.data() : {}) as Record<string, unknown>;
-    const giftersRaw =
-      data.gifters && typeof data.gifters === 'object'
-        ? (data.gifters as Record<string, { uid?: string; name?: string; coins?: number }>)
-        : {};
-    const prev = Number(giftersRaw[gift.senderUid]?.coins || 0);
-    const gifters = {
-      ...giftersRaw,
-      [gift.senderUid]: {
-        uid: gift.senderUid,
-        name: gift.senderName,
-        coins: prev + gift.coins,
-      },
-    };
-    const topGifters = Object.values(gifters)
-      .map((item) => ({
-        uid: String(item.uid || ''),
-        name: String(item.name || 'Liveboomer'),
-        coins: Number(item.coins || 0),
-      }))
-      .sort((a, b) => b.coins - a.coins)
-      .slice(0, 5);
-    const nextEarned = Number(data.coinsEarned || 0) + gift.coins;
     let coinGoal = parseCoinGoalCycle(data.coinGoal);
+    if (coinGoal?.status !== 'ACTIVE') return;
+
     const coinGoalGifters = parseCoinGoalGifters(data.coinGoalGifters);
+    const prevGoalCoins = Number(coinGoalGifters[senderUid]?.coins || 0);
+    coinGoalGifters[senderUid] = {
+      uid: senderUid,
+      name: senderName,
+      coins: prevGoalCoins + coins,
+    };
+    const nextEarned = Math.max(0, Math.floor(Number(data.coinsEarned) || 0));
+    const progress = nextEarned - coinGoal.baselineCoins;
     let coinGoalHistory = parseCoinGoalHistory(data.coinGoalHistory);
-    if (coinGoal?.status === 'ACTIVE') {
-      const prevGoalCoins = Number(coinGoalGifters[gift.senderUid]?.coins || 0);
-      coinGoalGifters[gift.senderUid] = {
-        uid: gift.senderUid,
-        name: gift.senderName,
-        coins: prevGoalCoins + gift.coins,
+    if (progress >= coinGoal.targetCoins) {
+      const top = topCoinGoalGifter(coinGoalGifters);
+      const closed: LiveCoinGoalCycle = {
+        goalId: coinGoal.goalId,
+        targetCoins: coinGoal.targetCoins,
+        baselineCoins: coinGoal.baselineCoins,
+        status: 'COMPLETED',
+        createdAt: coinGoal.createdAt,
+        completedAt: Date.now(),
       };
-      const progress = nextEarned - coinGoal.baselineCoins;
-      if (progress >= coinGoal.targetCoins) {
-        const top = topCoinGoalGifter(coinGoalGifters);
-        const closed: LiveCoinGoalCycle = {
-          goalId: coinGoal.goalId,
-          targetCoins: coinGoal.targetCoins,
-          baselineCoins: coinGoal.baselineCoins,
-          status: 'COMPLETED',
-          createdAt: coinGoal.createdAt,
-          completedAt: Date.now(),
-        };
-        const topName = top?.name || coinGoal.topName;
-        if (topName) closed.topName = topName;
-        const topCoins = top?.coins ?? coinGoal.topCoins;
-        if (topCoins && topCoins > 0) closed.topCoins = topCoins;
-        coinGoal = closed;
-        coinGoalHistory = upsertCoinGoalHistory(coinGoalHistory, closed);
-      }
+      const topName = top?.name || coinGoal.topName;
+      if (topName) closed.topName = topName;
+      const topCoins = top?.coins ?? coinGoal.topCoins;
+      if (topCoins && topCoins > 0) closed.topCoins = topCoins;
+      coinGoal = closed;
+      coinGoalHistory = upsertCoinGoalHistory(coinGoalHistory, closed);
     }
     tx.set(
       roomRef,
       {
-        coinsEarned: nextEarned,
-        gifters,
-        topGifters,
         coinGoal: coinGoal ? serializeCoinGoal(coinGoal) : null,
         coinGoalGifters,
         coinGoalHistory: coinGoalHistory.map(serializeCoinGoal),
@@ -868,7 +936,7 @@ export async function recordLiveGiftEarnings(
       },
       { merge: true },
     );
-  });
+  }).catch((err) => console.error('[gift] coinGoal', err));
 }
 
 export async function startLiveCoinGoal(
@@ -951,6 +1019,8 @@ export async function resetLiveRoomChat(roomName: string) {
 
   await wipe('messages');
   await wipe('gifts');
+  await wipe('giftLedger');
+  await wipe('gifterStats');
 }
 
 export function listenLiveGifts(

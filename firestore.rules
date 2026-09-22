@@ -794,6 +794,32 @@ service cloud.firestore {
         allow delete: if signedIn() && request.auth.uid == viewerUid;
       }
 
+      // Ledger append-only de regalos (fase 3b: no contiende el doc liveRooms).
+      match /giftLedger/{entryId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.senderUid == request.auth.uid
+          && request.resource.data.coins is number
+          && request.resource.data.coins >= 0
+          && request.resource.data.coins <= 500000;
+        allow update, delete: if false;
+      }
+
+      // Totales por donador (shard); coins solo vía increment en cliente autenticado.
+      match /gifterStats/{gifterUid} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.auth.uid == gifterUid
+          && request.resource.data.uid == gifterUid
+          && request.resource.data.coins is number
+          && request.resource.data.coins >= 0;
+        allow delete: if signedIn()
+          && (
+            request.auth.uid == gifterUid
+            || request.auth.uid == get(/databases/$(database)/documents/liveRooms/$(roomName)).data.hostUid
+          );
+      }
+
       match /boomEvents/{eventId} {
         allow read: if signedIn();
         allow create: if signedIn()

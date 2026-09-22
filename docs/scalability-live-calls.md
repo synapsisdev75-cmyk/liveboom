@@ -26,11 +26,24 @@ Así se acerca al modelo de los grandes: **media/presencia en el SFU**, DB solo 
 - `GET /api/stream/token/:room` → 90/min/uid  
 - `POST /api/calls/start` → 30/min/uid  
 
-## Pendiente (fase 3b)
+## Fase 3b — ledger de regalos (aplicado)
 
-- Ledger de regalos fuera del doc padre (tormenta de gifts).  
-- RTDB/`onDisconnect` si se quiere presencia lista sin LiveKit.  
-- Panel host 100% desde LiveKit remotes (hoy sigue usando docs presencia + kick).
+| Antes | Ahora |
+|-------|-------|
+| 1 transaction reescribe `gifters` + `coinsEarned` + top + goal | Append `giftLedger` + `gifterStats/{uid}` con `increment` |
+| Doc `liveRooms` caliente en tormenta | `coinsEarned: increment` (write pequeño) |
+| Top 5 en cada gift | Top 5 debounce 400ms desde `gifterStats` |
+| Meta ACTIVE | Transaction solo si hay meta (más rara) |
+
+Colecciones nuevas:
+- `liveRooms/{room}/giftLedger/{id}`
+- `liveRooms/{room}/gifterStats/{uid}`
+
+Pendiente opcional: mover `coinGoalGifters` a subcolección.
+
+## Zona cómoda regalos
+
+Antes ~5–20 gifts/s · Ahora **~30–80 gifts/s** orientativo (sigue limitado por wallet API + LiveKit anim UI).
 
 ## Regresión
 
