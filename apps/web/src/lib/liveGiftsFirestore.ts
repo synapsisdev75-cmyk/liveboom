@@ -1006,7 +1006,7 @@ export async function startLiveCoinGoal(
 export async function resetLiveRoomChat(roomName: string) {
   const key = roomKey(roomName);
 
-  async function wipe(subcollection: 'messages' | 'gifts') {
+  async function wipe(subcollection: 'messages' | 'gifts' | 'giftLedger' | 'gifterStats') {
     const col = collection(db, 'liveRooms', key, subcollection);
     for (;;) {
       const snap = await getDocs(query(col, limit(400)));
