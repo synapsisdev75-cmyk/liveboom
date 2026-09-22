@@ -376,7 +376,7 @@ export function MainLayout() {
   function closeSidebarPeek() {
     if (sidebarMode !== 'retract') return;
     window.clearTimeout(sidebarPeekTimer.current);
-    sidebarPeekTimer.current = window.setTimeout(() => setSidebarPeek(false), 140);
+    sidebarPeekTimer.current = window.setTimeout(() => setSidebarPeek(false), 320);
   }
 
   useEffect(() => {

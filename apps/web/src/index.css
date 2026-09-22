@@ -2877,11 +2877,11 @@ html:has(.lb-auth-page) #root {
 
   .lb-sidebar {
     transition:
-      width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
-      min-width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
-      max-width 0.38s cubic-bezier(0.22, 1, 0.36, 1),
-      padding 0.38s cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 0.28s ease;
+      width 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
+      min-width 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
+      max-width 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
+      padding 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
+      box-shadow 0.55s ease;
   }
 
   .lb-sidebar--rail,
@@ -2966,7 +2966,14 @@ html:has(.lb-auth-page) #root {
   }
 
   .lb-shell--messages main {
-    transition: flex-basis 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: flex-basis 0.72s cubic-bezier(0.33, 0.05, 0.2, 1);
+  }
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .lb-sidebar,
+  .lb-shell--messages main {
+    transition-duration: 0.01ms;
   }
 }
 
