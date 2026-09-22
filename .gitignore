@@ -48,3 +48,5 @@ backend/.data/
 .vercel
 dataconnect/.dataconnect/
 .firebase/
+tools/stress-sim/.env
+

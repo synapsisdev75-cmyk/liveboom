@@ -1,5 +1,37 @@
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'liveboom-app';
 
+/** Cache corta de permisos de llamada (solo lecturas). Nunca cachear claimUsersBusy. */
+const PERM_CACHE_TTL_ALLOW_MS = 20_000;
+const PERM_CACHE_TTL_DENY_MS = 5_000;
+const PERM_CACHE_MAX = 2_000;
+/** @type {Map<string, { expires: number, value: object }>} */
+const permCache = new Map();
+
+function permCacheKey(a, b) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function getCachedPerms(a, b) {
+  const key = permCacheKey(a, b);
+  const hit = permCache.get(key);
+  if (!hit) return null;
+  if (hit.expires <= Date.now()) {
+    permCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function setCachedPerms(a, b, value) {
+  const key = permCacheKey(a, b);
+  const ttl = value?.canVoiceCall ? PERM_CACHE_TTL_ALLOW_MS : PERM_CACHE_TTL_DENY_MS;
+  if (permCache.size >= PERM_CACHE_MAX) {
+    const first = permCache.keys().next().value;
+    if (first) permCache.delete(first);
+  }
+  permCache.set(key, { expires: Date.now() + ttl, value });
+}
+
 function chatIdFor(a, b) {
   return [String(a || ''), String(b || '')].sort().join('_');
 }
@@ -91,6 +123,9 @@ async function getCommunicationPermissions(currentUserId, targetUserId, idToken)
   if (!a || !b || a === b || !idToken) {
     return { relationship: 'none', canMessage: false, canVoiceCall: false, canVideoCall: false };
   }
+  const cached = getCachedPerms(a, b);
+  if (cached) return cached;
+
   const [blockedAb, blockedBa, friendAb, friendBa, followAb, followBa] = await Promise.all([
     firestoreGet(`users/${a}/blocked/${b}`, idToken),
     firestoreGet(`users/${b}/blocked/${a}`, idToken),
@@ -99,11 +134,13 @@ async function getCommunicationPermissions(currentUserId, targetUserId, idToken)
     firestoreGet(`users/${a}/following/${b}`, idToken),
     firestoreGet(`users/${b}/following/${a}`, idToken),
   ]);
-  return permissionsFromFlags({
+  const value = permissionsFromFlags({
     blocked: Boolean(blockedAb || blockedBa),
     friend: friendDocAccepted(friendAb) && friendDocAccepted(friendBa),
     follower: Boolean(followAb || followBa),
   });
+  setCachedPerms(a, b, value);
+  return value;
 }
 
 async function isAcceptedFriend(currentUserId, targetUserId, idToken) {

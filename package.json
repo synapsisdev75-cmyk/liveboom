@@ -21,7 +21,15 @@
     "deploy:api": "firebase deploy --only functions --project liveboom-app",
     "deploy:prod": "npm run build:web && firebase deploy --only hosting,functions --project liveboom-app",
     "android:sync": "npm run sync -w @liveboom/android",
-    "android:open": "npm run open -w @liveboom/android"
+    "android:open": "npm run open -w @liveboom/android",
+    "stress:health": "node tools/stress-sim/src/cli.js health",
+    "stress:tokens": "node tools/stress-sim/src/cli.js tokens",
+    "stress:profile": "node tools/stress-sim/src/cli.js profile",
+    "stress:mixed": "node tools/stress-sim/src/cli.js mixed",
+    "stress:calls": "node tools/stress-sim/src/cli.js calls",
+    "stress:gifts": "node tools/stress-sim/src/cli.js gifts",
+    "stress:presence": "node tools/stress-sim/src/cli.js presence",
+    "stress:all": "node tools/stress-sim/src/cli.js all"
   },
   "devDependencies": {
     "firebase-tools": "^15.28.1",

@@ -331,12 +331,18 @@ export async function markLiveRoomEnded(roomName: string, stats?: LiveEndStats) 
 }
 
 /** Pulso del host: el feed solo muestra salas con heartbeat reciente. */
+const lastHostHeartbeatAt = new Map<string, number>();
+const HOST_HEARTBEAT_DEBOUNCE_MS = 8_000;
+
 export async function touchLiveRoomHeartbeat(roomName: string) {
-  const ref = doc(db, 'liveRooms', roomKey(roomName));
-  const snap = await getDoc(ref).catch(() => null);
-  const data = snap?.exists() ? snap.data() : null;
-  if (String(data?.status || '') === 'ended' || Number(data?.endedAtMs || 0) > 0) return;
+  const key = roomKey(roomName);
   const now = Date.now();
+  const prev = lastHostHeartbeatAt.get(key) || 0;
+  if (now - prev < HOST_HEARTBEAT_DEBOUNCE_MS) return;
+  lastHostHeartbeatAt.set(key, now);
+
+  const ref = doc(db, 'liveRooms', key);
+  // Sin getDoc previo: el host solo pulsa mientras la sesión está activa (guards en LiveRoom).
   await setDoc(
     ref,
     {
@@ -371,6 +377,8 @@ export async function updateLiveRoomFeed(
 
 /** TTL de pulso de espectador: sin heartbeat reciente no cuenta en el total. */
 export const LIVE_VIEWER_HEARTBEAT_TTL_MS = 45_000;
+/** Intervalo de escritura de presencia (debe quedar < TTL con margen). */
+export const LIVE_VIEWER_HEARTBEAT_INTERVAL_MS = 20_000;
 
 export type LiveViewerPresence = {
   uid: string;
@@ -387,6 +395,9 @@ function countActiveViewerDocs(docs: { data: () => DocumentData }[], now = Date.
     return heartbeatAtMs > 0 && now - heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS;
   }).length;
 }
+
+/** Último contador publicado al feed por sala (evita rewrite si no cambió). */
+const lastPublishedViewerCount = new Map<string, number>();
 
 async function syncLiveViewerCount(roomName: string) {
   const key = roomKey(roomName);
@@ -405,6 +416,8 @@ async function syncLiveViewerCount(roomName: string) {
     }
   }
   if (hasDeletes) await batch.commit();
+  if (lastPublishedViewerCount.get(key) === active) return;
+  lastPublishedViewerCount.set(key, active);
   await updateLiveRoomFeed(roomName, { viewers: active });
 }
 
@@ -467,6 +480,7 @@ export async function clearLiveViewers(roomName: string) {
     snap.docs.forEach((item) => batch.delete(item.ref));
     await batch.commit();
   }
+  lastPublishedViewerCount.set(key, 0);
   await updateLiveRoomFeed(roomName, { viewers: 0 });
 }
 

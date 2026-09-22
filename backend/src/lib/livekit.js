@@ -85,8 +85,13 @@ async function createLivekitToken({
 }) {
   const apiKey = String(process.env.LIVEKIT_API_KEY || '').trim();
   const apiSecret = String(process.env.LIVEKIT_API_SECRET || '').trim();
+  // roomCreate:true en el grant basta para entrar; createRoom en background
+  // evita sumar latencia LiveKit HTTP al JWT (ruta crítica de llamada/join).
   if (ensureRoom) {
-    await ensureCallRoom(room);
+    void ensureCallRoom(room).catch((error) => {
+      const msg = error instanceof Error ? error.message : String(error || '');
+      console.warn('[livekit] ensureCallRoom background:', msg);
+    });
   }
   const tokenOpts = {
     identity: String(identity),

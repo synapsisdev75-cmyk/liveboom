@@ -2642,6 +2642,8 @@ function CreatorStage({
   }, [username, handle, isHost, isSpectator]);
 
   // Pulso periódico: el feed cierra salas sin heartbeat.
+  // Un solo timer (antes había otro a 10s) → menos writes al doc liveRooms.
+  // 18s: margen amplio vs TTL 90s; refresh de viewers no hace falta cada 12s.
   useEffect(() => {
     if (!isHost || !username) return;
     if (hostSessionEndedRef.current || summaryOpen || liveEnded) return;
@@ -2651,7 +2653,7 @@ function CreatorStage({
       if (hostSessionEndedRef.current) return;
       void touchLiveRoomHeartbeat(username).catch(() => undefined);
       void refreshLiveViewerCount(username).catch(() => undefined);
-    }, 12_000);
+    }, 18_000);
     return () => window.clearInterval(timer);
   }, [isHost, username, summaryOpen, liveEnded]);
 
@@ -3180,18 +3182,6 @@ function CreatorStage({
       void exitLiveToHomeRef.current();
     });
   }, [username, isHost, canPublish, liveEnded, room, hostUid]);
-
-  // Host: pulso también desde la sala (por si el stage se remonta).
-  useEffect(() => {
-    if (!isHost || !username) return;
-    if (hostSessionEndedRef.current || summaryOpen || liveEnded) return;
-    void touchLiveRoomHeartbeat(username).catch(() => undefined);
-    const timer = window.setInterval(() => {
-      if (hostSessionEndedRef.current) return;
-      void touchLiveRoomHeartbeat(username).catch(() => undefined);
-    }, 10_000);
-    return () => window.clearInterval(timer);
-  }, [isHost, username, summaryOpen, liveEnded]);
 
   useEffect(() => {
     if (isHost || liveEnded) return;

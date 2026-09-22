@@ -167,6 +167,9 @@ try {
       region: 'us-central1',
       memory: '1GiB',
       timeoutSeconds: 180,
+      // Evita cold start en tokens/llamadas (coste idle bajo en Blaze).
+      minInstances: 1,
+      concurrency: 80,
     },
     app,
   );

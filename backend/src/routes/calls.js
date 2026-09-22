@@ -150,6 +150,8 @@ router.post('/start', requireAuth, async (req, res) => {
     return;
   }
 
+  // Friendship + busy son secuenciales (busy necesita permiso).
+  // Token JWT no espera createRoom (ensureRoom:false + roomCreate grant).
   try {
     console.info('[CallConnect] tokenGenerated', {
       callId,
@@ -168,6 +170,10 @@ router.post('/start', requireAuth, async (req, res) => {
       canPublish: true,
       ensureRoom: false,
     });
+    // Precalienta la sala en background por si el SFU la prefiere creada.
+    if (typeof lk.ensureCallRoom === 'function') {
+      void lk.ensureCallRoom(roomName).catch(() => undefined);
+    }
     console.info('[CallConnect] tokenGenerated', {
       callId,
       roomName,

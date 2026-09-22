@@ -4,6 +4,7 @@ import {
   registerLiveViewer,
   touchLiveViewerHeartbeat,
   unregisterLiveViewer,
+  LIVE_VIEWER_HEARTBEAT_INTERVAL_MS,
 } from '../lib/liveGiftsFirestore';
 
 type LivePresenceUser = {
@@ -43,7 +44,7 @@ export function useLivePresence(
       }).catch(() => undefined);
       heartbeatTimer = window.setInterval(() => {
         void touchLiveViewerHeartbeat(roomName, uid).catch(() => undefined);
-      }, 12_000);
+      }, LIVE_VIEWER_HEARTBEAT_INTERVAL_MS);
     };
 
     const unregister = () => {
