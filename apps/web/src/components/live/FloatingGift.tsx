@@ -371,7 +371,7 @@ function GiftVideoBurst({
           {senderName}
         </span>
       ) : null}
-      {combo && combo > 1 ? <GiftComboBadge combo={combo} size="md" /> : null}
+      {combo && combo > 1 ? <GiftComboBadge combo={combo} size="md" className="lb-gift-combo-badge--corner" /> : null}
     </motion.div>
   );
 }
@@ -446,7 +446,7 @@ function GiftStillBurst({
           {senderName}
         </span>
       ) : null}
-      {combo && combo > 1 ? <GiftComboBadge combo={combo} size="md" /> : null}
+      {combo && combo > 1 ? <GiftComboBadge combo={combo} size="md" className="lb-gift-combo-badge--corner" /> : null}
     </motion.div>
   );
 }

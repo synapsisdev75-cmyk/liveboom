@@ -1266,30 +1266,32 @@ aside.chat-scroll::-webkit-scrollbar {
   object-position: center;
 }
 
-/* Multiplicador x1–x10: aparece pequeño → pop (misma animación, no tapa el regalo). */
+/* Multiplicador x1–x10: aparece pequeño → pop, esquina visible del regalo (no tapa el centro). */
 .lb-gift-combo-badge {
   position: absolute;
   z-index: 70;
-  top: 8%;
-  left: 50%;
+  top: max(0.35rem, 3%);
+  right: max(0.35rem, 4%);
+  left: auto;
   display: grid;
   place-items: center;
-  width: clamp(4.25rem, 16vmin, 7rem);
-  height: clamp(4.25rem, 16vmin, 7rem);
+  width: clamp(3.75rem, 15vmin, 6.5rem);
+  height: clamp(3.75rem, 15vmin, 6.5rem);
   pointer-events: none;
-  transform: translateX(-50%);
+  transform: none;
   filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.35));
 }
 
 .lb-gift-combo-badge--sm {
-  width: clamp(3.4rem, 12vmin, 5.25rem);
-  height: clamp(3.4rem, 12vmin, 5.25rem);
-  top: 6%;
+  width: clamp(2.85rem, 11vmin, 4.5rem);
+  height: clamp(2.85rem, 11vmin, 4.5rem);
+  top: max(0.25rem, 2%);
+  right: max(0.25rem, 3%);
 }
 
 .lb-gift-combo-badge--lg {
-  width: clamp(5rem, 18vmin, 8rem);
-  height: clamp(5rem, 18vmin, 8rem);
+  width: clamp(4.5rem, 17vmin, 7.5rem);
+  height: clamp(4.5rem, 17vmin, 7.5rem);
 }
 
 .lb-gift-combo-badge__img {
@@ -1303,14 +1305,22 @@ aside.chat-scroll::-webkit-scrollbar {
   will-change: transform, opacity, filter;
 }
 
+/* Mini burbuja de chat: encima de la esquina del sticker. */
+.lb-gift-combo-badge--bubble {
+  top: -0.4rem;
+  right: -0.55rem;
+  width: 2.65rem;
+  height: 2.65rem;
+}
+
 .lb-gift-combo-badge--corner {
-  top: auto;
-  bottom: 14%;
-  left: auto;
+  top: max(0.35rem, 3%);
   right: max(0.35rem, 4%);
+  bottom: auto;
+  left: auto;
   transform: none;
-  width: clamp(3.6rem, 14vmin, 6.25rem);
-  height: clamp(3.6rem, 14vmin, 6.25rem);
+  width: clamp(3.4rem, 14vmin, 6rem);
+  height: clamp(3.4rem, 14vmin, 6rem);
 }
 
 @keyframes lb-gift-combo-pop {

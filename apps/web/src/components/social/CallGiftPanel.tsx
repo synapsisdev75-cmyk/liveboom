@@ -31,7 +31,7 @@ export function CallGiftPanel() {
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [layoutContext, setLayoutContext] = useState<'llamadas_video' | 'llamadas_voz'>('llamadas_video');
   const [giftFloats, setGiftFloats] = useState<
-    Array<{ id: string; giftId: string; left: number; senderName?: string }>
+    Array<{ id: string; giftId: string; left: number; senderName?: string; combo?: number }>
   >([]);
   const giftTriggerRef = useRef<HTMLButtonElement>(null);
   const inCall = status === 'active';
@@ -95,6 +95,7 @@ export function CallGiftPanel() {
           giftId: catalogGift.id,
           left: 28 + Math.random() * 44,
           senderName,
+          combo: multiplier,
         },
       ]);
       setGiftsOpen(false);
@@ -146,6 +147,7 @@ export function CallGiftPanel() {
                   giftId={item.giftId}
                   senderName={item.senderName}
                   left={item.left}
+                  combo={item.combo}
                   layoutContext={layoutContext}
                   onComplete={() =>
                     setGiftFloats((current) => current.filter((row) => row.id !== item.id))

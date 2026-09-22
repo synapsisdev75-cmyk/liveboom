@@ -57,6 +57,7 @@ import { openRechargeCoins, validateCoinsBalance } from '../../lib/giftsFirestor
 import { findLiveGift, sortedPrivateGiftCatalog } from '../../lib/liveboomGifts';
 import { sendPrivateGiftToPeer } from '../../lib/privateGiftSend';
 import { FloatingGift, GiftVisual } from '../live/FloatingGift';
+import { GiftComboBadge } from '../live/GiftComboBadge';
 import { isGiftLayoutVariantId, type GiftLayoutVariantId } from '../../lib/giftLayout';
 import { GiftBoxStrip } from '../live/GiftBoxStrip';
 import { GiftCatalogLayer } from '../live/GiftCatalogLayer';
@@ -171,6 +172,14 @@ function comparePeopleByPresence(a: PersonRow, b: PersonRow, onlineByUid: Record
 function detectLink(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s]+/i);
   return match ? match[0] : null;
+}
+
+/** Multiplicador en texto de regalo: "🎁 Nombre x4". */
+function parseChatGiftMultiplier(text?: string | null): number {
+  if (!text) return 1;
+  const match = /\bx\s*([1-9]|10)\b/i.exec(text);
+  if (!match) return 1;
+  return Number(match[1]);
 }
 
 function replySnippetForMessage(message: ChatMessage): string {
@@ -670,7 +679,7 @@ export function InternalChatPanel({
   const [rechargeNeeded, setRechargeNeeded] = useState<number | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [giftFloats, setGiftFloats] = useState<
-    Array<{ id: string; giftId: string; left: number; senderName?: string }>
+    Array<{ id: string; giftId: string; left: number; senderName?: string; combo?: number }>
   >([]);
   const [giftLayoutContext, setGiftLayoutContext] = useState<GiftLayoutVariantId>('chat');
   const [mediaViewer, setMediaViewer] = useState<{ url: string; gif?: boolean } | null>(null);
@@ -1234,6 +1243,7 @@ export function InternalChatPanel({
       animateGiftInChat(
         message.giftId,
         activeFriend?.displayName || activeFriend?.username || undefined,
+        parseChatGiftMultiplier(message.text),
       );
       playedLive = true;
     }
@@ -1516,11 +1526,11 @@ export function InternalChatPanel({
     }
   }
 
-  function animateGiftInChat(giftId: string, senderName?: string) {
+  function animateGiftInChat(giftId: string, senderName?: string, combo = 1) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setGiftFloats((current) => [
       ...current.slice(-2),
-      { id, giftId, left: 22 + Math.random() * 56, senderName },
+      { id, giftId, left: 22 + Math.random() * 56, senderName, combo: Math.max(1, combo) },
     ]);
   }
 
@@ -1552,7 +1562,7 @@ export function InternalChatPanel({
         clientId: `chat-${chatId || activeFriend.uid}-${Date.now()}`,
       });
       setCoins(result.senderBalance);
-      animateGiftInChat(catalog.id, senderName);
+      animateGiftInChat(catalog.id, senderName, mult);
       scrollChatToBottom(true);
       setGiftsOpen(false);
     } catch (err) {
@@ -2261,6 +2271,7 @@ export function InternalChatPanel({
               const isFile = !gone && message.mediaType === 'file' && Boolean(message.mediaUrl);
               const isGift = !gone && Boolean(message.giftId);
               const giftItem = isGift ? findLiveGift(message.giftId) : null;
+              const giftMult = isGift ? parseChatGiftMultiplier(message.text) : 1;
               const plainText =
                 !gone &&
                 !isAudio &&
@@ -2415,7 +2426,16 @@ export function InternalChatPanel({
                             ) : null}
                             {isGift ? (
                               <div className="mb-1 flex min-w-[9rem] flex-col items-center gap-1 py-1">
-                                <GiftVisual gift={giftItem} size={56} />
+                                <span className="relative inline-flex">
+                                  <GiftVisual gift={giftItem} size={56} />
+                                  {giftMult > 1 ? (
+                                    <GiftComboBadge
+                                      combo={giftMult}
+                                      size="sm"
+                                      className="lb-gift-combo-badge--bubble"
+                                    />
+                                  ) : null}
+                                </span>
                                 <p className="text-xs font-semibold">{giftItem?.name || 'Regalo'}</p>
                                 {giftItem ? (
                                   <p className="text-[10px] opacity-80">{giftItem.coins} coins</p>
@@ -2953,6 +2973,7 @@ export function InternalChatPanel({
                 giftId={item.giftId}
                 senderName={item.senderName}
                 left={item.left}
+                combo={item.combo}
                 lite
                 layoutContext={giftLayoutContext}
                 onComplete={() =>
