@@ -182,6 +182,35 @@ function parseChatGiftMultiplier(text?: string | null): number {
   return Number(match[1]);
 }
 
+const GIFT_ANIM_PLAYED_MAX = 400;
+
+function giftAnimPlayedStorageKey(uid: string) {
+  return `lb:gift-anim-played:${uid}`;
+}
+
+function loadGiftAnimPlayedIds(uid: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(giftAnimPlayedStorageKey(uid));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.map(String).filter(Boolean).slice(-GIFT_ANIM_PLAYED_MAX));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistGiftAnimPlayedIds(uid: string, ids: Set<string>) {
+  try {
+    localStorage.setItem(
+      giftAnimPlayedStorageKey(uid),
+      JSON.stringify([...ids].slice(-GIFT_ANIM_PLAYED_MAX)),
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
 function replySnippetForMessage(message: ChatMessage): string {
   if (message.deleted || message.deletedForEveryone || message.hiddenForMe) return 'Mensaje eliminado';
   if (message.fileName) return message.fileName;
@@ -721,6 +750,36 @@ export function InternalChatPanel({
   const recordTimerRef = useRef(0);
   const recordCancelRef = useRef(false);
   const seenGiftAnimRef = useRef<Set<string>>(new Set());
+  const giftReplayLockRef = useRef<Set<string>>(new Set());
+  const [giftAnimPlayedIds, setGiftAnimPlayedIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    const uid = profile?.firebaseUid;
+    if (!uid) {
+      giftReplayLockRef.current = new Set();
+      setGiftAnimPlayedIds(new Set());
+      return;
+    }
+    const loaded = loadGiftAnimPlayedIds(uid);
+    giftReplayLockRef.current = new Set(loaded);
+    setGiftAnimPlayedIds(loaded);
+  }, [profile?.firebaseUid]);
+
+  const markGiftAnimPlayed = useCallback(
+    (messageId: string) => {
+      if (!messageId) return;
+      giftReplayLockRef.current.add(messageId);
+      setGiftAnimPlayedIds((prev) => {
+        if (prev.has(messageId)) return prev;
+        const next = new Set(prev);
+        next.add(messageId);
+        const uid = profile?.firebaseUid;
+        if (uid) persistGiftAnimPlayedIds(uid, next);
+        return next;
+      });
+    },
+    [profile?.firebaseUid],
+  );
 
   useEffect(() => {
     if (!profile) return;
@@ -1245,10 +1304,19 @@ export function InternalChatPanel({
         activeFriend?.displayName || activeFriend?.username || undefined,
         parseChatGiftMultiplier(message.text),
       );
+      markGiftAnimPlayed(message.id);
       playedLive = true;
     }
     if (playedLive) scrollChatToBottom(true);
-  }, [chatId, messages, viewingGiftThread, activeFriend?.displayName, activeFriend?.username, scrollChatToBottom]);
+  }, [
+    chatId,
+    messages,
+    viewingGiftThread,
+    activeFriend?.displayName,
+    activeFriend?.username,
+    scrollChatToBottom,
+    markGiftAnimPlayed,
+  ]);
 
   useEffect(() => {
     // Solo el que espera ve la animación del otro — nunca la propia.
@@ -1532,6 +1600,17 @@ export function InternalChatPanel({
       ...current.slice(-2),
       { id, giftId, left: 22 + Math.random() * 56, senderName, combo: Math.max(1, combo) },
     ]);
+  }
+
+  function replayOfflineGiftOnce(message: ChatMessage) {
+    if (!message.giftId || message.mine) return;
+    if (giftAnimPlayedIds.has(message.id) || giftReplayLockRef.current.has(message.id)) return;
+    markGiftAnimPlayed(message.id);
+    animateGiftInChat(
+      message.giftId,
+      activeFriend?.displayName || activeFriend?.username || undefined,
+      parseChatGiftMultiplier(message.text),
+    );
   }
 
   async function sendGiftMessage(giftId: string, multiplier: 1 | 2 | 4 | 8 = 1) {
@@ -2272,6 +2351,12 @@ export function InternalChatPanel({
               const isGift = !gone && Boolean(message.giftId);
               const giftItem = isGift ? findLiveGift(message.giftId) : null;
               const giftMult = isGift ? parseChatGiftMultiplier(message.text) : 1;
+              const canReplayGift =
+                isGift &&
+                !message.mine &&
+                Boolean(message.giftId) &&
+                !giftAnimPlayedIds.has(message.id) &&
+                !giftReplayLockRef.current.has(message.id);
               const plainText =
                 !gone &&
                 !isAudio &&
@@ -2425,7 +2510,27 @@ export function InternalChatPanel({
                               </a>
                             ) : null}
                             {isGift ? (
-                              <div className="mb-1 flex min-w-[9rem] flex-col items-center gap-1 py-1">
+                              <button
+                                type="button"
+                                disabled={!canReplayGift}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (!canReplayGift) return;
+                                  window.clearTimeout(holdTimerRef.current);
+                                  replayOfflineGiftOnce(message);
+                                }}
+                                className={`mb-1 flex min-w-[9rem] flex-col items-center gap-1 rounded-xl py-1 transition ${
+                                  canReplayGift
+                                    ? 'lb-chat-gift-replay cursor-pointer active:scale-[0.98]'
+                                    : 'cursor-default'
+                                }`}
+                                aria-label={
+                                  canReplayGift
+                                    ? `Ver animación de ${giftItem?.name || 'regalo'}`
+                                    : giftItem?.name || 'Regalo'
+                                }
+                                title={canReplayGift ? 'Toca una vez para ver la animación' : undefined}
+                              >
                                 <span className="relative inline-flex">
                                   <GiftVisual gift={giftItem} size={56} />
                                   {giftMult > 1 ? (
@@ -2440,7 +2545,10 @@ export function InternalChatPanel({
                                 {giftItem ? (
                                   <p className="text-[10px] opacity-80">{giftItem.coins} coins</p>
                                 ) : null}
-                              </div>
+                                {canReplayGift ? (
+                                  <p className="text-[9px] font-semibold text-cyan-300/90">Toca para ver</p>
+                                ) : null}
+                              </button>
                             ) : null}
                             {isAudio && message.mediaUrl ? (
                               <VoiceNotePlayer src={message.mediaUrl} mine={message.mine} />

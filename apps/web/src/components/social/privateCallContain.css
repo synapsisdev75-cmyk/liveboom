@@ -9,6 +9,23 @@
   min-height: 0;
 }
 
+.lb-video-connected-screen .lb-call-video-stage .lb-call-video-remote,
+.lb-call-float.is-video .lb-video-connected-screen .lb-call-video-stage .lb-call-video-remote {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.lb-video-connected-screen .lb-call-video-stage .lb-private-call-remote-video,
+.lb-call-float.is-video .lb-video-connected-screen .lb-call-video-stage .lb-private-call-remote-video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
 .lb-video-call-session .lk-room-container,
 .lb-video-call-session .lb-call-room,
 .lb-video-live-slot .lk-room-container,
@@ -59,11 +76,29 @@
 
 .lb-video-connected-screen .lb-call-video-stage,
 .lb-call-float.is-video .lb-video-connected-screen .lb-call-video-stage {
-  flex: 0 0 auto;
+  position: relative;
+  flex: 1 1 auto;
   aspect-ratio: 9 / 16;
-  width: min(calc(100% - 1.4rem), calc((100dvh - 13rem) * 9 / 16));
+  width: min(calc(100% - 0.35rem), calc((100dvh - 8rem) * 9 / 16));
   height: auto;
   min-height: 0;
-  max-height: min(38rem, calc(100dvh - 13rem));
-  margin: 0 auto 0.35rem;
+  max-height: min(52rem, calc(100dvh - 8rem));
+  margin: 0 auto 0.15rem;
+  align-self: center;
+}
+
+/* Video rellena el 9:16 (sin franjas negras). */
+.lb-video-connected-screen .lb-call-video-stage > .lb-call-video-remote,
+.lb-video-connected-screen .lb-call-video-stage > .lb-video-lk-host,
+.lb-video-connected-screen .lb-call-video-stage .lb-call-room,
+.lb-video-connected-screen .lb-call-video-stage .lk-room-container,
+.lb-call-float.is-video .lb-video-connected-screen .lb-call-video-stage .lb-call-room,
+.lb-call-float.is-video .lb-video-connected-screen .lb-call-video-stage .lk-room-container {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  flex: none !important;
 }
