@@ -2877,11 +2877,11 @@ html:has(.lb-auth-page) #root {
 
   .lb-sidebar {
     transition:
-      width 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
-      min-width 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
-      max-width 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
-      padding 0.72s cubic-bezier(0.33, 0.05, 0.2, 1),
-      box-shadow 0.55s ease;
+      width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
+      min-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
+      max-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
+      padding 1.15s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 0.9s ease;
   }
 
   .lb-sidebar--rail,
@@ -2966,14 +2966,50 @@ html:has(.lb-auth-page) #root {
   }
 
   .lb-shell--messages main {
-    transition: flex-basis 0.72s cubic-bezier(0.33, 0.05, 0.2, 1);
+    transition: flex-basis 1.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .lb-sidebar .lb-nav-item__label,
+  .lb-sidebar .lb-nav-item__label-badge {
+    max-width: 12rem;
+    opacity: 1;
+    overflow: hidden;
+    transition:
+      opacity 0.55s ease 0.2s,
+      max-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
+      margin 1.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .lb-sidebar--rail .lb-nav-item__label,
+  .lb-sidebar--rail .lb-nav-item__label-badge,
+  .lb-shell--messages .lb-sidebar--messages-rail.lb-sidebar--rail .lb-nav-item__label,
+  .lb-shell--messages .lb-sidebar--messages-rail.lb-sidebar--rail .lb-nav-item__label-badge {
+    max-width: 0;
+    opacity: 0;
+    margin: 0;
+    pointer-events: none;
+    transition:
+      opacity 0.35s ease,
+      max-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
+      margin 1.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .lb-sidebar .lb-nav-icon {
+    transition:
+      width 0.45s ease,
+      height 0.45s ease,
+      opacity 0.45s ease;
   }
 }
 
 @media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
   .lb-sidebar,
-  .lb-shell--messages main {
-    transition-duration: 0.01ms;
+  .lb-shell--messages main,
+  .lb-sidebar .lb-nav-item__label,
+  .lb-sidebar .lb-nav-item__label-badge,
+  .lb-sidebar .lb-nav-icon {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
   }
 }
 

@@ -203,21 +203,21 @@ function SidebarBody({
                 <>
                   <span className="relative grid place-items-center">
                     <Icon
-                      size={rail ? 17 : 18}
+                      size={18}
                       strokeWidth={isActive ? 2.35 : 1.75}
                       className={isActive ? 'lb-nav-icon shrink-0' : 'lb-nav-icon lb-nav-icon--idle shrink-0'}
                       fill={isActive && item.to === '/' ? 'currentColor' : 'none'}
                     />
-                    {item.to === '/mensajes' && rail ? (
-                      <SidebarUnreadHint className="absolute -right-1.5 -top-1.5 ml-0" />
+                    {item.to === '/mensajes' ? (
+                      <SidebarUnreadHint
+                        className={`absolute -right-1.5 -top-1.5 ml-0 lb-nav-item__rail-badge${rail ? '' : ' hidden'}`}
+                      />
                     ) : null}
                   </span>
-                  {rail ? null : (
-                    <>
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {item.to === '/mensajes' ? <SidebarUnreadHint /> : null}
-                    </>
-                  )}
+                  <span className="lb-nav-item__label min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.to === '/mensajes' ? (
+                    <SidebarUnreadHint className="lb-nav-item__label-badge" />
+                  ) : null}
                 </>
               )}
             </NavLink>
@@ -376,7 +376,7 @@ export function MainLayout() {
   function closeSidebarPeek() {
     if (sidebarMode !== 'retract') return;
     window.clearTimeout(sidebarPeekTimer.current);
-    sidebarPeekTimer.current = window.setTimeout(() => setSidebarPeek(false), 320);
+    sidebarPeekTimer.current = window.setTimeout(() => setSidebarPeek(false), 480);
   }
 
   useEffect(() => {
