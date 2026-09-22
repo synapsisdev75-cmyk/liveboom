@@ -691,16 +691,6 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                       : ''
               }`}
               style={fieldStyle}
-              onScroll={
-                resolvedGrow === 'message'
-                  ? () => {
-                      const field = fieldRef.current;
-                      const mirror = mirrorRef.current;
-                      if (field && mirror) mirror.scrollTop = field.scrollTop;
-                      refreshCaret();
-                    }
-                  : undefined
-              }
             />
             {caretEl}
           </div>

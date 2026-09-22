@@ -310,7 +310,7 @@ export function MessagesSideRail() {
   }
 
   return (
-    <aside className="lb-side-rail lb-msg-side-rail chat-scroll hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col overflow-hidden border-l border-white/5 bg-zinc-950/95 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem]">
+    <aside className="lb-side-rail lb-side-rail--sheet lb-msg-side-rail chat-scroll hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col overflow-hidden border-l border-white/5 bg-zinc-950/95 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem]">
       <MessagesChatListPanel
         embedded
         onClose={close}
@@ -403,7 +403,7 @@ function PhoneChatWindow({
 }) {
   return createPortal(
     <div
-      className="lb-phone-chat-window"
+      className="lb-phone-chat-window lb-phone-chat-window--sheet"
       style={{
         right: `calc(max(0.75rem, env(safe-area-inset-right, 0px)) + ${index} * (min(24.375rem, calc(100vw - 1.25rem)) + 0.75rem))`,
         bottom: 0,

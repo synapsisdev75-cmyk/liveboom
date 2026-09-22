@@ -47,7 +47,9 @@ export function GiftSendConfirm({
   return (
     <div className="lb-gift-confirm">
       <div className="flex items-center gap-2.5 sm:gap-3">
-        <GiftIcon giftId={gift.id} size={40} />
+        <div className="lb-gift-confirm__icon gift-box-item__thumb">
+          <GiftIcon giftId={gift.id} size={40} />
+        </div>
         <div className="min-w-0 flex-1">
           <p className="lb-gift-confirm__title">¿Enviar {gift.name}?</p>
           <p className="lb-gift-confirm__cost">

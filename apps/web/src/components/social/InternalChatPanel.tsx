@@ -26,6 +26,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -653,6 +654,7 @@ export function InternalChatPanel({
   onFloatingClose,
 }: Props) {
   const t = useT();
+  const reduceMotion = useReducedMotion();
   const isFloating = Boolean(floatingPeer);
   const isPage = page || fullscreen;
   const profile = useAuthStore((state) => state.profile);
@@ -2326,7 +2328,8 @@ export function InternalChatPanel({
               Escribe algo para comenzar de nuevo.
             </p>
           ) : (
-            messages
+            <AnimatePresence initial={false} mode="popLayout">
+            {messages
               .filter((item) => !clearedAtMs || Date.parse(item.createdAt) >= clearedAtMs)
               .map((message, index, list) => {
               const prev = list[index - 1];
@@ -2359,7 +2362,52 @@ export function InternalChatPanel({
                 !/^GIF$/i.test(message.text.trim()) &&
                 !/^📎/.test(message.text.trim());
               return (
-                <div key={message.id} id={`lb-msg-${message.id}`}>
+                <motion.div
+                  key={message.id}
+                  id={`lb-msg-${message.id}`}
+                  className={`lb-chat-msg-anim ${message.mine ? 'is-out' : 'is-in'}`}
+                  layout={!reduceMotion ? 'position' : false}
+                  initial={
+                    reduceMotion
+                      ? false
+                      : {
+                          opacity: 0,
+                          scale: 0.58,
+                          y: 18,
+                          x: message.mine ? 22 : -22,
+                        }
+                  }
+                  animate={{
+                    opacity: 1,
+                    scale: 1,
+                    y: 0,
+                    x: 0,
+                  }}
+                  exit={
+                    reduceMotion
+                      ? { opacity: 0 }
+                      : {
+                          opacity: 0,
+                          scale: 0.72,
+                          y: -16,
+                          x: message.mine ? 12 : -12,
+                          transition: { duration: 0.32, ease: [0.22, 1, 0.36, 1] },
+                        }
+                  }
+                  transition={
+                    reduceMotion
+                      ? { duration: 0.15 }
+                      : {
+                          type: 'spring',
+                          stiffness: 380,
+                          damping: 28,
+                          mass: 0.78,
+                        }
+                  }
+                  style={{
+                    transformOrigin: message.mine ? '100% 0%' : '0% 0%',
+                  }}
+                >
                   {showDay ? (
                     <p className="mb-3 text-center text-[11px] font-medium text-zinc-500">
                       {dayLabel(message.createdAt)}
@@ -2756,9 +2804,10 @@ export function InternalChatPanel({
                       </div>
                     </div>
                   )}
-                </div>
+                </motion.div>
               );
-            })
+            })}
+            </AnimatePresence>
           )}
           <div ref={bottomRef} />
           </div>
