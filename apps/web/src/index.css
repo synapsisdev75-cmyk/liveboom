@@ -860,6 +860,22 @@ aside.chat-scroll::-webkit-scrollbar {
   flex-direction: column-reverse;
   min-height: 0;
   overflow-anchor: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.lb-chat-thread-scroll::-webkit-scrollbar,
+.lb-phone-chat-window .chat-scroll::-webkit-scrollbar,
+.lb-phone-chat-window .lb-chat-thread-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.lb-phone-chat-window .chat-scroll,
+.lb-phone-chat-window .lb-chat-thread-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .lb-chat-thread-scroll__inner {
