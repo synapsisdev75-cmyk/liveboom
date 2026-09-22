@@ -95,7 +95,7 @@ function useSuggestedCreators(limit: number) {
 export function SidebarSuggestedCreatorsCard({
   onNavigate,
   className = '',
-  limit = 5,
+  limit = 2,
 }: Props) {
   const t = useT();
   const { suggested, onSuggestedFollow, onSuggestedIgnore, profile } =

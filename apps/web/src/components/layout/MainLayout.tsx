@@ -281,7 +281,7 @@ function SidebarBody({
               </NavLink>
             ) : null}
 
-            <SidebarSuggestedCreatorsCard onNavigate={onNavigate} />
+            <SidebarSuggestedCreatorsCard onNavigate={onNavigate} limit={2} />
 
             {profile ? (
               <Link
