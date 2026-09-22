@@ -1,6 +1,7 @@
 import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type Ref, type SyntheticEvent } from 'react';
 import { useMaybeRoomContext } from '@livekit/components-react';
+import { Track, RoomEvent, type LocalVideoTrack } from 'livekit-client';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CallWinBar } from './FloatingCallFrame';
 
@@ -178,6 +179,7 @@ export function ConnectedVideoCallBar({
   const [camMenuOpen, setCamMenuOpen] = useState(false);
   const micHoldRef = useRef(0);
   const camMenuRef = useRef<HTMLDivElement>(null);
+  const flipEnabled = Boolean(onFlipCamera) && !flipDisabled;
 
   useEffect(() => {
     if (!room) return;
@@ -199,12 +201,20 @@ export function ConnectedVideoCallBar({
       setCamMenuOpen(false);
     };
     window.addEventListener('keydown', onKey);
+    // bubble: el menú detiene el pointerdown de sus ítems antes de llegar aquí
     window.addEventListener('pointerdown', onPointer);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('pointerdown', onPointer);
     };
   }, [camMenuOpen]);
+
+  function runCamAction(event: SyntheticEvent, action?: () => void) {
+    event.preventDefault();
+    event.stopPropagation();
+    setCamMenuOpen(false);
+    action?.();
+  }
 
   async function toggleMic() {
     const next = !micOn;
@@ -235,39 +245,60 @@ export function ConnectedVideoCallBar({
       </div>
       <div className="lb-video-connected-action lb-video-connected-action--cam" ref={camMenuRef}>
         {camMenuOpen ? (
-          <div className="lb-video-cam-menu" role="menu" aria-label="Opciones de cámara">
+          <div
+            className="lb-video-cam-menu"
+            role="menu"
+            aria-label="Opciones de cámara"
+            data-no-drag
+            onPointerDown={(event) => event.stopPropagation()}
+          >
             <button
               type="button"
               role="menuitem"
               className="lb-video-cam-menu__item"
               disabled={camBusy}
-              onClick={() => {
-                setCamMenuOpen(false);
-                onToggleCam();
+              data-no-drag
+              onPointerDown={(event) => {
+                if (camBusy) return;
+                runCamAction(event, onToggleCam);
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
               }}
             >
               {camOn ? <VideoOff size={15} aria-hidden /> : <Video size={15} aria-hidden />}
-              <span>{camOn ? 'Cerrar cámara' : 'Encender cámara'}</span>
+              <span className="lb-video-cam-menu__label">{camOn ? 'Cerrar cámara' : 'Encender cámara'}</span>
             </button>
             <button
               type="button"
               role="menuitem"
               className="lb-video-cam-menu__item"
-              disabled={Boolean(flipBusy || flipDisabled || !onFlipCamera)}
-              onClick={() => {
-                setCamMenuOpen(false);
-                onFlipCamera?.();
+              disabled={!flipEnabled || Boolean(flipBusy)}
+              data-no-drag
+              onPointerDown={(event) => {
+                if (!flipEnabled || flipBusy) return;
+                runCamAction(event, onFlipCamera);
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
               }}
             >
               <SwitchCamera size={15} aria-hidden />
-              <span>Girar cámara</span>
+              <span className="lb-video-cam-menu__label">Girar cámara</span>
             </button>
           </div>
         ) : null}
         <button
           type="button"
           className={`lb-video-connected-btn${camOn ? '' : ' is-off'}${camBusy ? ' is-busy' : ''}${camMenuOpen ? ' is-on' : ''}`}
-          onClick={() => setCamMenuOpen((open) => !open)}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setCamMenuOpen((open) => !open);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
           disabled={camBusy}
           aria-label="Opciones de cámara"
           aria-haspopup="menu"
@@ -317,5 +348,123 @@ export function ConnectedVideoCallBar({
       </div>
       {micError ? <p className="lb-video-connected-error">{micError}</p> : null}
     </div>
+  );
+}
+
+/** Barra con cámara/flip vía LiveKit room (connecting / fallback). */
+export function ConnectedVideoCallBarFromRoom({ onHangup }: { onHangup: () => void }) {
+  const room = useMaybeRoomContext();
+  const [camOn, setCamOn] = useState(true);
+  const [camBusy, setCamBusy] = useState(false);
+  const [flipBusy, setFlipBusy] = useState(false);
+  const [facing, setFacing] = useState<'user' | 'environment'>('user');
+  const busyRef = useRef(false);
+
+  useEffect(() => {
+    if (!room) return;
+    const sync = () => {
+      try {
+        let enabled = false;
+        for (const pub of room.localParticipant.videoTrackPublications.values()) {
+          if (pub.source !== Track.Source.Camera) continue;
+          const track = pub.track as LocalVideoTrack | null;
+          const media = track?.mediaStreamTrack;
+          if (media?.readyState === 'live' && media.enabled && !track?.isMuted) {
+            enabled = true;
+            break;
+          }
+          if (pub.isMuted === false && pub.track) enabled = true;
+        }
+        setCamOn(enabled || room.localParticipant.isCameraEnabled);
+      } catch {
+        /* sala aún sin pubs */
+      }
+    };
+    sync();
+    room.on(RoomEvent.LocalTrackPublished, sync);
+    room.on(RoomEvent.LocalTrackUnpublished, sync);
+    room.on(RoomEvent.TrackMuted, sync);
+    room.on(RoomEvent.TrackUnmuted, sync);
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, sync);
+      room.off(RoomEvent.LocalTrackUnpublished, sync);
+      room.off(RoomEvent.TrackMuted, sync);
+      room.off(RoomEvent.TrackUnmuted, sync);
+    };
+  }, [room]);
+
+  async function toggleCam() {
+    const local = room?.localParticipant;
+    if (!local || busyRef.current) return;
+    busyRef.current = true;
+    setCamBusy(true);
+    const next = !camOn;
+    try {
+      await local.setCameraEnabled(next);
+      setCamOn(next);
+    } catch {
+      /* permiso / dispositivo */
+    } finally {
+      busyRef.current = false;
+      setCamBusy(false);
+    }
+  }
+
+  async function flipCam() {
+    const local = room?.localParticipant;
+    if (!local || flipBusy || busyRef.current) return;
+    setFlipBusy(true);
+    const nextFacing = facing === 'user' ? 'environment' : 'user';
+    try {
+      let camera: LocalVideoTrack | null = null;
+      for (const pub of local.videoTrackPublications.values()) {
+        if (pub.source === Track.Source.Camera && pub.track) {
+          camera = pub.track as LocalVideoTrack;
+          break;
+        }
+      }
+      if (camera) {
+        await camera.restartTrack({
+          facingMode: nextFacing,
+          resolution: { width: 1280, height: 720 },
+        });
+      } else {
+        await local.setCameraEnabled(true, { facingMode: nextFacing });
+      }
+      setFacing(nextFacing);
+      setCamOn(true);
+    } catch {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((item) => item.kind === 'videoinput');
+        const currentId = cams.find((item) => {
+          for (const pub of local.videoTrackPublications.values()) {
+            if (pub.source !== Track.Source.Camera) continue;
+            return pub.track?.mediaStreamTrack?.getSettings().deviceId === item.deviceId;
+          }
+          return false;
+        })?.deviceId;
+        const other = cams.find((item) => item.deviceId !== currentId) || cams[0];
+        if (other && room) {
+          await room.switchActiveDevice('videoinput', other.deviceId);
+          setFacing(nextFacing);
+        }
+      } catch {
+        /* sin otra cámara */
+      }
+    } finally {
+      setFlipBusy(false);
+    }
+  }
+
+  return (
+    <ConnectedVideoCallBar
+      camOn={camOn}
+      camBusy={camBusy}
+      flipBusy={flipBusy}
+      onToggleCam={() => void toggleCam()}
+      onFlipCamera={() => void flipCam()}
+      onHangup={onHangup}
+    />
   );
 }

@@ -73,7 +73,7 @@ import {
   type IncomingCall,
 } from '../../store/callStore';
 import { IncomingVideoCallCard } from './VideoCallRingCards';
-import { ConnectedVideoCallBar, VideoCallShell } from './ConnectedVideoCallScreen';
+import { ConnectedVideoCallBar, ConnectedVideoCallBarFromRoom, VideoCallShell } from './ConnectedVideoCallScreen';
 import { PrivateCallRemoteVideo } from './PrivateCallRemoteVideo';
 import { VideoCallSessionFrame, VoiceCallSessionFrame } from './CallSessionFrames';
 import { CallHeaderDock } from './CallHeaderDock';
@@ -1166,9 +1166,16 @@ function useCallLocalPreview(videoRef: RefObject<HTMLVideoElement | null>, activ
         return;
       }
       try {
+        if (!videoCamWantedRef.current) {
+          el.srcObject = null;
+          return;
+        }
         const track = pickLocalCameraTrack(liveRoom);
         const media = track?.mediaStreamTrack;
-        if (!media) return;
+        if (!media) {
+          el.srcObject = null;
+          return;
+        }
         let mirror = true;
         try {
           mirror = media.getSettings().facingMode !== 'environment';
@@ -1304,7 +1311,7 @@ function ConnectingVideoCallStage({
         </div>
           </>
         }
-        footer={<ConnectedVideoCallBar camOn onToggleCam={() => undefined} onHangup={onHangup} />}
+        footer={<ConnectedVideoCallBarFromRoom onHangup={onHangup} />}
       />
         </div>
   );
@@ -2015,9 +2022,8 @@ function VideoCallStage({
         videoCamWantedRef.current = false;
         if (local) {
           await local.setCameraEnabled(false);
-        } else {
-          applyLocalVideoEnabled(false);
         }
+        applyLocalVideoEnabled(false);
         publishedRef.current = null;
         const el = localVideoRef.current;
         if (el) {
@@ -2057,6 +2063,7 @@ function VideoCallStage({
         }
       }
       publishedRef.current = track;
+      applyLocalVideoEnabled(true);
       bindLocalVideoEl(localVideoRef.current, media, facing === 'user');
       const currentId = media.getSettings().deviceId || null;
       setActiveVideoId(currentId || wantedId);
@@ -2082,10 +2089,6 @@ function VideoCallStage({
 
   async function flipCamera() {
     if (flipBusy || camBusyRef.current) return;
-    if (videoInputs.length <= 1) {
-      setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'Solo hay una cámara');
-      return;
-    }
     const nextFacing = facing === 'user' ? 'environment' : 'user';
     const opposite = videoInputs.find((device) => {
       const inferred = inferCallCameraFacing(device.label || '');
@@ -2093,6 +2096,7 @@ function VideoCallStage({
     });
     const fallback = videoInputs.find((device) => device.deviceId !== (activeVideoId || cameraDeviceId));
     const target = opposite || fallback;
+
     if (!camOnRef.current) {
       if (target) {
         setCameraDeviceId(target.deviceId);
@@ -2102,28 +2106,40 @@ function VideoCallStage({
       setCamHint(nextFacing === 'user' ? 'Cámara frontal' : 'Cámara trasera');
       return;
     }
-    if (!target) {
-      setCamHint('No hay otra cámara disponible');
-      return;
-    }
+
     setFlipBusy(true);
     try {
-      await applyCameraDevice(target.deviceId, nextFacing);
+      if (target) {
+        await applyCameraDevice(target.deviceId, nextFacing);
+      } else {
+        const pub = publishedRef.current || pickLocalCameraTrack(room);
+        if (!pub) {
+          setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'Solo hay una cámara');
+          return;
+        }
+        await pub.restartTrack({
+          facingMode: nextFacing,
+          resolution: { width: 1280, height: 720 },
+        });
+        const media = pub.mediaStreamTrack;
+        if (media) {
+          bindLocalVideoEl(localVideoRef.current, media, nextFacing === 'user');
+          setActiveVideoId(media.getSettings().deviceId || activeVideoId);
+        }
+        setFacing(nextFacing);
+      }
       setCamHint(nextFacing === 'user' ? 'Cámara frontal' : 'Cámara trasera');
       setError(null);
     } catch (err) {
-      setError(callMediaDeniedMessage(err, true));
+      setError(callMediaDeniedMessage(err, true) || 'No se pudo girar la cámara');
+      setCamHint('No se pudo girar la cámara');
     } finally {
       setFlipBusy(false);
     }
   }
 
   function onFlipCameraClick() {
-    if (videoInputs.length <= 1) {
-      setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'Solo hay una cámara');
-      return;
-    }
-    // Escritorio con varias cámaras: selector. Touch / 2 cámaras: alterna frontal ↔ trasera.
+    // Escritorio con varias cámaras: selector. Touch / pocas cámaras: alterna frontal ↔ trasera.
     if (finePointer && videoInputs.length > 2) {
       setPicker((current) => (current === 'camera' ? null : 'camera'));
       return;
@@ -2299,28 +2315,14 @@ function VideoCallStage({
           type="button"
           className={`lb-video-flip-fab${picker === 'camera' ? ' is-open' : ''}${flipBusy ? ' is-busy' : ''}`}
           data-no-drag
-          disabled={flipBusy || camBusy || videoInputs.length <= 1}
+          disabled={flipBusy || camBusy}
           onClick={(event) => {
             event.stopPropagation();
             onFlipCameraClick();
           }}
           onPointerDown={(event) => event.stopPropagation()}
-          aria-label={
-            videoInputs.length <= 1
-              ? videoInputs.length === 0
-                ? 'No hay cámaras disponibles'
-                : 'Solo hay una cámara'
-              : finePointer && videoInputs.length > 2
-                ? 'Cambiar cámara'
-                : 'Cambiar cámara'
-          }
-          title={
-            videoInputs.length <= 1
-              ? videoInputs.length === 0
-                ? 'No hay cámaras disponibles'
-                : 'Solo hay una cámara'
-              : 'Cambiar cámara'
-          }
+          aria-label="Cambiar cámara"
+          title="Cambiar cámara"
           aria-expanded={finePointer && videoInputs.length > 2 ? picker === 'camera' : undefined}
           aria-haspopup={finePointer && videoInputs.length > 2 ? 'listbox' : undefined}
         >
@@ -2416,9 +2418,8 @@ function VideoCallStage({
           camOn={camOn}
           camBusy={camBusy}
           flipBusy={flipBusy}
-          flipDisabled={videoInputs.length <= 1}
           onToggleCam={() => void toggleCam()}
-          onFlipCamera={onFlipCameraClick}
+          onFlipCamera={() => void flipCamera()}
           onHangup={onHangup}
         />
         }

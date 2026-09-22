@@ -11857,7 +11857,7 @@ a.lb-entity:active,
 .lb-video-connected-actions {
   display: grid;
   position: relative;
-  z-index: 3;
+  z-index: 20;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   width: 100%;
   flex-shrink: 0;
@@ -11865,6 +11865,7 @@ a.lb-entity:active,
   justify-items: center;
   gap: 0.2rem 0.15rem;
   padding: 0.35rem 0.45rem 0.1rem;
+  overflow: visible;
 }
 
 .lb-video-connected-action {
@@ -11876,11 +11877,16 @@ a.lb-entity:active,
   gap: 0.35rem;
 }
 
+.lb-video-connected-action--cam {
+  z-index: 16;
+  overflow: visible;
+}
+
 .lb-video-cam-menu {
   position: absolute;
   bottom: calc(100% + 0.45rem);
   left: 50%;
-  z-index: 12;
+  z-index: 40;
   display: flex;
   min-width: min(12.5rem, 72vw);
   flex-direction: column;
@@ -11891,11 +11897,12 @@ a.lb-entity:active,
   background: rgba(9, 9, 11, 0.96);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   transform: translateX(-50%);
+  pointer-events: auto;
 }
 
 .lb-video-cam-menu__item {
   display: flex;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   align-items: center;
   gap: 0.55rem;
   padding: 0.45rem 0.7rem;
@@ -11907,6 +11914,17 @@ a.lb-entity:active,
   font-weight: 650;
   text-align: left;
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.lb-video-cam-menu__label {
+  max-width: none !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: 1.2 !important;
+  text-align: left !important;
 }
 
 .lb-video-cam-menu__item:hover,
