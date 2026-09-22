@@ -11961,11 +11961,15 @@ a.lb-entity:active,
   z-index: 20;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   flex-shrink: 0;
   align-items: center;
   justify-items: center;
-  gap: 0.2rem 0.15rem;
-  padding: 0.45rem 0.45rem 0.2rem;
+  column-gap: clamp(0.4rem, 2.2vw, 0.95rem);
+  row-gap: clamp(0.35rem, 1.5vw, 0.65rem);
+  padding: clamp(0.45rem, 1.6vw, 0.7rem) clamp(0.55rem, 2.8vw, 1.1rem)
+    clamp(0.35rem, 1.2vw, 0.55rem);
   overflow: visible;
 }
 
@@ -11976,9 +11980,12 @@ a.lb-entity:active,
 .lb-video-connected-action {
   display: flex;
   position: relative;
+  width: 100%;
+  max-width: min(3.4rem, 100%);
   min-width: 0;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0;
 }
 
@@ -11990,16 +11997,22 @@ a.lb-entity:active,
 .lb-video-connected-end {
   display: grid;
   place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
   border: 0;
   border-radius: 999px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .lb-video-connected-btn {
-  width: 3.15rem;
-  height: 3.15rem;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
+  width: min(100%, clamp(2.5rem, 11.5vw, 3.25rem));
+  max-width: min(3.25rem, 100%);
   color: var(--accent-primary, #ec4899);
   background: color-mix(in srgb, var(--accent-primary, #ec4899) 16%, rgba(24, 24, 27, 0.88));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary, #ec4899) 42%, transparent);
@@ -12029,8 +12042,8 @@ a.lb-entity:active,
 }
 
 .lb-video-connected-end {
-  width: 3.85rem;
-  height: 3.85rem;
+  width: min(100%, clamp(2.75rem, 12.5vw, 3.55rem));
+  max-width: min(3.55rem, 100%);
   color: #fff;
   background: #ef4444;
   box-shadow: 0 0 22px rgba(239, 68, 68, 0.5);
@@ -12272,15 +12285,15 @@ a.lb-entity:active,
 }
 
 .lb-voice-connected-action.is-end .lb-video-connected-end {
-  width: 3.85rem;
-  height: 3.85rem;
-  min-width: 44px;
-  min-height: 44px;
+  width: min(100%, clamp(2.85rem, 12.5vw, 3.55rem));
+  max-width: min(3.55rem, 100%);
+  min-width: 0;
+  min-height: 0;
 }
 
 .lb-voice-connected-action .lb-video-connected-btn {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 0;
+  min-height: 0;
 }
 
 .lb-video-connected-btn.is-gift {
@@ -14002,15 +14015,20 @@ a.lb-entity:active,
     font-size: 0.58rem;
   }
 
+  .lb-video-connected-actions {
+    column-gap: clamp(0.35rem, 2.5vw, 0.7rem);
+    padding-inline: clamp(0.45rem, 3vw, 0.85rem);
+  }
+
   .lb-video-connected-btn {
-    width: 2.85rem;
-    height: 2.85rem;
+    width: min(100%, clamp(2.45rem, 12vw, 2.9rem));
+    max-width: min(2.9rem, 100%);
   }
 
   .lb-video-connected-end,
   .lb-video-connected-accept {
-    width: 3.35rem;
-    height: 3.35rem;
+    width: min(100%, clamp(2.65rem, 13vw, 3.2rem));
+    max-width: min(3.2rem, 100%);
   }
 
   .lb-video-connected-action span {
@@ -14091,6 +14109,11 @@ a.lb-entity:active,
     gap: 0.45rem 0.55rem;
     padding: 0.45rem 0.5rem max(0.55rem, var(--lb-safe-bottom, 0px));
   }
+
+  .lb-video-connected-actions {
+    column-gap: clamp(0.5rem, 1.8vw, 0.95rem);
+    padding-inline: clamp(0.65rem, 2vw, 1.15rem);
+  }
 }
 
 @media (min-width: 1024px) {
@@ -14104,17 +14127,41 @@ a.lb-entity:active,
   .lb-call-float.is-video:not(.is-compact):not(.is-maximized):has(.lb-video-connected-screen) {
     height: auto;
   }
-}
 
-@media (pointer: coarse) {
+  .lb-video-connected-actions {
+    column-gap: clamp(0.55rem, 1.2vw, 1.05rem);
+    padding-inline: clamp(0.75rem, 1.5vw, 1.25rem);
+  }
+
   .lb-video-connected-btn {
-    width: 3.35rem;
-    height: 3.35rem;
+    width: min(100%, clamp(2.75rem, 2.2vw, 3.25rem));
+    max-width: min(3.25rem, 100%);
   }
 
   .lb-video-connected-end {
-    width: 4.1rem;
-    height: 4.1rem;
+    width: min(100%, clamp(3rem, 2.4vw, 3.55rem));
+    max-width: min(3.55rem, 100%);
+  }
+}
+
+@media (pointer: coarse) {
+  .lb-video-connected-actions {
+    column-gap: clamp(0.4rem, 2.4vw, 0.9rem);
+    padding-inline: clamp(0.5rem, 2.8vw, 1rem);
+  }
+
+  .lb-video-connected-btn {
+    width: min(100%, clamp(2.65rem, 12vw, 3.2rem));
+    max-width: min(3.2rem, 100%);
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .lb-video-connected-end {
+    width: min(100%, clamp(2.85rem, 13vw, 3.5rem));
+    max-width: min(3.5rem, 100%);
+    min-width: 0;
+    min-height: 0;
   }
 
   .lb-call-header-btn {
