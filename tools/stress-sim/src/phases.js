@@ -179,7 +179,7 @@ async function phasePresence(cfg) {
           } catch (err) {
             stats.record(performance.now() - t0, 500, String(err.message || err));
           }
-          await new Promise((r) => setTimeout(r, 20_000));
+          await new Promise((r) => setTimeout(r, 25_000));
         }
         try {
           await ref.delete();

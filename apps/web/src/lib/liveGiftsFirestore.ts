@@ -7,6 +7,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -14,6 +15,7 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
   writeBatch,
   type DocumentData,
@@ -376,9 +378,9 @@ export async function updateLiveRoomFeed(
 }
 
 /** TTL de pulso de espectador: sin heartbeat reciente no cuenta en el total. */
-export const LIVE_VIEWER_HEARTBEAT_TTL_MS = 45_000;
+export const LIVE_VIEWER_HEARTBEAT_TTL_MS = 60_000;
 /** Intervalo de escritura de presencia (debe quedar < TTL con margen). */
-export const LIVE_VIEWER_HEARTBEAT_INTERVAL_MS = 20_000;
+export const LIVE_VIEWER_HEARTBEAT_INTERVAL_MS = 25_000;
 
 export type LiveViewerPresence = {
   uid: string;
@@ -398,6 +400,46 @@ function countActiveViewerDocs(docs: { data: () => DocumentData }[], now = Date.
 
 /** Último contador publicado al feed por sala (evita rewrite si no cambió). */
 const lastPublishedViewerCount = new Map<string, number>();
+
+function viewerPresenceIsFresh(data: DocumentData | undefined, now = Date.now()) {
+  if (!data) return false;
+  const heartbeatAtMs = Number(data.heartbeatAtMs || data.joinedAtMs || 0);
+  return heartbeatAtMs > 0 && now - heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS;
+}
+
+/** ±1 en feed sin escanear la subcolección (reconcile host corrige drift). */
+async function bumpLiveViewerCount(roomName: string, delta: 1 | -1) {
+  const key = roomKey(roomName);
+  const ref = doc(db, 'liveRooms', key);
+  lastPublishedViewerCount.delete(key);
+  try {
+    if (delta < 0) {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        const cur = Math.max(0, Number(snap.data()?.viewers || 0));
+        tx.set(
+          ref,
+          {
+            viewers: Math.max(0, cur - 1),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+      return;
+    }
+    await updateDoc(ref, {
+      viewers: increment(1),
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    if (delta > 0) {
+      await setDoc(ref, { viewers: 1, updatedAt: serverTimestamp() }, { merge: true }).catch(
+        () => undefined,
+      );
+    }
+  }
+}
 
 async function syncLiveViewerCount(roomName: string) {
   const key = roomKey(roomName);
@@ -434,19 +476,22 @@ export async function registerLiveViewer(
   const uid = String(user.uid || '').trim();
   if (!uid) return;
   const now = Date.now();
+  const viewerRef = doc(db, 'liveRooms', roomKey(roomName), 'viewers', uid);
+  const prev = await getDoc(viewerRef).catch(() => null);
+  const wasActive = Boolean(prev?.exists() && viewerPresenceIsFresh(prev.data()));
   await setDoc(
-    doc(db, 'liveRooms', roomKey(roomName), 'viewers', uid),
+    viewerRef,
     {
       uid,
       username: String(user.username || uid).slice(0, 40),
       displayName: String(user.displayName || user.username || 'Espectador').slice(0, 60),
-      joinedAtMs: now,
+      joinedAtMs: wasActive ? Number(prev?.data()?.joinedAtMs || now) : now,
       heartbeatAtMs: now,
       updatedAt: serverTimestamp(),
     },
     { merge: true },
   );
-  await syncLiveViewerCount(roomName);
+  if (!wasActive) await bumpLiveViewerCount(roomName, 1);
 }
 
 /** Pulso del espectador mientras permanece en la sala. */
@@ -467,8 +512,11 @@ export async function touchLiveViewerHeartbeat(roomName: string, uid: string) {
 export async function unregisterLiveViewer(roomName: string, uid: string) {
   const id = String(uid || '').trim();
   if (!id) return;
-  await deleteDoc(doc(db, 'liveRooms', roomKey(roomName), 'viewers', id)).catch(() => undefined);
-  await syncLiveViewerCount(roomName);
+  const viewerRef = doc(db, 'liveRooms', roomKey(roomName), 'viewers', id);
+  const prev = await getDoc(viewerRef).catch(() => null);
+  const wasActive = Boolean(prev?.exists() && viewerPresenceIsFresh(prev.data()));
+  await deleteDoc(viewerRef).catch(() => undefined);
+  if (wasActive) await bumpLiveViewerCount(roomName, -1);
 }
 
 /** Limpia presencia al cerrar el live. */

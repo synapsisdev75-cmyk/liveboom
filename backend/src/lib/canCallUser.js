@@ -126,17 +126,32 @@ async function getCommunicationPermissions(currentUserId, targetUserId, idToken)
   const cached = getCachedPerms(a, b);
   if (cached) return cached;
 
-  const [blockedAb, blockedBa, friendAb, friendBa, followAb, followBa] = await Promise.all([
+  // Camino rápido llamadas: bloqueo + amistad (4 lecturas). Following solo si no son amigos.
+  const [blockedAb, blockedBa, friendAb, friendBa] = await Promise.all([
     firestoreGet(`users/${a}/blocked/${b}`, idToken),
     firestoreGet(`users/${b}/blocked/${a}`, idToken),
     firestoreGet(`users/${a}/friends/${b}`, idToken),
     firestoreGet(`users/${b}/friends/${a}`, idToken),
+  ]);
+  if (blockedAb || blockedBa) {
+    const value = permissionsFromFlags({ blocked: true, friend: false, follower: false });
+    setCachedPerms(a, b, value);
+    return value;
+  }
+  const friend = friendDocAccepted(friendAb) && friendDocAccepted(friendBa);
+  if (friend) {
+    const value = permissionsFromFlags({ blocked: false, friend: true, follower: false });
+    setCachedPerms(a, b, value);
+    return value;
+  }
+
+  const [followAb, followBa] = await Promise.all([
     firestoreGet(`users/${a}/following/${b}`, idToken),
     firestoreGet(`users/${b}/following/${a}`, idToken),
   ]);
   const value = permissionsFromFlags({
-    blocked: Boolean(blockedAb || blockedBa),
-    friend: friendDocAccepted(friendAb) && friendDocAccepted(friendBa),
+    blocked: false,
+    friend: false,
     follower: Boolean(followAb || followBa),
   });
   setCachedPerms(a, b, value);

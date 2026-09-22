@@ -1,65 +1,41 @@
-# Escalabilidad LiveBoom — LIVE, viewers y llamadas 1:1
+# Escalabilidad LiveBoom — fase 2 (hacia 5k)
 
-Guía operativa (22 sep 2026). Objetivo: soportar alto flujo sin reescribir todo el producto.
+## Comparativa: cómo lo resuelven los grandes
 
-## Principios
+| Sistema | Señalización | Media A/V | Presencia viewers | Mensajes media |
+|---------|--------------|-----------|-------------------|----------------|
+| **WhatsApp / Telegram** | Servidores propios + colas | Opus/WebRTC o custom | No usan Firestore; presencia ephemeral en edge | CDN + lazy download al abrir |
+| **Twitch** | IRC / PubSub | CDN HLS + baja latencia | Contadores agregados, no 1 write/viewer | N/A chat texto ligero |
+| **LiveKit / mediasoup (OSS)** | HTTP tokens + data channel | SFU WebRTC | Participants en SFU; app no escribe DB por frame | — |
+| **LiveBoom (Firebase)** | Cloud Functions + Firestore | LiveKit (LIVE/calls) + Agora (battles) | Subcolección `viewers/{uid}` + campo feed | Storage + carga bajo demanda |
 
-1. **Separar planos**: señalización (Firestore/API) ≠ media (LiveKit/Agora).
-2. **Evitar documentos calientes**: un doc no debe recibir cientos de writes/s.
-3. **Presencia shardada**: 1 doc por viewer (`liveRooms/{room}/viewers/{uid}`), no reescribir el padre en cada heartbeat.
-4. **Agregar, no escanear** cuando el volumen crezca (counters / RTDB / agregación periódica).
-5. **Medir con stress-sim** antes y después (`tools/stress-sim`).
+**Lección clave:** nadie pone un heartbeat Firestore por viewer a 5k en *un* doc. La media va al SFU/CDN; la DB solo guarda estado agregado o presencia shardada con pocos writes.
 
-## Ya aplicado (fase 1)
+## Meta “5k” — realismo por actividad
 
-| Cambio | Efecto |
-|--------|--------|
-| Heartbeat viewer 12s → **20s** | ~40% menos writes de presencia |
-| Host: un solo timer **18s** (eliminado pulso duplicado 10s) | ~50% menos writes de heartbeat de sala |
-| Debounce host heartbeat 8s | Evita ráfagas al remontar UI |
-| `syncLiveViewerCount` solo actualiza feed si el número **cambió** | Menos writes a `liveRooms/{room}` |
-| `ensureCallRoom` en background | Menos latencia al mint JWT |
-| Function `api`: `minInstances: 1`, `concurrency: 80` | Menos cold start |
-| Cache TTL permisos de llamada (20s allow / 5s deny) | Menos lecturas Firestore en `/api/calls/start` |
+| Actividad | Antes (tabla) | Tras fase 1+2 (zona cómoda) | 5k ¿dónde? |
+|-----------|---------------|-----------------------------|------------|
+| Navegar feed | 1k–5k | **3k–8k** | Sí (global, lectura) |
+| DM abiertos | 200–800 | **400–1.2k** | 5k = muchos clientes + lazy media |
+| Llamadas 1:1 | 50–200 | **100–400** | 5k llamadas = plan LiveKit enterprise + busy sharded |
+| Hosts LIVE | 20–80 | **30–100** | OK |
+| Viewers **1** LIVE | 100–400 | **400–1.5k** (fase 2) | **5k en 1 sala** exige presencia fuera de Firestore (RTDB/`onDisconnect` o solo LiveKit) |
+| Regalos/s | 5–20 | 5–20 (sin cambiar ledger aún) | Fase 3: ledger subcolección |
 
-## Capacidad orientativa tras fase 1
+## Fase 2 aplicada
 
-| Escenario | Antes (estimado) | Después (estimado) |
-|-----------|------------------|--------------------|
-| Viewers en 1 LIVE | 100–400 cómodo | **250–700** cómodo (menos write pressure) |
-| Hosts LIVE concurrentes | 20–80 | Similar; API más estable con minInstances |
-| Llamadas 1:1 señalización | 50–200 | Mejor p95 por cache + JWT sin await createRoom |
+1. **Viewers:** `increment`/`−1` en join/leave (sin recount en cada entrada); reconcile host cada **36s**; heartbeat **25s**, TTL **60s**.
+2. **Llamadas:** cache permisos + short-circuit amigos (4 lecturas, no 6).
+3. **Turbo media chat:** audio/video `preload=none` + IntersectionObserver; fotos `loading=lazy` + `decoding=async`.
+4. **API:** `minInstances: 1` (fase 1).
 
-Sigue sin ser un SLA: validar con `npm run stress:tokens`, `stress:calls`, `stress:presence`.
+## Fase 3 (siguiente, para 5k viewers/sala)
 
-## Fase 2 (siguiente, mayor impacto)
+1. Presencia en **RTDB** o solo métricas LiveKit participant count → feed.
+2. Ledger de regalos `giftEvents/{id}` + agregador.
+3. Busy de llamadas en docs por uid (ya) + rate limit tokens.
+4. Observabilidad p95 join LiveKit / gift storm.
 
-1. **Contador de viewers con `increment`/`decrement`** en join/leave + reconcile raro (cada N minutos), en lugar de `getDocs` completo en el host.
-2. **Ledger de regalos** en `liveRooms/{room}/giftEvents/{id}` y agregar `coinsEarned` / top en Cloud Function o cada 1–2s — sacar el map `gifters` del doc padre.
-3. **LiveKit**: región cercana a LatAm + tope blando de viewers en token si el plan lo exige.
-4. **RTDB o Firestore + `onDisconnect`** para presencia (cleanup automático en caídas de red).
-5. **Cola de regalos** por sala (worker) si hay tormentas >20 gifts/s.
+## Regresión
 
-## Fase 3 (plataforma)
-
-- CDN / cache HTTP para catálogos y assets.
-- Rate limits por UID en `/api/stream/token` y `/api/calls/start`.
-- Observabilidad: p95 tokens, error rate gifts, LiveKit join failures (Cloud Monitoring + dashboards).
-- Multi-región solo cuando LatAm + otro continente lo justifiquen (coste alto).
-
-## Cómo probar
-
-```powershell
-npm run stress:health -- --vus 20 --duration 20
-npm run stress:tokens -- --room mihost --vus 30 --duration 30
-npm run stress:calls -- --call-target UID_AMIGO --vus 1 --duration 30
-# Opcional (escribe Firestore):
-npm run stress:presence -- --room mihost --vus 50 --duration 60 --allow-firestore
-```
-
-## Reglas de oro al tocar este código
-
-- No cachear `claimUsersBusy` (rompe exclusión mutua de llamadas).
-- No subir el intervalo de viewer por encima de `LIVE_VIEWER_HEARTBEAT_TTL_MS` (45s) sin margen.
-- No meter lógica de Publicaciones/Boom Clip dentro de `liveGiftsFirestore` sin props/modo explícito.
-- Tras cambios de presencia: probar host + 2 viewers móvil/PC y que el contador del feed no se quede pegado.
+Publicaciones / Boom Clip / Flash Boom / editor de regalos: **no tocados**.

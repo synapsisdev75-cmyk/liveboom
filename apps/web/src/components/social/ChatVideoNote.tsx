@@ -11,13 +11,49 @@ const MAX_VIDEO_NOTE_SEC = 60;
 
 export function VideoNoteBubble({ src, mine }: { src: string; mine?: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const rootRef = useRef<HTMLButtonElement | null>(null);
+  const [armed, setArmed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
+    const node = rootRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setArmed(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((e) => e.isIntersecting);
+        if (visible) setArmed(true);
+        else {
+          const el = videoRef.current;
+          if (el && !el.paused) {
+            el.pause();
+            setPlaying(false);
+          }
+          if (el && !playing) {
+            el.removeAttribute('src');
+            el.load();
+            setArmed(false);
+          }
+        }
+      },
+      { rootMargin: '120px', threshold: 0.01 },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [playing]);
+
+  useEffect(() => {
     const el = videoRef.current;
-    if (!el) return;
+    if (!el || !armed) return;
+    if (!el.src) {
+      el.src = src;
+      el.preload = 'metadata';
+      el.load();
+    }
     const onTime = () => setProgress(el.currentTime || 0);
     const onMeta = () => setDuration(el.duration && Number.isFinite(el.duration) ? el.duration : 0);
     const onEnded = () => {
@@ -33,11 +69,17 @@ export function VideoNoteBubble({ src, mine }: { src: string; mine?: boolean }) 
       el.removeEventListener('loadedmetadata', onMeta);
       el.removeEventListener('ended', onEnded);
     };
-  }, [src]);
+  }, [src, armed]);
 
   async function toggle() {
     const el = videoRef.current;
     if (!el) return;
+    if (!armed) setArmed(true);
+    if (!el.src) {
+      el.src = src;
+      el.preload = 'metadata';
+      el.load();
+    }
     if (playing) {
       el.pause();
       setPlaying(false);
@@ -53,6 +95,7 @@ export function VideoNoteBubble({ src, mine }: { src: string; mine?: boolean }) 
 
   return (
     <button
+      ref={rootRef}
       type="button"
       onClick={() => void toggle()}
       className={`relative block h-[11rem] w-[11rem] shrink-0 sm:h-48 sm:w-48 ${
@@ -65,7 +108,7 @@ export function VideoNoteBubble({ src, mine }: { src: string; mine?: boolean }) 
           mine ? 'ring-violet-300/40' : 'ring-white/15'
         }`}
       >
-        <video ref={videoRef} src={src} playsInline preload="metadata" className="h-full w-full object-cover" />
+        <video ref={videoRef} playsInline preload="none" className="h-full w-full object-cover" />
       </div>
       {!playing ? (
         <span className="pointer-events-none lb-media-scrim absolute inset-0 grid place-items-center rounded-full bg-black/30">

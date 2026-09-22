@@ -248,14 +248,47 @@ function formatAudioClock(sec: number) {
 
 function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [armed, setArmed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const node = rootRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setArmed(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((e) => e.isIntersecting);
+        if (visible) setArmed(true);
+        else if (!playing) {
+          const el = audioRef.current;
+          if (el) {
+            el.pause();
+            el.removeAttribute('src');
+            el.load();
+          }
+          setArmed(false);
+        }
+      },
+      { rootMargin: '80px', threshold: 0.01 },
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [playing]);
+
+  useEffect(() => {
     const el = audioRef.current;
-    if (!el) return;
+    if (!el || !armed) return;
+    if (!el.src) {
+      el.src = src;
+      el.preload = 'metadata';
+      el.load();
+    }
     const onTime = () => setProgress(el.currentTime || 0);
     const onMeta = () => setDuration(el.duration && Number.isFinite(el.duration) ? el.duration : 0);
     const onEnded = () => {
@@ -273,13 +306,19 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
       el.removeEventListener('ended', onEnded);
       el.removeEventListener('error', onErr);
     };
-  }, [src]);
+  }, [src, armed]);
 
   async function toggle() {
     const el = audioRef.current;
     if (!el) return;
     setError(null);
     try {
+      if (!armed) setArmed(true);
+      if (!el.src) {
+        el.src = src;
+        el.preload = 'metadata';
+        el.load();
+      }
       if (playing) {
         el.pause();
         setPlaying(false);
@@ -296,8 +335,11 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
   const pct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
 
   return (
-    <div className={`mb-0.5 flex w-[min(100%,15rem)] items-center gap-2 ${mine ? '' : ''}`}>
-      <audio ref={audioRef} src={src} preload="metadata" playsInline className="hidden" />
+    <div
+      ref={rootRef}
+      className={`mb-0.5 flex w-[min(100%,15rem)] items-center gap-2 ${mine ? '' : ''}`}
+    >
+      <audio ref={audioRef} preload="none" playsInline className="hidden" />
       <button
         type="button"
         onClick={() => void toggle()}
@@ -2518,6 +2560,8 @@ export function InternalChatPanel({
                                 <img
                                   src={message.mediaUrl}
                                   alt=""
+                                  loading="lazy"
+                                  decoding="async"
                                   className={`max-h-48 rounded-lg ${
                                     isGif ? 'object-contain' : 'object-cover'
                                   }`}
