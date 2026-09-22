@@ -136,7 +136,6 @@ import {
   markLiveRoomEnded,
   updateLiveRoomFeed,
   touchLiveRoomHeartbeat,
-  listenLiveRoomViewerCount,
   listenLiveViewers,
   refreshLiveViewerCount,
   unregisterLiveViewer,
@@ -237,6 +236,7 @@ import {
   screenShareIdentityFor,
   type ScreenShareTransport,
 } from '../lib/screenShareIdentity';
+import { useAggregatedViewerCount } from '../lib/liveKitAudience';
 import {
   beginScreenShareSession,
   endScreenShareSession,
@@ -602,17 +602,6 @@ function parseRoomData(payload: Uint8Array): RoomPayload | null {
   } catch {
     return null;
   }
-}
-
-function useViewerCount(roomName: string) {
-  const [viewers, setViewers] = useState(0);
-
-  useEffect(() => {
-    if (!roomName) return;
-    return listenLiveRoomViewerCount(roomName, setViewers);
-  }, [roomName]);
-
-  return { viewers };
 }
 
 export function LiveRoom() {
@@ -1740,7 +1729,13 @@ function CreatorStage({
   const walletCoins = useAuthStore((state) => state.profile?.coinsBalance ?? 0);
   const firebaseUid = useAuthStore((state) => state.profile?.firebaseUid);
   const setCoins = useAuthStore((state) => state.setCoins);
-  const { viewers } = useViewerCount(username);
+  const { viewers } = useAggregatedViewerCount({
+    roomName: username,
+    room,
+    hostUid: hostUid || firebaseUid,
+    isHost,
+    connected: room.state === ConnectionState.Connected,
+  });
   const liveStartedAt = useRef(0);
   const creditedGifts = useRef(new Set<string>());
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
@@ -2653,7 +2648,8 @@ function CreatorStage({
       if (hostSessionEndedRef.current) return;
       void touchLiveRoomHeartbeat(username).catch(() => undefined);
       tick += 1;
-      if (tick % 2 === 0) {
+      // Cleanup docs huérfanos ~ cada 72s (count feed = LiveKit).
+      if (tick % 4 === 0) {
         void refreshLiveViewerCount(username).catch(() => undefined);
       }
     }, 18_000);

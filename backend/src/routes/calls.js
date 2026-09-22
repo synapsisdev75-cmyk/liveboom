@@ -14,6 +14,8 @@ const { claimUsersBusy, releaseCallById } = require('../lib/callBusy');
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const livekit = () => require('../lib/livekit');
+const { createUidRateLimit } = require('../lib/uidRateLimit');
+const callStartLimit = createUidRateLimit({ windowMs: 60_000, max: 30 });
 
 router.post('/start', requireAuth, async (req, res) => {
   const lk = livekit();
@@ -23,6 +25,14 @@ router.post('/start', requireAuth, async (req, res) => {
   }
 
   const me = req.user.uid;
+  if (!callStartLimit.ok(me)) {
+    res.status(429).json({
+      error: 'Demasiados intentos de llamada. Espera un momento.',
+      code: 'CALL_RATE_LIMIT',
+      stage: 'rate',
+    });
+    return;
+  }
   const targetUid = String(req.body?.targetUid || '').trim();
   const type = req.body?.type === 'video' ? 'video' : 'audio';
   const authorizationId = String(req.body?.authorizationId || '').trim();

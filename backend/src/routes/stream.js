@@ -16,6 +16,8 @@ const viewerKick = require('../lib/liveViewerKick');
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
 const livekit = () => require('../lib/livekit');
+const { createUidRateLimit } = require('../lib/uidRateLimit');
+const streamTokenLimit = createUidRateLimit({ windowMs: 60_000, max: 90 });
 
 const upsertLive = presence.upsertLive || presence.default?.upsertLive;
 const removeLive = presence.removeLive || presence.default?.removeLive;
@@ -891,6 +893,13 @@ router.post('/screen-token/:roomName', requireAuth, async (req, res) => {
 });
 
 router.get('/token/:roomName', requireAuth, async (req, res) => {
+  if (!streamTokenLimit.ok(req.user?.uid)) {
+    res.status(429).json({
+      error: 'Demasiadas solicitudes de token. Espera un momento.',
+      code: 'STREAM_TOKEN_RATE_LIMIT',
+    });
+    return;
+  }
   const lk = livekit();
   const livekitEnabled = lk.livekitEnabled || lk.default?.livekitEnabled;
   const createLivekitToken = lk.createLivekitToken || lk.default?.createLivekitToken;

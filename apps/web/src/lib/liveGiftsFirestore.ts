@@ -7,7 +7,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -15,7 +14,6 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
-  updateDoc,
   where,
   writeBatch,
   type DocumentData,
@@ -377,10 +375,10 @@ export async function updateLiveRoomFeed(
   await setDoc(doc(db, 'liveRooms', roomKey(roomName)), data, { merge: true });
 }
 
-/** TTL de pulso de espectador: sin heartbeat reciente no cuenta en el total. */
-export const LIVE_VIEWER_HEARTBEAT_TTL_MS = 60_000;
-/** Intervalo de escritura de presencia (debe quedar < TTL con margen). */
-export const LIVE_VIEWER_HEARTBEAT_INTERVAL_MS = 25_000;
+/** Intervalo de escritura de presencia (modo lite fase 3: casi no latea; LiveKit manda el count). */
+export const LIVE_VIEWER_HEARTBEAT_INTERVAL_MS = 50_000;
+/** TTL de pulso: cleanup de docs huérfanos si el cliente cae sin unregister. */
+export const LIVE_VIEWER_HEARTBEAT_TTL_MS = 120_000;
 
 export type LiveViewerPresence = {
   uid: string;
@@ -407,68 +405,56 @@ function viewerPresenceIsFresh(data: DocumentData | undefined, now = Date.now())
   return heartbeatAtMs > 0 && now - heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS;
 }
 
-/** ±1 en feed sin escanear la subcolección (reconcile host corrige drift). */
-async function bumpLiveViewerCount(roomName: string, delta: 1 | -1) {
-  const key = roomKey(roomName);
-  const ref = doc(db, 'liveRooms', key);
-  lastPublishedViewerCount.delete(key);
-  try {
-    if (delta < 0) {
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(ref);
-        const cur = Math.max(0, Number(snap.data()?.viewers || 0));
-        tx.set(
-          ref,
-          {
-            viewers: Math.max(0, cur - 1),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
-      });
-      return;
-    }
-    await updateDoc(ref, {
-      viewers: increment(1),
-      updatedAt: serverTimestamp(),
-    });
-  } catch {
-    if (delta > 0) {
-      await setDoc(ref, { viewers: 1, updatedAt: serverTimestamp() }, { merge: true }).catch(
-        () => undefined,
-      );
-    }
-  }
-}
-
 async function syncLiveViewerCount(roomName: string) {
   const key = roomKey(roomName);
   const snap = await getDocs(collection(db, 'liveRooms', key, 'viewers'));
   const now = Date.now();
-  let active = 0;
   const batch = writeBatch(db);
   let hasDeletes = false;
   for (const item of snap.docs) {
     const heartbeatAtMs = Number(item.data().heartbeatAtMs || item.data().joinedAtMs || 0);
-    if (heartbeatAtMs > 0 && now - heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS) {
-      active += 1;
-    } else {
-      batch.delete(item.ref);
-      hasDeletes = true;
-    }
+    if (heartbeatAtMs > 0 && now - heartbeatAtMs <= LIVE_VIEWER_HEARTBEAT_TTL_MS) continue;
+    batch.delete(item.ref);
+    hasDeletes = true;
   }
   if (hasDeletes) await batch.commit();
-  if (lastPublishedViewerCount.get(key) === active) return;
-  lastPublishedViewerCount.set(key, active);
-  await updateLiveRoomFeed(roomName, { viewers: active });
+  // Fase 3: feed `viewers` lo publica el host vía LiveKit (publishLiveViewerAggregate).
 }
 
-/** Host: limpia espectadores inactivos y actualiza contador en feed. */
+/** Publica contador agregado al feed (host / LiveKit). Sin escanear subcolección. */
+export async function publishLiveViewerAggregate(roomName: string, count: number) {
+  const key = roomKey(roomName);
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  if (lastPublishedViewerCount.get(key) === n) return;
+  lastPublishedViewerCount.set(key, n);
+  await updateLiveRoomFeed(roomName, { viewers: n });
+}
+
+/** Feed / UI: escucha solo el campo agregado (1 doc), no la subcolección viewers. */
+export function listenLiveRoomFeedViewerCount(
+  roomName: string,
+  onChange: (count: number) => void,
+): Unsubscribe {
+  const key = roomKey(roomName);
+  return onSnapshot(
+    doc(db, 'liveRooms', key),
+    (snap) => {
+      if (!snap.exists()) {
+        onChange(0);
+        return;
+      }
+      onChange(Math.max(0, Math.floor(Number(snap.data()?.viewers || 0))));
+    },
+    () => onChange(0),
+  );
+}
+
+/** Host: reconcile raro de docs huérfanos (TTL). El count del feed lo manda LiveKit. */
 export async function refreshLiveViewerCount(roomName: string) {
   await syncLiveViewerCount(roomName);
 }
 
-/** Espectador entra al live: +1 en contador real. */
+/** Espectador entra al live: presencia para panel/kick (count feed = LiveKit agregado). */
 export async function registerLiveViewer(
   roomName: string,
   user: { uid: string; username: string; displayName?: string },
@@ -491,7 +477,6 @@ export async function registerLiveViewer(
     },
     { merge: true },
   );
-  if (!wasActive) await bumpLiveViewerCount(roomName, 1);
 }
 
 /** Pulso del espectador mientras permanece en la sala. */
@@ -508,15 +493,11 @@ export async function touchLiveViewerHeartbeat(roomName: string, uid: string) {
   );
 }
 
-/** Espectador sale del live: -1 en contador real. */
+/** Espectador sale del live. */
 export async function unregisterLiveViewer(roomName: string, uid: string) {
   const id = String(uid || '').trim();
   if (!id) return;
-  const viewerRef = doc(db, 'liveRooms', roomKey(roomName), 'viewers', id);
-  const prev = await getDoc(viewerRef).catch(() => null);
-  const wasActive = Boolean(prev?.exists() && viewerPresenceIsFresh(prev.data()));
-  await deleteDoc(viewerRef).catch(() => undefined);
-  if (wasActive) await bumpLiveViewerCount(roomName, -1);
+  await deleteDoc(doc(db, 'liveRooms', roomKey(roomName), 'viewers', id)).catch(() => undefined);
 }
 
 /** Limpia presencia al cerrar el live. */
