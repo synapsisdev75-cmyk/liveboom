@@ -392,7 +392,21 @@ function PrivateCallLiveKitRoom({
   useEffect(() => {
     return useCallStore.subscribe((state, prev) => {
       if (prev.status !== 'idle' && state.status === 'idle') {
-        void room.disconnect();
+        try {
+          room.localParticipant.trackPublications.forEach((pub) => {
+            const track = pub.track;
+            if (track && 'stop' in track) {
+              try {
+                track.stop();
+              } catch {
+                /* ignore */
+              }
+            }
+          });
+        } catch {
+          /* ignore */
+        }
+        void room.disconnect(true);
       }
     });
   }, [room]);
@@ -462,27 +476,8 @@ function PrivateCallLiveKitRoom({
       const live = useCallStore.getState();
       if (live.callId !== callIdRef.current) return;
       if (live.status !== 'active' && live.status !== 'ringing-out') return;
-      // El otro colgó → cortar YA (Firestore + UI).
-      void (async () => {
-        const openId = live.chatId;
-        if (openId) {
-          try {
-            const { peekPrivateCallStatus, isEndedPrivateCallStatus, endPrivateCall } = await import(
-              '../../lib/socialFirestore'
-            );
-            const remote = await peekPrivateCallStatus(openId);
-            if (!remote || !isEndedPrivateCallStatus(remote)) {
-              await endPrivateCall(openId, {
-                callId: live.callId,
-                outcome: 'completed',
-              }).catch(() => undefined);
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        void useCallStore.getState().hangup(undefined, { skipHistory: true });
-      })();
+      // El otro colgó → cortar UI/LiveKit YA; Firestore lo escribe hangup en segundo plano.
+      void useCallStore.getState().hangup();
     };
     room.on(RoomEvent.ParticipantDisconnected, onRemoteLeft);
 
@@ -635,6 +630,17 @@ function CallAutoReconnect({ serverUrl, token }: { serverUrl: string; token: str
       if (live.status !== 'active' && live.status !== 'ringing-out') return;
       if (reason === DisconnectReason.CLIENT_INITIATED) return;
 
+      // Sin remotos o sala cerrada por el peer → colgar al instante (sin esperar Firestore).
+      if (
+        room.remoteParticipants.size === 0 ||
+        reason === DisconnectReason.PARTICIPANT_REMOVED ||
+        reason === DisconnectReason.ROOM_DELETED ||
+        reason === DisconnectReason.DUPLICATE_IDENTITY
+      ) {
+        void useCallStore.getState().hangup();
+        return;
+      }
+
       const finishIfPeerEnded = async () => {
         const chatId = useCallStore.getState().chatId;
         if (!chatId) return false;
@@ -655,11 +661,6 @@ function CallAutoReconnect({ serverUrl, token }: { serverUrl: string; token: str
 
       void (async () => {
         if (await finishIfPeerEnded()) return;
-        // Sin participantes remotos = el otro ya salió.
-        if (room.remoteParticipants.size === 0 && useCallStore.getState().status === 'active') {
-          void useCallStore.getState().hangup(undefined, { skipHistory: true });
-          return;
-        }
         if (attempts >= 3) {
           void useCallStore.getState().hangup(undefined, { skipHistory: true });
           return;

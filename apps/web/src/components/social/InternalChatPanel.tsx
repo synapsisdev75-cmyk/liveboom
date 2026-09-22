@@ -13,7 +13,6 @@ import {
   Pencil,
   Phone,
   PhoneMissed,
-  PhoneOff,
   Play,
   Plus,
   Search,
@@ -2250,27 +2249,17 @@ export function InternalChatPanel({
               </span>
             </Link>
             <div className="lb-chat-thread-head__tools">
-              {inThisCall ? (
-                <button
-                  type="button"
-                  onClick={stopCall}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg bg-red-500/20 px-2.5 text-xs font-bold text-red-300"
-                >
-                  <PhoneOff size={14} /> Colgar
-                </button>
-              ) : (
-                <CallChatActions
-                  key={`${activeFriend.uid}-${peerBlocked ? 'blocked' : 'open'}`}
-                  chatId={chatId}
-                  peer={activeFriend}
-                  inThisCall={false}
-                  busy={busy}
-                  callStatus={callStatus}
-                  onBusy={setBusy}
-                  onError={setError}
-                  onStopCall={stopCall}
-                />
-              )}
+              <CallChatActions
+                key={`${activeFriend.uid}-${peerBlocked ? 'blocked' : 'open'}`}
+                chatId={chatId}
+                peer={activeFriend}
+                inThisCall={inThisCall}
+                busy={busy}
+                callStatus={callStatus}
+                onBusy={setBusy}
+                onError={setError}
+                onStopCall={stopCall}
+              />
               {profile ? (
                 <ChatSafetyMenu
                   peer={activeFriend}

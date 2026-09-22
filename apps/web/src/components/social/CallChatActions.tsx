@@ -76,8 +76,18 @@ export function CallChatActions({
 
   useEffect(() => {
     if (!profile) return;
-    void getCallAccess(profile.firebaseUid, peer.uid, 'audio', settings, free).then(setVoiceAccess);
-    void getCallAccess(profile.firebaseUid, peer.uid, 'video', settings, free).then(setVideoAccess);
+    let cancelled = false;
+    void Promise.all([
+      getCallAccess(profile.firebaseUid, peer.uid, 'audio', settings, free),
+      getCallAccess(profile.firebaseUid, peer.uid, 'video', settings, free),
+    ]).then(([voice, video]) => {
+      if (cancelled) return;
+      setVoiceAccess(voice);
+      setVideoAccess(video);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [profile?.firebaseUid, peer.uid, settings, free]);
 
   useEffect(() => {
