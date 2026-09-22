@@ -53,7 +53,6 @@ import {
 import { reconstructionPreviewFile, renderOrbitVideo } from '../../lib/reconstruction3d/orbitRender';
 import { threeDReconstructionService } from '../../lib/reconstruction3d/service';
 import { DEFAULT_RECONSTRUCTION_EDIT, type ReconstructionDraft } from '../../lib/reconstruction3d/types';
-import { Reconstruction3DPanel } from './Reconstruction3DPanel';
 import { Reconstruction3DViewer } from './Reconstruction3DViewer';
 import { Reconstruction3DBadge } from './Reconstruction3DBadge';
 
@@ -147,7 +146,6 @@ export function CreatePostModal({
   const [gifAttach, setGifAttach] = useState<ComposerGif | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
-  const [reconOpen, setReconOpen] = useState(false);
   const [reconstruction, setReconstruction] = useState<ReconstructionDraft | null>(getReconstructionDraft());
   const setToast = useUiStore((state) => state.setToast);
   const [photoEditOpen, setPhotoEditOpen] = useState(false);
@@ -1330,7 +1328,7 @@ export function CreatePostModal({
   const showVisibility = true;
   const showPanel = isInline || open;
   const isModalOpen = showPanel && !isInline;
-  useBodyScrollLock(isModalOpen || cameraCaptureOpen || reconOpen);
+  useBodyScrollLock(isModalOpen || cameraCaptureOpen);
   const modalTitle = isEditMode
     ? 'Editar publicación'
     : isFlashBoom
@@ -2079,18 +2077,6 @@ export function CreatePostModal({
               : 180
         }
       />
-      {profile?.firebaseUid ? (
-        <Reconstruction3DPanel
-          open={reconOpen}
-          userId={profile.firebaseUid}
-          onClose={() => setReconOpen(false)}
-          onReady={() => setReconOpen(false)}
-          onSelectFormat={(tab) => {
-            switchTab(tab);
-            setReconOpen(false);
-          }}
-        />
-      ) : null}
       {musicPickerOpen ? (
         <MusicPickerModal
           initial={selectedMusic}
