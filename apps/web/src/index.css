@@ -10118,6 +10118,107 @@ a.lb-entity:active,
   color: var(--accent-primary);
 }
 
+/* Ventana chat PC = header idéntico a móvil: flecha, perfil, pastilla call tema, info, papelera. */
+.lb-phone-chat-window .lb-chat-thread-head {
+  background: var(--bg-elevated, #0a0a0b);
+  border-bottom-color: color-mix(in srgb, var(--border-default) 80%, transparent);
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__row {
+  gap: 0.35rem;
+  padding: 0.5rem 0.55rem;
+  overflow: visible;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__back {
+  color: var(--text-primary);
+  width: 2.15rem;
+  height: 2.15rem;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__profile {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__avatar {
+  width: 2.5rem !important;
+  height: 2.5rem !important;
+  min-width: 2.5rem !important;
+  min-height: 2.5rem !important;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__name-text {
+  font-size: 0.88rem;
+  max-width: 100%;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  overflow: visible;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__badge {
+  font-size: 0.58rem;
+  padding: 0.12rem 0.35rem;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__tools {
+  gap: 0.05rem;
+  flex-shrink: 0;
+}
+
+.lb-phone-chat-window .lb-chat-thread-head .lb-call-header-actions,
+.lb-phone-chat-window .lb-call-header-actions {
+  padding: 0.12rem;
+  border-radius: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--accent-primary, #f59e0b) 52%, transparent);
+  background: color-mix(in srgb, var(--accent-primary, #f59e0b) 12%, rgba(18, 18, 20, 0.72));
+  box-shadow: none;
+  gap: 0.02rem;
+}
+
+.lb-phone-chat-window .lb-call-header-btn:not(.lb-call-header-btn--request),
+.lb-phone-chat-window .lb-chat-thread-head .lb-call-header-btn:not(.lb-call-header-btn--request) {
+  width: 2.05rem;
+  height: 2.05rem;
+}
+
+.lb-phone-chat-window .lb-call-header-btn--video,
+.lb-phone-chat-window .lb-call-header-btn--voice,
+.lb-phone-chat-window .lb-chat-thread-head .lb-call-header-btn--video,
+.lb-phone-chat-window .lb-chat-thread-head .lb-call-header-btn--voice {
+  color: var(--accent-primary, #f59e0b);
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__icon,
+.lb-phone-chat-window .lb-chat-thread-head .lb-chat-safety-wrap > button {
+  width: 2.05rem;
+  height: 2.05rem;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.lb-phone-chat-window .lb-chat-thread-head .lb-chat-safety-wrap > button {
+  color: var(--text-primary);
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__icon:hover,
+.lb-phone-chat-window .lb-chat-thread-head__icon:focus-visible,
+.lb-phone-chat-window .lb-chat-thread-head .lb-chat-safety-wrap > button:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.lb-phone-chat-window .lb-chat-thread-head__icon[aria-label='Cerrar chat'] {
+  color: var(--text-muted);
+}
+
 .lb-call-header-btn:hover:not(:disabled) {
   background: var(--surface-hover);
   box-shadow: 0 0 10px var(--accent-soft);

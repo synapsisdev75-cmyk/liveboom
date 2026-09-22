@@ -19,7 +19,6 @@ import {
   Search,
   Send,
   MoreHorizontal,
-  Minus,
   Trash2,
   Video,
   X,
@@ -2103,10 +2102,10 @@ export function InternalChatPanel({
                 type="button"
                 onClick={() => onFloatingMinimize?.()}
                 className="lb-chat-thread-head__back"
-                aria-label="Minimizar chat"
+                aria-label="Volver / minimizar chat"
                 title="Minimizar"
               >
-                <Minus size={18} />
+                <ArrowLeft size={18} />
               </button>
             ) : isPage ? (
               <button
