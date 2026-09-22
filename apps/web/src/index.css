@@ -1313,6 +1313,33 @@ aside.chat-scroll::-webkit-scrollbar {
   height: 2.65rem;
 }
 
+/* Chat LIVE: xN al final de la línea «envió Regalo» (PC / tablet / móvil). */
+.lb-gift-combo-badge--live-chat {
+  position: relative;
+  inset: auto;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  display: inline-grid;
+  flex-shrink: 0;
+  width: clamp(1.55rem, 4.2vw, 2.05rem);
+  height: clamp(1.55rem, 4.2vw, 2.05rem);
+  margin-left: 0.1rem;
+  filter: drop-shadow(0 0 6px rgba(34, 211, 238, 0.4));
+}
+
+.lb-gift-combo-badge--live-chat .lb-gift-combo-badge__img {
+  animation: lb-gift-combo-pop 0.95s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+}
+
+@media (max-width: 767px) {
+  .lb-gift-combo-badge--live-chat {
+    width: clamp(1.45rem, 5.5vw, 1.85rem);
+    height: clamp(1.45rem, 5.5vw, 1.85rem);
+  }
+}
+
 /* Regalo recibido offline / sin ver: se puede tocar 1 vez para reactivar animación. */
 .lb-chat-gift-replay {
   border: 1px solid color-mix(in srgb, var(--accent-secondary, #22d3ee) 45%, transparent);

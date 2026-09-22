@@ -40,6 +40,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
+import { GiftComboBadge } from '../components/live/GiftComboBadge';
 import { LiveWishCarousel } from '../components/live/LiveWishCarousel';
 import { LiveWishHexStage } from '../components/live/LiveWishHexStage';
 import { LiveWishAchievedCard } from '../components/live/LiveWishAchievedCard';
@@ -423,9 +424,88 @@ type ChatMessage = {
   authorUid?: string;
   text: string;
   sourceLang?: string | null;
-  gift?: { giftId: string; emoji: string; name: string };
+  gift?: { giftId: string; emoji: string; name: string; combo?: number };
   levelBadge?: string;
 };
+
+/** Combo visible en chat LIVE (x2–x10). */
+function clampLiveGiftCombo(value: unknown): number {
+  const n = Math.floor(Number(value) || 1);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(10, Math.max(1, n));
+}
+
+function liveChatGiftCombo(gift: ChatMessage['gift'], text?: string): number {
+  if (gift?.combo && gift.combo > 1) return clampLiveGiftCombo(gift.combo);
+  const fromText = /\bx\s*(\d{1,2})\b/i.exec(String(text || ''));
+  if (fromText) return clampLiveGiftCombo(fromText[1]);
+  return 1;
+}
+
+/** Une regalos consecutivos del mismo usuario/regalo en ventana corta → un solo aviso con combo. */
+function foldLiveGiftChatLines(
+  list: Array<{
+    id: string;
+    author: string;
+    authorUid?: string;
+    text: string;
+    sourceLang?: string | null;
+    gift?: ChatMessage['gift'] | null;
+    createdAtMs?: number;
+  }>,
+): ChatMessage[] {
+  type Row = ChatMessage & { createdAtMs?: number };
+  const out: Row[] = [];
+  for (const msg of list) {
+    const combo = msg.gift ? liveChatGiftCombo(msg.gift, msg.text) : 1;
+    const gift = msg.gift
+      ? {
+          giftId: msg.gift.giftId,
+          emoji: msg.gift.emoji,
+          name: msg.gift.name,
+          ...(combo > 1 ? { combo } : {}),
+        }
+      : undefined;
+    const mapped: Row = {
+      id: msg.id,
+      author: msg.author,
+      authorUid: msg.authorUid || undefined,
+      text: gift ? `envió ${gift.name}` : msg.text,
+      sourceLang: msg.sourceLang || undefined,
+      gift,
+      createdAtMs: msg.createdAtMs,
+    };
+    const last = out[out.length - 1];
+    const lastMs = Number(last?.createdAtMs || 0);
+    const nextMs = Number(msg.createdAtMs || 0);
+    const sameGift =
+      Boolean(gift && last?.gift) &&
+      last!.gift!.giftId === gift!.giftId &&
+      String(last!.authorUid || last!.author).toLowerCase() ===
+        String(mapped.authorUid || mapped.author).toLowerCase() &&
+      (lastMs <= 0 || nextMs <= 0 || Math.abs(nextMs - lastMs) < 4500);
+
+    if (sameGift && last?.gift && gift) {
+      const nextCombo = clampLiveGiftCombo(
+        liveChatGiftCombo(last.gift, last.text) + (combo > 1 ? combo : 1),
+      );
+      last.gift = { ...last.gift, ...(nextCombo > 1 ? { combo: nextCombo } : {}) };
+      last.text = `envió ${gift.name}`;
+      last.createdAtMs = nextMs || lastMs;
+      continue;
+    }
+    out.push(mapped);
+  }
+  return out.map((row) => ({
+    id: row.id,
+    author: row.author,
+    authorUid: row.authorUid,
+    text: row.text,
+    sourceLang: row.sourceLang,
+    gift: row.gift,
+    levelBadge: row.levelBadge,
+  }));
+}
 
 const liveChatCache = new Map<string, ChatMessage[]>();
 
@@ -1665,7 +1745,6 @@ function CreatorStage({
   const creditedGifts = useRef(new Set<string>());
   const [floats, setFloats] = useState<FloatingGiftItem[]>([]);
   const [faceGift, setFaceGift] = useState<ActiveFaceGift | null>(null);
-  const giftComboRef = useRef<{ key: string; count: number; at: number }>({ key: '', count: 0, at: 0 });
   const stageVideoRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const launch = (location.state as LiveLaunchState | null) || {};
@@ -2783,18 +2862,6 @@ function CreatorStage({
       _senderUid?: string,
     ) => {
       if (!giftId || !id) return;
-      const catalogGift = findLiveGift(giftId);
-      const isVideo = Boolean(catalogGift?.video);
-      const comboKey = `${senderName || 'anon'}::${giftId}`;
-      const now = Date.now();
-      const explicit = [1, 2, 4, 8].includes(Math.floor(Number(multiplier) || 0))
-        ? Math.floor(Number(multiplier))
-        : 0;
-      let combo = explicit > 1 ? explicit : 1;
-      if (giftComboRef.current.key === comboKey && now - giftComboRef.current.at < 4500) {
-        combo = Math.max(combo, giftComboRef.current.count + (explicit > 1 ? explicit : 1));
-      }
-      giftComboRef.current = { key: comboKey, count: combo, at: now };
       if (isHost) {
         void applyLiveWishGiftProgress(
           username,
@@ -2827,30 +2894,15 @@ function CreatorStage({
 
       setFloats((current) => {
         if (current.some((item) => item.id === id)) return current;
-        if (isVideo) {
-          const withoutVideos = current.filter((item) => !findLiveGift(item.giftId)?.video);
-          return [
-            ...withoutVideos,
-            {
-              id,
-              giftId,
-              left: 32 + Math.random() * 36,
-              senderName,
-              combo,
-            },
-          ];
-        }
-        const maxVisible = isSpectator ? 2 : 4;
-        return [
-        ...current,
-        {
+        const nextItem: FloatingGiftItem = {
           id,
           giftId,
-            left: 32 + Math.random() * 36,
+          left: 32 + Math.random() * 36,
           senderName,
-            combo,
-        },
-        ].slice(-maxVisible);
+          // El xN se muestra solo en el chat LIVE, no sobre la animación.
+        };
+        // Cola: un regalo a la vez para que no se monten.
+        return [...current, nextItem];
       });
       if (isFaceAnchoredGift(giftId)) {
         const gift = findLiveGift(giftId);
@@ -5353,19 +5405,18 @@ function CreatorStage({
               />
             ) : null}
             <FaceMeshGiftOverlay active={faceGift} onDone={() => setFaceGift(null)} />
-            {floats.map((item) => (
+            {floats[0] ? (
               <FloatingGift
-                key={item.id}
-                giftId={item.giftId}
-                senderName={item.senderName}
-                left={item.left}
-                combo={item.combo}
+                key={floats[0].id}
+                giftId={floats[0].giftId}
+                senderName={floats[0].senderName}
+                left={floats[0].left}
                 lite={isSpectator}
                 liveAspect={aspectRatio}
                 layoutContext={aspectRatio === '16:9' ? 'live_16_9' : 'live_9_16'}
-                onComplete={() => setFloats((current) => current.filter((gift) => gift.id !== item.id))}
+                onComplete={() => setFloats((current) => current.slice(1))}
               />
-            ))}
+            ) : null}
             {liveEnded && !isHost ? (
               <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-zinc-950/95 px-4 text-center backdrop-blur-sm">
                 <p className="text-lg font-bold text-white sm:text-xl">{t('liveUi.ended')}</p>
@@ -6799,6 +6850,12 @@ function ChatPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const seen = useRef(new Set<string>((liveChatCache.get(roomName) ?? []).map((msg) => msg.id)));
   const levelXpRef = useRef(0);
+  const giftChatComboRef = useRef<{ key: string; messageId: string; count: number; at: number }>({
+    key: '',
+    messageId: '',
+    count: 0,
+    at: 0,
+  });
   const giftCatalog = useMemo(() => sortedLiveGiftCatalog(), []);
   const popularGifts = useMemo(() => giftCatalog.slice(0, 8), [giftCatalog]);
   const [accessHoldGiftId, setAccessHoldGiftId] = useState<string | null>(null);
@@ -6852,6 +6909,64 @@ function ChatPanel({
     setMessages((current) => rememberMessages([...current.slice(-400), message]));
   }
 
+  /** Una sola línea en chat: quién envió + combo (x2…x10). Consolida envíos rápidos del mismo regalo. */
+  function pushGiftChatMessage(input: {
+    id: string;
+    author: string;
+    authorUid?: string;
+    giftId: string;
+    emoji: string;
+    name: string;
+    combo?: number;
+  }) {
+    const messageId = input.id.startsWith('gift-') ? input.id : `gift-${input.id}`;
+    if (seen.current.has(messageId)) return;
+    seen.current.add(messageId);
+
+    const explicit = clampLiveGiftCombo(input.combo);
+    const key = `${String(input.authorUid || input.author).toLowerCase()}::${input.giftId}`;
+    const now = Date.now();
+    const prev = giftChatComboRef.current;
+
+    if (prev.key === key && prev.messageId && now - prev.at < 4500) {
+      const nextCombo = clampLiveGiftCombo(prev.count + (explicit > 1 ? explicit : 1));
+      giftChatComboRef.current = { key, messageId: prev.messageId, count: nextCombo, at: now };
+      setMessages((current) =>
+        rememberMessages(
+          current.map((msg) =>
+            msg.id === prev.messageId && msg.gift
+              ? {
+                  ...msg,
+                  text: `envió ${input.name}`,
+                  gift: { ...msg.gift, name: input.name, combo: nextCombo },
+                }
+              : msg,
+          ),
+        ),
+      );
+      return;
+    }
+
+    giftChatComboRef.current = { key, messageId, count: explicit, at: now };
+    setMessages((current) =>
+      rememberMessages([
+        ...current.slice(-400),
+        {
+          id: messageId,
+          author: input.author,
+          authorUid: input.authorUid,
+          text: `envió ${input.name}`,
+          gift: {
+            giftId: input.giftId,
+            emoji: input.emoji,
+            name: input.name,
+            combo: explicit > 1 ? explicit : undefined,
+          },
+        },
+      ]),
+    );
+  }
+
   function persistChatCopy(message: ChatMessage) {
     void api(`/api/stream/chat/${encodeURIComponent(roomName)}`, {
       method: 'POST',
@@ -6861,17 +6976,20 @@ function ChatPanel({
 
   useEffect(() => {
     const unsub = listenLiveChat(roomName, (list) => {
-      const mapped = list.map((msg) => ({
-        id: msg.id,
-        author: msg.author,
-        authorUid: msg.authorUid || undefined,
-        text: msg.text,
-        sourceLang: msg.sourceLang || undefined,
-        gift: msg.gift || undefined,
-      }));
+      seen.current = new Set(list.map((msg) => msg.id));
+      const mapped = foldLiveGiftChatLines(
+        list.map((msg) => ({
+          id: msg.id,
+          author: msg.author,
+          authorUid: msg.authorUid || undefined,
+          text: msg.text,
+          sourceLang: msg.sourceLang || undefined,
+          gift: msg.gift || undefined,
+          createdAtMs: msg.createdAtMs,
+        })),
+      );
       setMessages((current) => {
         if (!mapped.length && current.length) return current;
-        seen.current = new Set(mapped.map((msg) => msg.id));
         return rememberMessages(mapped);
       });
     });
@@ -6907,12 +7025,14 @@ function ChatPanel({
 
   useEffect(() => {
     return listenLiveGifts(roomName, (gift) => {
-      pushMessage({
+      pushGiftChatMessage({
         id: `gift-${gift.id}`,
         author: gift.senderName,
         authorUid: gift.senderUid || undefined,
-        text: `envió ${gift.giftName}`,
-        gift: { giftId: gift.giftId, emoji: gift.emoji, name: gift.giftName },
+        giftId: gift.giftId,
+        emoji: gift.emoji,
+        name: gift.giftName,
+        combo: gift.multiplier,
       });
       window.dispatchEvent(
         new CustomEvent('liveboom:gift', {
@@ -6937,11 +7057,13 @@ function ChatPanel({
         return;
       }
       if (data.type === 'gift') {
-        pushMessage({
+        pushGiftChatMessage({
           id: `gift-${data.id}`,
           author: data.senderName,
-          text: `envió ${data.giftName}`,
-          gift: { giftId: data.giftId, emoji: data.emoji, name: data.giftName },
+          giftId: data.giftId,
+          emoji: data.emoji,
+          name: data.giftName,
+          combo: data.multiplier,
         });
         return;
       }
@@ -7184,12 +7306,25 @@ function ChatPanel({
         id: `gift-${clientId}`,
         author: senderName,
         authorUid: profile.firebaseUid,
-        text: mult > 1 ? `envió ${catalog.name} x${mult}` : `envió ${catalog.name}`,
-        gift: { giftId: catalog.id, emoji: catalog.emoji, name: catalog.name },
+        text: `envió ${catalog.name}`,
+        gift: {
+          giftId: catalog.id,
+          emoji: catalog.emoji,
+          name: catalog.name,
+          combo: mult > 1 ? mult : undefined,
+        },
         levelBadge: levelInfo.badge,
       };
 
-      pushMessage(chatGift);
+      pushGiftChatMessage({
+        id: chatGift.id,
+        author: senderName,
+        authorUid: profile.firebaseUid,
+        giftId: catalog.id,
+        emoji: catalog.emoji,
+        name: catalog.name,
+        combo: mult,
+      });
       persistChatCopy(chatGift);
       window.dispatchEvent(
         new CustomEvent('liveboom:gift', {
@@ -7424,9 +7559,18 @@ function ChatPanel({
                   author={message.author}
                   authorUid={message.authorUid}
                 >
-                  <span className="lb-live-chat-msg__text inline-flex items-center gap-1 text-sm text-white drop-shadow lg:inline-flex">
+                  <span className="lb-live-chat-msg__text inline-flex max-w-full items-center gap-1 text-sm text-white drop-shadow lg:inline-flex">
                     <GiftIcon giftId={message.gift.giftId} size={16} />
-                    {t('live.sentGift')} {message.gift.name}
+                    <span className="min-w-0 truncate">
+                      {t('live.sentGift')} {message.gift.name}
+                    </span>
+                    {liveChatGiftCombo(message.gift, message.text) > 1 ? (
+                      <GiftComboBadge
+                        combo={liveChatGiftCombo(message.gift, message.text)}
+                        size="sm"
+                        className="lb-gift-combo-badge--live-chat"
+                      />
+                    ) : null}
                   </span>
                 </LiveChatUserIdentity>
               </div>

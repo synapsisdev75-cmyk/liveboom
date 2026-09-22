@@ -977,7 +977,7 @@ export type LiveChatMessage = {
   authorUid: string;
   text: string;
   sourceLang?: string | null;
-  gift?: { giftId: string; emoji: string; name: string } | null;
+  gift?: { giftId: string; emoji: string; name: string; combo?: number } | null;
   createdAtMs: number;
 };
 
@@ -1003,6 +1003,9 @@ export function listenLiveChat(
                 giftId: String(giftRaw.giftId || ''),
                 emoji: String(giftRaw.emoji || '🎁'),
                 name: String(giftRaw.name || 'Regalo'),
+                ...(Math.floor(Number(giftRaw.combo) || 0) > 1
+                  ? { combo: Math.min(10, Math.floor(Number(giftRaw.combo))) }
+                  : {}),
               }
             : null,
           createdAtMs: Number(data.createdAtMs || 0),
@@ -1038,7 +1041,7 @@ export async function publishLiveChatMessage(
     author: string;
     text: string;
     sourceLang?: string | null;
-    gift?: { giftId: string; emoji: string; name: string } | null;
+    gift?: { giftId: string; emoji: string; name: string; combo?: number } | null;
   },
 ) {
   await addDoc(collection(db, 'liveRooms', roomKey(roomName), 'messages'), {
