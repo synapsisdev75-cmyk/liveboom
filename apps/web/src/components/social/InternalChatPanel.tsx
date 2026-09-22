@@ -3049,7 +3049,7 @@ export function InternalChatPanel({
       ) : null}
       {rechargeOpen
         ? createPortal(
-            <div className="pointer-events-auto fixed inset-0 z-[124]">
+            <div className="lb-msg-overlay pointer-events-auto fixed inset-0 z-[124]">
               <CoinModal onClose={() => setRechargeOpen(false)} />
             </div>,
             document.body,
@@ -3059,7 +3059,7 @@ export function InternalChatPanel({
         ? createPortal(
             <button
               type="button"
-              className="fixed inset-0 z-[130] grid place-items-center bg-black/85 p-4"
+              className="lb-msg-overlay fixed inset-0 z-[130] grid place-items-center bg-black/85 p-4"
               onClick={() => setMediaViewer(null)}
               aria-label="Cerrar"
             >

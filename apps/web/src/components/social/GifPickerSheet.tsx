@@ -34,7 +34,7 @@ export function GifPickerSheet({ open, onClose, onPick }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
+      className="lb-msg-overlay fixed inset-0 z-[120] flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

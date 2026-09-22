@@ -153,7 +153,7 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
   const hugging = hug || Boolean(coords?.hug);
 
   return createPortal(
-    <div className="pointer-events-none fixed inset-0" style={{ zIndex: Z }}>
+    <div className="lb-gift-catalog-layer pointer-events-none fixed inset-0" style={{ zIndex: Z }}>
       <button
         type="button"
         className="pointer-events-auto absolute inset-0 bg-black/55 backdrop-blur-[2px]"

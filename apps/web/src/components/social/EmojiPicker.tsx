@@ -400,7 +400,7 @@ export function EmojiPickerButton({
       ? createPortal(
           <div
             ref={panelRef}
-            className="w-[min(20.5rem,calc(100vw-1.25rem))] overflow-visible rounded-2xl border border-white/12 bg-zinc-900 p-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
+            className="lb-msg-overlay w-[min(20.5rem,calc(100vw-1.25rem))] overflow-visible rounded-2xl border border-white/12 bg-zinc-900 p-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
             style={{
               position: 'fixed',
               top: coords?.top ?? 0,

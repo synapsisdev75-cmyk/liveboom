@@ -21,6 +21,28 @@ import {
 import { UserAvatar } from '../profile/UserAvatar';
 import { InternalChatPanel } from './InternalChatPanel';
 
+/** Clics en estos nodos no minimizan la ventana celular (overlays / UI de mensajes). */
+const MSG_OUTSIDE_KEEP_SEL = [
+  '.lb-phone-chat-window',
+  '.lb-msg-min-dock',
+  '.lb-msg-side-rail',
+  '.lb-msg-quick-menu',
+  '.lb-msg-overlay',
+  '.lb-gift-catalog-layer',
+  '.lb-chat-manage-backdrop',
+  '.lb-chat-manage',
+  '.lb-chat-safety-menu',
+  '.lb-call-room',
+  '.lb-call-recover',
+  '.lb-call-audio-unlock',
+  '.lb-call-device-bar',
+  '.lb-call-device-dismiss',
+  '.lb-call-expanded-slot',
+  '.lb-video-chrome-face',
+  '.lb-voice-chrome-face',
+  '[aria-label="Selector de emojis"]',
+].join(',');
+
 type ListTab = 'todos' | 'unread';
 
 function timeAgo(iso: string | null) {
@@ -319,6 +341,29 @@ export function MessagesFloatingHost() {
   useEffect(() => {
     if (!boxesVisible) closeAll();
   }, [boxesVisible, closeAll]);
+
+  /** Tocar fuera del chat (feed, sidebar, etc.) → minimizar ventanas abiertas. */
+  useEffect(() => {
+    if (openWindows.length === 0) return;
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(MSG_OUTSIDE_KEEP_SEL)) return;
+      const open = useMessagesMenuStore.getState().openWindows;
+      for (const peer of open) {
+        useMessagesMenuStore.getState().minimizeWindow(peer.uid);
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      document.addEventListener('pointerdown', onPointerDown);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [openWindows.length]);
 
   if (!profile || !boxesVisible) return null;
 
