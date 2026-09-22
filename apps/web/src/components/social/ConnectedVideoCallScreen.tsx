@@ -1,4 +1,4 @@
-import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
+import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, SwitchCamera, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { useMaybeRoomContext } from '@livekit/components-react';
 import { UserAvatar } from '../profile/UserAvatar';
@@ -158,18 +158,26 @@ export function ConnectedVideoCallBar({
   camOn,
   camBusy,
   onToggleCam,
+  onFlipCamera,
+  flipBusy,
+  flipDisabled,
   onHangup,
 }: {
   camOn: boolean;
   camBusy?: boolean;
   onToggleCam: () => void;
+  onFlipCamera?: () => void;
+  flipBusy?: boolean;
+  flipDisabled?: boolean;
   onHangup: () => void;
 }) {
   const room = useMaybeRoomContext();
   const [micOn, setMicOn] = useState(true);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [micError, setMicError] = useState<string | null>(null);
+  const [camMenuOpen, setCamMenuOpen] = useState(false);
   const micHoldRef = useRef(0);
+  const camMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!room) return;
@@ -179,6 +187,24 @@ export function ConnectedVideoCallBar({
   useEffect(() => {
     return () => window.clearTimeout(micHoldRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!camMenuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCamMenuOpen(false);
+    };
+    const onPointer = (event: PointerEvent) => {
+      const node = camMenuRef.current;
+      if (node && event.target instanceof Node && node.contains(event.target)) return;
+      setCamMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onPointer);
+    };
+  }, [camMenuOpen]);
 
   async function toggleMic() {
     const next = !micOn;
@@ -207,14 +233,45 @@ export function ConnectedVideoCallBar({
         </button>
         <span>Micrófono</span>
       </div>
-      <div className="lb-video-connected-action">
+      <div className="lb-video-connected-action lb-video-connected-action--cam" ref={camMenuRef}>
+        {camMenuOpen ? (
+          <div className="lb-video-cam-menu" role="menu" aria-label="Opciones de cámara">
+            <button
+              type="button"
+              role="menuitem"
+              className="lb-video-cam-menu__item"
+              disabled={camBusy}
+              onClick={() => {
+                setCamMenuOpen(false);
+                onToggleCam();
+              }}
+            >
+              {camOn ? <VideoOff size={15} aria-hidden /> : <Video size={15} aria-hidden />}
+              <span>{camOn ? 'Cerrar cámara' : 'Encender cámara'}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="lb-video-cam-menu__item"
+              disabled={Boolean(flipBusy || flipDisabled || !onFlipCamera)}
+              onClick={() => {
+                setCamMenuOpen(false);
+                onFlipCamera?.();
+              }}
+            >
+              <SwitchCamera size={15} aria-hidden />
+              <span>Girar cámara</span>
+            </button>
+          </div>
+        ) : null}
         <button
           type="button"
-          className={`lb-video-connected-btn${camOn ? '' : ' is-off'}${camBusy ? ' is-busy' : ''}`}
-          onClick={onToggleCam}
+          className={`lb-video-connected-btn${camOn ? '' : ' is-off'}${camBusy ? ' is-busy' : ''}${camMenuOpen ? ' is-on' : ''}`}
+          onClick={() => setCamMenuOpen((open) => !open)}
           disabled={camBusy}
-          aria-label={camOn ? 'Apagar cámara' : 'Encender cámara'}
-          aria-pressed={!camOn}
+          aria-label="Opciones de cámara"
+          aria-haspopup="menu"
+          aria-expanded={camMenuOpen}
           aria-busy={camBusy || undefined}
         >
           {camOn ? <Video size={18} /> : <VideoOff size={18} />}

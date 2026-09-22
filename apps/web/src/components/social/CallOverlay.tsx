@@ -2415,7 +2415,10 @@ function VideoCallStage({
         <ConnectedVideoCallBar
           camOn={camOn}
           camBusy={camBusy}
+          flipBusy={flipBusy}
+          flipDisabled={videoInputs.length <= 1}
           onToggleCam={() => void toggleCam()}
+          onFlipCamera={onFlipCameraClick}
           onHangup={onHangup}
         />
         }
