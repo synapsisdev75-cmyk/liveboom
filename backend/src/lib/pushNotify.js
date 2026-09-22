@@ -100,8 +100,9 @@ async function sendPushToUsers({
             priority: 'high',
             defaultVibrateTimings: true,
             visibility: 'public',
-            // No forzar icono inválido (rompe banners en varios OEM).
-            // Usa el default_notification_icon del Manifest.
+            icon: 'ic_stat_liveboom',
+            color: '#E879F9',
+            // Silueta blanca en drawable; no usar el launcher a color.
           },
         },
       });
