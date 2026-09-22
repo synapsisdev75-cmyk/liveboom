@@ -2877,11 +2877,11 @@ html:has(.lb-auth-page) #root {
 
   .lb-sidebar {
     transition:
-      width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
-      min-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
-      max-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
-      padding 1.15s cubic-bezier(0.4, 0, 0.2, 1),
-      box-shadow 0.9s ease;
+      width 2s cubic-bezier(0.4, 0, 0.2, 1),
+      min-width 2s cubic-bezier(0.4, 0, 0.2, 1),
+      max-width 2s cubic-bezier(0.4, 0, 0.2, 1),
+      padding 2s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 1.6s ease;
   }
 
   .lb-sidebar--rail,
@@ -2966,7 +2966,7 @@ html:has(.lb-auth-page) #root {
   }
 
   .lb-shell--messages main {
-    transition: flex-basis 1.15s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: flex-basis 2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .lb-sidebar .lb-nav-item__label,
@@ -2975,9 +2975,9 @@ html:has(.lb-auth-page) #root {
     opacity: 1;
     overflow: hidden;
     transition:
-      opacity 0.55s ease 0.2s,
-      max-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
-      margin 1.15s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity 0.9s ease 0.35s,
+      max-width 2s cubic-bezier(0.4, 0, 0.2, 1),
+      margin 2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .lb-sidebar--rail .lb-nav-item__label,
@@ -2989,16 +2989,16 @@ html:has(.lb-auth-page) #root {
     margin: 0;
     pointer-events: none;
     transition:
-      opacity 0.35s ease,
-      max-width 1.15s cubic-bezier(0.4, 0, 0.2, 1),
-      margin 1.15s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity 0.55s ease,
+      max-width 2s cubic-bezier(0.4, 0, 0.2, 1),
+      margin 2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .lb-sidebar .lb-nav-icon {
     transition:
-      width 0.45s ease,
-      height 0.45s ease,
-      opacity 0.45s ease;
+      width 0.7s ease,
+      height 0.7s ease,
+      opacity 0.7s ease;
   }
 }
 
