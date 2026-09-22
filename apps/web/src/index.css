@@ -10025,6 +10025,13 @@ a.lb-entity:active,
   visibility: hidden;
 }
 
+/* Voz: no usar visibility:hidden (Chrome/Safari pausan <audio> hijos). */
+.lb-call-float.is-voice .lb-call-livekit-hold,
+.lb-call-float:not(.is-video) .lb-call-livekit-hold {
+  visibility: visible;
+  opacity: 0;
+}
+
 .lb-call-float.is-video .lb-call-livekit-hold {
   left: 0;
   width: 100%;

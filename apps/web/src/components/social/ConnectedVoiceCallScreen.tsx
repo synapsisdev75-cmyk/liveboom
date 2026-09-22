@@ -1,6 +1,7 @@
 import { BadgeCheck, Gift, Mic, MicOff, PhoneOff, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
+import { RoomEvent } from 'livekit-client';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CallWinBar } from './FloatingCallFrame';
 import { VoiceCallWave } from './VoiceCallRingParts';
@@ -39,14 +40,21 @@ function applySpeakerOutput(room: ReturnType<typeof useRoomContext>, speakerOn: 
       }
     }
   }
-  const root =
-    document.querySelector('.lb-voice-call-session') ||
-    document.querySelector('.lb-call-room--voice') ||
-    document.querySelector('.lb-call-room');
-  const nodes = root?.querySelectorAll<HTMLAudioElement>('audio') ?? [];
+  const roots = [
+    document.querySelector('.lb-voice-call-session'),
+    document.querySelector('.lb-voice-lk'),
+    document.querySelector('.lb-call-room--voice'),
+    document.querySelector('.lb-call-room'),
+  ].filter(Boolean) as Element[];
+  const nodes = new Set<HTMLAudioElement>();
+  roots.forEach((root) => {
+    root.querySelectorAll<HTMLAudioElement>('audio').forEach((audio) => nodes.add(audio));
+  });
+  document.querySelectorAll<HTMLAudioElement>('.lb-call-remote-audio audio').forEach((audio) => nodes.add(audio));
   nodes.forEach((audio) => {
     audio.muted = !speakerOn;
     audio.volume = volume;
+    if (speakerOn) void audio.play().catch(() => undefined);
   });
 }
 
@@ -101,6 +109,41 @@ export function ConnectedVoiceCallScreen({
   useEffect(() => {
     applySpeakerOutput(room, speakerOn);
   }, [room, speakerOn]);
+
+  // Mantener mic publicado en voz; sincronizar UI con el estado real de LiveKit.
+  useEffect(() => {
+    let cancelled = false;
+    const syncMic = () => {
+      if (cancelled) return;
+      try {
+        setMicOn(Boolean(room.localParticipant.isMicrophoneEnabled));
+      } catch {
+        /* ignore */
+      }
+    };
+    syncMic();
+    void (async () => {
+      try {
+        if (!room.localParticipant.isMicrophoneEnabled) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+        }
+      } catch {
+        /* permiso / dispositivo */
+      }
+      syncMic();
+    })();
+    room.on(RoomEvent.LocalTrackPublished, syncMic);
+    room.on(RoomEvent.LocalTrackUnpublished, syncMic);
+    room.on(RoomEvent.TrackMuted, syncMic);
+    room.on(RoomEvent.TrackUnmuted, syncMic);
+    return () => {
+      cancelled = true;
+      room.off(RoomEvent.LocalTrackPublished, syncMic);
+      room.off(RoomEvent.LocalTrackUnpublished, syncMic);
+      room.off(RoomEvent.TrackMuted, syncMic);
+      room.off(RoomEvent.TrackUnmuted, syncMic);
+    };
+  }, [room]);
 
   async function toggleMic() {
     const next = !micOn;

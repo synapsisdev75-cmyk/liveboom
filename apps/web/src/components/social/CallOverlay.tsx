@@ -1,5 +1,4 @@
 import {
-  RoomAudioRenderer,
   RoomContext,
   useMaybeRoomContext,
 } from '@livekit/components-react';
@@ -498,6 +497,21 @@ function PrivateCallLiveKitRoom({
         await room.startAudio().catch((error) => {
           console.warn('[CALL] startAudio', error);
         });
+        // Reasegurar mic cuando la llamada de voz pasa a activa (ringing → active).
+        if (!publishCameraRef.current) {
+          for (const pub of room.localParticipant.audioTrackPublications.values()) {
+            if (pub.isMuted) {
+              try {
+                await pub.unmute();
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+          if (!pickLocalMicTrack(room)) {
+            await enableRoomMicrophone(room);
+          }
+        }
         const unlockAudio = () => {
           void room.startAudio().catch(() => undefined);
         };
@@ -531,6 +545,26 @@ function PrivateCallLiveKitRoom({
     if (!publishCamera || room.state !== 'connected' || !videoCamWantedRef.current) return;
     void enableRoomCamera(room);
   }, [publishCamera, room]);
+
+  // Voz: al pasar a activa, re-publicar mic y desbloquear playback (sin tocar video).
+  useEffect(() => {
+    return useCallStore.subscribe((state, prev) => {
+      if (state.video) return;
+      if (state.status !== 'active' || prev.status === 'active') return;
+      if (room.state !== 'connected') return;
+      void (async () => {
+        await enableRoomMicrophone(room);
+        await room.startAudio().catch(() => undefined);
+        try {
+          for (const pub of room.localParticipant.audioTrackPublications.values()) {
+            if (pub.isMuted) await pub.unmute();
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    });
+  }, [room]);
 
   return (
     <RoomContext.Provider value={room}>
@@ -1676,8 +1710,6 @@ function VoiceCallStage({
   return (
     <>
       <CallConnectionSync />
-      {callLocalParticipant(room) ? <RoomAudioRenderer /> : null}
-      <CallAudioUnlock />
       {minimized && !suppressMini ? (
         <VoiceCallMiniBar
           person={person}
@@ -3456,6 +3488,9 @@ export function CallOverlay() {
         onRoomConnected={handleLiveKitConnected}
       >
         <CallAutoReconnect serverUrl={serverUrl || ''} token={token || ''} />
+        {/* Misma vía de audio remoto que video: attach + startAudio fuera del renderer condicional. */}
+        <SafeCallRemoteAudio />
+        <CallAudioUnlock />
         {callStage}
         {status === 'active' ? <PaidCallMeter /> : null}
       </PrivateCallLiveKitRoom>
