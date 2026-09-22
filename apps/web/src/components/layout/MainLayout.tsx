@@ -2,6 +2,7 @@ import {
   ChevronRight,
   Clock,
   Home,
+  Hash,
   Menu,
   MessageCircle,
   Compass,
@@ -29,6 +30,7 @@ import { NotificationBell } from '../social/NotificationBell';
 import { MessagesFloatingHost } from '../social/MessagesQuickMenu';
 import { useUnreadMessageCount } from '../social/MessageInboxBadge';
 import { SideRailPanel } from './SideRailPanel';
+import { SidebarTrendsCard } from './SidebarTrendsCard';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { LiquidBottomNav } from './LiquidBottomNav';
 import { Logo } from '../brand/Logo';
@@ -96,18 +98,15 @@ const idleClass =
 
 type SidebarBodyProps = {
   profile: ReturnType<typeof useAuthStore.getState>['profile'];
-  onRecharge: () => void;
   onNavigate?: () => void;
   /** Escritorio/tablet: true = solo iconos (rail). */
   rail?: boolean;
 };
 
 /** Sidebar compacto: 100% alto viewport, sin scroll, todos los ítems visibles. */
-function SidebarBody({ profile, onRecharge, onNavigate, rail = false }: SidebarBodyProps) {
+function SidebarBody({ profile, onNavigate, rail = false }: SidebarBodyProps) {
   const t = useT();
-  const locale = useLocaleStore((state) => state.locale);
   const sideNavItems = useSideNavItems();
-  const numberLocale = bcp47For(locale);
   return (
     <div className="lb-sidebar-body flex h-full min-h-0 flex-col overflow-x-clip overflow-y-visible">
       <div className={`mb-2 flex shrink-0 items-center ${rail ? 'flex-col gap-2' : 'gap-1'}`}>
@@ -194,21 +193,15 @@ function SidebarBody({ profile, onRecharge, onNavigate, rail = false }: SidebarB
             >
               <Radio size={18} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
             </NavLink>
-            {profile ? (
-              <button
-                type="button"
-                onClick={onRecharge}
-                title={`${profile.coinsBalance.toLocaleString(numberLocale)} ${t('nav.coins')}`}
-                aria-label={t('nav.recharge')}
-                className="lb-sidebar-rail-coins"
-              >
-                <span className="lb-sidebar-rail-coins__n">
-                  {profile.coinsBalance > 999
-                    ? `${Math.floor(profile.coinsBalance / 1000)}k`
-                    : profile.coinsBalance}
-                </span>
-              </button>
-            ) : null}
+            <Link
+              to="/tendencias"
+              onClick={onNavigate}
+              title="Tendencias"
+              aria-label="Tendencias"
+              className="lb-sidebar-cta lb-sidebar-cta--rail mx-auto"
+            >
+              <Hash size={18} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
+            </Link>
             {profile ? (
               <Link
                 to="/perfil"
@@ -236,103 +229,53 @@ function SidebarBody({ profile, onRecharge, onNavigate, rail = false }: SidebarB
           </>
         ) : (
           <>
-        <div className="lb-sidebar-dock">
-        <NavLink
-          to="/transmitir"
-          onClick={onNavigate}
-          onPointerEnter={() => {
-            prefetchRoute('/transmitir');
-            prefetchRoute('/stream');
-          }}
-          onFocus={() => {
-            prefetchRoute('/transmitir');
-            prefetchRoute('/stream');
-          }}
-          className={({ isActive }) =>
-            `lb-sidebar-cta${isActive ? ' is-active' : ''}`
-          }
-        >
-          <Radio size={15} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
-          {t('nav.goLive')}
-        </NavLink>
+            {/* En móvil no hay rail derecho: mantener Transmitir aquí. */}
+            <NavLink
+              to="/transmitir"
+              onClick={onNavigate}
+              onPointerEnter={() => {
+                prefetchRoute('/transmitir');
+                prefetchRoute('/stream');
+              }}
+              className={({ isActive }) =>
+                `lb-sidebar-cta lg:hidden${isActive ? ' is-active' : ''}`
+              }
+            >
+              <Radio size={15} strokeWidth={2.5} className="lb-sidebar-cta__icon" />
+              {t('nav.goLive')}
+            </NavLink>
 
-        <div className="lb-sidebar-wallet">
-          <p className="lb-sidebar-wallet__title">
-            {t('nav.myWallet')}
-          </p>
-          {profile ? (
-            <>
-              <p className="lb-sidebar-wallet__balance">
-                <span className="lb-sidebar-wallet__amount">
-                  {profile.coinsBalance.toLocaleString(numberLocale)}
-                </span>
-                <span className="lb-sidebar-wallet__unit">{t('nav.coins')}</span>
-              </p>
-              <button
-                type="button"
-                onClick={onRecharge}
-                className="lb-sidebar-wallet__recharge"
-              >
-                {t('nav.recharge')}
-              </button>
-              <Link
-                to="/billetera"
-                onClick={onNavigate}
-                className="lb-sidebar-wallet__withdraw"
-              >
-                {t('nav.withdraw')}
-              </Link>
-            </>
-          ) : (
-            <div className="mt-2 flex flex-col gap-1.5">
-              <Link
-                to="/login"
-                onClick={onNavigate}
-                className="text-sm font-medium text-cyan-400 hover:text-white"
-              >
-                {t('nav.signIn')}
-              </Link>
-              <Link
-                to="/registro"
-                onClick={onNavigate}
-                className="lb-sidebar-cta"
-              >
-                {t('nav.signUp')}
-              </Link>
-            </div>
-          )}
-        </div>
-        </div>
+            <SidebarTrendsCard onNavigate={onNavigate} />
 
-        {profile ? (
-          <Link
-            to="/perfil"
-            onClick={onNavigate}
-            className="flex items-center gap-3 rounded-[18px] border border-white/[0.08] bg-[#15161e] px-2.5 py-2.5 transition hover:border-white/15 hover:bg-[#1a1b24]"
-          >
-            <span className="relative shrink-0">
-              {profile.avatarUrl ? (
-                <img
-                  src={profile.avatarUrl}
-                  alt=""
-                  className="h-10 w-10 rounded-full object-cover"
-                />
-              ) : (
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-600/35 text-sm font-bold text-fuchsia-100">
-                  {profile.handle.slice(0, 1).toUpperCase()}
+            {profile ? (
+              <Link
+                to="/perfil"
+                onClick={onNavigate}
+                className="flex items-center gap-3 rounded-[18px] border border-white/[0.08] bg-[#15161e] px-2.5 py-2.5 transition hover:border-white/15 hover:bg-[#1a1b24]"
+              >
+                <span className="relative shrink-0">
+                  {profile.avatarUrl ? (
+                    <img
+                      src={profile.avatarUrl}
+                      alt=""
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="grid h-10 w-10 place-items-center rounded-full bg-fuchsia-600/35 text-sm font-bold text-fuchsia-100">
+                      {profile.handle.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#15161e] bg-[#22C55E]" />
                 </span>
-              )}
-              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#15161e] bg-[#22C55E]" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold text-white">
-                @{profile.handle}
-              </span>
-              <span className="block text-[12px] text-zinc-500">{t('nav.viewProfile')}</span>
-            </span>
-            <ChevronRight size={18} strokeWidth={2} className="shrink-0 text-zinc-500" />
-          </Link>
-        ) : null}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold text-white">
+                    @{profile.handle}
+                  </span>
+                  <span className="block text-[12px] text-zinc-500">{t('nav.viewProfile')}</span>
+                </span>
+                <ChevronRight size={18} strokeWidth={2} className="shrink-0 text-zinc-500" />
+              </Link>
+            ) : null}
           </>
         )}
       </div>
@@ -390,6 +333,12 @@ export function MainLayout() {
   useEffect(() => {
     patchChatNotifyContext({ inMessagesRoute: onMessages });
   }, [onMessages]);
+
+  useEffect(() => {
+    const openRecharge = () => setRechargeOpen(true);
+    window.addEventListener('liveboom:open-recharge', openRecharge);
+    return () => window.removeEventListener('liveboom:open-recharge', openRecharge);
+  }, []);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -472,7 +421,6 @@ export function MainLayout() {
       >
         <SidebarBody
           profile={profile}
-          onRecharge={() => setRechargeOpen(true)}
           rail={sidebarRail}
         />
       </aside>
@@ -545,10 +493,6 @@ export function MainLayout() {
             <div className="min-h-0 flex-1 overflow-hidden">
               <SidebarBody
                 profile={profile}
-                onRecharge={() => {
-                  setMenuOpen(false);
-                  setRechargeOpen(true);
-                }}
                 onNavigate={() => setMenuOpen(false)}
               />
             </div>

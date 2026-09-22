@@ -5,7 +5,6 @@ import {
   ChevronRight,
   Eye,
   Gift,
-  Hash,
   HelpCircle,
   Laptop,
   Link2,
@@ -49,7 +48,6 @@ import {
   listenIncomingRequests,
   type FriendRequest,
 } from '../../lib/socialFirestore';
-import { listenTopTrends, type TrendTag } from '../../lib/trendsFirestore';
 import { levelFromXp, xpNeededForNext, xpToNextLevel } from '../../lib/userLevels';
 import {
   dismissLocationPrompt,
@@ -66,6 +64,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { useMessagesMenuStore } from '../../store/messagesMenuStore';
 import { MessagesSideRail } from '../social/MessagesQuickMenu';
+import { SidebarWalletDock } from './SidebarWalletDock';
 
 type SuggestedUser = {
   uid: string;
@@ -1357,7 +1356,6 @@ function DiscoveryRail() {
   const [location, setLocation] = useState<PrivateUserLocation | null>(null);
   const [ads, setAds] = useState<PromotionAd[]>([]);
   const [myAds, setMyAds] = useState<PromotionAd[]>([]);
-  const [trends, setTrends] = useState<TrendTag[]>([]);
   const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5);
   const [publicGroups, setPublicGroups] = useState<LiveGroup[]>([]);
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
@@ -1379,7 +1377,6 @@ function DiscoveryRail() {
 
   useEffect(() => listenActivePromotions(location?.regionId || 'nacional', setAds), [location?.regionId]);
   useEffect(() => listenMyPromotions(profile?.firebaseUid, setMyAds), [profile?.firebaseUid]);
-  useEffect(() => listenTopTrends(setTrends), []);
   useEffect(() => {
     if (!onGroups) return;
     return listenPublicGroups(setPublicGroups);
@@ -1510,36 +1507,9 @@ function DiscoveryRail() {
           </section>
         ) : null}
 
-        <section className="lb-panel rounded-2xl p-3">
-          <div className="flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-              <Hash size={12} className="text-fuchsia-300" /> Tendencias
-            </p>
-            <Link to="/tendencias" className="text-[10px] font-semibold text-cyan-400 hover:underline">
-              Ver más
-            </Link>
-          </div>
-          {trends.length === 0 ? (
-            <p className="mt-2 text-xs text-zinc-500">Publica con #hashtags para crear tendencias.</p>
-          ) : (
-            <ol className="mt-2 space-y-1.5">
-              {trends.slice(0, 5).map((t, i) => (
-                <li key={t.tag}>
-                  <Link
-                    to={`/tendencias?tag=${encodeURIComponent(t.tag)}`}
-                    className="lb-card flex items-center gap-2 rounded-lg px-1 py-1.5 hover:bg-white/5"
-                  >
-                    <span className="w-4 text-[11px] font-bold text-zinc-600">{i + 1}</span>
-                    <span className="lb-entity lb-entity-hashtag min-w-0 flex-1 truncate text-xs font-semibold">#{t.tag}</span>
-                    <span className="text-[10px] text-zinc-500">{t.count} pub.</span>
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
+        <SidebarWalletDock />
 
-        {/* Arrow 3: Grupos sugeridos + Actividad — entre Tendencias y Creadores */}
+        {/* Arrow 3: Grupos sugeridos + Actividad — entre billetera y Creadores */}
         {onGroups ? (
           <>
             <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3">
