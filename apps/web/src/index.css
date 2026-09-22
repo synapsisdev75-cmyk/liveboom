@@ -9893,11 +9893,13 @@ a.lb-entity:active,
 .lb-call-float .lb-video-connected-live-slot .lb-call-video-stage,
 .lb-video-connected-screen .lb-video-connected-live-slot .lb-call-video-stage {
   position: relative;
-  flex: 1 1 auto;
-  min-height: min(18rem, 42dvh);
-  height: min(22rem, 48dvh);
-  max-height: min(24rem, 52dvh);
-  margin: 0 0.7rem 0.35rem;
+  flex: 0 0 auto;
+  aspect-ratio: 9 / 16;
+  width: min(calc(100% - 1.4rem), calc((100dvh - 13rem) * 9 / 16));
+  height: auto;
+  min-height: 0;
+  max-height: min(38rem, calc(100dvh - 13rem));
+  margin: 0 auto 0.35rem;
   overflow: hidden;
   border-radius: 1rem;
   border: 1px solid color-mix(in srgb, #22d3ee 70%, #67e8f9);
@@ -12003,18 +12005,24 @@ a.lb-entity:active,
 }
 
 .lb-video-connected-screen .lb-call-video-stage {
-  margin: 0 0.7rem 0.35rem;
-  flex: 1 1 auto;
-  min-height: 12rem;
+  margin: 0 auto 0.35rem;
+  flex: 0 0 auto;
+  aspect-ratio: 9 / 16;
+  width: min(calc(100% - 1.4rem), calc((100dvh - 13rem) * 9 / 16));
+  height: auto;
+  min-height: 0;
+  max-height: min(38rem, calc(100dvh - 13rem));
   border-radius: 1rem;
   border: 1px solid color-mix(in srgb, #22d3ee 70%, #67e8f9);
   box-shadow: 0 0 18px rgba(34, 211, 238, 0.22);
   background: #050508;
+  overflow: hidden;
 }
 
 .lb-video-connected-screen .lb-call-video-remote video,
 .lb-video-connected-screen .lb-call-video-remote canvas {
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center;
 }
 
 .lb-video-connected-screen .lb-call-video-local {
@@ -12252,7 +12260,7 @@ a.lb-entity:active,
   height: auto;
   min-height: 0;
   max-width: min(22.5rem, calc(100vw - 1.25rem));
-  max-height: min(40rem, calc(100dvh - 2rem));
+  max-height: min(52rem, calc(100dvh - 1rem));
 }
 
 .lb-call-float.is-video .lb-call-active:not(.is-video-mini):has(.lb-video-connected-screen) {
@@ -14144,9 +14152,11 @@ a.lb-entity:active,
   }
 
   .lb-call-float.is-video:not(.is-compact):not(.is-parked) .lb-video-connected-screen .lb-call-video-stage {
-    height: min(16rem, 58dvh);
-    min-height: 8.5rem;
-    max-height: min(18rem, 62dvh);
+    aspect-ratio: 9 / 16;
+    width: min(calc(100% - 1rem), calc((100dvh - 8rem) * 9 / 16));
+    height: auto;
+    min-height: 0;
+    max-height: min(28rem, calc(100dvh - 8rem));
   }
 }
 

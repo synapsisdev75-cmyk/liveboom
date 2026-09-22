@@ -60,7 +60,10 @@
 .lb-video-connected-screen .lb-call-video-stage,
 .lb-call-float.is-video .lb-video-connected-screen .lb-call-video-stage {
   flex: 0 0 auto;
-  height: min(20rem, 46dvh);
-  min-height: 16rem;
-  max-height: min(24rem, 52dvh);
+  aspect-ratio: 9 / 16;
+  width: min(calc(100% - 1.4rem), calc((100dvh - 13rem) * 9 / 16));
+  height: auto;
+  min-height: 0;
+  max-height: min(38rem, calc(100dvh - 13rem));
+  margin: 0 auto 0.35rem;
 }
