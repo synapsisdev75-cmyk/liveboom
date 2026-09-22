@@ -162,6 +162,7 @@ export function ConnectedVideoCallBar({
   onFlipCamera,
   flipBusy,
   flipDisabled,
+  flipLabel = 'Girar cámara',
   onHangup,
 }: {
   camOn: boolean;
@@ -170,6 +171,7 @@ export function ConnectedVideoCallBar({
   onFlipCamera?: () => void;
   flipBusy?: boolean;
   flipDisabled?: boolean;
+  flipLabel?: string;
   onHangup: () => void;
 }) {
   const room = useMaybeRoomContext();
@@ -286,7 +288,7 @@ export function ConnectedVideoCallBar({
               }}
             >
               <SwitchCamera size={15} aria-hidden />
-              <span className="lb-video-cam-menu__label">Girar cámara</span>
+              <span className="lb-video-cam-menu__label">{flipLabel}</span>
             </button>
           </div>
         ) : null}
@@ -358,7 +360,30 @@ export function ConnectedVideoCallBarFromRoom({ onHangup }: { onHangup: () => vo
   const [camBusy, setCamBusy] = useState(false);
   const [flipBusy, setFlipBusy] = useState(false);
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
+  const [finePointer, setFinePointer] = useState(false);
+  const [videoCount, setVideoCount] = useState(0);
   const busyRef = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const sync = () => setFinePointer(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void navigator.mediaDevices
+      .enumerateDevices()
+      .then((list) => {
+        if (!cancelled) setVideoCount(list.filter((item) => item.kind === 'videoinput').length);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [room, camOn]);
 
   useEffect(() => {
     if (!room) return;
@@ -393,6 +418,26 @@ export function ConnectedVideoCallBarFromRoom({ onHangup }: { onHangup: () => vo
     };
   }, [room]);
 
+  function rebindLocalPreview(mirrorUser: boolean) {
+    const el = document.querySelector('.lb-call-stage-keep .lb-call-video-local video') as HTMLVideoElement | null;
+    if (!el || !room) return;
+    let camera: LocalVideoTrack | null = null;
+    for (const pub of room.localParticipant.videoTrackPublications.values()) {
+      if (pub.source === Track.Source.Camera && pub.track) {
+        camera = pub.track as LocalVideoTrack;
+        break;
+      }
+    }
+    const media = camera?.mediaStreamTrack;
+    if (!media) return;
+    el.srcObject = null;
+    el.muted = true;
+    el.playsInline = true;
+    el.style.transform = mirrorUser ? 'scaleX(-1)' : '';
+    el.srcObject = new MediaStream([media]);
+    void el.play().catch(() => undefined);
+  }
+
   async function toggleCam() {
     const local = room?.localParticipant;
     if (!local || busyRef.current) return;
@@ -410,9 +455,35 @@ export function ConnectedVideoCallBarFromRoom({ onHangup }: { onHangup: () => vo
     }
   }
 
-  async function flipCam() {
+  async function flipOrSwitchCam() {
     const local = room?.localParticipant;
     if (!local || flipBusy || busyRef.current) return;
+
+    if (finePointer) {
+      if (videoCount <= 1) return;
+      setFlipBusy(true);
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((item) => item.kind === 'videoinput');
+        let currentId: string | undefined;
+        for (const pub of local.videoTrackPublications.values()) {
+          if (pub.source !== Track.Source.Camera) continue;
+          currentId = pub.track?.mediaStreamTrack?.getSettings().deviceId;
+          break;
+        }
+        const other = cams.find((item) => item.deviceId !== currentId);
+        if (other && room) {
+          await room.switchActiveDevice('videoinput', other.deviceId);
+          rebindLocalPreview(true);
+        }
+      } catch {
+        /* sin otra cámara */
+      } finally {
+        setFlipBusy(false);
+      }
+      return;
+    }
+
     setFlipBusy(true);
     const nextFacing = facing === 'user' ? 'environment' : 'user';
     try {
@@ -433,6 +504,7 @@ export function ConnectedVideoCallBarFromRoom({ onHangup }: { onHangup: () => vo
       }
       setFacing(nextFacing);
       setCamOn(true);
+      window.setTimeout(() => rebindLocalPreview(nextFacing === 'user'), 50);
     } catch {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -448,6 +520,7 @@ export function ConnectedVideoCallBarFromRoom({ onHangup }: { onHangup: () => vo
         if (other && room) {
           await room.switchActiveDevice('videoinput', other.deviceId);
           setFacing(nextFacing);
+          rebindLocalPreview(nextFacing === 'user');
         }
       } catch {
         /* sin otra cámara */
@@ -462,8 +535,10 @@ export function ConnectedVideoCallBarFromRoom({ onHangup }: { onHangup: () => vo
       camOn={camOn}
       camBusy={camBusy}
       flipBusy={flipBusy}
+      flipDisabled={finePointer && videoCount <= 1}
+      flipLabel={finePointer ? 'Cambiar cámara' : 'Girar cámara'}
       onToggleCam={() => void toggleCam()}
-      onFlipCamera={() => void flipCam()}
+      onFlipCamera={() => void flipOrSwitchCam()}
       onHangup={onHangup}
     />
   );

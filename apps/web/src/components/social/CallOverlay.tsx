@@ -4,7 +4,7 @@ import {
   useMaybeRoomContext,
 } from '@livekit/components-react';
 import type { DeepAR } from 'deepar';
-import { LocalAudioTrack, LocalVideoTrack, DisconnectReason, Room, RoomEvent, Track } from 'livekit-client';
+import { LocalAudioTrack, LocalVideoTrack, DisconnectReason, Room, RoomEvent, Track, TrackEvent } from 'livekit-client';
 import {
   ChevronDown,
   Gift,
@@ -1157,6 +1157,11 @@ function useCallLocalPreview(videoRef: RefObject<HTMLVideoElement | null>, activ
     const liveRoom = room;
     let cancelled = false;
     let timer = 0;
+    const unbindRestart: Array<() => void> = [];
+
+    function clearRestartBindings() {
+      while (unbindRestart.length) unbindRestart.pop()?.();
+    }
 
     function attach() {
       if (cancelled) return;
@@ -1183,6 +1188,15 @@ function useCallLocalPreview(videoRef: RefObject<HTMLVideoElement | null>, activ
           mirror = true;
         }
         bindLocalVideoEl(el, media, mirror);
+        clearRestartBindings();
+        if (track) {
+          const onRestart = () => {
+            if (cancelled) return;
+            window.setTimeout(attach, 40);
+          };
+          track.on(TrackEvent.Restarted, onRestart);
+          unbindRestart.push(() => track.off(TrackEvent.Restarted, onRestart));
+        }
       } catch (error) {
         console.warn('[VIDEO CALL] local preview attach', error);
       }
@@ -1197,6 +1211,7 @@ function useCallLocalPreview(videoRef: RefObject<HTMLVideoElement | null>, activ
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      clearRestartBindings();
       liveRoom.off(RoomEvent.Connected, attach);
       liveRoom.off(RoomEvent.LocalTrackPublished, attach);
       liveRoom.off(RoomEvent.LocalTrackUnpublished, attach);
@@ -1217,8 +1232,9 @@ function bindLocalVideoEl(el: HTMLVideoElement | null, track: MediaStreamTrack |
   el.setAttribute('webkit-playsinline', 'true');
   el.autoplay = true;
   el.style.transform = mirror ? 'scaleX(-1)' : '';
+  // Forzar rebind: en móvil restartTrack deja el <video> en negro si se reusa el mismo srcObject.
+  el.srcObject = null;
   if (!track) {
-    el.srcObject = null;
     return;
   }
   const stream = new MediaStream([track]);
@@ -2087,6 +2103,27 @@ function VideoCallStage({
     }
   }
 
+  async function refreshLocalPreview(mirrorUser: boolean) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const pub = publishedRef.current || pickLocalCameraTrack(roomRef.current);
+      const media = pub?.mediaStreamTrack;
+      const el = localVideoRef.current;
+      if (pub) publishedRef.current = pub;
+      if (media && media.readyState !== 'ended' && el) {
+        bindLocalVideoEl(el, media, mirrorUser);
+        try {
+          await el.play();
+        } catch {
+          /* autoplay lock — el muted+playsInline suele bastar en el siguiente tick */
+        }
+        if (el.srcObject && (el.videoWidth > 0 || el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA)) {
+          return;
+        }
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 35 + attempt * 35));
+    }
+  }
+
   async function flipCamera() {
     if (flipBusy || camBusyRef.current) return;
     const nextFacing = facing === 'user' ? 'environment' : 'user';
@@ -2114,20 +2151,19 @@ function VideoCallStage({
       } else {
         const pub = publishedRef.current || pickLocalCameraTrack(room);
         if (!pub) {
-          setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'Solo hay una cámara');
+          setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'No se pudo girar la cámara');
           return;
         }
+        publishedRef.current = pub;
         await pub.restartTrack({
           facingMode: nextFacing,
           resolution: { width: 1280, height: 720 },
         });
-        const media = pub.mediaStreamTrack;
-        if (media) {
-          bindLocalVideoEl(localVideoRef.current, media, nextFacing === 'user');
-          setActiveVideoId(media.getSettings().deviceId || activeVideoId);
-        }
         setFacing(nextFacing);
+        const media = pub.mediaStreamTrack;
+        if (media) setActiveVideoId(media.getSettings().deviceId || activeVideoId);
       }
+      await refreshLocalPreview(nextFacing === 'user');
       setCamHint(nextFacing === 'user' ? 'Cámara frontal' : 'Cámara trasera');
       setError(null);
     } catch (err) {
@@ -2138,10 +2174,24 @@ function VideoCallStage({
     }
   }
 
-  function onFlipCameraClick() {
-    // Escritorio con varias cámaras: selector. Touch / pocas cámaras: alterna frontal ↔ trasera.
-    if (finePointer && videoInputs.length > 2) {
+  /** PC: nunca facingMode — solo otra cámara conectada o selector. */
+  function switchDesktopCamera() {
+    if (videoInputs.length <= 1) {
+      setCamHint(videoInputs.length === 0 ? 'No hay cámaras disponibles' : 'No hay otra cámara conectada');
+      return;
+    }
+    if (videoInputs.length > 2) {
       setPicker((current) => (current === 'camera' ? null : 'camera'));
+      return;
+    }
+    const currentId = activeVideoId || cameraDeviceId;
+    const other = videoInputs.find((device) => device.deviceId !== currentId) || videoInputs[0];
+    if (other) void selectCamera(other.deviceId);
+  }
+
+  function onFlipCameraClick() {
+    if (finePointer) {
+      switchDesktopCamera();
       return;
     }
     void flipCamera();
@@ -2218,6 +2268,7 @@ function VideoCallStage({
     setFacing(nextFacing);
     setCameraDeviceId(deviceId);
     setActiveVideoId(activeId);
+    await refreshLocalPreview(nextFacing === 'user');
   }
 
   async function selectCamera(deviceId: string) {
@@ -2418,8 +2469,13 @@ function VideoCallStage({
           camOn={camOn}
           camBusy={camBusy}
           flipBusy={flipBusy}
+          flipDisabled={finePointer && videoInputs.length <= 1}
+          flipLabel={finePointer ? 'Cambiar cámara' : 'Girar cámara'}
           onToggleCam={() => void toggleCam()}
-          onFlipCamera={() => void flipCamera()}
+          onFlipCamera={() => {
+            if (finePointer) switchDesktopCamera();
+            else void flipCamera();
+          }}
           onHangup={onHangup}
         />
         }
