@@ -453,3 +453,15 @@ export async function deleteGiftPermanentlyApi(giftId: string) {
     60_000,
   );
 }
+
+export async function recoverGiftsCatalogApi() {
+  return authFetch<{
+    ok: boolean;
+    restored: number;
+    before: number;
+    after: number;
+    revisionCount: number;
+    fromStorage: number;
+    version: number;
+  }>('/api/gifts/catalog/recover', { method: 'POST', body: '{}' }, 120_000);
+}

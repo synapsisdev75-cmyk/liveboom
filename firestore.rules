@@ -83,6 +83,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Historial append-only de publicaciones (concurrencia multi-admin).
+    match /gifts_catalog_revisions/{revisionId} {
+      allow read: if hasCapability('gifts');
+      allow create, update: if hasCapability('gifts')
+        && request.resource.data.gifts is list
+        && request.resource.data.version is number;
+      allow delete: if false;
+    }
+
     // Paquetes Blast: misma protección anti-borrado / anti-vacío.
     match /config/coinPackages {
       allow read: if true;

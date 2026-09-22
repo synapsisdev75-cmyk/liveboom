@@ -1,7 +1,13 @@
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   type Unsubscribe,
@@ -64,6 +70,8 @@ export type CoinPackagesDoc = {
 
 const GIFTS_PATH = 'config/giftsCatalog';
 const PACKS_PATH = 'config/coinPackages';
+/** Historial append-only: cada publicación guarda la versión anterior para recuperar concurrencia. */
+const GIFTS_REVISIONS = 'gifts_catalog_revisions';
 
 function defaultPlacements(gift: LiveGift): GiftPlacement[] {
   if (gift.liveOnly) return ['live'];
@@ -155,6 +163,27 @@ export function mergeGiftsCatalog(doc: GiftsCatalogDoc | null): EditableGift[] {
     seen.add(next.id);
   }
   return merged;
+}
+
+/**
+ * Unión por id para publicar con varios Super Admins a la vez.
+ * Remoto se conserva; lo local pisa el mismo id (edición de quien publica).
+ * Así un publish no borra regalos que otro acabó de subir.
+ */
+export function mergeGiftsForConcurrentPublish(
+  remoteGifts: EditableGift[],
+  localGifts: EditableGift[],
+): EditableGift[] {
+  const byId = new Map<string, EditableGift>();
+  for (const gift of remoteGifts) {
+    if (!gift?.id || RETIRED_GIFT_IDS.has(gift.id)) continue;
+    byId.set(gift.id, gift);
+  }
+  for (const gift of localGifts) {
+    if (!gift?.id || RETIRED_GIFT_IDS.has(gift.id)) continue;
+    byId.set(gift.id, gift);
+  }
+  return [...byId.values()];
 }
 
 export function mergeCoinPackages(doc: CoinPackagesDoc | null): EditableCoinPackage[] {
@@ -252,34 +281,81 @@ export function serializeEditableGift(gift: EditableGift): Record<string, unknow
 }
 
 export async function saveGiftsCatalog(config: GiftsCatalogDoc, updatedBy: string) {
-  const gifts = (config.gifts || [])
+  const localGifts = (config.gifts || [])
     .filter((gift) => !RETIRED_GIFT_IDS.has(gift.id))
-    .map((gift) => serializeEditableGift(gift));
-  for (const gift of gifts) {
-    const coins = Math.floor(Number(gift.coins) || 0);
-    if (!Number.isFinite(coins) || coins < 1) {
-      throw new Error(`El precio de «${String(gift.name || gift.id)}» debe ser un entero positivo en BLAST`);
-    }
-    gift.coins = coins;
-  }
+    .map((gift) => {
+      const serialized = serializeEditableGift(gift);
+      const coins = Math.floor(Number(serialized.coins) || 0);
+      if (!Number.isFinite(coins) || coins < 1) {
+        throw new Error(
+          `El precio de «${String(serialized.name || serialized.id)}» debe ser un entero positivo en BLAST`,
+        );
+      }
+      serialized.coins = coins;
+      return serialized;
+    });
+
   const catalogRef = doc(db, GIFTS_PATH);
-  const remote = await getDoc(catalogRef);
-  const remoteVersion = remote.exists()
-    ? Math.max(1, Math.floor(Number((remote.data() as GiftsCatalogDoc | undefined)?.version) || 1))
-    : 0;
-  const requested = Math.max(1, Math.floor(Number(config.version) || 1));
-  const version = Math.max(requested, remoteVersion + 1);
   try {
-    await setDoc(
-      catalogRef,
-      stripUndefinedDeep({
+    const result = await runTransaction(db, async (tx) => {
+      const remoteSnap = await tx.get(catalogRef);
+      const remoteData = remoteSnap.exists()
+        ? (remoteSnap.data() as GiftsCatalogDoc & { gifts?: unknown[] })
+        : null;
+      const remoteVersion = remoteData
+        ? Math.max(1, Math.floor(Number(remoteData.version) || 1))
+        : 0;
+      const remoteEditable = mergeGiftsCatalog(remoteData);
+      const localEditable = localGifts
+        .map((raw) => normalizeGift(raw as Record<string, unknown>))
+        .filter((g): g is EditableGift => Boolean(g));
+      const mergedEditable = mergeGiftsForConcurrentPublish(remoteEditable, localEditable);
+      const gifts = mergedEditable.map((gift) => serializeEditableGift(gift));
+      for (const gift of gifts) {
+        const coins = Math.floor(Number(gift.coins) || 0);
+        if (!Number.isFinite(coins) || coins < 1) {
+          throw new Error(
+            `El precio de «${String(gift.name || gift.id)}» debe ser un entero positivo en BLAST`,
+          );
+        }
+        gift.coins = coins;
+      }
+      const requested = Math.max(1, Math.floor(Number(config.version) || 1));
+      const version = Math.max(requested, remoteVersion + 1);
+      const keptFromRemote = remoteEditable.filter((g) => !localEditable.some((l) => l.id === g.id))
+        .length;
+      const payload = stripUndefinedDeep({
         version,
         gifts,
         updatedBy: updatedBy || 'admin',
         updatedAt: serverTimestamp(),
-      }),
-      { merge: true },
-    );
+        lastMerge: {
+          localCount: localEditable.length,
+          remoteCount: remoteEditable.length,
+          mergedCount: gifts.length,
+          keptFromRemote,
+        },
+      });
+      // Snapshot de la versión remota ANTES de sobrescribir (recuperación).
+      if (remoteData && remoteVersion >= 1) {
+        const revisionRef = doc(db, GIFTS_REVISIONS, `v${remoteVersion}`);
+        tx.set(
+          revisionRef,
+          stripUndefinedDeep({
+            version: remoteVersion,
+            gifts: Array.isArray(remoteData.gifts) ? remoteData.gifts : [],
+            updatedBy: remoteData.updatedBy || 'unknown',
+            archivedAt: serverTimestamp(),
+            archivedBy: updatedBy || 'admin',
+            supersededBy: version,
+          }),
+          { merge: true },
+        );
+      }
+      tx.set(catalogRef, payload, { merge: true });
+      return { version, mergedCount: gifts.length, keptFromRemote, localCount: localEditable.length };
+    });
+    return result;
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error || '');
     if (/insufficient permissions|permission-denied|Missing or insufficient/i.test(raw)) {
@@ -289,6 +365,59 @@ export async function saveGiftsCatalog(config: GiftsCatalogDoc, updatedBy: strin
     }
     throw error;
   }
+}
+
+/**
+ * Une el catálogo actual con todas las revisiones guardadas (tras publishes concurrentes).
+ * No revive IDs retirados. Devuelve cuántos se reincorporaron.
+ */
+export async function recoverGiftsCatalogFromRevisions(updatedBy: string): Promise<{
+  version: number;
+  before: number;
+  after: number;
+  restored: number;
+  revisionCount: number;
+}> {
+  const catalogRef = doc(db, GIFTS_PATH);
+  const currentSnap = await getDoc(catalogRef);
+  const current = currentSnap.exists() ? (currentSnap.data() as GiftsCatalogDoc) : null;
+  const currentGifts = mergeGiftsCatalog(current);
+  const revisionsSnap = await getDocs(
+    query(collection(db, GIFTS_REVISIONS), orderBy('version', 'desc'), limit(80)),
+  );
+  let pool = [...currentGifts];
+  let revisionCount = 0;
+  for (const snap of revisionsSnap.docs) {
+    revisionCount += 1;
+    const data = snap.data() as GiftsCatalogDoc;
+    pool = mergeGiftsForConcurrentPublish(pool, mergeGiftsCatalog(data));
+  }
+  const before = currentGifts.length;
+  const after = pool.length;
+  const restored = Math.max(0, after - before);
+  if (restored === 0) {
+    return {
+      version: Math.max(1, Math.floor(Number(current?.version) || 1)),
+      before,
+      after,
+      restored: 0,
+      revisionCount,
+    };
+  }
+  const result = await saveGiftsCatalog(
+    {
+      version: Math.max(1, Math.floor(Number(current?.version) || 1) + 1),
+      gifts: pool,
+    },
+    updatedBy || 'admin-recover',
+  );
+  return {
+    version: result.version,
+    before,
+    after: result.mergedCount,
+    restored: Math.max(0, result.mergedCount - before),
+    revisionCount,
+  };
 }
 
 export async function saveCoinPackagesConfig(config: CoinPackagesDoc, updatedBy: string) {

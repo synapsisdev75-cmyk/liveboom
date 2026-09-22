@@ -37,6 +37,7 @@ import {
   deleteGiftPermanentlyApi,
   giftStoragePathFromUrl,
   ingestUploadedGiftAnimation,
+  recoverGiftsCatalogApi,
   startGiftBackgroundRemove,
 } from '../../lib/giftMediaApi';
 import { defaultGiftMedia, type GiftMediaInfo } from '../../lib/giftMedia';
@@ -458,11 +459,37 @@ export function AdminCatalogPanel({
     setMessage(null);
     try {
       const version = Math.max(1, giftsVersion + 1);
-      await saveGiftsCatalog({ version, gifts }, email);
+      const result = await saveGiftsCatalog({ version, gifts }, email);
       giftsDirtyRef.current = false;
-      setMessage(`Regalos publicados (v${version}).`);
+      const kept =
+        result.keptFromRemote > 0
+          ? ` Se conservaron ${result.keptFromRemote} de otros Super Admins.`
+          : '';
+      setMessage(`Regalos publicados (v${result.version}, ${result.mergedCount} en total).${kept}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'No se pudo publicar regalos');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function recoverLostGifts() {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const result = await recoverGiftsCatalogApi();
+      giftsDirtyRef.current = false;
+      if (result.restored <= 0) {
+        setMessage(
+          `Nada nuevo que recuperar (catálogo: ${result.after}). Revisiones: ${result.revisionCount}.`,
+        );
+      } else {
+        setMessage(
+          `Recuperados ${result.restored} regalos (antes ${result.before} → ahora ${result.after}, v${result.version}).`,
+        );
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'No se pudo recuperar el catálogo');
     } finally {
       setSaving(false);
     }
@@ -802,14 +829,24 @@ export function AdminCatalogPanel({
         </button>
         ) : null}
         {sub === 'gifts' ? (
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void publishGifts()}
-            className="ml-auto rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-          >
-            {saving ? 'Publicando…' : 'Publicar regalos'}
-          </button>
+          <>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void recoverLostGifts()}
+              className="ml-auto rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              Recuperar perdidos
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void publishGifts()}
+              className="rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {saving ? 'Publicando…' : 'Publicar regalos'}
+            </button>
+          </>
         ) : (
           <button
             type="button"

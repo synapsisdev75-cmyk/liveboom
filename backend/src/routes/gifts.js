@@ -318,6 +318,24 @@ router.post('/bg-remove/jobs/:jobId/retry', requireAuth, requireGiftsAdmin, asyn
   }
 });
 
+/** Une catálogo + historial de publishes + Storage (sin tombstones). */
+router.post('/catalog/recover', requireAuth, requireGiftsAdmin, async (req, res) => {
+  try {
+    const { recoverGiftCatalog } = require('../lib/giftCatalogRecover');
+    const result = await recoverGiftCatalog({
+      adminUserId: req.user?.uid || '',
+      adminEmail: req.user?.email || '',
+    });
+    res.json(result);
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : '';
+    console.error('[gifts/catalog/recover]', error);
+    res.status(giftAlphaHttpStatus(code)).json({
+      error: error instanceof Error ? error.message : 'No se pudo recuperar el catálogo',
+    });
+  }
+});
+
 router.post('/catalog/:giftId/delete', requireAuth, requireGiftsAdmin, async (req, res) => {
   try {
     const { deleteGiftPermanently } = require('../lib/giftCatalogDelete');
