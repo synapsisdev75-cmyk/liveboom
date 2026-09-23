@@ -98,8 +98,8 @@ function AuthHydrator() {
     const unsubCommunity = hydrateCommunityHeader();
     const unsubAuth = hydrate();
     void prepareNativeLiveWebView();
-    // Android: pide cámara, mic, notificaciones, galería y Bluetooth al abrir.
-    // El push FCM se registra después (necesita POST_NOTIFICATIONS concedido).
+    // Android: notificaciones / media / bluetooth al abrir.
+    // Cámara y micrófono solo al transmitir, Sala Boom o llamadas (ensureNativeLiveAvPermissions).
     void ensureNativeEssentialPermissions();
     return () => {
       unsubLevels();

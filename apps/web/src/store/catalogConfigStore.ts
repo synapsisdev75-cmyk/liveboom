@@ -27,25 +27,28 @@ export const useCatalogConfigStore = create<State>((set) => ({
   packsVersion: 1,
 
   hydrate: () => {
-    setRuntimeGiftCatalog([]);
+    // null = aún no cargó (sortedLiveGiftCatalog devuelve []). Evita “cargado vacío”.
+    setRuntimeGiftCatalog(null);
     setRuntimeCoinPackages(buildDefaultCoinPackages().packages);
     const unsubGifts = listenGiftsCatalog((doc) => {
       const gifts = mergeGiftsCatalog(doc);
       setRuntimeGiftCatalog(gifts);
-      set({
+      set((state) => ({
         ready: true,
         gifts,
-        giftsVersion: doc?.version ?? 1,
-      });
+        // Incrementar siempre: doc.version puede repetirse y el LIVE
+        // no re-renderizaba la caja de regalos (useMemo vacío en APK).
+        giftsVersion: state.giftsVersion + 1,
+      }));
     });
     const unsubPacks = listenCoinPackagesConfig((doc) => {
       const packages = mergeCoinPackages(doc);
       setRuntimeCoinPackages(packages);
-      set({
+      set((state) => ({
         ready: true,
         packages,
-        packsVersion: doc?.version ?? 1,
-      });
+        packsVersion: state.packsVersion + 1,
+      }));
     });
     return () => {
       unsubGifts();

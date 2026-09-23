@@ -388,6 +388,10 @@ export async function ensureNativeScreenSharePermissions(opts?: {
   }
 }
 
+/**
+ * Permisos al abrir la app (notificaciones, galería, bluetooth).
+ * NO pide cámara ni micrófono: eso solo al transmitir, Sala Boom o llamadas.
+ */
 export async function ensureNativeEssentialPermissions(
   options: { force?: boolean } = {},
 ): Promise<EssentialPermissionResult> {
@@ -414,10 +418,9 @@ export async function ensureNativeEssentialPermissions(
   essentialRequestInFlight = (async () => {
     try {
       const current = await LiveMedia.checkEssentialPermissions();
+      // Viewer / uso normal: no exigir ni solicitar CAMERA / RECORD_AUDIO.
       const needsPrompt =
         options.force ||
-        !current.camera ||
-        !current.microphone ||
         !current.notifications ||
         !current.media ||
         !current.bluetooth;

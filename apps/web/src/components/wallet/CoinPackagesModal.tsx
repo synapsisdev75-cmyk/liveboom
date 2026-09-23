@@ -242,7 +242,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
+      className="fixed inset-0 z-[200] grid place-items-end bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

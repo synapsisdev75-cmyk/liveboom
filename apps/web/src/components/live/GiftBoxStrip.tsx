@@ -10,11 +10,24 @@ import {
 } from './GiftSendConfirm';
 
 /** Solo monta el icono cuando entra en viewport (abre el panel más rápido). */
-function LazyGiftThumb({ giftId, size }: { giftId: string; size: number }) {
+function LazyGiftThumb({
+  giftId,
+  size,
+  eager = false,
+}: {
+  giftId: string;
+  size: number;
+  /** Primeras celdas: cargar ya (APK / red lenta). */
+  eager?: boolean;
+}) {
   const hostRef = useRef<HTMLSpanElement>(null);
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(eager);
 
   useEffect(() => {
+    if (eager) {
+      setVisible(true);
+      return;
+    }
     const el = hostRef.current;
     if (!el) return;
     if (typeof IntersectionObserver === 'undefined') {
@@ -37,7 +50,7 @@ function LazyGiftThumb({ giftId, size }: { giftId: string; size: number }) {
     );
     io.observe(el);
     return () => io.disconnect();
-  }, []);
+  }, [eager]);
 
   return (
     <span
@@ -46,7 +59,7 @@ function LazyGiftThumb({ giftId, size }: { giftId: string; size: number }) {
       style={{ width: size, height: size }}
     >
       {visible ? (
-        <GiftIcon giftId={giftId} size={size} />
+        <GiftIcon giftId={giftId} size={size} priority={eager ? 'high' : 'low'} />
       ) : (
         <span className="gift-box-item__skeleton block h-full w-full rounded-lg bg-white/5" aria-hidden />
       )}
@@ -95,10 +108,11 @@ export function GiftBoxStrip({
     setMultiplier(1);
   }, [preselectGiftId]);
 
-  /** Prefetch de las primeras celdas visibles para que el grid no “parpadee” vacío. */
+  /** Prefetch agresivo en APK/móvil: primeras filas + un poco más del scroll. */
   useEffect(() => {
+    if (!gifts.length) return;
     const urls = gifts
-      .slice(0, 12)
+      .slice(0, 24)
       .map((g) => g.image)
       .filter((u): u is string => Boolean(u));
     for (const url of urls) {
@@ -139,17 +153,26 @@ export function GiftBoxStrip({
       }`}
     >
       <div className="flex shrink-0 items-center justify-between gap-2 px-2.5 py-1.5 sm:px-3">
-        <p className="gift-box-strip__title inline-flex items-center gap-1.5 text-[11px] font-semibold">
-          <Coins size={12} className="text-amber-400" />
+        <p className="gift-box-strip__title inline-flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-semibold">
+          <Coins size={12} className="shrink-0 text-amber-400" />
           Regalos
           {typeof coins === 'number' ? (
             <span className="gift-box-strip__coins">{coins.toLocaleString('es-CO')}</span>
           ) : null}
         </p>
+        {onRecharge ? (
+          <button
+            type="button"
+            onClick={onRecharge}
+            className="lb-gift-confirm__recharge min-h-11 shrink-0 rounded-lg px-3 text-xs font-bold"
+          >
+            Recargar
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={closeAll}
-          className="gift-box-strip__close grid h-11 w-11 place-items-center rounded-full"
+          className="gift-box-strip__close grid h-11 w-11 shrink-0 place-items-center rounded-full"
           aria-label="Cerrar regalos"
         >
           <X size={16} />
@@ -182,6 +205,11 @@ export function GiftBoxStrip({
               : 'Desplázate para ver todos los regalos'}
           </p>
 
+          {gifts.length === 0 ? (
+            <p className="gift-box-strip__hint px-3 py-6 text-center text-xs text-zinc-400">
+              Cargando regalos…
+            </p>
+          ) : (
           <div
             className={`min-h-0 gap-1.5 px-2.5 pt-0.5 sm:gap-2 sm:px-3 ${
               floating
@@ -191,7 +219,7 @@ export function GiftBoxStrip({
                   : 'gift-row gift-box-row chat-scroll flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden pb-[max(0.65rem,env(safe-area-inset-bottom))] sm:pb-3 lg:grid lg:max-h-[min(52dvh,26rem)] lg:grid-cols-4 lg:overflow-x-hidden lg:overflow-y-auto lg:snap-none xl:grid-cols-5'
             }`}
           >
-            {gifts.map((gift) => {
+            {gifts.map((gift, index) => {
               const busy = sendingGiftId === gift.id;
               return (
                 <button
@@ -206,7 +234,7 @@ export function GiftBoxStrip({
                     compact ? 'w-full snap-none' : 'w-[4.35rem] snap-start sm:w-[4.85rem]'
                   } ${busy ? 'is-busy' : ''}`}
                 >
-                  <LazyGiftThumb giftId={gift.id} size={thumbSize} />
+                  <LazyGiftThumb giftId={gift.id} size={thumbSize} eager={index < 8} />
                   <span className="gift-box-item__name mt-1 w-full truncate px-0.5 text-center text-[8px] font-medium leading-tight">
                     {gift.name}
                   </span>
@@ -218,9 +246,14 @@ export function GiftBoxStrip({
               );
             })}
           </div>
+          )}
 
           {error ? <p className="gift-box-strip__error shrink-0 px-3 pb-2 text-[11px]">{error}</p> : null}
-          {rechargeNeeded != null && typeof coins === 'number' && coins < rechargeNeeded && onRecharge ? (
+          {onRecharge &&
+          typeof coins === 'number' &&
+          (rechargeNeeded != null
+            ? coins < rechargeNeeded
+            : gifts.some((g) => coins < g.coins)) ? (
             <button
               type="button"
               onClick={onRecharge}

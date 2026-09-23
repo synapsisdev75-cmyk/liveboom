@@ -38,11 +38,12 @@ export function GiftSendConfirm({
 }: Props) {
   const total = gift.coins * multiplier;
   const canAfford = typeof coins !== 'number' || coins >= total;
+  // Móvil/LIVE: mostrar Recargar si no alcanza (antes solo tras send fallido;
+  // Enviar deshabilitado impedía llegar a rechargeNeeded).
   const showRecharge =
     Boolean(onRecharge) &&
     typeof coins === 'number' &&
-    rechargeNeeded != null &&
-    coins < rechargeNeeded;
+    (!canAfford || (rechargeNeeded != null && coins < rechargeNeeded));
 
   return (
     <div className="lb-gift-confirm">

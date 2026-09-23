@@ -36,8 +36,10 @@ import {
   MessageCircle,
   Plus,
   Gamepad2,
+  Coins,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FloatingGift, GiftIcon } from '../components/live/FloatingGift';
 import { GiftComboBadge } from '../components/live/GiftComboBadge';
@@ -290,6 +292,7 @@ import {
 } from '../lib/liveboomGifts';
 import { getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
+import { useCatalogConfigStore } from '../store/catalogConfigStore';
 import { getLocale } from '../store/localeStore';
 import { TranslatedText } from '../components/i18n/TranslatedText';
 import { useT } from '../i18n';
@@ -1850,6 +1853,18 @@ function CreatorStage({
     if (room.localParticipant.isMicrophoneEnabled) return;
     void room.localParticipant.setMicrophoneEnabled(true).catch(() => undefined);
   }, [canPublish, room, isHost, launch.micOn]);
+
+  // Espectador puro: nunca pedir ni publicar cámara/mic (APK WebView).
+  useEffect(() => {
+    if (canPublish) return;
+    const local = room.localParticipant;
+    if (local.isCameraEnabled) {
+      void local.setCameraEnabled(false).catch(() => undefined);
+    }
+    if (local.isMicrophoneEnabled) {
+      void local.setMicrophoneEnabled(false).catch(() => undefined);
+    }
+  }, [canPublish, room]);
 
   const [liveEnded, setLiveEnded] = useState(false);
   const hostSessionEndedRef = useRef(false);
@@ -6883,7 +6898,9 @@ function ChatPanel({
     count: 0,
     at: 0,
   });
-  const giftCatalog = useMemo(() => sortedLiveGiftCatalog(), []);
+  const giftsVersion = useCatalogConfigStore((state) => state.giftsVersion);
+  const catalogReady = useCatalogConfigStore((state) => state.ready);
+  const giftCatalog = useMemo(() => sortedLiveGiftCatalog(), [giftsVersion, catalogReady]);
   const popularGifts = useMemo(() => giftCatalog.slice(0, 8), [giftCatalog]);
   const [accessHoldGiftId, setAccessHoldGiftId] = useState<string | null>(null);
 
@@ -6911,6 +6928,17 @@ function ChatPanel({
       window.removeEventListener('liveboom:open-recharge', openRechargeEv);
     };
   }, []);
+
+  // Prefetch thumbs al abrir la caja (APK: red/Storage lentos).
+  useEffect(() => {
+    if (!openGifts || !giftCatalog.length) return;
+    for (const gift of giftCatalog.slice(0, 24)) {
+      if (!gift.image) continue;
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = gift.image;
+    }
+  }, [openGifts, giftCatalog]);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -7716,6 +7744,17 @@ function ChatPanel({
             <Gift size={18} />
           </button>
           ) : null}
+          {!isHostRoom ? (
+            <button
+              type="button"
+              onClick={() => setRechargeOpen(true)}
+              className="inline-flex h-11 shrink-0 items-center gap-1 rounded-xl border border-amber-400/35 bg-zinc-900/90 px-2.5 text-[11px] font-bold text-amber-200 lg:hidden"
+              aria-label="Recargar coins"
+            >
+              <Coins size={14} className="text-amber-400" />
+              Recargar
+            </button>
+          ) : null}
           <input
             ref={inputRef}
             value={text}
@@ -7736,7 +7775,14 @@ function ChatPanel({
           </button>
         </div>
       </div>
-      {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
+      {rechargeOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[220]">
+              <CoinModal onClose={() => setRechargeOpen(false)} />
+            </div>,
+            document.body,
+          )
+        : null}
     </aside>
   );
 }
