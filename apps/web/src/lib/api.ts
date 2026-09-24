@@ -54,8 +54,14 @@ async function token(): Promise<string> {
   return user.getIdToken();
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
+export type ApiRequestInit = RequestInit & {
+  /** Override del timeout por defecto (12s). create-order / Wompi puede necesitar más en móvil. */
+  timeoutMs?: number;
+};
+
+export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const { timeoutMs, ...fetchInit } = init;
+  const headers = new Headers(fetchInit.headers);
   headers.set('Content-Type', 'application/json');
   const jwt = await token();
   headers.set('Authorization', `Bearer ${jwt}`);
@@ -63,9 +69,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${getApiBase()}${path}`, {
-      ...init,
+      ...fetchInit,
       headers,
-      signal: init.signal ?? AbortSignal.timeout(12_000),
+      signal: fetchInit.signal ?? AbortSignal.timeout(timeoutMs ?? 12_000),
     });
   } catch {
     throw new ApiError(

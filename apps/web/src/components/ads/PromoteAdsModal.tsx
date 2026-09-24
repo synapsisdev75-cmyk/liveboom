@@ -19,6 +19,7 @@ import {
 import { isPromotionVideoUrl } from '../../lib/promotionLinks';
 import { uploadUserMedia } from '../../lib/storage';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
+import { isNativeApp, openWompiCheckoutUrl } from '../../lib/wompiCheckout';
 import { useAuthStore } from '../../store/authStore';
 
 type ServerPackage = {
@@ -240,8 +241,14 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
         return;
       }
 
-      if (order.checkoutUrl && (order.preferCheckout || order.widgetAvailable === false)) {
-        window.location.href = order.checkoutUrl;
+      if (order.checkoutUrl && (order.preferCheckout || order.widgetAvailable === false || isNativeApp())) {
+        await openWompiCheckoutUrl(order.checkoutUrl);
+        setNote(
+          isNativeApp()
+            ? 'Checkout abierto. Al terminar el pago, vuelve a LiveBoom.'
+            : 'Redirigiendo al checkout de Wompi…',
+        );
+        setBusy(false);
         return;
       }
 
@@ -273,7 +280,8 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
         });
       } catch {
         if (order.checkoutUrl) {
-          window.location.href = order.checkoutUrl;
+          await openWompiCheckoutUrl(order.checkoutUrl);
+          setBusy(false);
           return;
         }
         throw new Error('No se pudo abrir el módulo de pago de Wompi');

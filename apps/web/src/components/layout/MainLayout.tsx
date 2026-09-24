@@ -28,6 +28,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { VP_LG } from '../../responsive/viewport';
 import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { CoinModal } from '../wallet/CoinModal';
+import { initPendingBlastRechargeWatcher } from '../../lib/pendingBlastRecharge';
 import { NotificationBell } from '../social/NotificationBell';
 import { MessagesFloatingHost } from '../social/MessagesQuickMenu';
 import { useUnreadMessageCount } from '../social/MessageInboxBadge';
@@ -120,6 +121,8 @@ type SidebarBodyProps = {
   onSidebarModeChange?: (mode: SidebarMode) => void;
   /** Transmitir en este panel (p. ej. menú móvil; en PC va en el rail derecho). */
   showGoLive?: boolean;
+  /** Drawer móvil: el padre hace scroll; no comprimir el nav a altura 0. */
+  scrollable?: boolean;
 };
 
 /** Sidebar compacto: 100% alto viewport, sin scroll, todos los ítems visibles. */
@@ -131,12 +134,17 @@ function SidebarBody({
   sidebarMode = 'retract',
   onSidebarModeChange,
   showGoLive = false,
+  scrollable = false,
 }: SidebarBodyProps) {
   const t = useT();
   const sideNavItems = useSideNavItems();
   const fixed = sidebarMode === 'fixed';
   return (
-    <div className="lb-sidebar-body flex h-full min-h-0 flex-col overflow-x-clip overflow-y-visible">
+    <div
+      className={`lb-sidebar-body flex min-h-0 flex-col overflow-x-clip ${
+        scrollable ? 'overflow-y-visible' : 'h-full overflow-y-visible'
+      }`}
+    >
       <div
         className={`mb-2 flex shrink-0 items-center ${
           rail ? 'flex-col gap-2' : 'gap-1'
@@ -181,7 +189,11 @@ function SidebarBody({
       </div>
 
       <nav
-        className="lb-side-nav flex min-h-0 shrink flex-col overflow-x-clip overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className={`lb-side-nav flex flex-col overflow-x-clip [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
+          scrollable
+            ? 'shrink-0'
+            : 'min-h-0 shrink overflow-y-auto'
+        }`}
       >
         {sideNavItems.map((item) => {
           const Icon = item.icon;
@@ -352,7 +364,6 @@ export function MainLayout() {
     onRefresh: reloadApp,
     enabled: pullToRefreshEnabled,
   });
-  const sidebarRail = sidebarMode === 'retract' && !sidebarPeek;
 
   function setSidebarModePersist(next: SidebarMode) {
     setSidebarMode(next);
@@ -395,6 +406,11 @@ export function MainLayout() {
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
+    initPendingBlastRechargeWatcher();
+  }, [profile?.firebaseUid]);
+
+  useEffect(() => {
+    if (!profile?.firebaseUid) return;
     void sweepAuthorReelLifecycle(profile.firebaseUid).catch(() => undefined);
   }, [profile?.firebaseUid]);
 
@@ -410,17 +426,20 @@ export function MainLayout() {
     };
   }, []);
 
-  /** Explorar + teléfono girado: chrome minimal para maximizar el 9:16. */
   const hideMobileChrome = onExplore && deviceLandscape;
+  const isTablet = breakpoint === 'tablet';
+  const isDesktop = breakpoint === 'desktop';
+  // Tablet: menú izquierdo fijo con etiquetas. Desktop: rail retractil / fijo.
+  const sidebarRail = isDesktop && sidebarMode === 'retract' && !sidebarPeek;
 
   return (
     <div
-      className={`lb-shell flex h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-full flex-col overflow-hidden font-sans lg:flex-row${
+      className={`lb-shell flex h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-full flex-col overflow-hidden font-sans md:flex-row${
         onProfilePage ? ' lb-shell--profile' : ''
       }${onMessages ? ' lb-shell--messages' : ''}`}
     >
       {!hideMobileChrome ? (
-      <header className="lb-shell-header flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 lg:hidden">
+      <header className="lb-shell-header flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 md:hidden">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <Link to="/" className="min-w-0 shrink">
             <Logo compact className="[&_img]:!h-14 [&_img]:!max-w-[12rem] sm:[&_img]:!h-16 sm:[&_img]:!max-w-[14rem]" />
@@ -460,24 +479,31 @@ export function MainLayout() {
       ) : null}
 
       <aside
-        className={`lb-sidebar hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(22%,280px)] min-w-[220px] max-w-[280px] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] px-3 py-3 sm:min-w-[248px] sm:px-3.5 lg:flex ${
-          sidebarRail ? 'lb-sidebar--rail' : 'lb-sidebar--expanded'
-        }${onMessages ? ' lb-sidebar--messages-rail' : ''}`}
-        onPointerEnter={openSidebarPeek}
-        onPointerLeave={closeSidebarPeek}
-        onFocusCapture={openSidebarPeek}
-        onBlurCapture={(event) => {
-          const next = event.relatedTarget as Node | null;
-          if (next && event.currentTarget.contains(next)) return;
-          closeSidebarPeek();
-        }}
+        className={`lb-sidebar hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] py-3 md:flex ${
+          sidebarRail
+            ? 'lb-sidebar--rail px-1.5'
+            : 'lb-sidebar--expanded w-[min(22%,280px)] min-w-[220px] max-w-[280px] px-3 sm:min-w-[248px] sm:px-3.5'
+        }${onMessages ? ' lb-sidebar--messages-rail' : ''}${isTablet ? ' lb-sidebar--tablet' : ''}`}
+        onPointerEnter={isDesktop ? openSidebarPeek : undefined}
+        onPointerLeave={isDesktop ? closeSidebarPeek : undefined}
+        onFocusCapture={isDesktop ? openSidebarPeek : undefined}
+        onBlurCapture={
+          isDesktop
+            ? (event) => {
+                const next = event.relatedTarget as Node | null;
+                if (next && event.currentTarget.contains(next)) return;
+                closeSidebarPeek();
+              }
+            : undefined
+        }
       >
         <SidebarBody
           profile={profile}
           rail={sidebarRail}
-          modeToggle
+          modeToggle={isDesktop}
           sidebarMode={sidebarMode}
           onSidebarModeChange={setSidebarModePersist}
+          showGoLive={isTablet}
         />
       </aside>
 
@@ -485,12 +511,13 @@ export function MainLayout() {
         ref={mainRef}
         className={`relative min-h-0 min-w-0 flex-1 ${
           onExplore
-            ? `overflow-hidden p-0 lg:w-[56%] lg:pb-0 ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)]'}`
+            ? /* flex-1 sin % fijo: evita columna negra (sidebar + 56% + rail > 100%). */
+              `overflow-hidden p-0 ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)] md:pb-0'}`
             : onMessages
               ? 'overflow-hidden p-0'
               : onProfilePage
-                ? `overflow-y-auto overflow-x-hidden overscroll-y-contain p-0 lg:w-[56%] ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-main-pad-bottom)]'} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`
-              : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+                ? `overflow-y-auto overflow-x-hidden overscroll-y-contain p-0 lg:w-[56%] ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-main-pad-bottom)] md:pb-4'} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`
+                : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
         }`}
       >
         <PullToRefreshIndicator
@@ -528,29 +555,30 @@ export function MainLayout() {
       {!hideMobileChrome ? <LiquidBottomNav items={mobileNavItems} /> : null}
 
       {menuOpen ? (
-        <div className="lb-shell-mobile-layer fixed inset-0 z-50 lg:hidden">
+        <div className="lb-shell-mobile-layer fixed inset-0 z-50 md:hidden">
           <button
             type="button"
-            className="absolute inset-0 bg-black/70"
+            className="lb-shell-mobile-layer__scrim absolute inset-0"
             aria-label={t('common.close')}
             onClick={() => setMenuOpen(false)}
           />
-          <div className="lb-mobile-drawer absolute inset-y-0 right-0 flex h-[100dvh] w-[min(17.5rem,88vw)] flex-col overflow-hidden border-l border-zinc-800 pb-[max(0.75rem,var(--lb-safe-bottom))] pl-3 pr-[max(0.75rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] shadow-2xl">
+          <div className="lb-mobile-drawer absolute inset-y-0 left-0 flex h-[100dvh] w-[min(17.5rem,88vw)] flex-col overflow-hidden rounded-r-2xl border-r pb-[max(0.75rem,var(--lb-safe-bottom))] pl-[max(0.75rem,var(--lb-safe-left))] pr-3 pt-[max(0.75rem,var(--lb-safe-top))]">
             <div className="mb-2 flex shrink-0 items-center justify-between">
               <p className="text-xs font-bold text-zinc-400">{t('nav.openMenu')}</p>
               <button
                 type="button"
                 onClick={() => setMenuOpen(false)}
-                className="grid h-10 w-10 place-items-center rounded-lg bg-zinc-900 text-zinc-400"
+                className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/10 text-zinc-300 backdrop-blur-md"
               >
                 <X size={14} />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <SidebarBody
                 profile={profile}
                 onNavigate={() => setMenuOpen(false)}
                 showGoLive
+                scrollable
               />
             </div>
             {profile ? (

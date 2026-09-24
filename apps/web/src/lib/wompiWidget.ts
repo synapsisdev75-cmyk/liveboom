@@ -1,3 +1,5 @@
+import { getWompiRedirectUrl } from './wompiCheckout';
+
 export type WompiOrder = {
   reference: string;
   publicKey: string;
@@ -24,7 +26,8 @@ export function openWompiWidget(
     amountInCents: order.amountInCop,
     reference: order.reference,
     publicKey: order.publicKey,
-    redirectUrl: `${window.location.origin}/billetera`,
+    // Siempre producción: en Capacitor origin es https://localhost y rompe el retorno.
+    redirectUrl: getWompiRedirectUrl(),
     ...(order.expirationTime ? { expirationTime: order.expirationTime } : {}),
     ...(order.integritySignature
       ? { signature: { integrity: order.integritySignature } }

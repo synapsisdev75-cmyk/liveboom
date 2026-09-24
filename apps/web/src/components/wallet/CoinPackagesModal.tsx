@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import {
   listCoinPackages,
@@ -16,6 +16,12 @@ import {
   formatPurchasedBlast,
 } from '../../lib/blastRechargeCopy';
 import { fetchWalletSummary } from '../../lib/walletApi';
+import {
+  clearPendingBlastRecharge,
+  markPendingBlastRecharge,
+  watchPendingBlastRecharge,
+} from '../../lib/pendingBlastRecharge';
+import { isNativeApp, openWompiCheckoutUrl } from '../../lib/wompiCheckout';
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { PaymentMethodsStrip } from './PaymentMethodsStrip';
@@ -75,17 +81,26 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   );
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<RechargeNote | null>(null);
-  const pendingPollRef = useRef<number | null>(null);
-  const purchasedBeforeRef = useRef(0);
 
-  function stopPendingPoll() {
-    if (pendingPollRef.current != null) {
-      window.clearInterval(pendingPollRef.current);
-      pendingPollRef.current = null;
-    }
-  }
-
-  useEffect(() => () => stopPendingPoll(), []);
+  useEffect(() => {
+    const onCredited = (event: Event) => {
+      const detail = (event as CustomEvent<{ coins?: number }>).detail;
+      setNote({ kind: 'success', coins: Math.max(0, Math.floor(Number(detail?.coins) || 0)) });
+      void syncProfile();
+    };
+    const onDeclined = () => setNote({ kind: 'declined' });
+    window.addEventListener('liveboom:recharge-credited', onCredited);
+    window.addEventListener('liveboom:recharge-declined', onDeclined);
+    watchPendingBlastRecharge({
+      onCredited: (coins) => setNote({ kind: 'success', coins }),
+      onPending: () => setNote((prev) => (prev?.kind === 'success' ? prev : { kind: 'pending' })),
+      onDeclined: () => setNote({ kind: 'declined' }),
+    });
+    return () => {
+      window.removeEventListener('liveboom:recharge-credited', onCredited);
+      window.removeEventListener('liveboom:recharge-declined', onDeclined);
+    };
+  }, [syncProfile]);
 
   function applyWalletSummary() {
     void fetchWalletSummary()
@@ -95,26 +110,21 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
           earnedBlastBalance: summary.earnedAvailable,
           coinsBalance: summary.totalAvailable,
         });
-        const gained = summary.purchasedBalance - purchasedBeforeRef.current;
-        if (gained > 0) {
-          stopPendingPoll();
-          setNote({ kind: 'success', coins: gained });
-        }
       })
       .catch(() => undefined);
   }
 
-  function watchUntilCredited() {
-    stopPendingPoll();
-    purchasedBeforeRef.current = Math.max(
-      0,
-      Math.floor(Number(useAuthStore.getState().profile?.purchasedBlastBalance) || 0),
-    );
-    pendingPollRef.current = window.setInterval(() => {
-      void syncProfile();
-      applyWalletSummary();
-    }, 1500);
-    window.setTimeout(stopPendingPoll, 120_000);
+  function beginPendingWatch(reference: string) {
+    markPendingBlastRecharge(reference);
+    setNote({ kind: 'pending' });
+    watchPendingBlastRecharge({
+      onCredited: (coins) => {
+        setNote({ kind: 'success', coins });
+        void applyWalletSummary();
+      },
+      onPending: () => setNote((prev) => (prev?.kind === 'success' ? prev : { kind: 'pending' })),
+      onDeclined: () => setNote({ kind: 'declined' }),
+    });
   }
 
   function applyTopup(paid: {
@@ -143,6 +153,20 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     return fromApi;
   }
 
+  async function openHostedCheckout(order: WompiOrder) {
+    beginPendingWatch(order.reference);
+    setNote({
+      kind: 'error',
+      text: isNativeApp()
+        ? 'Abriendo checkout seguro de Wompi… Al terminar, vuelve a LiveBoom; tu BLAST se acredita solo.'
+        : 'Redirigiendo al checkout seguro de Wompi…',
+    });
+    const mode = await openWompiCheckoutUrl(String(order.checkoutUrl));
+    if (mode === 'external') {
+      setNote({ kind: 'pending' });
+    }
+  }
+
   async function pay() {
     setBusy(true);
     setNote(null);
@@ -150,11 +174,17 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
       const order = await api<WompiOrder>('/api/payments/create-order', {
         method: 'POST',
         body: JSON.stringify({ packageId: selected }),
+        timeoutMs: 45_000,
       });
 
+      // Capacitor: Custom Tabs conserva la sesión Firebase. Nequi/PSE no rompen el WebView.
+      if (isNativeApp() && order.checkoutUrl) {
+        await openHostedCheckout(order);
+        return;
+      }
+
       if (order.checkoutUrl && (order.preferCheckout || !order.widgetAvailable)) {
-        setNote({ kind: 'error', text: 'Redirigiendo al checkout seguro de Wompi…' });
-        window.location.href = order.checkoutUrl;
+        await openHostedCheckout(order);
         return;
       }
 
@@ -183,12 +213,11 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
               })
                 .then((paid) => {
                   if (paid.pending) {
-                    setNote({ kind: 'pending' });
-                    watchUntilCredited();
+                    beginPendingWatch(order.reference);
                     return;
                   }
+                  clearPendingBlastRecharge();
                   applyTopup(paid);
-                  stopPendingPoll();
                   const credited = Math.max(
                     0,
                     Math.floor(Number(paid.coins) || Number(order.coins) || 0),
@@ -199,31 +228,29 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
                 .catch((error) => {
                   const msg = error instanceof Error ? error.message : '';
                   if (/declinado|DECLINED|no fue aprobado/i.test(msg)) {
+                    clearPendingBlastRecharge();
                     setNote({ kind: 'declined' });
                     return;
                   }
-                  setNote({ kind: 'pending' });
-                  watchUntilCredited();
+                  beginPendingWatch(order.reference);
                 });
             } else {
-              setNote({ kind: 'pending' });
-              watchUntilCredited();
+              beginPendingWatch(order.reference);
             }
             return;
           }
           if (status === 'PENDING') {
-            setNote({ kind: 'pending' });
-            watchUntilCredited();
+            beginPendingWatch(order.reference);
             return;
           }
           if (status === 'DECLINED' || status) {
+            clearPendingBlastRecharge();
             setNote({ kind: 'declined' });
           }
         });
       } catch (widgetError) {
         if (order.checkoutUrl) {
-          setNote({ kind: 'error', text: 'Abriendo checkout alternativo de Wompi…' });
-          window.location.href = order.checkoutUrl;
+          await openHostedCheckout(order);
           return;
         }
         throw widgetError;

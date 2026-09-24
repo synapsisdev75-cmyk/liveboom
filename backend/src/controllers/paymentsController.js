@@ -277,10 +277,21 @@ async function completeWidget(req, res) {
       );
       if (credited) {
         const balance = await readUserCoinsBalance(uid);
+        let purchasedBlastBalance;
+        let earnedBlastBalance;
+        try {
+          const summary = await require('../lib/walletService').getSummary(uid);
+          purchasedBlastBalance = summary?.purchasedBalance;
+          earnedBlastBalance = summary?.earnedAvailable;
+        } catch {
+          /* optional */
+        }
         res.json({
           reference,
           coins: Number(saved.blastAmount || saved.coins) || 0,
           coinsBalance: balance,
+          purchasedBlastBalance,
+          earnedBlastBalance,
           duplicate: true,
           message: RECHARGE_OK,
         });
