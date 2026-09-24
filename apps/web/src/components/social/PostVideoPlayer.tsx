@@ -791,7 +791,7 @@ export function PostVideoPlayer({
           landscapeRailAside
           fillMode={publicationFillMode}
           insets={{
-            top: storyMode ? 44 : 52,
+            top: storyMode ? 36 : overlayOnly || reelFeed ? 0 : 40,
             bottom: embedded ? 88 : 112,
             left: 4,
             right: 4,

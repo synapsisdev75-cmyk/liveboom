@@ -426,7 +426,7 @@ export function ExploreView() {
       >
         <X size={18} strokeWidth={2.4} aria-hidden />
       </Link>
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[max(0.5rem,var(--lb-safe-top))] lg:pt-3">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[var(--lb-safe-top)] lg:pt-3">
         <div className="lb-explore-chrome pointer-events-auto flex max-w-full items-center justify-center overflow-x-auto px-[clamp(2.6rem,12vw,4.25rem)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {!deviceLandscape ? (
             <div className="lb-explore-tabs">
@@ -435,7 +435,7 @@ export function ExploreView() {
                   key={item}
                   type="button"
                   onClick={() => selectTab(item)}
-                  className={`lb-explore-tab shrink-0 min-h-11 bg-transparent px-2.5 text-[12px] font-bold tracking-wide sm:px-3 ${
+                  className={`lb-explore-tab shrink-0 min-h-10 bg-transparent px-2.5 text-[12px] font-bold tracking-wide sm:min-h-11 sm:px-3 ${
                     tab === item ? 'is-active' : ''
                   }`}
                 >

@@ -116,6 +116,9 @@ export function ImmersiveMediaStage({
       : 'portrait';
   const useRailAside = usesImmersiveAsideRail(mediaWidth, mediaHeight, landscapeRailAside);
   const railAside = useRailAside && !fillCover && !deviceLandscape && isDesktopStage;
+  /** Teléfono landscape + media 16:9 → cover a pantalla completa. */
+  const landscapeWideCover = deviceLandscape && orientation === 'landscape';
+  const mediaCover = fillCover || landscapeWideCover;
 
   useEffect(() => {
     const host = stageRef.current;
@@ -130,8 +133,8 @@ export function ImmersiveMediaStage({
       const devicePortrait =
         portraitMq?.matches ?? rect.height >= rect.width;
       const nextDeviceLandscape = !desktop && !devicePortrait;
-      // Explorar móvil portrait: cover. Publicaciones (contain): nunca crop.
-      const nextFill = fillMode === 'contain' ? false : !desktop && devicePortrait;
+      // Móvil/tablet portrait: pantalla completa. Desktop / landscape: contain + blur.
+      const nextFill = !desktop && devicePortrait;
       setFillCover(nextFill);
       setDeviceLandscape(nextDeviceLandscape);
       setIsDesktopStage(desktop);
@@ -144,7 +147,7 @@ export function ImmersiveMediaStage({
           nextFill
             ? {
                 ...insets,
-                top: Math.min(insets?.top ?? 8, 8),
+                top: 0,
                 bottom: Math.min(insets?.bottom ?? 8, 8),
                 left: 0,
                 right: 0,
@@ -226,10 +229,10 @@ export function ImmersiveMediaStage({
       className={`lb-immersive-stage relative flex min-h-0 flex-1 flex-col overflow-hidden ${
         embedded ? 'h-full' : 'h-[100dvh] max-h-[100dvh]'
       }`}
-      data-fill={fillCover ? 'cover' : 'contain'}
+      data-fill={mediaCover ? 'cover' : 'contain'}
       data-device-orientation={deviceLandscape ? 'landscape' : 'portrait'}
     >
-      {mediaUrl && !fillCover ? (
+      {mediaUrl && !mediaCover ? (
         <div className="lb-immersive-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
           {mediaKind === 'video' ? (
             <video
@@ -255,7 +258,7 @@ export function ImmersiveMediaStage({
 
       <div
         className={`lb-immersive-stage__center relative z-[1] flex min-h-0 flex-1 items-center justify-center ${
-          fillCover ? 'px-0' : 'px-[max(0.25rem,env(safe-area-inset-left))]'
+          mediaCover ? 'px-0' : 'px-[max(0.25rem,env(safe-area-inset-left))]'
         }`}
         style={{ touchAction: 'none' }}
         onPointerDown={(event) => {
@@ -321,10 +324,10 @@ export function ImmersiveMediaStage({
           ) : null}
           <div
             className={`lb-immersive-media-box lb-immersive-media-box--${orientation} relative shrink-0 ${
-              fillCover ? 'h-full w-full max-h-full max-w-full' : ''
+              mediaCover ? 'h-full w-full max-h-full max-w-full' : ''
             }`}
             style={
-              fillCover
+              mediaCover
                 ? { width: '100%', height: '100%' }
                 : railAside
                   ? {
@@ -336,7 +339,7 @@ export function ImmersiveMediaStage({
                   : immersiveMediaBoxStyle(box)
             }
             data-orientation={orientation}
-            data-fill={fillCover ? 'cover' : 'contain'}
+            data-fill={mediaCover ? 'cover' : 'contain'}
           >
             {children}
             {mediaOverlay}

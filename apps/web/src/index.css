@@ -280,7 +280,8 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   right: auto;
   bottom: auto;
   top: 50%;
-  transform: translateY(-50%);
+  /* Sube un poco el bloque (avatar arriba del rail), sin exagerar. */
+  transform: translateY(calc(-50% - 0.7rem));
 }
 
 /* Visor inmersivo: rail izquierdo centrado verticalmente (sin scroll interno) */
@@ -291,7 +292,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   right: auto;
   top: 50%;
   bottom: auto;
-  transform: translateY(-50%);
+  transform: translateY(calc(-50% - 0.7rem));
   overflow: visible;
   max-height: none;
   z-index: 40;
@@ -574,7 +575,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
 
 .lb-action-rail--corner.lb-action-rail--comments-open {
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateY(calc(-50% - 0.7rem));
   max-height: none;
 }
 

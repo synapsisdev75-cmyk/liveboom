@@ -862,10 +862,14 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
     inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
   -webkit-backdrop-filter: blur(22px) saturate(1.55) !important;
   backdrop-filter: blur(22px) saturate(1.55) !important;
+  max-height: 6.5rem;
   transition:
     transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.28s ease;
-  will-change: transform, opacity;
+    opacity 0.28s ease,
+    max-height 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.28s ease,
+    border-width 0.2s ease;
+  will-change: transform, opacity, max-height;
 }
 
 /* Capacidad: pt = safe-area → el cristal llena la zona del reloj/batería;
@@ -875,9 +879,18 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
 }
 
 .lb-shell-header.is-chrome-hidden {
-  transform: translateY(-110%);
+  /* No dejar franja negra bajo la Status Bar: colapsa el hueco al ocultar (Explorar). */
+  transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
+  max-height: 0 !important;
+  min-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-width: 0 !important;
+  margin: 0 !important;
+  overflow: hidden;
+  box-shadow: none !important;
 }
 
 html[data-lb-theme='light'] .lb-shell-header {
