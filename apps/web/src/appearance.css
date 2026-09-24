@@ -893,6 +893,35 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
   box-shadow: none !important;
 }
 
+/* Explorar móvil: header fuera del flujo (fixed) — el video usa 100% altura edge-to-edge. */
+@media (max-width: 767.98px) {
+  .lb-shell-header--explore-overlay {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    width: 100%;
+    z-index: 45;
+  }
+
+  .lb-shell-header--explore-overlay.is-chrome-hidden {
+    max-height: none !important;
+    min-height: calc(var(--lb-safe-top) + 2.65rem) !important;
+    padding-top: var(--lb-safe-top) !important;
+    padding-bottom: 0.375rem !important;
+    /* Sigue oculto visualmente, pero fixed ya no come altura del main. */
+  }
+
+  .lb-shell-header.is-chrome-gone {
+    display: none !important;
+  }
+
+  /* Mensajes: sin bottom nav — el chat llega hasta el borde (safe-area abajo). */
+  .lb-shell--messages .lb-messages-shell {
+    padding-bottom: max(0.35rem, var(--lb-safe-bottom, 0px)) !important;
+  }
+}
+
 html[data-lb-theme='light'] .lb-shell-header {
   background:
     linear-gradient(

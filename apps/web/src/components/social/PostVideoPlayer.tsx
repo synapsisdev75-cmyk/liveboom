@@ -312,6 +312,24 @@ export function PostVideoPlayer({
     };
   }, []);
 
+  /** Al rotar (sobre todo landscape), el WebView a veces deja el <video> en pausa/negro. */
+  useEffect(() => {
+    if (!expanded && !overlayOnly) return;
+    const resume = () => {
+      const video = videoRef.current;
+      if (!video) return;
+      window.setTimeout(() => {
+        void video.play().catch(() => undefined);
+      }, 120);
+    };
+    window.addEventListener('orientationchange', resume);
+    window.visualViewport?.addEventListener('resize', resume);
+    return () => {
+      window.removeEventListener('orientationchange', resume);
+      window.visualViewport?.removeEventListener('resize', resume);
+    };
+  }, [expanded, overlayOnly, src]);
+
   useEffect(() => {
     if (!seekHint) return;
     const timer = window.setTimeout(() => setSeekHint(null), 700);

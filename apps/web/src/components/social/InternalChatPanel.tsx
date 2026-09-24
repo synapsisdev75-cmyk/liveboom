@@ -3336,7 +3336,7 @@ export function InternalChatPanel({
 
   return (
     <>
-      <section className="lb-messages-shell flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)-0.55rem)] md:flex-row-reverse lg:pb-0">
+      <section className="lb-messages-shell flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)-0.55rem)] md:flex-row-reverse md:pb-0 lg:pb-0">
         {listPane}
         {threadPane}
       </section>

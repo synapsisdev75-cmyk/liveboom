@@ -450,8 +450,8 @@ export function MainLayout() {
     };
   }, [onExplore]);
 
-  /** Solo landscape: sin bottom nav. El header de Explorar se anima aparte. */
-  const hideBottomNav = onExplore && deviceLandscape;
+  /** Mensajes: sin bottom nav (más espacio al chat). Explorar landscape: sin nav. */
+  const hideBottomNav = onMessages || (onExplore && deviceLandscape);
   const hideExploreHeader = onExplore && (deviceLandscape || !exploreHeaderVisible);
 
   const isTablet = breakpoint === 'tablet';
@@ -465,10 +465,12 @@ export function MainLayout() {
         onProfilePage ? ' lb-shell--profile' : ''
       }${onMessages ? ' lb-shell--messages' : ''}`}
     >
-      {/* Barra superior edge-to-edge: cristal bajo la status bar nativa (logo, tema, campana, coins, menú). */}
+      {/* Barra superior: en Explorar es overlay fixed (no deja franja negra / status gap). */}
       <header
         className={`lb-shell-header lb-shell-header--status flex shrink-0 items-center justify-between gap-1.5 overflow-x-hidden border-b border-white/10 pb-1.5 pl-[max(0.65rem,var(--lb-safe-left))] pr-[max(0.65rem,var(--lb-safe-right))] pt-[var(--lb-safe-top)] sm:gap-2 md:hidden${
-          hideExploreHeader ? ' is-chrome-hidden' : ''
+          onExplore ? ' lb-shell-header--explore-overlay' : ''
+        }${hideExploreHeader ? ' is-chrome-hidden' : ''}${
+          onExplore && deviceLandscape ? ' is-chrome-gone' : ''
         }`}
         aria-hidden={hideExploreHeader}
       >
@@ -545,7 +547,7 @@ export function MainLayout() {
             ? /* flex-1 sin % fijo: evita columna negra (sidebar + 56% + rail > 100%). */
               `overflow-hidden p-0 ${hideBottomNav ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)] md:pb-0'}`
             : onMessages
-              ? 'overflow-hidden p-0'
+              ? 'overflow-hidden p-0 pb-0'
               : onProfilePage
                 ? `overflow-y-auto overflow-x-hidden overscroll-y-contain p-0 lg:w-[56%] ${hideBottomNav ? 'pb-0' : 'pb-[var(--lb-main-pad-bottom)] md:pb-4'} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`
                 : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'

@@ -8,15 +8,47 @@
     --lb-mt-explore-rail-left: clamp(4.75rem, 16vw, 8.5rem);
   }
 
-  /* Acerca el rail al video (zona letterbox), lado izquierdo. */
+  /* Explorar: stage a pantalla completa (sin franja / letterbox). */
+  .lb-explore-view,
+  .lb-explore-view .lb-immersive-stage {
+    min-height: 100%;
+    height: 100%;
+    background: #000;
+  }
+
+  .lb-explore-view .lb-immersive-stage__center {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* Cover absoluto: evita video a 0px si el % height falla al rotar. */
+  .lb-immersive-stage[data-device-orientation='landscape'] .lb-immersive-media-box,
+  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] .lb-immersive-media-box {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  .lb-immersive-stage[data-device-orientation='landscape'] .lb-post-media__video,
+  .lb-immersive-stage[data-device-orientation='landscape'] .lb-post-media__img {
+    object-fit: cover !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Acerca el rail al video, lado izquierdo. */
   .lb-immersive-edge-rail {
-    left: max(var(--lb-mt-explore-rail-left), env(safe-area-inset-left, 0px));
+    left: max(0.35rem, env(safe-area-inset-left, 0px));
     right: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     max-height: min(92dvh, 100%);
+    z-index: 40;
   }
 
   .lb-immersive-edge-rail .lb-action-rail,
@@ -38,19 +70,7 @@
     display: none !important;
   }
 
-  /* 16:9 cover: sin letterbox negro alrededor del media; rail al borde. */
-  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] {
+  .lb-immersive-stage[data-device-orientation='landscape'] {
     background: #000;
-  }
-
-  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] .lb-immersive-media-box {
-    width: 100% !important;
-    height: 100% !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
-  }
-
-  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] .lb-immersive-edge-rail {
-    left: max(0.35rem, env(safe-area-inset-left, 0px));
   }
 }

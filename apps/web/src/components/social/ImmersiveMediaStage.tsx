@@ -133,8 +133,8 @@ export function ImmersiveMediaStage({
       const devicePortrait =
         portraitMq?.matches ?? rect.height >= rect.width;
       const nextDeviceLandscape = !desktop && !devicePortrait;
-      // Móvil/tablet portrait: pantalla completa. Desktop / landscape: contain + blur.
-      const nextFill = !desktop && devicePortrait;
+      // Móvil/tablet: cover en portrait y landscape (edge-to-edge; evita video 0px al rotar).
+      const nextFill = !desktop && (devicePortrait || nextDeviceLandscape);
       setFillCover(nextFill);
       setDeviceLandscape(nextDeviceLandscape);
       setIsDesktopStage(desktop);
@@ -142,13 +142,13 @@ export function ImmersiveMediaStage({
         computeImmersiveMediaBox(
           mediaWidth || 9,
           mediaHeight || 16,
-          rect.width,
-          rect.height,
+          Math.max(rect.width, 1),
+          Math.max(rect.height, 1),
           nextFill
             ? {
                 ...insets,
                 top: 0,
-                bottom: Math.min(insets?.bottom ?? 8, 8),
+                bottom: 0,
                 left: 0,
                 right: 0,
               }
@@ -227,7 +227,7 @@ export function ImmersiveMediaStage({
     <div
       ref={stageRef}
       className={`lb-immersive-stage relative flex min-h-0 flex-1 flex-col overflow-hidden ${
-        embedded ? 'h-full' : 'h-[100dvh] max-h-[100dvh]'
+        embedded ? 'h-full min-h-full' : 'h-[100dvh] max-h-[100dvh]'
       }`}
       data-fill={mediaCover ? 'cover' : 'contain'}
       data-device-orientation={deviceLandscape ? 'landscape' : 'portrait'}
@@ -328,7 +328,7 @@ export function ImmersiveMediaStage({
             }`}
             style={
               mediaCover
-                ? { width: '100%', height: '100%' }
+                ? { position: 'absolute', inset: 0, width: '100%', height: '100%' }
                 : railAside
                   ? {
                       height: `${box.height}px`,
