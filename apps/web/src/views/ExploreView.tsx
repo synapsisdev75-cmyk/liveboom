@@ -396,8 +396,15 @@ export function ExploreView() {
   const showLoading = !poolReady || (!showEmpty && reels.length === 0);
 
   return (
-    <div className="lb-explore-view relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-black">
-      <img
+    <div
+      className="lb-explore-view relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-black"
+      onPointerUp={(event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('a,button,input,textarea,[role="button"]')) return;
+        window.dispatchEvent(new CustomEvent('liveboom:pulse-explore-chrome'));
+      }}
+    >      <img
         src="/brand/explore-icon-cut.png"
         alt=""
         width={52}
@@ -406,10 +413,14 @@ export function ExploreView() {
         draggable={false}
         aria-hidden
       />
-      {/* Solo PC/desktop: cerrar Explorar y volver a Inicio. */}
+      {/* Salir: PC a la izquierda; móvil landscape en círculo arriba-derecha. */}
       <Link
         to="/"
-        className="lb-explore-pc-back pointer-events-auto absolute left-[max(0.5rem,var(--lb-safe-left))] top-[max(0.5rem,var(--lb-safe-top))] z-[35] hidden h-11 w-11 min-h-11 min-w-11 items-center justify-center rounded-full border border-white/25 bg-black/70 text-white shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/85 hover:border-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/80 lg:inline-flex"
+        className={`lb-explore-exit pointer-events-auto absolute z-[35] grid h-11 w-11 min-h-11 min-w-11 place-items-center rounded-full border border-white/25 bg-black/70 text-white shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/85 hover:border-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/80 ${
+          deviceLandscape
+            ? 'right-[max(0.5rem,var(--lb-safe-right))] top-[max(0.45rem,var(--lb-safe-top))] inline-flex lg:left-[max(0.5rem,var(--lb-safe-left))] lg:right-auto'
+            : 'left-[max(0.5rem,var(--lb-safe-left))] top-[max(0.5rem,var(--lb-safe-top))] hidden lg:inline-flex'
+        }`}
         aria-label={t('nav.home')}
         title={t('nav.home')}
       >

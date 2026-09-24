@@ -31,4 +31,26 @@
     max-height: none;
     overflow: visible;
   }
+
+  /* El círculo de salir reemplaza el icono boom en landscape. */
+  .lb-explore-view .lb-immersive-media-box::after,
+  .lb-explore-icon {
+    display: none !important;
+  }
+
+  /* 16:9 cover: sin letterbox negro alrededor del media; rail al borde. */
+  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] {
+    background: #000;
+  }
+
+  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] .lb-immersive-media-box {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] .lb-immersive-edge-rail {
+    left: max(0.35rem, env(safe-area-inset-left, 0px));
+  }
 }

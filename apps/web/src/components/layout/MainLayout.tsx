@@ -356,6 +356,9 @@ export function MainLayout() {
   const immersiveMain = onMessages || onExplore;
   const breakpoint = useBreakpoint();
   const [deviceLandscape, setDeviceLandscape] = useState(false);
+  /** Explorar: solo oculta el header superior (la bottom nav no se toca). */
+  const [exploreHeaderVisible, setExploreHeaderVisible] = useState(false);
+  const exploreChromeTimer = useRef(0);
   const mainRef = useRef<HTMLElement>(null);
   const reloadApp = useAppReload();
   const pullToRefreshEnabled = breakpoint !== 'desktop' && !immersiveMain;
@@ -426,7 +429,31 @@ export function MainLayout() {
     };
   }, []);
 
-  const hideMobileChrome = onExplore && deviceLandscape;
+  useEffect(() => {
+    if (!onExplore) {
+      setExploreHeaderVisible(true);
+      window.clearTimeout(exploreChromeTimer.current);
+      return;
+    }
+    setExploreHeaderVisible(false);
+    const onPulse = () => {
+      setExploreHeaderVisible(true);
+      window.clearTimeout(exploreChromeTimer.current);
+      exploreChromeTimer.current = window.setTimeout(() => {
+        setExploreHeaderVisible(false);
+      }, 3400);
+    };
+    window.addEventListener('liveboom:pulse-explore-chrome', onPulse);
+    return () => {
+      window.removeEventListener('liveboom:pulse-explore-chrome', onPulse);
+      window.clearTimeout(exploreChromeTimer.current);
+    };
+  }, [onExplore]);
+
+  /** Solo landscape: sin bottom nav. El header de Explorar se anima aparte. */
+  const hideBottomNav = onExplore && deviceLandscape;
+  const hideExploreHeader = onExplore && (deviceLandscape || !exploreHeaderVisible);
+
   const isTablet = breakpoint === 'tablet';
   const isDesktop = breakpoint === 'desktop';
   // Tablet: menú izquierdo fijo con etiquetas. Desktop: rail retractil / fijo.
@@ -438,21 +465,26 @@ export function MainLayout() {
         onProfilePage ? ' lb-shell--profile' : ''
       }${onMessages ? ' lb-shell--messages' : ''}`}
     >
-      {!hideMobileChrome ? (
-      <header className="lb-shell-header flex shrink-0 items-center justify-between gap-2 overflow-x-hidden border-b border-white/5 pb-3 pl-[max(1rem,var(--lb-safe-left))] pr-[max(1rem,var(--lb-safe-right))] pt-[max(0.75rem,var(--lb-safe-top))] sm:gap-3 md:hidden">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+      {/* Barra superior edge-to-edge: cristal bajo la status bar nativa (logo, tema, campana, coins, menú). */}
+      <header
+        className={`lb-shell-header lb-shell-header--status flex shrink-0 items-center justify-between gap-1.5 overflow-x-hidden border-b border-white/10 pb-1.5 pl-[max(0.65rem,var(--lb-safe-left))] pr-[max(0.65rem,var(--lb-safe-right))] pt-[var(--lb-safe-top)] sm:gap-2 md:hidden${
+          hideExploreHeader ? ' is-chrome-hidden' : ''
+        }`}
+        aria-hidden={hideExploreHeader}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           <Link to="/" className="min-w-0 shrink">
-            <Logo compact className="[&_img]:!h-14 [&_img]:!max-w-[12rem] sm:[&_img]:!h-16 sm:[&_img]:!max-w-[14rem]" />
+            <Logo compact className="[&_img]:!h-11 [&_img]:!max-w-[9.5rem] sm:[&_img]:!h-12 sm:[&_img]:!max-w-[11rem]" />
           </Link>
           <AppearanceControl />
         </div>
-        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-1.5">
           {profile ? <NotificationBell /> : null}
           {profile ? (
             <button
               type="button"
               onClick={() => setRechargeOpen(true)}
-              className="max-w-[7.5rem] truncate rounded-full bg-zinc-900 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-400 ring-1 ring-cyan-500/30 sm:max-w-none sm:px-3 sm:text-xs"
+              className="max-w-[7rem] truncate rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-cyan-300 ring-1 ring-cyan-400/35 backdrop-blur-md sm:max-w-none sm:px-2.5 sm:text-[11px]"
             >
               {profile.coinsBalance.toLocaleString(bcp47For(locale))} {t('nav.coins')}
             </button>
@@ -469,14 +501,13 @@ export function MainLayout() {
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-zinc-900 text-zinc-300"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10 text-zinc-200 ring-1 ring-white/15 backdrop-blur-md"
             aria-label={t('nav.openMenu')}
           >
-            <Menu size={18} />
+            <Menu size={17} />
           </button>
         </div>
       </header>
-      ) : null}
 
       <aside
         className={`lb-sidebar hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] py-3 md:flex ${
@@ -512,11 +543,11 @@ export function MainLayout() {
         className={`relative min-h-0 min-w-0 flex-1 ${
           onExplore
             ? /* flex-1 sin % fijo: evita columna negra (sidebar + 56% + rail > 100%). */
-              `overflow-hidden p-0 ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)] md:pb-0'}`
+              `overflow-hidden p-0 ${hideBottomNav ? 'pb-0' : 'pb-[var(--lb-bottom-nav-h)] md:pb-0'}`
             : onMessages
               ? 'overflow-hidden p-0'
               : onProfilePage
-                ? `overflow-y-auto overflow-x-hidden overscroll-y-contain p-0 lg:w-[56%] ${hideMobileChrome ? 'pb-0' : 'pb-[var(--lb-main-pad-bottom)] md:pb-4'} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`
+                ? `overflow-y-auto overflow-x-hidden overscroll-y-contain p-0 lg:w-[56%] ${hideBottomNav ? 'pb-0' : 'pb-[var(--lb-main-pad-bottom)] md:pb-4'} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`
                 : 'overflow-y-auto overflow-x-hidden overscroll-y-contain pt-3 pb-[var(--lb-main-pad-bottom)] pl-[max(0.75rem,var(--lb-safe-left))] pr-[max(0.75rem,var(--lb-safe-right))] sm:pt-4 lg:w-[56%] lg:p-4 lg:pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
         }`}
       >
@@ -552,7 +583,7 @@ export function MainLayout() {
 
       <SideRailPanel />
 
-      {!hideMobileChrome ? <LiquidBottomNav items={mobileNavItems} /> : null}
+      {!hideBottomNav ? <LiquidBottomNav items={mobileNavItems} /> : null}
 
       {menuOpen ? (
         <div className="lb-shell-mobile-layer fixed inset-0 z-50 md:hidden">

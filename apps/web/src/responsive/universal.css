@@ -43,10 +43,23 @@ html[data-lb-keyboard='open'] .lb-shell {
   max-height: var(--lb-vv-height);
 }
 
+/* Chat móvil: sin hueco entre compositor y teclado. */
+html[data-lb-keyboard='open'] .lb-messages-shell {
+  padding-bottom: 0 !important;
+}
+
+html[data-lb-keyboard='open'] .lb-liquid-nav {
+  display: none !important;
+}
+
+html[data-lb-keyboard='open'] .lb-chat-composer {
+  padding-bottom: 0.25rem !important;
+}
+
 html[data-lb-keyboard='open'] input:focus,
 html[data-lb-keyboard='open'] textarea:focus,
 html[data-lb-keyboard='open'] [contenteditable='true']:focus {
-  scroll-margin-bottom: calc(0.75rem + var(--lb-safe-bottom, 0px) + var(--lb-keyboard-inset, 0px));
+  scroll-margin-bottom: calc(0.75rem + var(--lb-keyboard-inset, 0px));
 }
 
 html[data-lb-height='compact'] {

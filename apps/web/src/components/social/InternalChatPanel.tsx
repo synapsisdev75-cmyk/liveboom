@@ -649,11 +649,13 @@ function Avatar({
   const letter = (name || '?').slice(0, 1).toUpperCase();
   const showPresence = typeof presence === 'boolean';
   const isOnline = showPresence ? presence : Boolean(online);
-  const fluid = Boolean(className);
+  const boxStyle = className
+    ? undefined
+    : { width: size, height: size, minWidth: size, minHeight: size, maxWidth: size, maxHeight: size };
   return (
     <span
-      className={`relative block shrink-0 rounded-full ${className ?? ''}`}
-      style={fluid ? undefined : { width: size, height: size, minWidth: size, minHeight: size, maxWidth: size, maxHeight: size }}
+      className={`relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-zinc-800 ${className ?? ''}`}
+      style={boxStyle}
     >
       <span className="block h-full w-full overflow-hidden rounded-full">
         {url ? (
@@ -662,20 +664,27 @@ function Avatar({
             alt=""
             width={size}
             height={size}
-            className={`block h-full w-full rounded-full object-cover ${
+            decoding="async"
+            className={`lb-chat-avatar-img block h-full w-full rounded-full object-cover object-center ${
               ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
             }`}
-            style={fluid ? undefined : { width: size, height: size, maxWidth: size, maxHeight: size }}
+            draggable={false}
+            onError={(event) => {
+              event.currentTarget.style.display = 'none';
+              const fallback = event.currentTarget.nextElementSibling;
+              if (fallback instanceof HTMLElement) fallback.hidden = false;
+            }}
           />
-        ) : (
-          <span
-            className={`grid h-full w-full place-items-center rounded-full bg-zinc-800 text-[10px] font-bold text-violet-300 ${
-              ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
-            }`}
-          >
-            {letter}
-          </span>
-        )}
+        ) : null}
+        <span
+          className={`grid h-full w-full place-items-center rounded-full bg-zinc-800 text-[10px] font-bold text-violet-300 ${
+            ring ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-[#0a0a0b]' : ''
+          }`}
+          hidden={Boolean(url)}
+          aria-hidden
+        >
+          {letter}
+        </span>
       </span>
       {showPresence || online ? (
         <span
@@ -1134,8 +1143,9 @@ export function InternalChatPanel({
     return () => registerChatCallSurface(null);
   }, [chatId, activeFriend?.uid]);
 
+  // Página /mensajes o chat flotante: el chat activo silencia push/campana en la app.
   useEffect(() => {
-    if (!isPage) return;
+    if (!chatId && !activeUid) return;
     patchChatNotifyContext({
       activeChatId: chatId,
       activePeerUid: activeUid,
@@ -1143,7 +1153,7 @@ export function InternalChatPanel({
     return () => {
       patchChatNotifyContext({ activeChatId: null, activePeerUid: null });
     };
-  }, [isPage, chatId, activeUid]);
+  }, [chatId, activeUid]);
 
   useEffect(() => {
     if (!profile || !activeFriend) {
@@ -2977,7 +2987,9 @@ export function InternalChatPanel({
         <div
           className="lb-chat-composer flex min-w-0 shrink-0 items-end gap-2 overflow-x-hidden border-t border-[color:var(--border-soft)] px-3 py-2"
           style={{
-            paddingBottom: isPage ? '0.65rem' : 'max(0.65rem, var(--lb-safe-bottom))',
+            paddingBottom: isPage
+              ? '0.4rem'
+              : 'max(0.4rem, var(--lb-safe-bottom))',
           }}
         >
           <input
@@ -3078,7 +3090,7 @@ export function InternalChatPanel({
                     emojiSize={CHAT_EMOJI_SIZE}
                     className="lb-chat-composer-grow min-w-0 flex-1"
                     fieldClassName="min-w-0"
-                    padClassName="py-1 pr-1.5"
+                    padClassName="py-2.5 pr-1.5"
                     mirrorTextClassName="text-[color:var(--text-primary)]"
                   />
                   <div className="lb-chat-composer-inline-tools">
@@ -3324,7 +3336,7 @@ export function InternalChatPanel({
 
   return (
     <>
-      <section className="flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)+var(--lb-safe-bottom))] md:flex-row-reverse lg:pb-0">
+      <section className="lb-messages-shell flex h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0b] pb-[calc(var(--lb-bottom-nav-h)-0.55rem)] md:flex-row-reverse lg:pb-0">
         {listPane}
         {threadPane}
       </section>

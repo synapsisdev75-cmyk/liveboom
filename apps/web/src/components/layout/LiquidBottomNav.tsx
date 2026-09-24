@@ -74,8 +74,9 @@ type Props = {
 };
 
 /**
- * Bottom nav líquido (burbuja + dip) — solo &lt; lg (móvil/tablet).
- * Desktop: sidebar intacta.
+ * Bottom nav líquido (burbuja + dip) — solo teléfono (&lt; md).
+ * Tablet/desktop: menú izquierdo (sidebar).
+ * Sin cristal ni hide animado: el glass edge-to-edge va solo en el header superior.
  */
 export function LiquidBottomNav({ items }: Props) {
   const location = useLocation();
@@ -103,10 +104,7 @@ export function LiquidBottomNav({ items }: Props) {
   const ActiveIcon = activeItem?.icon;
 
   return (
-    <nav
-      className="lb-liquid-nav fixed inset-x-0 bottom-0 z-40 lg:hidden"
-      aria-label="Navegación principal"
-    >
+    <nav className="lb-liquid-nav fixed inset-x-0 bottom-0 z-40 md:hidden" aria-label="Navegación principal">
       <div className="lb-liquid-nav__shell relative mx-auto w-full max-w-[42rem] px-[max(0.25rem,var(--lb-safe-left))] pr-[max(0.25rem,var(--lb-safe-right))]">
         <motion.div
           className="lb-liquid-nav__bubble pointer-events-none absolute z-[2] grid h-11 w-11 place-items-center rounded-full"

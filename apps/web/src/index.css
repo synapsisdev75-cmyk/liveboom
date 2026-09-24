@@ -226,13 +226,21 @@
 
 .lb-immersive-backdrop__media {
   position: absolute;
-  inset: -12%;
-  width: 124%;
-  height: 124%;
+  inset: -18%;
+  width: 136%;
+  height: 136%;
   object-fit: cover;
   filter: blur(clamp(24px, 3vw, 48px)) brightness(0.45) saturate(0.9);
-  transform: scale(1.08);
+  transform: scale(1.12);
   pointer-events: none;
+}
+
+/* Preservar blur del fondo inmersivo en todos los temas (no resetear filter). */
+html[data-lb-theme] .lb-immersive-backdrop__media,
+html[data-lb-theme] .lb-media-stage__ambient-media {
+  filter: blur(clamp(24px, 3vw, 48px)) brightness(0.45) saturate(0.9);
+  mix-blend-mode: normal;
+  opacity: 1;
 }
 
 .lb-immersive-media-box {
@@ -291,7 +299,7 @@
 
 /* Explorar / Flash Boom / Clips / Publicaciones: rail fijo a la izquierda del media */
 .lb-immersive-stage__row {
-  gap: clamp(0.2rem, 1vw, 0.45rem);
+  gap: 0;
   padding-left: max(0.15rem, env(safe-area-inset-left, 0px));
   min-height: 0;
 }
@@ -339,6 +347,34 @@
   gap: var(--lb-action-gap);
   overflow: visible !important;
   max-height: none !important;
+}
+
+/* Móvil: rail más compacto pegado al borde izquierdo. */
+@media (max-width: 1023px) {
+  .lb-action-rail--fit {
+    --lb-action-size: clamp(30px, 3.6dvh, 38px);
+    --lb-action-gap: clamp(2px, 0.55dvh, 7px);
+  }
+
+  .lb-action-rail--fit .lb-action-rail__avatar-wrap {
+    width: clamp(2.1rem, 8vw, 2.55rem);
+    height: clamp(2.1rem, 8vw, 2.55rem);
+  }
+
+  .lb-action-rail--fit .lb-action-rail__label,
+  .lb-action-rail--fit .lb-action-rail__gift span.text-\[11px\] {
+    font-size: clamp(0.45rem, 1.1dvh, 0.58rem);
+  }
+
+  .lb-action-rail--fit .lb-action-rail__count {
+    font-size: clamp(0.55rem, 1.2dvh, 0.68rem);
+  }
+
+  .lb-immersive-stage[data-fill='cover'] .lb-action-rail--corner,
+  .lb-immersive-stage[data-fill='cover'] .lb-action-rail--media.lb-action-rail--corner {
+    left: max(0.35rem, env(safe-area-inset-left, 0px));
+    right: auto;
+  }
 }
 
 .lb-action-rail--fit .lb-action-rail__btn {
@@ -632,7 +668,8 @@
   --lb-main-pad-bottom: calc(7.75rem + var(--lb-safe-bottom));
 }
 
-/* Bottom nav líquido — móvil / tablet (< lg). Desktop: sidebar. */
+/* Bottom nav líquido — móvil / tablet (< lg). Desktop: sidebar.
+   Estilo sólido (sin glass): el cristal edge-to-edge es solo del header superior. */
 .lb-liquid-nav {
   pointer-events: none;
 }
@@ -647,6 +684,12 @@
   fill: var(--lb-bg-sidebar);
   background: var(--lb-bg-sidebar);
   transition: fill 0.2s ease, background-color 0.2s ease;
+}
+
+html[data-lb-theme='light'] .lb-liquid-nav__curve-fill,
+html[data-lb-theme='light'] .lb-liquid-nav__bar-fill {
+  fill: var(--lb-surface);
+  background: var(--lb-surface);
 }
 
 .lb-liquid-nav__bubble {
@@ -687,12 +730,6 @@
 
 .lb-liquid-nav__label--active {
   color: var(--lb-accent-secondary);
-}
-
-html[data-lb-theme='light'] .lb-liquid-nav__curve-fill,
-html[data-lb-theme='light'] .lb-liquid-nav__bar-fill {
-  fill: var(--lb-surface);
-  background: var(--lb-surface);
 }
 
 html[data-lb-theme='light'] .lb-liquid-nav__bubble {
@@ -1248,7 +1285,14 @@ aside.chat-scroll::-webkit-scrollbar {
   min-height: 5rem;
 }
 
-/* Quita fondos negros opacos de iconos (p. ej. avión de papel) sobre la tarjeta oscura. */
+/* Quita fondos negros opacos de iconos (p. ej. avión) sobre tarjeta.
+   Aislamos el thumb con placa oscura: lighten/screen siguen viéndose en tema claro. */
+.gift-box-item__thumb {
+  isolation: isolate;
+  background: #0c0c12;
+  border-radius: 0.55rem;
+}
+
 .gift-box-item .lb-gift-icon-img {
   background: transparent !important;
   mix-blend-mode: lighten;
@@ -1263,6 +1307,18 @@ aside.chat-scroll::-webkit-scrollbar {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  mix-blend-mode: screen;
+}
+
+html[data-lb-theme='light'] .gift-box-item__thumb {
+  background: #0c0c12;
+}
+
+html[data-lb-theme='light'] .gift-box-item .lb-gift-icon-img {
+  mix-blend-mode: lighten;
+}
+
+html[data-lb-theme='light'] .gift-box-item video {
   mix-blend-mode: screen;
 }
 
@@ -1342,6 +1398,16 @@ aside.chat-scroll::-webkit-scrollbar {
   mix-blend-mode: screen;
   animation: lb-gift-combo-pop 1.15s cubic-bezier(0.22, 1.35, 0.36, 1) both;
   will-change: transform, opacity, filter;
+}
+
+html[data-lb-theme='light'] .lb-gift-combo-badge {
+  isolation: isolate;
+  background: rgba(8, 8, 14, 0.72);
+  border-radius: 0.65rem;
+}
+
+html[data-lb-theme='light'] .lb-gift-combo-badge__img {
+  mix-blend-mode: screen;
 }
 
 /* Mini burbuja de chat: encima de la esquina del sticker. */
@@ -2953,8 +3019,8 @@ html:has(.lb-auth-page) #root {
   background: color-mix(in srgb, var(--success, #34d399) 16%, var(--lb-surface));
 }
 
-/* Sidebar escritorio/tablet: iconos por defecto; al pasar/tocar se expande. */
-@media (min-width: 1024px) {
+/* Sidebar escritorio/tablet: iconos por defecto; al pasar/tocar se expande (desktop). */
+@media (min-width: 768px) {
   .lb-sidebar-mode-toggle {
     display: grid;
     place-items: center;
@@ -3133,6 +3199,21 @@ html:has(.lb-auth-page) #root {
   .lb-sidebar .lb-nav-icon {
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;
+  }
+}
+
+/* Tablet: menú izquierdo fijo (no drawer a la derecha). */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .lb-sidebar--tablet.lb-sidebar--expanded {
+    width: min(34%, 15.5rem);
+    min-width: 12.5rem;
+    max-width: 15.5rem;
+    z-index: 36;
+  }
+
+  .lb-sidebar--tablet .lb-side-nav {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -9274,6 +9355,18 @@ a.lb-entity:active,
   height: clamp(1.85rem, 8.2vw, 2.75rem);
   min-width: clamp(1.85rem, 8.2vw, 2.75rem);
   min-height: clamp(1.85rem, 8.2vw, 2.75rem);
+}
+
+/* Avatares de chat: cover centrado (evita franja rota en móvil). */
+.lb-chat-pane .lb-chat-avatar-img,
+.lb-chat-thread-head__avatar .lb-chat-avatar-img,
+.lb-chat-pane img.lb-chat-avatar-img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  object-position: center !important;
 }
 
 .lb-chat-thread-head__id {
@@ -15759,11 +15852,14 @@ a.lb-entity:active,
   min-width: 0;
   flex: 1 1 auto;
   min-height: 2.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   overflow: hidden;
   border-radius: 1.35rem;
   border: 1px solid var(--border-default);
   background: var(--bg-elevated);
-  padding: 0.08rem 0.18rem 0.08rem 0.7rem;
+  padding: 0.12rem 0.18rem 0.12rem 0.7rem;
   transition:
     border-color 0.22s ease,
     box-shadow 0.28s ease;
@@ -16019,6 +16115,7 @@ a.lb-entity:active,
   overscroll-behavior: contain;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+  line-height: 1.35;
   /* Scroll invisible al pasar de 2 a 3+ líneas */
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -16054,17 +16151,18 @@ a.lb-entity:active,
   display: none;
 }
 
-@media (max-width: 767px) {
+  @media (max-width: 767px) {
   .lb-chat-composer {
-    gap: 0.4rem;
-    padding-top: 0.4rem;
+    gap: 0.35rem;
+    padding-top: 0.3rem;
+    padding-bottom: 0.15rem;
     padding-left: max(0.65rem, var(--lb-safe-left));
     padding-right: max(0.65rem, var(--lb-safe-right));
   }
 
   .lb-chat-composer-field {
-    min-height: 2.5rem;
-    padding: 0.04rem 0.1rem 0.04rem 0.55rem;
+    min-height: 2.65rem;
+    padding: 0.1rem 0.1rem 0.1rem 0.6rem;
   }
 }
 
