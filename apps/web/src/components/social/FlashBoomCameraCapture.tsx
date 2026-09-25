@@ -44,6 +44,8 @@ type Props = {
   title?: string;
   maxDurationSec?: number;
   allowPhoto?: boolean;
+  /** Si es false, solo foto (agregar a un álbum). */
+  allowVideo?: boolean;
   defaultMode?: CaptureMode;
 };
 
@@ -55,6 +57,7 @@ export function FlashBoomCameraCapture({
   title = 'Cámara',
   maxDurationSec = 90,
   allowPhoto = true,
+  allowVideo = true,
   defaultMode = 'photo',
 }: Props) {
   useBodyScrollLock(open);
@@ -180,7 +183,7 @@ export function FlashBoomCameraCapture({
 
   useEffect(() => {
     if (!open) return;
-    const initialMode = allowPhoto ? defaultMode : 'video';
+    const initialMode: CaptureMode = !allowVideo ? 'photo' : allowPhoto ? defaultMode : 'video';
     setMode(initialMode);
     setError(null);
     setPreviewUrl(null);
@@ -193,7 +196,7 @@ export function FlashBoomCameraCapture({
       recorderRef.current?.stop();
       stopStream();
     };
-  }, [open, allowPhoto, defaultMode, startStream, stopStream]);
+  }, [open, allowPhoto, allowVideo, defaultMode, startStream, stopStream]);
 
   useEffect(() => {
     return () => {
@@ -214,6 +217,7 @@ export function FlashBoomCameraCapture({
 
   function switchMode(next: CaptureMode) {
     if (!allowPhoto && next === 'photo') return;
+    if (!allowVideo && next === 'video') return;
     if (recording || previewFile) return;
     setMode(next);
     void startStream(next, deviceIdRef.current);
@@ -403,7 +407,7 @@ export function FlashBoomCameraCapture({
         </div>
       </div>
 
-      {!reviewing && !recording ? (
+      {!reviewing && !recording && allowPhoto && allowVideo ? (
         <div className="mx-auto mb-2 flex w-[min(100%-1.5rem,18rem)] rounded-full border border-white/15 bg-black/50 p-0.5">
           {allowPhoto ? (
             <button

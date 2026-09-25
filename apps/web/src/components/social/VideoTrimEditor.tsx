@@ -152,7 +152,8 @@ export function VideoTrimEditor({
   const [aiBusy, setAiBusy] = useState(false);
   const [editingClipId, setEditingClipId] = useState<string | null>(null);
   const [showAdjustPanel, setShowAdjustPanel] = useState(true);
-  const [mobileSection, setMobileSection] = useState<'trim' | 'color' | 'speed' | 'ai'>('color');
+  const [mobileSection, setMobileSection] = useState<'trim' | 'color' | 'speed' | 'ai'>('trim');
+  const [trimProgress, setTrimProgress] = useState(0);
 
   const clipDuration = useMemo(() => Math.max(0, endSec - startSec), [startSec, endSec]);
   const maxEnd = useMemo(
@@ -187,9 +188,21 @@ export function VideoTrimEditor({
   useEffect(() => {
     const video = videoRef.current;
     if (!video || loadingMeta || draggingRef.current) return;
-    video.currentTime = startSec;
-    video.playbackRate = adjust.speed;
+    const rate = adjust.speed > 0 ? adjust.speed : 1;
+    video.playbackRate = rate;
+    if (Math.abs(video.currentTime - startSec) > 0.35) video.currentTime = startSec;
   }, [startSec, loadingMeta, adjust.speed]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onTime = () => {
+      if (draggingRef.current) return;
+      if (video.currentTime >= endSec - 0.05) video.currentTime = startSec;
+    };
+    video.addEventListener('timeupdate', onTime);
+    return () => video.removeEventListener('timeupdate', onTime);
+  }, [startSec, endSec]);
 
   useEffect(() => {
     if (endSec > maxEnd) setEndSec(maxEnd);
@@ -351,7 +364,8 @@ export function VideoTrimEditor({
     trimAbortRef.current?.abort();
     const abort = new AbortController();
     trimAbortRef.current = abort;
-    return trimVideoFile(file, from, to, abort.signal);
+    setTrimProgress(0);
+    return trimVideoFile(file, from, to, abort.signal, setTrimProgress);
   }
 
   function isAbortError(err: unknown) {
@@ -479,7 +493,9 @@ export function VideoTrimEditor({
 
   function renderSpeedRow() {
     return (
-      <div className="flex flex-wrap gap-1.5">
+      <div>
+        <p className="mb-2 text-[10px] text-zinc-500">La velocidad solo cambia la vista previa, no el archivo.</p>
+        <div className="flex flex-wrap gap-1.5">
         {[0.5, 1, 1.5, 2].map((rate) => (
           <button
             key={rate}
@@ -505,7 +521,8 @@ export function VideoTrimEditor({
         >
           <Maximize2 size={11} />
           Estabilizar
-        </button>
+          </button>
+        </div>
       </div>
     );
   }
@@ -731,7 +748,9 @@ export function VideoTrimEditor({
       </div>
       <p className="mt-1.5 shrink-0 text-center text-[11px] font-semibold text-cyan-200">
         {mode === 'manual'
-          ? `Inicio ${startSec.toFixed(1)} s · Fin ${endSec.toFixed(1)} s · ${clipDuration.toFixed(1)} s / ${maxDurationSec} s`
+          ? maxDurationSec < durationSec - 0.2
+            ? `Inicio ${startSec.toFixed(1)} s · Fin ${endSec.toFixed(1)} s · ${clipDuration.toFixed(1)} s / ${maxDurationSec} s`
+            : `Inicio ${startSec.toFixed(1)} s · Fin ${endSec.toFixed(1)} s · ${clipDuration.toFixed(1)} s`
           : `Máximo ${maxDurationSec} s por ${productLabel}`}
       </p>
     </>
@@ -739,7 +758,7 @@ export function VideoTrimEditor({
 
   const panel = (
     <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-3">
-      <div className="lb-video-editor flex h-[96dvh] max-h-[96dvh] w-full max-w-[min(72rem,calc(100vw-0.5rem))] flex-col overflow-hidden rounded-t-3xl border border-cyan-400/20 bg-zinc-950 shadow-[0_0_24px_rgba(34,211,238,0.12)] sm:h-[min(92dvh,52rem)] sm:rounded-3xl">
+      <div className={`lb-video-editor is-section-${mobileSection} flex h-[96dvh] max-h-[96dvh] w-full max-w-[min(72rem,calc(100vw-0.5rem))] flex-col overflow-hidden rounded-t-3xl border border-cyan-400/20 bg-zinc-950 shadow-[0_0_24px_rgba(34,211,238,0.12)] sm:h-[min(92dvh,52rem)] sm:rounded-3xl`}>
         <div className="lb-video-editor-head shrink-0 border-b border-white/10 px-3 py-2 sm:px-4 sm:py-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -747,7 +766,7 @@ export function VideoTrimEditor({
               <h3 className="truncate text-base font-bold text-white">{title}</h3>
             </div>
             <p className="mt-0.5 hidden text-[11px] text-zinc-400 sm:block">
-              Recorta, ajusta y crea varios Boom Clips con IA.
+              Elige el tramo de {productLabel}. El video se ve completo arriba.
             </p>
           </div>
           <div className="lb-video-editor-modes">
@@ -834,8 +853,8 @@ export function VideoTrimEditor({
               <div className="lb-video-editor-mobile-panel">
                 {mobileSection === 'trim' ? (
                   <p className="text-[11px] leading-snug text-zinc-400">
-                    Arrastra el recuadro de la línea de tiempo para elegir inicio y fin. El video se
-                    queda arriba mientras recortas.
+                    Arrastra los extremos de la línea de tiempo. El video queda grande arriba y solo se
+                    reproduce el tramo elegido.
                   </p>
                 ) : null}
                 {mobileSection === 'color' ? (
@@ -890,7 +909,7 @@ export function VideoTrimEditor({
                 className="inline-flex min-h-11 items-center rounded-full bg-gradient-to-r from-fuchsia-500 to-violet-500 px-5 text-sm font-bold text-white disabled:opacity-60"
               >
                 {busy
-                  ? 'Creando…'
+                  ? `Recortando ${Math.max(1, Math.round(trimProgress * 100))}%`
                   : `Crear ${selectedAi.length} ${productNoun(productLabel, selectedAi.length)}`}
               </button>
             ) : (
@@ -900,7 +919,11 @@ export function VideoTrimEditor({
                 onClick={() => void handleSaveManual()}
                 className="inline-flex min-h-11 items-center rounded-full bg-cyan-500 px-5 text-sm font-bold text-zinc-950 disabled:opacity-60"
               >
-                {busy ? 'Procesando…' : editingClipId ? 'Aplicar al clip' : 'Usar este tramo →'}
+                {busy
+                  ? `Recortando ${Math.max(1, Math.round(trimProgress * 100))}%`
+                  : editingClipId
+                    ? 'Aplicar al clip'
+                    : 'Usar este tramo →'}
               </button>
             )}
           </div>

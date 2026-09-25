@@ -26,6 +26,7 @@ import { PostViewsIndicator } from '../components/social/PostViewsIndicator';
 import { PostReceivedGiftsButton } from '../components/social/PostReceivedGiftsButton';
 import { ReelGiftControls } from '../components/feed/ReelGiftControls';
 import { markHomeFeedReady } from '../components/brand/BootSplash';
+import { warmLongFeedVideos } from '../lib/feedVideoWarmup';
 import { GO_HOME_EVENT } from '../lib/goHome';
 import { buildPostShareUrl } from '../lib/shareContent';
 import { PostPhotoViewer } from '../components/social/PostPhotoViewer';
@@ -524,11 +525,14 @@ export function HomeView() {
     setPosts([]);
     if (tab === 'cerca') {
       return listenRecentPosts((list) => {
-        setPosts(list.filter((item) => isPublicationPost(item)).map(toSocial));
+        const publications = list.filter((item) => isPublicationPost(item));
+        warmLongFeedVideos(publications);
+        setPosts(publications.map(toSocial));
         markHomeFeedReady();
       });
     }
     return listenHomeFeed(profile.firebaseUid, tab, (list, meta) => {
+      warmLongFeedVideos(list);
       setPosts(list.map(toSocial));
       setFeedMeta(meta);
       markHomeFeedReady();

@@ -30,6 +30,7 @@ import {
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { GO_HOME_EVENT } from '../../lib/goHome';
+import { subscribeFeedVideoWarm, wasFeedVideoWarmed } from '../../lib/feedVideoWarmup';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster, TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import {
@@ -231,6 +232,16 @@ export function PostVideoPlayer({
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
   const isDesktop = useIsDesktop();
+  const [feedWarmed, setFeedWarmed] = useState(() => wasFeedVideoWarmed(src));
+  useEffect(() => {
+    if (wasFeedVideoWarmed(src)) {
+      setFeedWarmed(true);
+      return;
+    }
+    return subscribeFeedVideoWarm(() => {
+      if (wasFeedVideoWarmed(src)) setFeedWarmed(true);
+    });
+  }, [src]);
   const [deviceLandscape, setDeviceLandscape] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -741,7 +752,7 @@ export function PostVideoPlayer({
         muted={muted}
         loop={!storyMode}
         playsInline
-        preload={expanded || overlayOnly || fastNav ? 'auto' : 'metadata'}
+        preload={expanded || overlayOnly || fastNav || feedWarmed ? 'auto' : 'metadata'}
         autoPlay={overlayOnly || expanded}
         onClick={
           !expanded && !overlayOnly
@@ -796,11 +807,10 @@ export function PostVideoPlayer({
 
   const immersiveW = pubW || videoAspect.width || 9;
   const immersiveH = pubH || videoAspect.height || 16;
-  // Rail al lado del media en PC (igual que Explorar). En móvil landscape → borde.
+  // PC: rail al lado del media. Celular girado: rail dentro del video (corner).
   const useLandscapeAside = isDesktop;
   const parkRailAtDeviceEdge = deviceLandscape;
-  const expandedRailLayout =
-    useLandscapeAside || parkRailAtDeviceEdge ? 'aside' : actionRailLayout;
+  const expandedRailLayout = useLandscapeAside ? 'aside' : actionRailLayout;
   /** Publicaciones (feed): contain en fullscreen; Explorar/clips mantienen auto. */
   const publicationFillMode = !overlayOnly && !immersiveLandscapeLayout ? 'contain' : 'auto';
 

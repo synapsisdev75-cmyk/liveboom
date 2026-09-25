@@ -43,12 +43,13 @@ function throwIfAborted(signal?: AbortSignal) {
   }
 }
 
-/** Recorta un video local entre startSec y endSec (re-encode en el navegador). */
+/** Recorta un video local entre startSec y endSec. Copia el tramo sin regrabarlo en tiempo real. */
 export async function trimVideoFile(
   file: File,
   startSec: number,
   endSec: number,
   signal?: AbortSignal,
+  onProgress?: (progress: number) => void,
 ): Promise<File> {
   throwIfAborted(signal);
   const start = Math.max(0, startSec);
@@ -58,6 +59,83 @@ export async function trimVideoFile(
     throw new Error('El recorte debe durar al menos 1 segundo.');
   }
 
+  try {
+    return await trimWithMediabunny(file, start, end, signal, onProgress);
+  } catch (error) {
+    if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+      throw error;
+    }
+    return trimWithRecorder(file, start, end, durationMs, signal, onProgress);
+  }
+}
+
+async function trimWithMediabunny(
+  file: File,
+  start: number,
+  end: number,
+  signal: AbortSignal | undefined,
+  onProgress?: (progress: number) => void,
+) {
+  const { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output } =
+    await import('mediabunny');
+  throwIfAborted(signal);
+  const input = new Input({
+    source: new BlobSource(file),
+    formats: ALL_FORMATS,
+  });
+  try {
+    const target = new BufferTarget();
+    const output = new Output({
+      format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
+      target,
+    });
+    const conversion = await Conversion.init({
+      input,
+      output,
+      tracks: 'primary',
+      trim: { start, end },
+      showWarnings: false,
+    });
+    throwIfAborted(signal);
+    if (!conversion.isValid) {
+      throw new Error('No se pudo copiar el tramo');
+    }
+    conversion.onProgress = (progress) => {
+      onProgress?.(Math.max(0, Math.min(1, progress)));
+    };
+    const onAbort = () => {
+      void conversion.cancel();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      await conversion.execute();
+    } catch (error) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
+    throwIfAborted(signal);
+    const buffer = target.buffer;
+    if (!buffer || buffer.byteLength < 32) {
+      throw new Error('El recorte salió vacío');
+    }
+    onProgress?.(1);
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'video';
+    return new File([buffer], `${baseName}-trim.mp4`, { type: 'video/mp4' });
+  } finally {
+    input.dispose();
+  }
+}
+
+async function trimWithRecorder(
+  file: File,
+  start: number,
+  end: number,
+  durationMs: number,
+  signal?: AbortSignal,
+  onProgress?: (progress: number) => void,
+): Promise<File> {
   const url = URL.createObjectURL(file);
   const video = document.createElement('video');
   video.playsInline = true;
@@ -132,7 +210,12 @@ export async function trimVideoFile(
     await video.play();
     throwIfAborted(signal);
     activeRecorder.start(250);
-    await new Promise<void>((resolve, reject) => {
+    const startedAt = performance.now();
+    const progressTimer = window.setInterval(() => {
+      onProgress?.(Math.min(0.92, (performance.now() - startedAt) / Math.max(1, durationMs)));
+    }, 400);
+    try {
+      await new Promise<void>((resolve, reject) => {
       stopTimer = window.setTimeout(() => {
         video.pause();
         if (activeRecorder.state !== 'inactive') activeRecorder.stop();
@@ -147,6 +230,9 @@ export async function trimVideoFile(
         else signal.addEventListener('abort', onAbortWait, { once: true });
       }
     });
+    } finally {
+      window.clearInterval(progressTimer);
+    }
 
     const blob = await recorded;
     throwIfAborted(signal);

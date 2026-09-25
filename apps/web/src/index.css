@@ -330,6 +330,31 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   right: auto;
 }
 
+/* 16:9 en vertical: me gusta y acciones en la franja negra, fuera del video. */
+.lb-immersive-letterbox-rail {
+  left: max(0.35rem, env(safe-area-inset-left, 0px));
+  right: auto;
+  width: 3.4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: visible;
+}
+
+.lb-immersive-letterbox-rail .lb-action-rail,
+.lb-immersive-letterbox-rail .lb-action-rail--media,
+.lb-immersive-letterbox-rail .lb-action-rail--corner {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  max-height: 100%;
+  overflow: visible;
+}
+
 /* Teléfono/tablet landscape: ver responsive/mobile-tablet/landscape-explore.css */
 
 .lb-action-rail--aside {
@@ -8032,10 +8057,13 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  border-radius: 1rem;
+  background: #000;
 }
 
 .lb-video-editor-video {
   width: 100%;
+  height: 100%;
   max-height: 100%;
   border-radius: 1rem;
   background: #000;
@@ -8097,7 +8125,17 @@ body {
 @media (max-width: 899px) {
   .lb-video-editor-preview {
     flex: 0 1 auto;
-    max-height: min(38dvh, 16.5rem);
+    max-height: min(34dvh, 14rem);
+  }
+
+  .lb-video-editor.is-section-trim .lb-video-editor-preview {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: min(52dvh, 28rem);
+  }
+
+  .lb-video-editor.is-section-trim .lb-video-editor-mobile {
+    max-height: 24%;
   }
 
   .lb-video-editor-body:not(:has(.lb-video-editor-mobile-panel)) .lb-video-editor-preview {

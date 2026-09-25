@@ -7,7 +7,6 @@ import { reelLifecycleHint } from '../../lib/reelLifecycle';
 import { storyLifecycleHint, STORY_MAX_DURATION_SEC } from '../../lib/storyLifecycle';
 import { readVideoDurationSec } from '../../lib/videoDuration';
 import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
-import { BOOM_CLIP_MAX_DURATION_SEC } from '../../lib/videoTrim';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/mediaFile';
 import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
@@ -140,6 +139,8 @@ export function CreatePostModal({
     forcedKind?: PostKind;
   } | null>(null);
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
+  const [cameraAppend, setCameraAppend] = useState(false);
+  const [addMoreOpen, setAddMoreOpen] = useState(false);
   const [musicPickerOpen, setMusicPickerOpen] = useState(false);
   const [selectedMusic, setSelectedMusic] = useState<SelectedMusicClip | null>(null);
   const [overlays, setOverlays] = useState<MediaOverlayItem[]>([]);
@@ -777,10 +778,35 @@ export function CreatePostModal({
   function openCamera() {
     setError(null);
     setMediaMenuOpen(false);
+    setAddMoreOpen(false);
+    setCameraAppend(false);
+    setCameraCaptureOpen(true);
+  }
+
+  function openAddGallery() {
+    setError(null);
+    setAddMoreOpen(false);
+    const target = galleryAppendRef.current;
+    if (!target) return;
+    target.value = '';
+    target.click();
+  }
+
+  function openAddCamera() {
+    setError(null);
+    setAddMoreOpen(false);
+    setCameraAppend(true);
     setCameraCaptureOpen(true);
   }
 
   async function onCameraCapture(file: File, durationSec?: number) {
+    if (cameraAppend) {
+      setCameraAppend(false);
+      if ((mediaKindFromFile(file) || 'photo') === 'photo') {
+        appendAlbumPhotos([file]);
+        return;
+      }
+    }
     const detected = mediaKindFromFile(file) || 'video';
     await onFileChange(file, detected, durationSec);
   }
@@ -905,7 +931,7 @@ export function CreatePostModal({
     }
   }
 
-  function appendAlbumPhotos(files: FileList | null) {
+  function appendAlbumPhotos(files: FileList | readonly File[] | null) {
     if (!files || files.length === 0) return;
     if (composeTab !== 'publication') return;
     const picked = Array.from(files).filter((file) => mediaKindFromFile(file) === 'photo');
@@ -913,7 +939,12 @@ export function CreatePostModal({
       setError('Archivo no compatible. Usa foto (JPG, PNG).');
       return;
     }
-    if (!mediaFile && mediaFiles.length === 0 && albumUrls.length === 0) {
+    if (
+      !mediaFile &&
+      mediaFiles.length === 0 &&
+      albumUrls.length === 0 &&
+      files instanceof FileList
+    ) {
       void onMultiPhotoChange(files);
       return;
     }
@@ -1012,15 +1043,17 @@ export function CreatePostModal({
           return;
         }
       }
+      const known = videoDurationSecRef.current;
       const maxSec =
         composeTab === 'flashboom'
           ? STORY_MAX_DURATION_SEC
           : composeTab === 'boomclip'
             ? MAX_CLIP_DURATION_SECONDS
-            : BOOM_CLIP_MAX_DURATION_SEC;
+            : known > 0
+              ? known
+              : 60 * 60;
       const sharedUrl = previewUrl?.startsWith('blob:') ? previewUrl : undefined;
       const url = sharedUrl || URL.createObjectURL(file);
-      const known = videoDurationSecRef.current;
       setTrimDraft({
         file,
         url,
@@ -1398,6 +1431,7 @@ export function CreatePostModal({
               ? `Editar ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}`
               : 'Editar video'
           }
+          productLabel={isFlashBoom ? FLASH_BOOM_LABEL : isBoomClip ? BOOM_CLIP_LABEL : 'Publicación'}
           onCancel={cancelTrim}
           onSave={acceptTrim}
         />
@@ -1693,6 +1727,7 @@ export function CreatePostModal({
                     ) : null}
                   </div>
                   {composeTab === 'publication' && !previewIsVideo ? (
+                    <div>
                     <div className="flex gap-2 overflow-x-auto pb-1">
                       {(albumUrls.length ? albumUrls : previewSrc ? [previewSrc] : []).map((url, index) => (
                         <button
@@ -1709,12 +1744,9 @@ export function CreatePostModal({
                       {slideCount < PUBLICATION_ALBUM_MAX ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          const target = galleryAppendRef.current;
-                          if (!target) return;
-                          target.value = '';
-                          target.click();
-                        }}
+                        onClick={() => setAddMoreOpen((open) => !open)}
+                        aria-expanded={addMoreOpen}
+                        aria-label="Agregar foto"
                         className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-white/25 text-[9px] font-semibold text-zinc-400"
                       >
                         <Plus size={14} />
@@ -1722,6 +1754,27 @@ export function CreatePostModal({
                       </button>
                       ) : null}
                 </div>
+                      {addMoreOpen && slideCount < PUBLICATION_ALBUM_MAX ? (
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={openAddCamera}
+                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 text-xs font-semibold text-white"
+                          >
+                            <Camera size={15} />
+                            Cámara
+                          </button>
+                          <button
+                            type="button"
+                            onClick={openAddGallery}
+                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 text-xs font-semibold text-white"
+                          >
+                            <Image size={15} />
+                            Galería
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 {photoStageOpen ? (
@@ -2058,16 +2111,21 @@ export function CreatePostModal({
               ? `Editar ${isFlashBoom ? FLASH_BOOM_LABEL : BOOM_CLIP_LABEL}`
               : 'Editar video'
           }
+          productLabel={isFlashBoom ? FLASH_BOOM_LABEL : isBoomClip ? BOOM_CLIP_LABEL : 'Publicación'}
           onCancel={cancelTrim}
           onSave={acceptTrim}
         />
       ) : null}
       <FlashBoomCameraCapture
         open={cameraCaptureOpen}
-        onClose={() => setCameraCaptureOpen(false)}
+        onClose={() => {
+          setCameraCaptureOpen(false);
+          setCameraAppend(false);
+        }}
         onCapture={(file, durationSec) => void onCameraCapture(file, durationSec)}
         title="Cámara"
         allowPhoto={composeTab !== 'boomclip'}
+        allowVideo={!cameraAppend}
         defaultMode={composeTab === 'boomclip' ? 'video' : 'photo'}
         maxDurationSec={
           composeTab === 'flashboom'

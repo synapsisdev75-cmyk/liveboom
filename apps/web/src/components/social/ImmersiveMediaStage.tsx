@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import {
@@ -91,6 +91,7 @@ export function ImmersiveMediaStage({
   fillMode = 'auto',
 }: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
+  const mediaBoxRef = useRef<HTMLDivElement>(null);
   const [fillCover, setFillCover] = useState(false);
   const [deviceLandscape, setDeviceLandscape] = useState(false);
   const [isDesktopStage, setIsDesktopStage] = useState(
@@ -118,6 +119,11 @@ export function ImmersiveMediaStage({
   const railAside = useRailAside && !fillCover && !deviceLandscape && isDesktopStage;
   /** Solo vertical llena la pantalla. Al girar, el archivo se encaja (contain). */
   const mediaCover = fillCover && !deviceLandscape;
+  /** 16:9 en el celular vertical: el rail sale del video y se apoya en la franja negra. */
+  const railInLetterbox =
+    orientation === 'landscape' && !deviceLandscape && !railAside && !mediaCover && Boolean(sideChrome);
+  const [letterboxBand, setLetterboxBand] = useState<{ top: number; height: number } | null>(null);
+  const parkRailOutside = railInLetterbox && (letterboxBand?.height ?? 0) >= 64;
 
   useEffect(() => {
     const host = stageRef.current;
@@ -152,12 +158,12 @@ export function ImmersiveMediaStage({
                 left: 0,
                 right: 0,
               }
-            : nextDeviceLandscape
+              : nextDeviceLandscape
               ? {
                   ...insets,
                   top: exploreLandscape.stageInsetTopPx,
                   bottom: exploreLandscape.stageInsetBottomPx,
-                  left: exploreLandscape.mediaRightReservePx + 4,
+                  left: exploreLandscape.stageInsetLeftPx,
                   right: exploreLandscape.stageInsetLeftPx,
                 }
               : insets,
@@ -182,6 +188,23 @@ export function ImmersiveMediaStage({
       portraitMq?.removeEventListener('change', update);
     };
   }, [mediaWidth, mediaHeight, insets, useRailAside, fillMode]);
+
+  useLayoutEffect(() => {
+    if (!railInLetterbox) {
+      setLetterboxBand(null);
+      return;
+    }
+    const stage = stageRef.current;
+    const media = mediaBoxRef.current;
+    if (!stage || !media) return;
+    const stageRect = stage.getBoundingClientRect();
+    const mediaRect = media.getBoundingClientRect();
+    const top = Math.max(0, mediaRect.bottom - stageRect.top + 8);
+    const height = Math.max(0, stageRect.bottom - mediaRect.bottom - 10);
+    setLetterboxBand((prev) =>
+      prev && Math.abs(prev.top - top) < 1 && Math.abs(prev.height - height) < 1 ? prev : { top, height },
+    );
+  }, [railInLetterbox, box.width, box.height, deviceLandscape, mediaCover]);
 
   const pointerRef = useRef<{
     id: number;
@@ -231,6 +254,7 @@ export function ImmersiveMediaStage({
       }`}
       data-fill={mediaCover ? 'cover' : 'contain'}
       data-device-orientation={deviceLandscape ? 'landscape' : 'portrait'}
+      data-rail={parkRailOutside ? 'letterbox' : deviceLandscape ? 'inside' : undefined}
     >
       {mediaUrl && !mediaCover ? (
         <div className="lb-immersive-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
@@ -323,6 +347,7 @@ export function ImmersiveMediaStage({
             <div className="lb-immersive-rail-aside shrink-0">{sideChrome}</div>
           ) : null}
           <div
+            ref={mediaBoxRef}
             className={`lb-immersive-media-box lb-immersive-media-box--${orientation} relative shrink-0 ${
               mediaCover ? 'h-full w-full max-h-full max-w-full' : ''
             }`}
@@ -343,7 +368,7 @@ export function ImmersiveMediaStage({
           >
             {children}
             {mediaOverlay}
-            {!railAside && !deviceLandscape && sideChrome ? (
+            {!railAside && !parkRailOutside && !(railInLetterbox && letterboxBand === null) && sideChrome ? (
               <div className="pointer-events-none absolute inset-0 z-40 [&_.pointer-events-auto]:pointer-events-auto">
                 {sideChrome}
               </div>
@@ -352,9 +377,11 @@ export function ImmersiveMediaStage({
         </div>
       </div>
 
-      {/* Teléfono girado: rail al lado izquierdo del media. */}
-      {deviceLandscape && !railAside && sideChrome ? (
-        <div className="lb-immersive-edge-rail pointer-events-none absolute top-1/2 z-40 -translate-y-1/2 [&_.pointer-events-auto]:pointer-events-auto">
+      {parkRailOutside && letterboxBand ? (
+        <div
+          className="lb-immersive-letterbox-rail pointer-events-none absolute z-40 [&_.pointer-events-auto]:pointer-events-auto"
+          style={{ top: letterboxBand.top, height: letterboxBand.height }}
+        >
           {sideChrome}
         </div>
       ) : null}
