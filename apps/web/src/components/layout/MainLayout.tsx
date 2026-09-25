@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { sweepAuthorReelLifecycle } from '../../lib/socialFirestore';
 import { isMessagesPath, patchChatNotifyContext } from '../../lib/chatNotifyContext';
@@ -27,6 +27,7 @@ import { useUiStore } from '../../store/uiStore';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { VP_LG } from '../../responsive/viewport';
 import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { GO_HOME_EVENT, requestGoHome } from '../../lib/goHome';
 import { CoinModal } from '../wallet/CoinModal';
 import { initPendingBlastRechargeWatcher } from '../../lib/pendingBlastRecharge';
 import { NotificationBell } from '../social/NotificationBell';
@@ -152,7 +153,10 @@ function SidebarBody({
       >
         <Link
           to="/"
-          onClick={onNavigate}
+          onClick={() => {
+            onNavigate?.();
+            requestGoHome();
+          }}
           className={`min-w-0 transition hover:opacity-90 ${rail ? 'grid place-items-center px-0' : 'flex-1 px-0.5'}`}
           title="LiveBoom"
           aria-label="LiveBoom"
@@ -202,7 +206,10 @@ function SidebarBody({
               key={item.id}
               to={item.to}
               end={item.to === '/'}
-              onClick={onNavigate}
+              onClick={() => {
+                onNavigate?.();
+                if (item.to === '/') requestGoHome();
+              }}
               onPointerEnter={() => prefetchRoute(item.to)}
               onFocus={() => prefetchRoute(item.to)}
               title={item.label}
@@ -348,6 +355,7 @@ export function MainLayout() {
   const [sidebarPeek, setSidebarPeek] = useState(false);
   const sidebarPeekTimer = useRef(0);
   const location = useLocation();
+  const navigate = useNavigate();
   const onMessages = isMessagesPath(location.pathname);
   const onExplore = location.pathname.startsWith('/explorar');
   const onProfilePage =
@@ -406,6 +414,24 @@ export function MainLayout() {
     window.addEventListener('liveboom:open-recharge', openRecharge);
     return () => window.removeEventListener('liveboom:open-recharge', openRecharge);
   }, []);
+
+  useEffect(() => {
+    const jump = () => {
+      const main = mainRef.current;
+      if (main) main.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    const onGoHome = () => {
+      setMenuOpen(false);
+      if (location.pathname !== '/') navigate('/');
+      jump();
+      requestAnimationFrame(jump);
+      window.setTimeout(jump, 60);
+    };
+    window.addEventListener(GO_HOME_EVENT, onGoHome);
+    return () => window.removeEventListener(GO_HOME_EVENT, onGoHome);
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -486,7 +512,12 @@ export function MainLayout() {
         aria-hidden={hideExploreHeader}
       >
         <div className="lb-shell-header__brand flex min-w-0 items-center gap-1">
-          <Link to="/" className="min-w-0 shrink">
+          <Link
+            to="/"
+            className="min-w-0 shrink"
+            aria-label="Inicio"
+            onClick={() => requestGoHome()}
+          >
             <Logo compact className="[&_img]:!h-[2.65rem] [&_img]:!w-[4.6rem] [&_img]:!max-h-[2.65rem] [&_img]:!max-w-[4.6rem] [&_img]:!object-cover [&_img]:!object-[center_56%]" />
           </Link>
           <AppearanceControl />

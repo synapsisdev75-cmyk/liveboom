@@ -25,6 +25,8 @@ import { ShareContentButton } from '../components/social/ShareContentButton';
 import { PostViewsIndicator } from '../components/social/PostViewsIndicator';
 import { PostReceivedGiftsButton } from '../components/social/PostReceivedGiftsButton';
 import { ReelGiftControls } from '../components/feed/ReelGiftControls';
+import { markHomeFeedReady } from '../components/brand/BootSplash';
+import { GO_HOME_EVENT } from '../lib/goHome';
 import { buildPostShareUrl } from '../lib/shareContent';
 import { PostPhotoViewer } from '../components/social/PostPhotoViewer';
 import { PostMediaCarousel } from '../components/social/PostMediaCarousel';
@@ -399,6 +401,7 @@ function HomePublicationCard({
 
 export function HomeView() {
   const t = useT();
+  const ready = useAuthStore((s) => s.ready);
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
   const [streams, setStreams] = useState<ActiveLiveFeedItem[]>([]);
@@ -421,6 +424,12 @@ export function HomeView() {
     index: number;
     storyMode: boolean;
   } | null>(null);
+
+  useEffect(() => {
+    const onHome = () => setFlashViewer(null);
+    window.addEventListener(GO_HOME_EVENT, onHome);
+    return () => window.removeEventListener(GO_HOME_EVENT, onHome);
+  }, []);
 
   function reelFromPost(post: FsPost) {
     return {
@@ -514,13 +523,15 @@ export function HomeView() {
     }
     setPosts([]);
     if (tab === 'cerca') {
-      return listenRecentPosts((list) =>
-        setPosts(list.filter((item) => isPublicationPost(item)).map(toSocial)),
-      );
+      return listenRecentPosts((list) => {
+        setPosts(list.filter((item) => isPublicationPost(item)).map(toSocial));
+        markHomeFeedReady();
+      });
     }
     return listenHomeFeed(profile.firebaseUid, tab, (list, meta) => {
       setPosts(list.map(toSocial));
       setFeedMeta(meta);
+      markHomeFeedReady();
     });
   }, [profile?.firebaseUid, tab]);
 
@@ -793,7 +804,7 @@ export function HomeView() {
         />
       ) : null}
 
-      {tab === 'siguiendo' && !profile ? (
+      {tab === 'siguiendo' && ready && !profile ? (
         <p className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-zinc-500">
           <Link to="/login" className="text-cyan-400 underline">
             Inicia sesión
@@ -826,7 +837,7 @@ export function HomeView() {
           ) : null}
         </div>
         <div className="min-w-0">
-          {!profile ? (
+          {!ready ? null : !profile ? (
               <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
                 <Link to="/login" className="text-cyan-400 underline">
                   Inicia sesión

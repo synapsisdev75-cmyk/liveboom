@@ -9,6 +9,7 @@ import {
   type PostReactionUser,
 } from '../../lib/socialFirestore';
 import { profileHref } from '../../lib/profileFirestore';
+import { GO_HOME_EVENT } from '../../lib/goHome';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { useAuthStore } from '../../store/authStore';
@@ -105,6 +106,13 @@ export function PostPhotoViewer({
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
+
+  const closeExpandRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const onHome = () => closeExpandRef.current();
+    window.addEventListener(GO_HOME_EVENT, onHome);
+    return () => window.removeEventListener(GO_HOME_EVENT, onHome);
+  }, []);
   const [commentCount, setCommentCount] = useState(0);
   const [likes, setLikes] = useState(0);
   const [dislikes, setDislikes] = useState(0);
@@ -240,6 +248,7 @@ export function PostPhotoViewer({
 
   function closeExpand() {
     setCommentsOpen(false);
+    setGiftsOpen(false);
     if (overlayOnly) {
       onCloseExpand?.();
       return;
@@ -247,6 +256,7 @@ export function PostPhotoViewer({
     setExpanded(false);
     onCloseExpand?.();
   }
+  closeExpandRef.current = closeExpand;
 
   async function react(reaction: 'like' | 'dislike') {
     if (!profile || !postId) return;

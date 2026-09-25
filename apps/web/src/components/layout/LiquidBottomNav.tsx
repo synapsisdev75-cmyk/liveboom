@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion, useMotionValueEvent, useSpring } from 'framer-motion';
+import { requestGoHome } from '../../lib/goHome';
 import { prefetchRoute } from '../../lib/routePrefetch';
 import { useAuthStore } from '../../store/authStore';
 import { useUnreadMessageCount } from '../social/MessageInboxBadge';
@@ -145,6 +146,9 @@ export function LiquidBottomNav({ items }: Props) {
                   <NavLink
                     to={item.to}
                     end={item.to === '/'}
+                    onClick={() => {
+                      if (item.to === '/') requestGoHome();
+                    }}
                     onPointerEnter={() => prefetchRoute(item.to)}
                     onFocus={() => prefetchRoute(item.to)}
                     className="lb-liquid-nav__item relative flex min-h-[2.85rem] flex-col items-center justify-start gap-0.5 px-0.5 pt-1 text-[9px] font-semibold sm:min-h-[3rem] sm:text-[10px]"

@@ -2,6 +2,7 @@ import { Play, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
+import { GO_HOME_EVENT } from '../../lib/goHome';
 import { groupBoomClipsByAuthor, type BoomClipGroup, type ReelItem } from '../../lib/boomClipGroups';
 import { formatClipDuration, MAX_CLIP_DURATION_SECONDS } from '../../lib/contentType';
 import { seedAvatarCache } from '../../hooks/useAuthorAvatar';
@@ -251,6 +252,12 @@ export function ReelsRow({
   const [viewerIndex, setViewerIndex] = useState(0);
   const [viewerStoryMode, setViewerStoryMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    const onHome = () => setViewerReels(null);
+    window.addEventListener(GO_HOME_EVENT, onHome);
+    return () => window.removeEventListener(GO_HOME_EVENT, onHome);
+  }, []);
 
   useEffect(() => {
     if (!profile) {

@@ -16,6 +16,7 @@ import { idlePrefetchRoutes } from './lib/routePrefetch';
 import { prepareNativeLiveWebView, ensureNativeEssentialPermissions } from './lib/nativeLiveMedia';
 import { registerPushNotifications } from './lib/pushNotifications';
 import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
+import { BootSplash } from './components/brand/BootSplash';
 
 const HomeView = lazy(() =>
   import('./views/HomeView').then((m) => ({ default: m.HomeView })),
@@ -135,6 +136,7 @@ export default function App() {
     <ThemeProvider>
     <BrowserRouter>
       <AuthHydrator />
+      <BootSplash />
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/login" element={<LoginView />} />

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CreatePostModal } from '../social/CreatePostModal';
 import { FLASH_BOOM_LABEL } from '../../lib/brand';
+import { GO_HOME_EVENT } from '../../lib/goHome';
 import {
   listenActiveStories,
   listenFriends,
@@ -167,6 +168,12 @@ export function FlashBoomRow() {
   const [viewerReels, setViewerReels] = useState<StoryReel[] | null>(null);
   const [viewerIndex, setViewerIndex] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    const onHome = () => setViewerReels(null);
+    window.addEventListener(GO_HOME_EVENT, onHome);
+    return () => window.removeEventListener(GO_HOME_EVENT, onHome);
+  }, []);
 
   useEffect(() => {
     if (!profile?.firebaseUid) {

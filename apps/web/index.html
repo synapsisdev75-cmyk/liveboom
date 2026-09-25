@@ -93,6 +93,40 @@
     </noscript>
   </head>
   <body>
+    <div id="lb-boot-splash" aria-hidden="true">
+      <img src="/brand/logo-clear.png" alt="" />
+    </div>
+    <style>
+      #lb-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0a0a0b;
+        overflow: hidden;
+        pointer-events: auto;
+      }
+      #lb-boot-splash img {
+        width: min(78vw, 17rem);
+        height: min(46vw, 10rem);
+        object-fit: cover;
+        object-position: center 56%;
+      }
+      #lb-boot-splash.is-done {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+    </style>
+    <script>
+      setTimeout(function () {
+        var splash = document.getElementById('lb-boot-splash');
+        if (splash) splash.classList.add('is-done');
+      }, 12000);
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

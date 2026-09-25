@@ -29,6 +29,7 @@ import {
 } from '../../lib/videoPlayback';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
+import { GO_HOME_EVENT } from '../../lib/goHome';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { captureHtmlVideoPoster, TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import {
@@ -251,6 +252,13 @@ export function PostVideoPlayer({
   const [muted, setMuted] = useState(true);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
+
+  const closeExpandRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const onHome = () => closeExpandRef.current();
+    window.addEventListener(GO_HOME_EVENT, onHome);
+    return () => window.removeEventListener(GO_HOME_EVENT, onHome);
+  }, []);
   const [commentCount, setCommentCount] = useState(0);
   const [storyProgress, setStoryProgress] = useState(0);
   const [seekHint, setSeekHint] = useState<string | null>(null);
@@ -593,11 +601,15 @@ export function PostVideoPlayer({
       onCloseExpand?.();
       return;
     }
+    setCommentsPanelOpen(false);
+    setGiftsOpen(false);
+    if (!expandedRef.current) return;
     capturePlaybackSnapshot();
     expandedRef.current = false;
     setExpanded(false);
     onCloseExpand?.();
   }
+  closeExpandRef.current = closeExpand;
 
   const lockGestureClicks = useCallback(() => {
     gestureLockRef.current = true;

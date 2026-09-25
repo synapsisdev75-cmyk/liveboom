@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { publicationFeedPlaceholderStyle } from '../../lib/publicationMedia';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
@@ -11,6 +11,7 @@ import { PostComments } from './PostVideoPlayer';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 import { PublicationCaptionOverlay } from './PublicationCaption';
+import { GO_HOME_EVENT } from '../../lib/goHome';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import {
   listenPostComments,
@@ -70,6 +71,13 @@ export function PostMediaCarousel({
   const [expanded, setExpanded] = useState(startExpanded);
   const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(false);
+
+  const closeExpandRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const onHome = () => closeExpandRef.current();
+    window.addEventListener(GO_HOME_EVENT, onHome);
+    return () => window.removeEventListener(GO_HOME_EVENT, onHome);
+  }, []);
   const [commentCount, setCommentCount] = useState(0);
   const [likes, setLikes] = useState(0);
   const [dislikes, setDislikes] = useState(0);
@@ -170,6 +178,7 @@ export function PostMediaCarousel({
     setExpanded(false);
     onCloseExpand?.();
   }
+  closeExpandRef.current = closeExpand;
 
   async function react(reaction: 'like' | 'dislike') {
     if (!profile || !postId) return;
