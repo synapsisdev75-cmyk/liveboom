@@ -3,6 +3,8 @@
  * Un mismo mensaje solo puede ir a campana, badge de lista, o marcarse leído.
  */
 
+import { isNativeAndroidApp } from './nativeLiveMedia';
+
 export type ChatNotifyDecision = 'bell' | 'list' | 'active' | 'ignore';
 
 type ChatNotifyContext = {
@@ -37,13 +39,35 @@ export function getChatNotifyContext() {
   return ctx;
 }
 
+function matchesOpenChat(input: { chatId?: string | null; peerUid?: string | null }) {
+  const now = getChatNotifyContext();
+  if (!now.activeChatId && !now.activePeerUid) return false;
+  if (input.chatId && now.activeChatId && input.chatId === now.activeChatId) return true;
+  if (input.peerUid && now.activePeerUid && input.peerUid === now.activePeerUid) return true;
+  return false;
+}
+
+/**
+ * App Android: no mostrar banner del sistema si ya estás viendo ese chat
+ * (evita doble notificación). Web/desktop no aplica.
+ */
+export function shouldSuppressMobileChatTrayNotify(input: {
+  chatId?: string | null;
+  peerUid?: string | null;
+}): boolean {
+  if (!isNativeAndroidApp()) return false;
+  const now = getChatNotifyContext();
+  if (!now.documentVisible) return false;
+  return matchesOpenChat(input);
+}
+
 export function countInboxUnread(
   list: Array<{ chatId: string; uid: string; unread?: number }>,
 ) {
   const now = getChatNotifyContext();
   const viewingChat =
     now.documentVisible &&
-    now.inMessagesRoute &&
+    (now.inMessagesRoute || isNativeAndroidApp()) &&
     (now.activeChatId || now.activePeerUid);
   return list.reduce((sum, chat) => {
     if (
@@ -65,13 +89,15 @@ export function decideChatMessageNotify(input: {
 }): ChatNotifyDecision {
   if (input.lastFromUid && input.lastFromUid === input.myUid) return 'ignore';
   const now = getChatNotifyContext();
-  const viewingThis =
-    now.documentVisible &&
-    now.inMessagesRoute &&
-    Boolean(
-      (now.activeChatId && now.activeChatId === input.chatId) ||
-        (now.activePeerUid && now.activePeerUid === input.peerUid),
-    );
+  const matchingChat = matchesOpenChat({
+    chatId: input.chatId,
+    peerUid: input.peerUid,
+  });
+  // App móvil: chat abierto (página o hoja) → sin campana ni tray.
+  if (now.documentVisible && matchingChat && isNativeAndroidApp()) {
+    return 'active';
+  }
+  const viewingThis = now.documentVisible && now.inMessagesRoute && matchingChat;
   if (viewingThis) return 'active';
   if (now.documentVisible && now.inMessagesRoute) return 'list';
   return 'bell';

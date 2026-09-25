@@ -71,22 +71,16 @@ export function computeImmersiveMediaBox(
   let width = availW;
   let height = width / ratio;
 
-  // Dispositivo en horizontal + video 16:9: llenar el marco (alto completo, contain).
+  // Dispositivo en horizontal + video 16:9: pantalla completa (cover).
   if (deviceLandscape && orientation === 'landscape') {
-    height = availH;
-    width = height * ratio;
-    if (width > availW) {
-      width = availW;
-      height = width / ratio;
-    }
     return {
-      width: Math.round(Math.max(160, width)),
-      height: Math.round(Math.max(90, height)),
+      width: Math.round(availW),
+      height: Math.round(availH),
       orientation,
     };
   }
 
-  // Dispositivo en horizontal + video 9:16: maximizar alto (ocupa el marco como en portrait vertical).
+  // Dispositivo en horizontal + video 9:16: centrado (contain, alto máximo).
   if (deviceLandscape && orientation === 'portrait') {
     height = availH;
     width = height * ratio;

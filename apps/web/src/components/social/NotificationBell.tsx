@@ -186,6 +186,8 @@ export function NotificationBell() {
         void notifyPrivateMessageSystem({
           name: `@${chat.username}`,
           preview: chat.lastMessage || 'Te envió un mensaje',
+          chatId: chat.chatId,
+          peerUid: chat.uid,
         });
         const msgId = `msg-${chat.chatId}-${chat.lastAt}`;
         if (dismissedMsgIds.current.has(msgId)) continue;

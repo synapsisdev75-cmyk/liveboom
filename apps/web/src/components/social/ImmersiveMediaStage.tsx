@@ -133,8 +133,10 @@ export function ImmersiveMediaStage({
       const devicePortrait =
         portraitMq?.matches ?? rect.height >= rect.width;
       const nextDeviceLandscape = !desktop && !devicePortrait;
-      // Móvil/tablet: cover en portrait y landscape (edge-to-edge; evita video 0px al rotar).
-      const nextFill = !desktop && (devicePortrait || nextDeviceLandscape);
+      // Publicaciones (contain): la foto/video cabe en la pantalla, sin salirse.
+      // Explorar / clips (auto): cover edge-to-edge.
+      const containMode = fillMode === 'contain';
+      const nextFill = !containMode && !desktop && (devicePortrait || nextDeviceLandscape);
       setFillCover(nextFill);
       setDeviceLandscape(nextDeviceLandscape);
       setIsDesktopStage(desktop);

@@ -450,8 +450,19 @@ export function MainLayout() {
     };
   }, [onExplore]);
 
-  /** Mensajes: sin bottom nav (más espacio al chat). Explorar landscape: sin nav. */
-  const hideBottomNav = onMessages || (onExplore && deviceLandscape);
+  const [chatThreadOpen, setChatThreadOpen] = useState(
+    () => typeof document !== 'undefined' && document.documentElement.dataset.lbChatThread === 'open',
+  );
+  useEffect(() => {
+    const sync = () => setChatThreadOpen(document.documentElement.dataset.lbChatThread === 'open');
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-lb-chat-thread'] });
+    return () => obs.disconnect();
+  }, []);
+
+  /** Bottom nav visible en la lista de mensajes. Se oculta solo dentro de un chat. Explorar landscape: sin nav. */
+  const hideBottomNav = (onMessages && chatThreadOpen) || (onExplore && deviceLandscape);
   const hideExploreHeader = onExplore && (deviceLandscape || !exploreHeaderVisible);
 
   const isTablet = breakpoint === 'tablet';
@@ -476,7 +487,7 @@ export function MainLayout() {
       >
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <Link to="/" className="min-w-0 shrink">
-            <Logo compact className="[&_img]:!h-11 [&_img]:!max-w-[9.5rem] sm:[&_img]:!h-12 sm:[&_img]:!max-w-[11rem]" />
+            <Logo compact className="[&_img]:!h-7 [&_img]:!w-[5.6rem] [&_img]:!max-w-[5.6rem] [&_img]:!object-cover [&_img]:!object-[center_46%]" />
           </Link>
           <AppearanceControl />
         </div>

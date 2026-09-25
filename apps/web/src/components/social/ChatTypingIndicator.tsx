@@ -53,7 +53,7 @@ export function ChatTypingIndicator({ active }: Props) {
       <video
         ref={videoRef}
         src={TYPING_SRC}
-        className="h-[7.5rem] w-[7.5rem] shrink-0 bg-transparent object-contain object-bottom [mix-blend-mode:screen]"
+        className="lb-asset-screen h-[7.5rem] w-[7.5rem] shrink-0 bg-transparent object-contain object-bottom"
         muted
         playsInline
         loop

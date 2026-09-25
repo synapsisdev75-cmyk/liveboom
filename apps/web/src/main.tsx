@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -26,6 +28,15 @@ if (!root) {
 }
 
 installViewportSync();
+
+// APK: el WebView se dibuja detrás de la barra de estado, sin fondo nativo encima.
+if (Capacitor.getPlatform() === 'android') {
+  document.documentElement.classList.add('lb-android-native');
+}
+if (Capacitor.isNativePlatform()) {
+  StatusBar.setOverlaysWebView({ overlay: true }).catch(console.error);
+  StatusBar.setStyle({ style: Style.Dark }).catch(console.error);
+}
 
 createRoot(root).render(
   <StrictMode>

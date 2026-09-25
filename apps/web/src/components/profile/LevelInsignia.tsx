@@ -117,7 +117,7 @@ export function LevelInsignia({
       {hasVideo ? (
         <video
           ref={videoRef}
-          className={`pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain object-bottom transition-opacity duration-200 [mix-blend-mode:screen] ${
+          className={`pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain object-bottom transition-opacity duration-200 lb-asset-screen ${
             active ? 'opacity-100' : 'opacity-0'
           }`}
           muted

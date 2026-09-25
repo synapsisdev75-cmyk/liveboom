@@ -605,7 +605,7 @@ export function SearchView() {
               <img
                 src={item.icon}
                 alt=""
-                className="h-4 w-4 object-contain [mix-blend-mode:screen]"
+                className="lb-asset-screen h-4 w-4 object-contain"
                 draggable={false}
               />
               <span className="sr-only">

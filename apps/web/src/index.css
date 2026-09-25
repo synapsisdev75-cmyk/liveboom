@@ -273,6 +273,16 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
 .lb-immersive-media-box[data-fill='contain'] .lb-post-media__img {
   object-fit: contain;
   object-position: center;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+@media (max-width: 1023.98px) {
+  .lb-immersive-stage[data-fill='contain'] .lb-immersive-media-box {
+    max-width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
 }
 
 .lb-immersive-media-box .lb-action-rail--media:not(.lb-action-rail--corner) {
@@ -4836,6 +4846,41 @@ html[data-lb-theme='dark'] .lb-media-fab {
     height: 100%;
     width: auto;
     aspect-ratio: 9 / 16;
+  }
+}
+
+/* Teléfono: LIVE de borde a borde. El video llena la pantalla.
+   Solo la cabecera (nombre, cerrar) usa el inset del reloj. */
+@media (max-width: 767.98px) {
+  .lb-live-room {
+    height: 100%;
+    max-height: 100%;
+    padding: 0 !important;
+  }
+
+  .lb-live-surface-phone.lb-live-stage-outer {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+  }
+
+  .lb-live-surface-phone .lb-live-stage-inner,
+  .lb-live-surface-phone.lb-live-stage--16x9 .lb-live-stage-inner,
+  .lb-live-surface-phone.lb-live-stage--9x16 .lb-live-stage-inner {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    aspect-ratio: auto !important;
+  }
+
+  .lb-live-surface-phone .lb-live-stage-inner video,
+  .lb-live-surface-phone .lb-live-stage-inner .lk-participant-media-video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
   }
 }
 

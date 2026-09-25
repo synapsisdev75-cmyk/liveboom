@@ -33,7 +33,7 @@ export function CategoryChips({ value, onChange }: Props) {
           <img
             src={item.icon}
             alt=""
-            className="h-5 w-5 object-contain [mix-blend-mode:screen]"
+            className="lb-asset-screen h-5 w-5 object-contain"
             draggable={false}
           />
           {item.label}

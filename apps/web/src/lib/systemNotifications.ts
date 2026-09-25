@@ -33,8 +33,19 @@ export async function clearIncomingCallSystem(): Promise<void> {
 export async function notifyPrivateMessageSystem(input: {
   name: string;
   preview: string;
+  chatId?: string | null;
+  peerUid?: string | null;
 }): Promise<void> {
   if (!isNativeAndroidApp()) return;
+  const { shouldSuppressMobileChatTrayNotify } = await import('./chatNotifyContext');
+  if (
+    shouldSuppressMobileChatTrayNotify({
+      chatId: input.chatId,
+      peerUid: input.peerUid,
+    })
+  ) {
+    return;
+  }
   const now = Date.now();
   if (now - lastMessageNotifAt < 2500) return;
   lastMessageNotifAt = now;

@@ -1879,6 +1879,8 @@ export async function sendChatMessage(
       channel: 'messages',
       type: 'message',
       href: `/mensajes?con=${encodeURIComponent(me.handle)}`,
+      chatId: id,
+      fromUid: me.firebaseUid,
     });
   } catch {
     /* push opcional */

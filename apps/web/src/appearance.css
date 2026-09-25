@@ -872,10 +872,54 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
   will-change: transform, opacity, max-height;
 }
 
-/* Capacidad: pt = safe-area → el cristal llena la zona del reloj/batería;
-   los controles (logo, tema, campana, coins, menú) viven en esa franja. */
+/* Sin bloque vacío: la fila mide solo el logo y los botones. */
 .lb-shell-header--status {
-  min-height: calc(var(--lb-safe-top) + 2.65rem);
+  min-height: 0;
+}
+
+/* Teléfono: la cabecera ocupa su alto real, debajo de la hora. Sin margen ciego en el main. */
+@media (max-width: 767.98px), (orientation: landscape) and (max-height: 520px) {
+  html.lb-android-native {
+    --lb-safe-top: env(safe-area-inset-top, 24px);
+  }
+
+  .lb-shell-header.lb-shell-header--status:not(.lb-shell-header--explore-overlay) {
+    position: sticky;
+    top: 0;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding-top: env(safe-area-inset-top, 24px) !important;
+    padding-bottom: 0.15rem !important;
+  }
+
+  .lb-shell > main {
+    padding-top: 0 !important;
+  }
+
+  .lb-shell-header--explore-overlay {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 45;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-bottom-color: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding-top: env(safe-area-inset-top, 24px) !important;
+  }
+
+  .lb-shell-header--status img {
+    height: 1.7rem !important;
+    max-height: 1.7rem !important;
+    width: 5.6rem !important;
+    max-width: 5.6rem !important;
+    object-fit: cover !important;
+    object-position: center 46% !important;
+  }
 }
 
 .lb-shell-header.is-chrome-hidden {
@@ -902,12 +946,14 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
     top: 0;
     width: 100%;
     z-index: 45;
+    background: transparent !important;
+    padding-top: env(safe-area-inset-top, 24px) !important;
   }
 
   .lb-shell-header--explore-overlay.is-chrome-hidden {
     max-height: none !important;
-    min-height: calc(var(--lb-safe-top) + 2.65rem) !important;
-    padding-top: var(--lb-safe-top) !important;
+    min-height: 0 !important;
+    padding-top: 0 !important;
     padding-bottom: 0.375rem !important;
     /* Sigue oculto visualmente, pero fixed ya no come altura del main. */
   }
@@ -916,9 +962,19 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
     display: none !important;
   }
 
-  /* Mensajes: sin bottom nav — el chat llega hasta el borde (safe-area abajo). */
-  .lb-shell--messages .lb-messages-shell {
+  /* La bottom nav se esconde solo con un chat abierto. */
+  html[data-lb-chat-thread='open'] .lb-shell--messages .lb-messages-shell {
     padding-bottom: max(0.35rem, var(--lb-safe-bottom, 0px)) !important;
+  }
+
+  /* Dentro del chat no hay header de la app: esa fila era la franja negra.
+     El nombre y volver quedan bajo el reloj; el fondo llega al borde. */
+  html[data-lb-chat-thread='open'] .lb-shell-header {
+    display: none !important;
+  }
+
+  html[data-lb-chat-thread='open'] .lb-chat-thread-head {
+    padding-top: env(safe-area-inset-top, 0px);
   }
 }
 

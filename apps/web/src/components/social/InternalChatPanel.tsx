@@ -1144,13 +1144,16 @@ export function InternalChatPanel({
   }, [chatId, activeFriend?.uid]);
 
   // Página /mensajes o chat flotante: el chat activo silencia push/campana en la app.
+  // En el teléfono la bottom nav solo se esconde con un hilo abierto.
   useEffect(() => {
-    if (!chatId && !activeUid) return;
+    const open = Boolean(activeUid);
+    document.documentElement.dataset.lbChatThread = open ? 'open' : 'closed';
     patchChatNotifyContext({
-      activeChatId: chatId,
-      activePeerUid: activeUid,
+      activeChatId: open ? chatId : null,
+      activePeerUid: open ? activeUid : null,
     });
     return () => {
+      document.documentElement.dataset.lbChatThread = 'closed';
       patchChatNotifyContext({ activeChatId: null, activePeerUid: null });
     };
   }, [chatId, activeUid]);
@@ -1483,7 +1486,12 @@ export function InternalChatPanel({
       }
       setDraft('');
       setReplyTo(null);
-      window.setTimeout(() => composerInputRef.current?.focus(), 0);
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement) active.blur();
+      } else {
+        window.setTimeout(() => composerInputRef.current?.focus(), 0);
+      }
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'No se pudo enviar';
       setError(
@@ -2780,7 +2788,9 @@ export function InternalChatPanel({
                             setReplyTo(buildReplyTo(message, peerLabel));
                             setMenuMessageId(null);
                             setReactMessageId(null);
-                            window.setTimeout(() => composerInputRef.current?.focus(), 0);
+                            if (!window.matchMedia('(pointer: coarse)').matches) {
+                              window.setTimeout(() => composerInputRef.current?.focus(), 0);
+                            }
                           }}
                         >
                           <Reply size={13} strokeWidth={1.75} />
@@ -2826,7 +2836,9 @@ export function InternalChatPanel({
                                       'Usuario';
                                     setReplyTo(buildReplyTo(message, peerLabel));
                                     setMenuMessageId(null);
-                                    window.setTimeout(() => composerInputRef.current?.focus(), 0);
+                                    if (!window.matchMedia('(pointer: coarse)').matches) {
+                                      window.setTimeout(() => composerInputRef.current?.focus(), 0);
+                                    }
                                   }}
                                   className="lb-chat-msg-menu__item"
                                 >

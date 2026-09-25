@@ -43,9 +43,22 @@ html[data-lb-keyboard='open'] .lb-shell {
   max-height: var(--lb-vv-height);
 }
 
+/* APK: el WebView ya se encoge con el teclado. No recortar otra vez con visualViewport. */
+html.lb-android-native,
+html.lb-android-native body,
+html.lb-android-native #root,
+html.lb-android-native .lb-shell {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+}
+
 /* Chat móvil: sin hueco entre compositor y teclado. */
-html[data-lb-keyboard='open'] .lb-messages-shell {
+html[data-lb-keyboard='open'] .lb-messages-shell,
+html.lb-android-native[data-lb-keyboard='open'] .lb-messages-shell,
+html.lb-android-native[data-lb-keyboard='open'] .lb-chat-composer {
   padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
 }
 
 html[data-lb-keyboard='open'] .lb-liquid-nav {

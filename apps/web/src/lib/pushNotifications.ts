@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { api } from './api';
+import { shouldSuppressMobileChatTrayNotify } from './chatNotifyContext';
 import { db } from './firebase';
 import {
   isNativeAndroidApp,
@@ -108,12 +109,23 @@ export async function registerPushNotifications(uid: string | null | undefined):
 
     // Con la app en primer plano Android no muestra el banner FCM solo:
     // lo replicamos como notificación nativa (estilo Facebook/WhatsApp).
+    // Si ya estás dentro del chat del remitente → no banner (doble aviso).
     await PushNotifications.addListener('pushNotificationReceived', (ev) => {
       const title = String(ev.title || 'LiveBoom');
       const body = String(ev.body || '');
       const data = (ev.data || {}) as Record<string, string>;
+      const channel = channelFromData(data);
+      if (
+        channel === 'messages' &&
+        shouldSuppressMobileChatTrayNotify({
+          chatId: data.chatId || null,
+          peerUid: data.fromUid || null,
+        })
+      ) {
+        return;
+      }
       void showNativeSystemNotification({
-        channel: channelFromData(data),
+        channel,
         title,
         body: body || 'Nueva notificación',
       });
@@ -144,10 +156,20 @@ export function enqueuePushNotify(input: {
   channel?: PushChannel;
   href?: string;
   type?: string;
+  /** Chat abierto: el receptor puede silenciar el banner si está dentro. */
+  chatId?: string;
+  fromUid?: string;
 }): void {
   const recipientUids = [...new Set(input.recipientUids.filter(Boolean))].slice(0, 50);
   if (!recipientUids.length) return;
   const channel = input.channel || 'general';
+  const data: Record<string, string> = {
+    href: input.href || '/',
+    type: input.type || 'general',
+    channel,
+  };
+  if (input.chatId) data.chatId = input.chatId;
+  if (input.fromUid) data.fromUid = input.fromUid;
   void api<{ ok?: boolean; sent?: number; skipped?: boolean }>('/api/push/notify', {
     method: 'POST',
     body: JSON.stringify({
@@ -155,11 +177,7 @@ export function enqueuePushNotify(input: {
       title: input.title,
       body: input.body,
       channel,
-      data: {
-        href: input.href || '/',
-        type: input.type || 'general',
-        channel,
-      },
+      data,
     }),
   })
     .then((res) => {
