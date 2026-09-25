@@ -13,10 +13,33 @@ export type WompiOrder = {
   widgetAvailable?: boolean;
 };
 
-export function openWompiWidget(
+const WOMPI_WIDGET_SRC = 'https://checkout.wompi.co/widget.js';
+
+function loadWompiWidget(): Promise<void> {
+  if (typeof window.WidgetCheckout === 'function') return Promise.resolve();
+  const existing = document.querySelector<HTMLScriptElement>('script[data-lb-wompi="1"]');
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('No se pudo cargar Wompi')), { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = WOMPI_WIDGET_SRC;
+    script.async = true;
+    script.dataset.lbWompi = '1';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('No se pudo cargar Wompi'));
+    document.body.appendChild(script);
+  });
+}
+
+export async function openWompiWidget(
   order: WompiOrder,
   onResult?: (result: WompiWidgetResult) => void,
 ) {
+  await loadWompiWidget();
   if (typeof window.WidgetCheckout !== 'function') {
     throw new Error('El Widget de Wompi no está cargado. Recarga la página.');
   }

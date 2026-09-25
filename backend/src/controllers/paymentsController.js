@@ -9,6 +9,7 @@ const {
   getWompiTransaction,
   getWompiMerchant,
   isWompiMerchantActive,
+  wompiAppReturnUrl,
 } = require('../lib/wompi');
 const {
   rememberOrder,
@@ -488,6 +489,7 @@ async function createOrder(req, res) {
         description: `Recarga Blast — ${resolved.pack.coins} blast`,
         amountInCents: amountInCop,
         reference: order.reference,
+        redirectUrl: req.body?.returnToApp === true ? wompiAppReturnUrl() : undefined,
       });
       checkoutUrl = link.url;
       paymentLinkId = link.id;

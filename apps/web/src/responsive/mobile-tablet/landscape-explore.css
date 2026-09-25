@@ -8,7 +8,7 @@
     --lb-mt-explore-rail-left: clamp(4.75rem, 16vw, 8.5rem);
   }
 
-  /* Explorar: stage a pantalla completa (sin franja / letterbox). */
+  /* El escenario sigue a pantalla completa; el archivo se encaja dentro, sin recorte. */
   .lb-explore-view,
   .lb-explore-view .lb-immersive-stage {
     min-height: 100%;
@@ -21,22 +21,20 @@
     padding-right: 0 !important;
   }
 
-  /* Cover absoluto: evita video a 0px si el % height falla al rotar. */
-  .lb-immersive-stage[data-device-orientation='landscape'] .lb-immersive-media-box,
-  .lb-immersive-stage[data-device-orientation='landscape'][data-fill='cover'] .lb-immersive-media-box {
-    position: absolute !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
+  .lb-immersive-stage[data-device-orientation='landscape'] .lb-immersive-media-box {
+    position: relative;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .lb-immersive-stage[data-device-orientation='landscape'] .lb-post-media__video,
   .lb-immersive-stage[data-device-orientation='landscape'] .lb-post-media__img {
-    object-fit: cover !important;
+    object-fit: contain !important;
+    object-position: center;
     width: 100% !important;
     height: 100% !important;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   /* Acerca el rail al video, lado izquierdo. */

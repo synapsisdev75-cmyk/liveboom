@@ -190,6 +190,11 @@ function wompiRedirectUrl() {
   return 'https://liveboomapp.com/billetera';
 }
 
+/** Checkout abierto desde la APK: la web reabre liveboom://billetera y no se queda en Chrome. */
+function wompiAppReturnUrl() {
+  return 'https://liveboomapp.com/billetera?origen=app';
+}
+
 /** GET público: valida que la llave pública exista en Wompi (widget/checkout). */
 async function getWompiMerchant(publicKey) {
   const key = cleanWompiSecret(publicKey);
@@ -275,7 +280,7 @@ async function createPaymentLink(input) {
       collect_shipping: false,
       currency: 'COP',
       amount_in_cents: input.amountInCents,
-      redirect_url: wompiRedirectUrl(),
+      redirect_url: input.redirectUrl || wompiRedirectUrl(),
       sku: sku || undefined,
     }),
   });
@@ -309,5 +314,6 @@ module.exports = {
   isWompiMerchantActive,
   wompiBaseUrl,
   wompiRedirectUrl,
+  wompiAppReturnUrl,
   extractWompiTransaction,
 };

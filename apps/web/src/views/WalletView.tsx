@@ -17,6 +17,7 @@ import {
   type ResolvedCoinPackage,
 } from '../lib/coinPackages';
 import { confirmBlastPurchase } from '../lib/blastPurchaseClient';
+import { isNativeApp } from '../lib/wompiCheckout';
 import { normalizeBlastBalances } from '../lib/blastBalances';
 import {
   fetchWalletSummary,
@@ -216,6 +217,11 @@ export function WalletView() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const transactionId = params.get('id');
+    if (transactionId && isNativeApp()) {
+      void import('@capacitor/browser')
+        .then(({ Browser }) => Browser.close())
+        .catch(() => undefined);
+    }
     if (!transactionId || !profile) return;
 
     let cancelled = false;

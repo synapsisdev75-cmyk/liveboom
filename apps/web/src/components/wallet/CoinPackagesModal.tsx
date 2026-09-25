@@ -173,7 +173,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     try {
       const order = await api<WompiOrder>('/api/payments/create-order', {
         method: 'POST',
-        body: JSON.stringify({ packageId: selected }),
+        body: JSON.stringify({ packageId: selected, returnToApp: isNativeApp() }),
         timeoutMs: 45_000,
       });
 
@@ -197,7 +197,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
       }
 
       try {
-        openWompiWidget(order, (result) => {
+        await openWompiWidget(order, (result) => {
           const txn =
             result.transaction ||
             result.data?.transaction ||

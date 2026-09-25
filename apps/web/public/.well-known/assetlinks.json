@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.liveboom.app",
+      "sha256_cert_fingerprints": [
+        "80:F2:25:D7:5F:44:CB:40:D7:FB:C0:2C:2B:76:6F:D5:9A:26:34:78:2A:01:4A:1F:FA:B6:B2:6F:95:E0:44:4E"
+      ]
+    }
+  }
+]

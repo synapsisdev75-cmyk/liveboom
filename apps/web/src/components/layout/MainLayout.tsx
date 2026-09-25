@@ -478,26 +478,26 @@ export function MainLayout() {
     >
       {/* Barra superior: en Explorar es overlay fixed (no deja franja negra / status gap). */}
       <header
-        className={`lb-shell-header lb-shell-header--status flex shrink-0 items-center justify-between gap-1.5 overflow-x-hidden border-b border-white/10 pb-1.5 pl-[max(0.65rem,var(--lb-safe-left))] pr-[max(0.65rem,var(--lb-safe-right))] pt-[var(--lb-safe-top)] sm:gap-2 md:hidden${
+        className={`lb-shell-header lb-shell-header--status flex shrink-0 flex-nowrap items-center justify-between gap-1.5 overflow-visible border-b border-white/10 pb-1.5 pl-[max(0.65rem,var(--lb-safe-left))] pr-[max(0.65rem,var(--lb-safe-right))] pt-[var(--lb-safe-top)] sm:gap-2 md:hidden${
           onExplore ? ' lb-shell-header--explore-overlay' : ''
         }${hideExploreHeader ? ' is-chrome-hidden' : ''}${
           onExplore && deviceLandscape ? ' is-chrome-gone' : ''
         }`}
         aria-hidden={hideExploreHeader}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1">
+        <div className="lb-shell-header__brand flex min-w-0 items-center gap-1">
           <Link to="/" className="min-w-0 shrink">
-            <Logo compact className="[&_img]:!h-7 [&_img]:!w-[5.6rem] [&_img]:!max-w-[5.6rem] [&_img]:!object-cover [&_img]:!object-[center_46%]" />
+            <Logo compact className="[&_img]:!h-[2.65rem] [&_img]:!w-[4.6rem] [&_img]:!max-h-[2.65rem] [&_img]:!max-w-[4.6rem] [&_img]:!object-cover [&_img]:!object-[center_56%]" />
           </Link>
           <AppearanceControl />
         </div>
-        <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-1.5">
+        <div className="lb-shell-header__tools flex min-w-0 items-center gap-1 sm:gap-1.5">
           {profile ? <NotificationBell /> : null}
           {profile ? (
             <button
               type="button"
               onClick={() => setRechargeOpen(true)}
-              className="max-w-[7rem] truncate rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-cyan-300 ring-1 ring-cyan-400/35 backdrop-blur-md sm:max-w-none sm:px-2.5 sm:text-[11px]"
+              className="lb-shell-header__coins max-w-[6.4rem] truncate rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold text-cyan-300 ring-1 ring-cyan-400/35 backdrop-blur-md sm:max-w-[7.5rem] sm:px-2.5 sm:text-[11px]"
             >
               {profile.coinsBalance.toLocaleString(bcp47For(locale))} {t('nav.coins')}
             </button>
@@ -527,7 +527,9 @@ export function MainLayout() {
           sidebarRail
             ? 'lb-sidebar--rail px-1.5'
             : 'lb-sidebar--expanded w-[min(22%,280px)] min-w-[220px] max-w-[280px] px-3 sm:min-w-[248px] sm:px-3.5'
-        }${onMessages ? ' lb-sidebar--messages-rail' : ''}${isTablet ? ' lb-sidebar--tablet' : ''}`}
+        }${onMessages ? ' lb-sidebar--messages-rail' : ''}${isTablet ? ' lb-sidebar--tablet' : ''}${
+          deviceLandscape ? ' !hidden' : ''
+        }`}
         onPointerEnter={isDesktop ? openSidebarPeek : undefined}
         onPointerLeave={isDesktop ? closeSidebarPeek : undefined}
         onFocusCapture={isDesktop ? openSidebarPeek : undefined}

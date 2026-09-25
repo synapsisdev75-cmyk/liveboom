@@ -23,6 +23,28 @@
     <script>
       (function () {
         try {
+          var ua = navigator.userAgent || '';
+          if (!/Android/i.test(ua) || /\bwv\b/.test(ua)) return;
+          var path = location.pathname || '';
+          if (path !== '/billetera' && path.indexOf('/billetera/') !== 0) return;
+          var search = location.search || '';
+          if (/[?&]lb_web=1(?:&|$)/.test(search)) return;
+          if (!/[?&]origen=app(?:&|$)/.test(search)) return;
+          var idMatch = search.match(/[?&]id=([^&]+)/);
+          var id = idMatch ? decodeURIComponent(idMatch[1]) : '';
+          var query = id ? '?id=' + encodeURIComponent(id) : '';
+          var fallback = 'https://liveboomapp.com/billetera?lb_web=1' + (id ? '&id=' + encodeURIComponent(id) : '');
+          location.replace(
+            'intent://billetera' + query +
+            '#Intent;scheme=liveboom;package=com.liveboom.app;S.browser_fallback_url=' +
+            encodeURIComponent(fallback) + ';end'
+          );
+        } catch (handoffErr) {}
+      })();
+    </script>
+    <script>
+      (function () {
+        try {
           var raw = localStorage.getItem('liveboom:appearance');
           var prefs = raw ? JSON.parse(raw) : {};
           var theme = prefs.themeMode === 'light' || prefs.theme === 'light' ? 'light' : 'dark';
@@ -58,13 +80,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
-    <script src="https://checkout.wompi.co/widget.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -116,9 +116,8 @@ export function ImmersiveMediaStage({
       : 'portrait';
   const useRailAside = usesImmersiveAsideRail(mediaWidth, mediaHeight, landscapeRailAside);
   const railAside = useRailAside && !fillCover && !deviceLandscape && isDesktopStage;
-  /** Teléfono landscape + media 16:9 → cover a pantalla completa. */
-  const landscapeWideCover = deviceLandscape && orientation === 'landscape';
-  const mediaCover = fillCover || landscapeWideCover;
+  /** Solo vertical llena la pantalla. Al girar, el archivo se encaja (contain). */
+  const mediaCover = fillCover && !deviceLandscape;
 
   useEffect(() => {
     const host = stageRef.current;
@@ -133,10 +132,9 @@ export function ImmersiveMediaStage({
       const devicePortrait =
         portraitMq?.matches ?? rect.height >= rect.width;
       const nextDeviceLandscape = !desktop && !devicePortrait;
-      // Publicaciones (contain): la foto/video cabe en la pantalla, sin salirse.
-      // Explorar / clips (auto): cover edge-to-edge.
+      // Vertical: Explorar/clips llenan la pantalla. Al girar, todo se encaja en 16:9.
       const containMode = fillMode === 'contain';
-      const nextFill = !containMode && !desktop && (devicePortrait || nextDeviceLandscape);
+      const nextFill = !containMode && !desktop && devicePortrait;
       setFillCover(nextFill);
       setDeviceLandscape(nextDeviceLandscape);
       setIsDesktopStage(desktop);

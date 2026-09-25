@@ -647,8 +647,9 @@ html[data-lb-theme] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
 .lb-explore-view .lb-immersive-media-box::after {
   content: '';
   position: absolute;
-  top: 0.28rem;
-  right: 0.32rem;
+  /* Debajo de la status bar, a la altura de Para ti / Virales / Recientes. */
+  top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + 0.15rem);
+  right: max(0.32rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
   z-index: 36;
   width: clamp(2.45rem, 8.5vw, 3.45rem);
   height: clamp(2.45rem, 8.5vw, 3.45rem);
@@ -665,15 +666,15 @@ html[data-lb-theme] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
   }
 
   .lb-explore-view .lb-immersive-media-box::after {
-    top: 0.4rem;
-    right: 0.45rem;
+    top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + 0.35rem);
+    right: max(0.45rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
   }
 }
 
 @media (min-width: 1280px) {
   .lb-explore-view .lb-immersive-media-box::after {
-    top: 0.45rem;
-    right: 0.5rem;
+    top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + 0.4rem);
+    right: max(0.5rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
     width: 3.55rem;
     height: 3.55rem;
   }
@@ -880,7 +881,7 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
 /* Teléfono: la cabecera ocupa su alto real, debajo de la hora. Sin margen ciego en el main. */
 @media (max-width: 767.98px), (orientation: landscape) and (max-height: 520px) {
   html.lb-android-native {
-    --lb-safe-top: env(safe-area-inset-top, 24px);
+    --lb-safe-top: max(env(safe-area-inset-top, 24px), 48px);
   }
 
   .lb-shell-header.lb-shell-header--status:not(.lb-shell-header--explore-overlay) {
@@ -890,8 +891,12 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
     min-height: 0 !important;
     max-height: none !important;
     margin: 0 !important;
-    padding-top: env(safe-area-inset-top, 24px) !important;
-    padding-bottom: 0.15rem !important;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.35rem;
+    overflow: visible;
+    padding-top: max(env(safe-area-inset-top, 0px), 0.35rem) !important;
+    padding-bottom: 0.4rem !important;
   }
 
   .lb-shell > main {
@@ -913,12 +918,31 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
   }
 
   .lb-shell-header--status img {
-    height: 1.7rem !important;
-    max-height: 1.7rem !important;
-    width: 5.6rem !important;
-    max-width: 5.6rem !important;
+    height: 2.65rem !important;
+    width: 4.6rem !important;
+    max-height: 2.65rem !important;
+    max-width: 4.6rem !important;
     object-fit: cover !important;
-    object-position: center 46% !important;
+    object-position: center 56% !important;
+  }
+
+  .lb-shell-header__brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .lb-shell-header__tools {
+    min-width: 0;
+    flex: 0 1 auto;
+    gap: 0.28rem;
+  }
+
+  .lb-shell-header__coins {
+    min-width: 0;
+    max-width: min(6.4rem, 32vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

@@ -253,7 +253,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
       }
 
       try {
-        openWompiWidget(order, (result) => {
+        await openWompiWidget(order, (result) => {
           const status = result.transaction?.status;
           const transactionId = result.transaction?.id;
           void api('/api/ads/complete', {

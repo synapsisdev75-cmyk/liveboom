@@ -71,26 +71,21 @@ export function computeImmersiveMediaBox(
   let width = availW;
   let height = width / ratio;
 
-  // Dispositivo en horizontal + video 16:9: pantalla completa (cover).
-  if (deviceLandscape && orientation === 'landscape') {
-    return {
-      width: Math.round(availW),
-      height: Math.round(availH),
-      orientation,
-    };
-  }
-
-  // Dispositivo en horizontal + video 9:16: centrado (contain, alto máximo).
-  if (deviceLandscape && orientation === 'portrait') {
-    height = availH;
-    width = height * ratio;
-    if (width > availW) {
-      width = availW;
-      height = width / ratio;
+  // Teléfono girado: el archivo cabe en el 16:9 de la pantalla, sin recorte ni agrandar de más.
+  if (deviceLandscape) {
+    width = availW;
+    height = width / ratio;
+    if (height > availH) {
+      height = availH;
+      width = height * ratio;
     }
+    const fitted =
+      mediaWidth > 0 && mediaHeight > 0
+        ? clampDisplayToIntrinsic(width, height, mediaWidth, mediaHeight)
+        : { width, height };
     return {
-      width: Math.round(Math.max(90, width)),
-      height: Math.round(Math.max(160, height)),
+      width: Math.round(Math.max(90, fitted.width)),
+      height: Math.round(Math.max(90, fitted.height)),
       orientation,
     };
   }
@@ -155,8 +150,7 @@ export function computeImmersiveMediaBox(
   }
 
   const clamped =
-    // En landscape del dispositivo, no reducir el 16:9: debe verse completo y grande.
-    mediaWidth > 0 && mediaHeight > 0 && !deviceLandscape
+    mediaWidth > 0 && mediaHeight > 0
       ? clampDisplayToIntrinsic(width, height, mediaWidth, mediaHeight)
       : { width, height };
 

@@ -42,8 +42,8 @@ function isNativeApp() {
 }
 
 function connectionBudget(): NavBudget {
-  // En app Capacitor priorizamos sensación inmediata (el overlay nativo de play es peor que más datos).
-  if (isNativeApp()) return { plus2: true, preload: 'auto', warmPlay: true };
+  // APK: un vecino en metadata. Precargar 3 videos completos satura el WebView.
+  if (isNativeApp()) return { plus2: false, preload: 'metadata', warmPlay: false };
   if (typeof navigator === 'undefined') return { plus2: true, preload: 'auto', warmPlay: true };
   const conn = (
     navigator as Navigator & {
@@ -91,9 +91,14 @@ function abortSlot(slot: Slot) {
   metrics.cancelled += 1;
 }
 
+function slotCap() {
+  return isNativeApp() ? 2 : MAX_SLOTS;
+}
+
 function ensureSlots() {
-  while (slots.length < MAX_SLOTS) {
-    slots.push({ el: makeEl('auto'), url: null, abort: null, gen: 0 });
+  const cap = slotCap();
+  while (slots.length < cap) {
+    slots.push({ el: makeEl('metadata'), url: null, abort: null, gen: 0 });
   }
 }
 

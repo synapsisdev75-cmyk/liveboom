@@ -2220,6 +2220,26 @@ input[type='datetime-local'] {
   max-height: min(720px, 72dvh);
 }
 
+/* Teléfono girado: la publicación cabe en el alto 16:9, sin ocupar toda la pantalla. */
+@media (orientation: landscape) and (max-width: 1023px) and (max-height: 520px) {
+  .lb-feed-media-frame {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: min(62dvh, 18rem);
+  }
+
+  .lb-feed-media-frame .lb-post-media__img,
+  .lb-feed-media-frame .lb-post-media__video {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: min(62dvh, 18rem);
+    object-fit: contain;
+    object-position: center;
+  }
+}
+
 /* MediaStage: capa ambient + capa principal (perfiles por modo) */
 .lb-media-stage {
   position: relative;
@@ -3546,21 +3566,21 @@ html:has(.lb-auth-page) #root {
 
 /* Explorar: un poco más abajo para no tapar el icono bomba del media box. */
 .lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
-  top: calc(0.28rem + clamp(2.45rem, 8.5vw, 3.45rem) + 0.2rem);
-  right: 0.32rem;
+  top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + clamp(2.45rem, 8.5vw, 3.45rem) + 0.45rem);
+  right: max(0.32rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
 }
 
 @media (min-width: 768px) {
   .lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
-    top: calc(0.4rem + clamp(2.7rem, 4.4vw, 3.55rem) + 0.25rem);
-    right: 0.45rem;
+    top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + clamp(2.7rem, 4.4vw, 3.55rem) + 0.55rem);
+    right: max(0.45rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
   }
 }
 
 @media (min-width: 1280px) {
   .lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
-    top: calc(0.45rem + 3.55rem + 0.28rem);
-    right: 0.5rem;
+    top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + 3.55rem + 0.6rem);
+    right: max(0.5rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
   }
 }
 

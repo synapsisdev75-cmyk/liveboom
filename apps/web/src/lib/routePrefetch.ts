@@ -3,6 +3,8 @@
  * Idempotente: cada ruta se importa una sola vez.
  */
 
+import { Capacitor } from '@capacitor/core';
+
 type Loader = () => Promise<unknown>;
 
 const loaders: Record<string, Loader> = {
@@ -60,16 +62,24 @@ export function prefetchRoute(path: string): void {
 const IDLE_PATHS = ['/explorar', '/mensajes', '/transmitir', '/buscar', '/billetera', '/'] as const;
 
 /** Precarga rutas frecuentes en idle (tras auth / shell listo). */
-export function idlePrefetchRoutes(paths: readonly string[] = IDLE_PATHS): void {
+export function idlePrefetchRoutes(paths?: readonly string[]): void {
   if (typeof window === 'undefined') return;
+  let native = false;
+  try {
+    native = Capacitor.isNativePlatform();
+  } catch {
+    native = false;
+  }
+  // En la APK no precargar Transmitir/LIVE: LiveKit pesa y compite con el feed.
+  const list = paths ?? (native ? (['/explorar', '/mensajes'] as const) : IDLE_PATHS);
   const run = () => {
-    for (const path of paths) prefetchRoute(path);
+    for (const path of list) prefetchRoute(path);
   };
   const ric = window.requestIdleCallback?.bind(window);
   if (ric) {
-    ric(run, { timeout: 2500 });
+    ric(run, { timeout: native ? 4500 : 2500 });
   } else {
-    window.setTimeout(run, 1200);
+    window.setTimeout(run, native ? 2200 : 1200);
   }
 }
 

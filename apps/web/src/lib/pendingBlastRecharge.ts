@@ -5,6 +5,7 @@ import { getSocket } from './socket';
 import { isNativeApp } from './wompiCheckout';
 
 const STORAGE_KEY = 'lb.pendingBlastRecharge.v1';
+const RETURN_TXN_KEY = 'lb.wompiReturnTxn.v1';
 /** Poll largo: webhook puede tardar en Nequi/PSE; sobrevive cierre del modal. */
 const POLL_MS = 2_500;
 const MAX_WATCH_MS = 10 * 60 * 1000;
@@ -209,6 +210,120 @@ function ensureSocket() {
     });
 }
 
+function readReturnTxnId(url: string): string {
+  try {
+    return new URL(url).searchParams.get('id')?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
+function isWalletReturnUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'liveboom:' && parsed.hostname === 'billetera') return true;
+    const host = parsed.hostname.replace(/^www\./, '');
+    return (
+      parsed.protocol === 'https:' &&
+      host === 'liveboomapp.com' &&
+      parsed.pathname.startsWith('/billetera') &&
+      (parsed.searchParams.get('origen') === 'app' || Boolean(parsed.searchParams.get('id')))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function rememberReturnTxn(transactionId: string) {
+  const id = String(transactionId || '').trim();
+  if (!id) return;
+  try {
+    localStorage.setItem(RETURN_TXN_KEY, JSON.stringify({ id, at: Date.now() }));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+async function closeCheckoutBrowser() {
+  try {
+    const { Browser } = await import('@capacitor/browser');
+    await Browser.close();
+  } catch {
+    /* la pestaña de Wompi ya se cerró */
+  }
+}
+
+async function consumeReturnTxn() {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(RETURN_TXN_KEY);
+  } catch {
+    return;
+  }
+  if (!raw) return;
+  let transactionId = '';
+  let at = 0;
+  try {
+    const parsed = JSON.parse(raw) as { id?: string; at?: number };
+    transactionId = String(parsed?.id || '').trim();
+    at = Number(parsed?.at) || 0;
+  } catch {
+    return;
+  }
+  if (!transactionId || (at && Date.now() - at > 30 * 60 * 1000)) {
+    try {
+      localStorage.removeItem(RETURN_TXN_KEY);
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  try {
+    const { confirmBlastPurchase } = await import('./blastPurchaseClient');
+    const paid = await confirmBlastPurchase({
+      transactionId,
+      reference: readPending()?.reference,
+      path: '/api/payments/complete-redirect',
+    });
+    if (paid?.pending) {
+      await refreshBalances();
+      void tickOnce();
+      return;
+    }
+    try {
+      localStorage.removeItem(RETURN_TXN_KEY);
+    } catch {
+      /* ignore */
+    }
+    await refreshBalances();
+    const pending = readPending();
+    const gained = pending ? applySummaryGain(pending.purchasedBefore) : 0;
+    clearPendingBlastRecharge();
+    const coins = gained > 0 ? gained : Math.max(0, Math.floor(Number(paid?.coins) || 0));
+    handlers.onCredited?.(coins);
+    window.dispatchEvent(
+      new CustomEvent('liveboom:recharge-credited', {
+        detail: { coins, reference: pending?.reference || transactionId },
+      }),
+    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (/declinado|DECLINED|no fue aprobado/i.test(msg)) {
+      try {
+        localStorage.removeItem(RETURN_TXN_KEY);
+      } catch {
+        /* ignore */
+      }
+      clearPendingBlastRecharge();
+      handlers.onDeclined?.();
+      window.dispatchEvent(new CustomEvent('liveboom:recharge-declined'));
+      return;
+    }
+    void tickOnce();
+  }
+}
+
 async function bindNativeResume() {
   if (resumeBound || !isNativeApp()) return;
   resumeBound = true;
@@ -216,33 +331,28 @@ async function bindNativeResume() {
     const { App } = await import('@capacitor/app');
     const { Browser } = await import('@capacitor/browser');
     void App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive && readPending()) void tickOnce();
+      if (!isActive) return;
+      void refreshBalances();
+      void consumeReturnTxn();
+      if (readPending()) void tickOnce();
     });
     void App.addListener('resume', () => {
+      void refreshBalances();
+      void consumeReturnTxn();
       if (readPending()) void tickOnce();
     });
     void Browser.addListener('browserFinished', () => {
+      void refreshBalances();
+      void consumeReturnTxn();
       if (readPending()) void tickOnce();
     });
     void App.addListener('appUrlOpen', ({ url }) => {
-      try {
-        const parsed = new URL(url);
-        const txnId = parsed.searchParams.get('id');
-        if (txnId) {
-          void api('/api/payments/complete-redirect', {
-            method: 'POST',
-            body: JSON.stringify({
-              transactionId: txnId,
-              reference: readPending()?.reference || undefined,
-            }),
-            timeoutMs: 20_000,
-          })
-            .then(() => tickOnce())
-            .catch(() => tickOnce());
-          return;
-        }
-      } catch {
-        /* ignore parse */
+      if (isWalletReturnUrl(url)) void closeCheckoutBrowser();
+      const txnId = readReturnTxnId(url);
+      if (txnId && isWalletReturnUrl(url)) {
+        rememberReturnTxn(txnId);
+        void consumeReturnTxn();
+        return;
       }
       if (readPending()) void tickOnce();
     });
@@ -251,7 +361,10 @@ async function bindNativeResume() {
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && readPending()) void tickOnce();
+    if (document.visibilityState !== 'visible') return;
+    void refreshBalances();
+    void consumeReturnTxn();
+    if (readPending()) void tickOnce();
   });
 }
 
@@ -276,5 +389,6 @@ export function watchPendingBlastRecharge(nextHandlers: WatchHandlers = {}) {
 /** Llama al montar la app autenticada. */
 export function initPendingBlastRechargeWatcher() {
   void bindNativeResume();
+  void consumeReturnTxn();
   if (readPending()) watchPendingBlastRecharge();
 }
