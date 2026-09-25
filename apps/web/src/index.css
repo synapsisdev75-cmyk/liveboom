@@ -3574,39 +3574,22 @@ html:has(.lb-auth-page) #root {
 
 .lb-immersive-media-box .lb-media-mute-fab {
   z-index: 55;
-  /* Móvil: debajo del cierre / barra de segmentos (antes quedaba muy arriba). */
-  top: calc(max(0.5rem, var(--lb-safe-top, env(safe-area-inset-top, 0px))) + 3.1rem);
-  right: max(0.75rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
+  /* Esquina superior derecha del video, en 9:16 y en 16:9. */
+  top: 0.4rem;
+  right: max(0.4rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
   left: auto;
   bottom: auto;
   pointer-events: auto;
 }
 
-@media (min-width: 768px) {
-  .lb-immersive-media-box .lb-media-mute-fab {
-    top: calc(max(0.5rem, var(--lb-safe-top, env(safe-area-inset-top, 0px))) + 2.35rem);
-    right: max(0.75rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
-  }
+/* 9:16 a pantalla completa: respeta la barra de estado. */
+.lb-immersive-media-box[data-fill='cover'] .lb-media-mute-fab {
+  top: max(0.4rem, var(--lb-safe-top, env(safe-area-inset-top, 0px)));
 }
 
-/* Explorar: un poco más abajo para no tapar el icono bomba del media box. */
-.lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
-  top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + clamp(2.45rem, 8.5vw, 3.45rem) + 0.45rem);
-  right: max(0.32rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
-}
-
-@media (min-width: 768px) {
-  .lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
-    top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + clamp(2.7rem, 4.4vw, 3.55rem) + 0.55rem);
-    right: max(0.45rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
-  }
-}
-
-@media (min-width: 1280px) {
-  .lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
-    top: calc(var(--lb-safe-top, env(safe-area-inset-top, 0px)) + 3.55rem + 0.6rem);
-    right: max(0.5rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
-  }
+/* Explorar: el audio queda arriba a la derecha; la bomba se corre a su izquierda. */
+.lb-explore-view .lb-immersive-media-box::after {
+  right: calc(max(0.4rem, var(--lb-safe-right, env(safe-area-inset-right, 0px))) + 2.85rem);
 }
 
 @media (pointer: coarse) {
