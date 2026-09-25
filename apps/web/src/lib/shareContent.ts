@@ -8,17 +8,14 @@ export type ShareContentInput = {
   mediaType?: ShareMediaType | null;
 };
 
+/** Enlace público: vista previa en redes y apertura de la publicación o la tienda. */
 export function buildPostShareUrl(
-  username: string,
+  _username: string,
   postId: string,
-  authorUid?: string | null,
+  _authorUid?: string | null,
 ) {
-  const handle = encodeURIComponent(String(username || '').trim().replace(/^@/, '') || 'user');
-  const params = new URLSearchParams();
-  params.set('post', postId);
-  const uid = String(authorUid || '').trim();
-  if (uid) params.set('uid', uid);
-  return `${window.location.origin}/u/${handle}?${params.toString()}`;
+  const id = encodeURIComponent(String(postId || '').trim());
+  return `https://liveboomapp.com/s/${id}`;
 }
 
 function mediaFileName(mediaType: ShareMediaType, mime: string) {

@@ -17,6 +17,7 @@ import { prepareNativeLiveWebView, ensureNativeEssentialPermissions } from './li
 import { registerPushNotifications } from './lib/pushNotifications';
 import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
 import { BootSplash } from './components/brand/BootSplash';
+import { flushPendingShare, installSharedLinkOpener } from './lib/openSharedLink';
 
 const HomeView = lazy(() =>
   import('./views/HomeView').then((m) => ({ default: m.HomeView })),
@@ -99,6 +100,7 @@ function AuthHydrator() {
     const unsubCommunity = hydrateCommunityHeader();
     const unsubAuth = hydrate();
     void prepareNativeLiveWebView();
+    installSharedLinkOpener();
     // Android: notificaciones / media / bluetooth al abrir.
     // Cámara y micrófono solo al transmitir, Sala Boom o llamadas (ensureNativeLiveAvPermissions).
     void ensureNativeEssentialPermissions();
@@ -125,7 +127,8 @@ function AuthHydrator() {
   useEffect(() => {
     if (!ready) return;
     idlePrefetchRoutes();
-  }, [ready]);
+    void flushPendingShare();
+  }, [ready, uid]);
 
   return null;
 }

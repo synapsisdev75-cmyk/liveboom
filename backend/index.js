@@ -173,6 +173,16 @@ try {
     },
     app,
   );
+  const { handleSharePreview } = require('./src/lib/sharePreview');
+  module.exports.sharePreview = onRequest(
+    {
+      region: 'us-central1',
+      memory: '256MiB',
+      timeoutSeconds: 20,
+      invoker: 'public',
+    },
+    (req, res) => handleSharePreview(req, res),
+  );
 } catch (error) {
   console.warn('[liveboom] firebase-functions no disponible (solo dev local):', error.message);
 }
