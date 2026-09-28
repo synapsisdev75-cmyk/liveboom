@@ -79,6 +79,9 @@ type Props = {
   /** Publicación a editar. Requiere mode="edit". */
   editPost?: SocialPost | null;
   onUpdated?: (post: SocialPost) => void;
+  /** Archivos / texto recibidos desde el menú Compartir del sistema. */
+  seedFiles?: File[] | null;
+  seedCaption?: string | null;
 };
 
 type PostKind = 'photo' | 'video' | 'text';
@@ -97,6 +100,8 @@ export function CreatePostModal({
   mode = 'create',
   editPost = null,
   onUpdated,
+  seedFiles = null,
+  seedCaption = null,
 }: Props) {
   const profile = useAuthStore((state) => state.profile);
   const isInline = variant === 'inline';
@@ -599,6 +604,37 @@ export function CreatePostModal({
     }
     applyMediaFile(file, forcedKind || 'photo');
   }
+
+  useEffect(() => {
+    if (!open) return;
+    if (!seedFiles?.length && !seedCaption) return;
+    if (seedCaption) setCaption((current) => current || seedCaption);
+    if (!seedFiles?.length) {
+      if (seedCaption) setKind('text');
+      return;
+    }
+    const photos = seedFiles.filter((file) => mediaKindFromFile(file) === 'photo');
+    const videos = seedFiles.filter((file) => mediaKindFromFile(file) === 'video' || isVideoFile(file));
+    if (videos[0]) {
+      void onFileChange(videos[0], 'video');
+      return;
+    }
+    if (photos.length > 1) {
+      appendAlbumPhotos(photos);
+      return;
+    }
+    if (photos[0]) {
+      void onFileChange(photos[0], 'photo');
+      return;
+    }
+    const audio = seedFiles.find((file) => String(file.type || '').startsWith('audio/'));
+    if (audio) {
+      setKind('text');
+      setCaption((current) => current || `🎵 ${audio.name}`);
+    }
+    // Solo al abrir con seed del sistema.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function replaceCurrentSlide(file: File) {
     const index = previewIndex;

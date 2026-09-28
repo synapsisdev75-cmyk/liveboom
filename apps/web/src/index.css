@@ -106,6 +106,16 @@
   animation: lb-ins-float 1.6s ease-in-out infinite;
 }
 
+.lb-insignia--active video.lb-asset-screen,
+.lb-insignia:hover video.lb-asset-screen,
+.lb-insignia:focus-visible video.lb-asset-screen {
+  transform: scale(1.06) translateY(-2px);
+  filter: drop-shadow(0 8px 22px rgba(var(--ins-glow), 0.55))
+    drop-shadow(0 0 18px rgba(var(--ins-glow), 0.35));
+  animation: lb-ins-float 1.6s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
 .lb-insignia--active .lb-insignia__aura,
 .lb-insignia:hover .lb-insignia__aura,
 .lb-insignia:focus-visible .lb-insignia__aura {

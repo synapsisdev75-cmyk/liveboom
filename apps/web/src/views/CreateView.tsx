@@ -7,6 +7,11 @@ import { PublicidadSidebarCard } from '../components/ads/PublicidadSidebarCard';
 import { CreatePostModal } from '../components/social/CreatePostModal';
 import { listenActivePromotions, listenMyPromotions, type PromotionAd } from '../lib/promotionsFirestore';
 import { fetchPrivateLocation } from '../lib/userLocation';
+import {
+  SHARE_INCOMING_EVENT,
+  takePendingIncomingShare,
+  type PendingIncomingShare,
+} from '../lib/shareIncoming';
 import { useAuthStore } from '../store/authStore';
 import { useT } from '../i18n';
 
@@ -15,6 +20,7 @@ export function CreateView() {
   const profile = useAuthStore((state) => state.profile);
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
+  const [shareSeed, setShareSeed] = useState<PendingIncomingShare | null>(null);
   const [ads, setAds] = useState<PromotionAd[]>([]);
   const [myAds, setMyAds] = useState<PromotionAd[]>([]);
   const [regionId, setRegionId] = useState('nacional');
@@ -32,6 +38,23 @@ export function CreateView() {
 
   useEffect(() => listenActivePromotions(regionId, setAds), [regionId]);
   useEffect(() => listenMyPromotions(profile?.firebaseUid, setMyAds), [profile?.firebaseUid]);
+
+  useEffect(() => {
+    function applyShare(detail?: PendingIncomingShare | null) {
+      const pending = detail || takePendingIncomingShare();
+      if (!pending) return;
+      if (!pending.files.length && !pending.text) return;
+      setShareSeed(pending);
+      setCreateOpen(true);
+    }
+    applyShare();
+    function onShare(event: Event) {
+      const custom = event as CustomEvent<PendingIncomingShare>;
+      applyShare(custom.detail);
+    }
+    window.addEventListener(SHARE_INCOMING_EVENT, onShare);
+    return () => window.removeEventListener(SHARE_INCOMING_EVENT, onShare);
+  }, []);
 
   if (!profile) {
     return (
@@ -102,8 +125,16 @@ export function CreateView() {
           username={profile.handle}
           autoOpen
           hideTrigger
-          onClose={() => setCreateOpen(false)}
-          onCreated={() => setCreateOpen(false)}
+          seedFiles={shareSeed?.files ?? null}
+          seedCaption={shareSeed?.text ?? null}
+          onClose={() => {
+            setCreateOpen(false);
+            setShareSeed(null);
+          }}
+          onCreated={() => {
+            setCreateOpen(false);
+            setShareSeed(null);
+          }}
         />
       ) : null}
 

@@ -91,12 +91,20 @@ export function LevelInsignia({
       onMouseLeave={stopAnim}
       onFocus={startAnim}
       onBlur={stopAnim}
-      onPointerDown={(e) => {
-        if (e.pointerType === 'touch' || e.pointerType === 'pen') startAnim();
+      onPointerDown={(event) => {
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+          setActive((value) => !value);
+        }
       }}
-      onPointerUp={stopAnim}
+      onPointerUp={(event) => {
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+        stopAnim();
+      }}
       onPointerCancel={stopAnim}
-      onPointerLeave={stopAnim}
+      onPointerLeave={(event) => {
+        if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
+        stopAnim();
+      }}
       role="img"
       aria-label={info.title}
       tabIndex={0}
@@ -110,21 +118,24 @@ export function LevelInsignia({
       <img
         src={src}
         alt=""
-        className="lb-insignia__img relative z-[1] h-full w-full object-contain object-bottom"
+        className={`lb-insignia__img relative z-[1] h-full w-full object-contain object-bottom transition-opacity duration-150 ${
+          active && hasVideo ? 'opacity-0' : 'opacity-100'
+        }`}
         draggable={false}
       />
 
       {hasVideo ? (
         <video
           ref={videoRef}
-          className={`pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain object-bottom transition-opacity duration-200 lb-asset-screen ${
+          className={`pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain object-bottom transition-opacity duration-150 lb-asset-screen ${
             active ? 'opacity-100' : 'opacity-0'
           }`}
           muted
           playsInline
           loop
-          preload="metadata"
+          preload="auto"
           aria-hidden
+          poster={src}
         >
           {animWebm ? <source src={animWebm} type="video/webm" /> : null}
           {animMp4 ? <source src={animMp4} type="video/mp4" /> : null}

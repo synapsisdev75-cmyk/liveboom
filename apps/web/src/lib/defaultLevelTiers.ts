@@ -1,5 +1,5 @@
 /** Tiers por defecto (fallback si Firestore no tiene config). */
-export const LEVEL_BADGE_VERSION = '13';
+export const LEVEL_BADGE_VERSION = '15';
 
 export type DefaultTierSeed = {
   tier: number;
@@ -29,10 +29,10 @@ function frameUrl(slug: string) {
 
 /** Animación hover/toque (solo tiers con asset exportado). */
 function badgeAnimUrls(slug: string): { badgeAnimWebm: string | null; badgeAnimMp4: string | null } {
-  if (slug === 'leyenda') {
+  if (slug === 'leyenda' || slug === 'mecha') {
     return {
-      badgeAnimWebm: `/levels/leyenda-anim.webm?v=${LEVEL_BADGE_VERSION}`,
-      badgeAnimMp4: `/levels/leyenda-anim.mp4?v=${LEVEL_BADGE_VERSION}`,
+      badgeAnimWebm: `/levels/${slug}-anim.webm?v=${LEVEL_BADGE_VERSION}`,
+      badgeAnimMp4: `/levels/${slug}-anim.mp4?v=${LEVEL_BADGE_VERSION}`,
     };
   }
   return { badgeAnimWebm: null, badgeAnimMp4: null };

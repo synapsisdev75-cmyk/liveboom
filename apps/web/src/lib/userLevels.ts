@@ -106,12 +106,12 @@ export function levelFromXp(xp: number): UserLevelInfo {
     webm: tier.badgeAnimWebm ?? null,
     mp4: tier.badgeAnimMp4 ?? null,
   };
-  // Convención local: /levels/{slug}-anim.(webm|mp4) — LEYENDA ya exportada.
+  // Convención local: /levels/{slug}-anim.(webm|mp4) — LEYENDA / MECHA exportados.
   const animFallback =
-    tier.slug === 'leyenda'
+    tier.slug === 'leyenda' || tier.slug === 'mecha'
       ? {
-          webm: `/levels/leyenda-anim.webm?v=${LEVEL_BADGE_VERSION}`,
-          mp4: `/levels/leyenda-anim.mp4?v=${LEVEL_BADGE_VERSION}`,
+          webm: `/levels/${tier.slug}-anim.webm?v=${LEVEL_BADGE_VERSION}`,
+          mp4: `/levels/${tier.slug}-anim.mp4?v=${LEVEL_BADGE_VERSION}`,
         }
       : { webm: null as string | null, mp4: null as string | null };
 

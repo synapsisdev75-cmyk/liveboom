@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { useAuthStore } from './store/authStore';
 import { LoginView } from './views/LoginView';
@@ -18,6 +18,7 @@ import { registerPushNotifications } from './lib/pushNotifications';
 import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
 import { BootSplash } from './components/brand/BootSplash';
 import { flushPendingShare, installSharedLinkOpener } from './lib/openSharedLink';
+import { installShareIncomingListener, SHARE_INCOMING_EVENT } from './lib/shareIncoming';
 
 const HomeView = lazy(() =>
   import('./views/HomeView').then((m) => ({ default: m.HomeView })),
@@ -101,6 +102,7 @@ function AuthHydrator() {
     const unsubAuth = hydrate();
     void prepareNativeLiveWebView();
     installSharedLinkOpener();
+    installShareIncomingListener();
     // Android: notificaciones / media / bluetooth al abrir.
     // Cámara y micrófono solo al transmitir, Sala Boom o llamadas (ensureNativeLiveAvPermissions).
     void ensureNativeEssentialPermissions();
@@ -133,12 +135,25 @@ function AuthHydrator() {
   return null;
 }
 
+function ShareIncomingRouter() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    function onShare() {
+      navigate('/crear');
+    }
+    window.addEventListener(SHARE_INCOMING_EVENT, onShare);
+    return () => window.removeEventListener(SHARE_INCOMING_EVENT, onShare);
+  }, [navigate]);
+  return null;
+}
+
 /** Frontend + Firebase Auth sincronizado con PostgreSQL. */
 export default function App() {
   return (
     <ThemeProvider>
     <BrowserRouter>
       <AuthHydrator />
+      <ShareIncomingRouter />
       <BootSplash />
       <Suspense fallback={<RouteFallback />}>
         <Routes>
