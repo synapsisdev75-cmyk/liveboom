@@ -33,6 +33,7 @@ const ShareIncoming = registerPlugin<ShareIncomingApi>('ShareIncoming');
 export const SHARE_INCOMING_EVENT = 'liveboom:share-incoming';
 
 let pendingShare: PendingIncomingShare | null = null;
+let listenerInstalled = false;
 
 function base64ToFile(item: IncomingShareFile): File | null {
   try {
@@ -50,13 +51,29 @@ function base64ToFile(item: IncomingShareFile): File | null {
 export function filesFromSharePayload(
   payload: IncomingSharePayload | null | undefined,
 ): PendingIncomingShare {
-  const text = String(payload?.text || payload?.subject || '').trim();
+  // Spotify / YouTube often put the title in EXTRA_SUBJECT and the URL in EXTRA_TEXT.
+  const subject = String(payload?.subject || '').trim();
+  const body = String(payload?.text || '').trim();
+  let text = body || subject;
+  if (subject && body && !body.toLowerCase().includes(subject.toLowerCase())) {
+    text = `${subject}\n${body}`;
+  }
   const files: File[] = [];
   for (const item of payload?.files || []) {
     const file = base64ToFile(item);
     if (file) files.push(file);
   }
   return { files, text };
+}
+
+function payloadHasContent(payload: IncomingSharePayload | null | undefined): boolean {
+  if (!payload) return false;
+  const files = Number(payload.fileCount || payload.files?.length || 0);
+  return files > 0 || Boolean(String(payload.text || '').trim()) || Boolean(String(payload.subject || '').trim());
+}
+
+export function peekPendingIncomingShare(): PendingIncomingShare | null {
+  return pendingShare;
 }
 
 export function takePendingIncomingShare(): PendingIncomingShare | null {
@@ -72,17 +89,37 @@ function dispatchShare(payload: IncomingSharePayload) {
   window.dispatchEvent(new CustomEvent(SHARE_INCOMING_EVENT, { detail }));
 }
 
+async function pullNativePending() {
+  try {
+    const payload = await ShareIncoming.consumePending();
+    if (payloadHasContent(payload)) dispatchShare(payload);
+  } catch {
+    /* plugin no disponible */
+  }
+}
+
 /** Escucha compartidos nativos (menú Compartir → LiveBoom). */
 export function installShareIncomingListener() {
   if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return;
-  void ShareIncoming.consumePending()
-    .then((payload) => {
-      if (payload && (payload.fileCount || payload.text || payload.subject)) {
-        dispatchShare(payload);
-      }
-    })
-    .catch(() => undefined);
+  if (listenerInstalled) {
+    void pullNativePending();
+    return;
+  }
+  listenerInstalled = true;
+
   void ShareIncoming.addListener('shareReceived', (payload) => {
     dispatchShare(payload);
   }).catch(() => undefined);
+
+  // Cold start: el intent puede estar listo un poco después del primer paint.
+  void pullNativePending();
+  window.setTimeout(() => {
+    void pullNativePending();
+  }, 400);
+  window.setTimeout(() => {
+    void pullNativePending();
+  }, 1200);
+  window.setTimeout(() => {
+    void pullNativePending();
+  }, 2500);
 }

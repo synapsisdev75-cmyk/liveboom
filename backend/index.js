@@ -111,6 +111,7 @@ mount('/api/push', () => require('./src/routes/push'));
 mount('/api/wallet', () => require('./src/routes/wallet'));
 mount('/api/verification', () => require('./src/routes/verification'));
 mount('/api/super-admin', () => require('./src/routes/superAdmin'));
+mount('/api/link-preview', () => require('./src/routes/linkPreview'));
 
 app.use((error, _req, res, _next) => {
   console.error('[liveboom] error no controlado', error);

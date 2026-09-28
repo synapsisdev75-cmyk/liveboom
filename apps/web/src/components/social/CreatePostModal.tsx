@@ -5,6 +5,13 @@ import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
 import { createPost, updatePost } from '../../lib/socialFirestore';
 import { reelLifecycleHint } from '../../lib/reelLifecycle';
 import { storyLifecycleHint, STORY_MAX_DURATION_SEC } from '../../lib/storyLifecycle';
+import {
+  extractFirstHttpUrl,
+  fetchLinkPreview,
+  isSamePreviewUrl,
+  type LinkPreviewData,
+} from '../../lib/linkPreview';
+import { LinkPreviewCard } from './LinkPreviewCard';
 import { readVideoDurationSec } from '../../lib/videoDuration';
 import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
 import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
@@ -125,6 +132,10 @@ export function CreatePostModal({
   const [visibility, setVisibility] = useState<Visibility>('public');
   const [notifyFriends, setNotifyFriends] = useState(false);
   const [caption, setCaption] = useState('');
+  const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
+  const [linkPreviewBusy, setLinkPreviewBusy] = useState(false);
+  const linkPreviewReqRef = useRef(0);
+  const seedAppliedRef = useRef(false);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaFiles, setMediaFiles] = useState<Array<File | null>>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -368,6 +379,9 @@ export function CreatePostModal({
     if (trimUrl && !trimShared) revokeLocalUrl(trimUrl);
     mediaPickGenRef.current += 1;
     setCaption('');
+    setLinkPreview(null);
+    setLinkPreviewBusy(false);
+    linkPreviewReqRef.current += 1;
     setMediaFile(null);
     setMediaFiles([]);
     setPreviewUrl(null);
@@ -606,8 +620,13 @@ export function CreatePostModal({
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      seedAppliedRef.current = false;
+      return;
+    }
+    if (seedAppliedRef.current) return;
     if (!seedFiles?.length && !seedCaption) return;
+    seedAppliedRef.current = true;
     if (seedCaption) setCaption((current) => current || seedCaption);
     if (!seedFiles?.length) {
       if (seedCaption) setKind('text');
@@ -632,9 +651,38 @@ export function CreatePostModal({
       setKind('text');
       setCaption((current) => current || `🎵 ${audio.name}`);
     }
-    // Solo al abrir con seed del sistema.
+    // Seed del sistema (Galería / Compartir).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, seedFiles, seedCaption]);
+
+  useEffect(() => {
+    if (!open) return;
+    const url = extractFirstHttpUrl(caption);
+    if (!url) {
+      setLinkPreview(null);
+      setLinkPreviewBusy(false);
+      return;
+    }
+    if (linkPreview?.url && isSamePreviewUrl(linkPreview.url, url)) return;
+    const reqId = ++linkPreviewReqRef.current;
+    setLinkPreviewBusy(true);
+    const timer = window.setTimeout(() => {
+      void fetchLinkPreview(url, caption)
+        .then((preview) => {
+          if (reqId !== linkPreviewReqRef.current) return;
+          setLinkPreview(preview);
+        })
+        .catch(() => {
+          if (reqId !== linkPreviewReqRef.current) return;
+          setLinkPreview(null);
+        })
+        .finally(() => {
+          if (reqId !== linkPreviewReqRef.current) return;
+          setLinkPreviewBusy(false);
+        });
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [caption, open, linkPreview?.url]);
 
   function replaceCurrentSlide(file: File) {
     const index = previewIndex;
@@ -1363,6 +1411,7 @@ export function CreatePostModal({
         musicStartSec: selectedMusic?.startSec,
         overlays,
         reconstruction3d: reconstructionPayload,
+        linkPreview,
       });
 
       onCreated?.({
@@ -1383,6 +1432,7 @@ export function CreatePostModal({
         storyExpiresAtMs: created.storyExpiresAtMs ?? null,
         overlays,
         reconstruction3d: reconstructionPayload,
+        linkPreview,
       });
       if (reconReady) clearReconstructionDraft();
       reset();
@@ -1542,6 +1592,13 @@ export function CreatePostModal({
                 </span>
               ) : null}
             </div>
+
+            {linkPreviewBusy ? (
+              <p className="px-1 text-[11px] text-zinc-500">Buscando carátula del enlace…</p>
+            ) : null}
+            {linkPreview ? (
+              <LinkPreviewCard preview={linkPreview} onDismiss={() => setLinkPreview(null)} />
+            ) : null}
 
             {reconstruction?.status === 'ready' && reconstruction.result ? (
               <div className="lb-recon3d-composer">

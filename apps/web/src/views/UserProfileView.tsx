@@ -15,6 +15,7 @@ import {
 import { ageFromIsoDate } from '../lib/birthDate';
 import { LevelAvatarFrame } from '../components/profile/LevelAvatarFrame';
 import { LevelInsignia } from '../components/profile/LevelInsignia';
+import { ProfileLevelTrophies } from '../components/profile/ProfileLevelTrophies';
 import { ProfileCoverBanner } from '../components/profile/ProfileCoverBanner';
 import { ProfileCoverEditor } from '../components/profile/ProfileCoverEditor';
 import { CommentMediaViewer, type CommentMediaViewerItem } from '../components/social/CommentMediaViewer';
@@ -395,6 +396,7 @@ export function UserProfileView() {
             edited: item.edited,
             updatedAt: item.updatedAt,
             reconstruction3d: item.reconstruction3d,
+            linkPreview: item.linkPreview ?? null,
           })),
         );
       },
@@ -741,6 +743,7 @@ export function UserProfileView() {
             <LevelInsignia levelXp={publicProfile.levelXp} />
           </div>
         </div>
+        <ProfileLevelTrophies levelXp={publicProfile.levelXp} />
         {publicProfile.isOwnProfile ? null : (
         <div className="lb-profile-identity__body">
             <div className="lb-profile-toolbar">

@@ -1,7 +1,8 @@
-import { Coins, X } from 'lucide-react';
+import { Coins, Lock, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { LiveGift } from '../../lib/liveboomGifts';
-import { findLiveGift } from '../../lib/liveboomGifts';
+import { canSenderUseGift, findLiveGift, giftLockedReason } from '../../lib/liveboomGifts';
+import { useAuthStore } from '../../store/authStore';
 import { GiftIcon } from './FloatingGift';
 import {
   GiftSendConfirm,
@@ -99,6 +100,7 @@ export function GiftBoxStrip({
   preselectGiftId,
   onCancelConfirm,
 }: Props) {
+  const levelXp = useAuthStore((state) => state.profile?.levelXp ?? 0);
   const [pendingId, setPendingId] = useState<string | null>(preselectGiftId ?? null);
   const [multiplier, setMultiplier] = useState<GiftMultiplier>(1);
 
@@ -125,6 +127,14 @@ export function GiftBoxStrip({
   const pendingGift = pendingId
     ? findLiveGift(pendingId) ?? gifts.find((g) => g.id === pendingId) ?? null
     : null;
+  const pendingLocked = pendingGift ? !canSenderUseGift(pendingGift, levelXp) : false;
+
+  useEffect(() => {
+    if (pendingLocked) {
+      setPendingId(null);
+      setMultiplier(1);
+    }
+  }, [pendingLocked]);
 
   function closeAll() {
     setPendingId(null);
@@ -221,19 +231,28 @@ export function GiftBoxStrip({
           >
             {gifts.map((gift, index) => {
               const busy = sendingGiftId === gift.id;
+              const locked = !canSenderUseGift(gift, levelXp);
+              const lockHint = locked ? giftLockedReason(gift, levelXp) : null;
               return (
                 <button
                   key={gift.id}
                   type="button"
-                  disabled={Boolean(sendingGiftId)}
+                  disabled={Boolean(sendingGiftId) || locked}
+                  title={lockHint || gift.name}
                   onClick={() => {
+                    if (locked) return;
                     setMultiplier(1);
                     setPendingId(gift.id);
                   }}
-                  className={`gift-box-item flex shrink-0 flex-col items-center justify-end rounded-xl border px-1 pb-1.5 pt-2 transition active:scale-95 disabled:opacity-50 ${
+                  className={`gift-box-item relative flex shrink-0 flex-col items-center justify-end rounded-xl border px-1 pb-1.5 pt-2 transition active:scale-95 disabled:opacity-50 ${
                     compact ? 'w-full snap-none' : 'w-[4.35rem] snap-start sm:w-[4.85rem]'
-                  } ${busy ? 'is-busy' : ''}`}
+                  } ${busy ? 'is-busy' : ''} ${locked ? 'opacity-45 grayscale' : ''}`}
                 >
+                  {locked ? (
+                    <span className="absolute right-1 top-1 z-[1] grid h-5 w-5 place-items-center rounded-full bg-black/65 text-amber-300">
+                      <Lock size={10} aria-hidden />
+                    </span>
+                  ) : null}
                   <LazyGiftThumb giftId={gift.id} size={thumbSize} eager={index < 8} />
                   <span className="gift-box-item__name mt-1 w-full truncate px-0.5 text-center text-[8px] font-medium leading-tight">
                     {gift.name}

@@ -8,7 +8,12 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from './firebase';
-import { DEFAULT_TIER_SEEDS, seedToUrls, type DefaultTierSeed } from './defaultLevelTiers';
+import {
+  DEFAULT_TIER_SEEDS,
+  LEVEL_BADGE_VERSION,
+  seedToUrls,
+  type DefaultTierSeed,
+} from './defaultLevelTiers';
 
 const DOC_PATH = 'config/levels';
 
@@ -65,9 +70,19 @@ export function insigniaSizeFromTier(tier: RemoteTierConfig): InsigniaSize {
 
 export function imageWithVersion(url: string, version: number): string {
   if (!url) return url;
-  if (url.includes('firebasestorage.googleapis.com')) return url;
-  const base = url.split('?')[0]!;
-  return `${base}?v=${version}`;
+  const raw = String(url);
+  // Solo la insignia Mecha (badge), NUNCA el marco del avatar (/levels/frames/mecha.png).
+  const isMechaBadge =
+    /(?:^|\/)levels\/mecha\.png$/i.test(raw.split('?')[0] || '') ||
+    (/firebasestorage\.googleapis\.com/i.test(raw) &&
+      /levels%2Fmecha\.png|\/mecha\/badge\.png|%2Fmecha%2Fbadge\.png/i.test(raw));
+  if (isMechaBadge) {
+    return `/levels/mecha.png?v=${LEVEL_BADGE_VERSION}`;
+  }
+  if (raw.includes('firebasestorage.googleapis.com')) return raw;
+  const base = raw.split('?')[0]!;
+  const assetVer = base.includes('/levels/') ? `${version}-${LEVEL_BADGE_VERSION}` : version;
+  return `${base}?v=${assetVer}`;
 }
 
 export async function fetchLevelsConfig(): Promise<LevelsConfigDoc | null> {

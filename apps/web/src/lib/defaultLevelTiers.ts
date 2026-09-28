@@ -1,5 +1,5 @@
 /** Tiers por defecto (fallback si Firestore no tiene config). */
-export const LEVEL_BADGE_VERSION = '15';
+export const LEVEL_BADGE_VERSION = '16';
 
 export type DefaultTierSeed = {
   tier: number;

@@ -9,6 +9,7 @@ import { listenActivePromotions, listenMyPromotions, type PromotionAd } from '..
 import { fetchPrivateLocation } from '../lib/userLocation';
 import {
   SHARE_INCOMING_EVENT,
+  peekPendingIncomingShare,
   takePendingIncomingShare,
   type PendingIncomingShare,
 } from '../lib/shareIncoming';
@@ -41,7 +42,9 @@ export function CreateView() {
 
   useEffect(() => {
     function applyShare(detail?: PendingIncomingShare | null) {
-      const pending = detail || takePendingIncomingShare();
+      const pending = detail ?? takePendingIncomingShare();
+      // Si vino por evento, limpiar buffer (dispatch lo dejó listo).
+      if (detail) takePendingIncomingShare();
       if (!pending) return;
       if (!pending.files.length && !pending.text) return;
       setShareSeed(pending);
@@ -55,6 +58,18 @@ export function CreateView() {
     window.addEventListener(SHARE_INCOMING_EVENT, onShare);
     return () => window.removeEventListener(SHARE_INCOMING_EVENT, onShare);
   }, []);
+
+  // Auth tarda un instante: si el share llegó sin perfil, abrir modal al hidratar.
+  useEffect(() => {
+    if (!profile) return;
+    if (createOpen && shareSeed) return;
+    const pending = peekPendingIncomingShare();
+    if (!pending) return;
+    if (!pending.files.length && !pending.text) return;
+    takePendingIncomingShare();
+    setShareSeed(pending);
+    setCreateOpen(true);
+  }, [profile, createOpen, shareSeed]);
 
   if (!profile) {
     return (

@@ -36,6 +36,7 @@ function toSocial(post: FsPost): SocialPost {
     edited: post.edited,
     updatedAt: post.updatedAt,
     reconstruction3d: post.reconstruction3d,
+    linkPreview: post.linkPreview ?? null,
   };
 }
 

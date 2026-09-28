@@ -28,6 +28,7 @@ import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
+import { LinkPreviewCard } from './LinkPreviewCard';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
 import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
@@ -470,6 +471,13 @@ export type SocialPost = {
   updatedAt?: string;
   edited?: boolean;
   reconstruction3d?: Reconstruction3DPayload;
+  linkPreview?: {
+    url: string;
+    title: string;
+    description: string;
+    image: string;
+    siteName: string;
+  } | null;
 };
 
 /** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
@@ -791,7 +799,14 @@ function StandardPostCard({
         </div>
       ) : null}
       {post.type === 'text' || isTextOnlyPost(post) ? (
-        <TextNoteBody caption={post.caption} />
+        <>
+          <TextNoteBody caption={post.caption} />
+          {post.linkPreview?.url ? (
+            <div className="px-3 pb-2">
+              <LinkPreviewCard preview={post.linkPreview} compact />
+            </div>
+          ) : null}
+        </>
       ) : post.caption && post.type !== 'photo' && post.type !== 'video' ? (
         <p className="border-t border-white/5 px-3 py-2 text-sm text-zinc-300">
           <EmojiText text={post.caption} size={POST_EMOJI_SIZE} />
@@ -963,6 +978,11 @@ function StandardPostCard({
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
       {showFeedCaption ? <PublicationCaption key={post.id} caption={post.caption || ''} /> : null}
+      {post.linkPreview?.url ? (
+        <div className="px-3 pb-2">
+          <LinkPreviewCard preview={post.linkPreview} compact />
+        </div>
+      ) : null}
       {!(post.type === 'video' && mediaExpanded) && showComments ? (
         <PostComments postId={post.id} authorUid={post.authorUid} defaultOpen />
       ) : null}

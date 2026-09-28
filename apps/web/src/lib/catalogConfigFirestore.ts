@@ -25,6 +25,7 @@ import {
   type GiftLevel,
   type LiveGift,
 } from './liveboomGifts';
+import { LEVEL_TROPHIES, LEVEL_TROPHY_COINS } from './levelTrophies';
 import { normalizeGiftLayout, serializeGiftLayout } from './giftLayout';
 import { normalizeGiftMedia, serializeGiftMedia } from './giftMedia';
 
@@ -144,23 +145,64 @@ function normalizeGift(raw: Record<string, unknown>, fallback?: EditableGift): E
     media: normalizeGiftMedia(raw.media != null ? raw.media : fallback?.media),
     liveOnly: placements.length === 1 && placements[0] === 'live',
     deeparFilter: (raw.deeparFilter as LiveGift['deeparFilter']) || fallback?.deeparFilter,
+    requiredLevelSlug:
+      raw.requiredLevelSlug != null
+        ? String(raw.requiredLevelSlug).trim().toLowerCase() || null
+        : fallback?.requiredLevelSlug || null,
     enabled: raw.enabled === false ? false : true,
     placements: placements.length ? placements : ['live'],
     face,
   };
 }
 
+function levelTrophyEditable(def: (typeof LEVEL_TROPHIES)[number]): EditableGift {
+  return {
+    id: def.id,
+    name: def.name,
+    emoji: def.emoji,
+    image: def.image,
+    video: undefined,
+    coins: LEVEL_TROPHY_COINS,
+    level: 1,
+    animation: def.animation,
+    animScale: 0.55,
+    liveOnly: false,
+    deeparFilter: undefined,
+    requiredLevelSlug: def.slug,
+    enabled: true,
+    placements: [...ALL_GIFT_PLACEMENTS],
+    face: null,
+  };
+}
+
 export function mergeGiftsCatalog(doc: GiftsCatalogDoc | null): EditableGift[] {
-  // Fuente única: solo lo publicado en Firestore. Sin reinyectar defaults.
-  if (!doc?.gifts?.length) return [];
+  // Fuente: Firestore + trofeos de nivel embebidos (si faltan en el doc).
   const merged: EditableGift[] = [];
   const seen = new Set<string>();
-  for (const gift of doc.gifts) {
+  for (const gift of doc?.gifts || []) {
     const next = normalizeGift(gift as unknown as Record<string, unknown>);
     if (!next || RETIRED_GIFT_IDS.has(next.id) || next.coins < 1) continue;
     if (seen.has(next.id)) continue;
     merged.push(next);
     seen.add(next.id);
+  }
+  for (const def of LEVEL_TROPHIES) {
+    if (seen.has(def.id)) {
+      const idx = merged.findIndex((g) => g.id === def.id);
+      if (idx >= 0) {
+        merged[idx] = {
+          ...merged[idx]!,
+          ...levelTrophyEditable(def),
+          // Conserva media/layout custom si Super Admin ya lo editó.
+          media: merged[idx]!.media,
+          giftLayout: merged[idx]!.giftLayout,
+          animScale: merged[idx]!.animScale ?? 0.55,
+        };
+      }
+      continue;
+    }
+    merged.push(levelTrophyEditable(def));
+    seen.add(def.id);
   }
   return merged;
 }
@@ -267,6 +309,7 @@ export function serializeEditableGift(gift: EditableGift): Record<string, unknow
     media: serializeGiftMedia(normalized.media),
     liveOnly: Boolean(normalized.liveOnly),
     deeparFilter: normalized.deeparFilter || null,
+    requiredLevelSlug: normalized.requiredLevelSlug || null,
     enabled: normalized.enabled !== false,
     placements: normalized.placements.length ? normalized.placements : ['live'],
     face: normalized.face

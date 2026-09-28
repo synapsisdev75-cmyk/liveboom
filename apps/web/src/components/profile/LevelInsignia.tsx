@@ -109,16 +109,10 @@ export function LevelInsignia({
       aria-label={info.title}
       tabIndex={0}
     >
-      <span className="lb-insignia__aura" aria-hidden />
-      <span className="lb-insignia__shine" aria-hidden />
-      <span className="lb-insignia__spark lb-insignia__spark--a" aria-hidden />
-      <span className="lb-insignia__spark lb-insignia__spark--b" aria-hidden />
-      <span className="lb-insignia__spark lb-insignia__spark--c" aria-hidden />
-
       <img
         src={src}
         alt=""
-        className={`lb-insignia__img relative z-[1] h-full w-full object-contain object-bottom transition-opacity duration-150 ${
+        className={`lb-insignia__img relative z-[1] h-full w-full bg-transparent object-contain object-bottom transition-opacity duration-150 ${
           active && hasVideo ? 'opacity-0' : 'opacity-100'
         }`}
         draggable={false}
@@ -127,15 +121,14 @@ export function LevelInsignia({
       {hasVideo ? (
         <video
           ref={videoRef}
-          className={`pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain object-bottom transition-opacity duration-150 lb-asset-screen ${
+          className={`pointer-events-none absolute inset-0 z-[2] h-full w-full bg-transparent object-contain object-bottom transition-opacity duration-150 lb-asset-screen ${
             active ? 'opacity-100' : 'opacity-0'
           }`}
           muted
           playsInline
           loop
-          preload="auto"
+          preload="metadata"
           aria-hidden
-          poster={src}
         >
           {animWebm ? <source src={animWebm} type="video/webm" /> : null}
           {animMp4 ? <source src={animMp4} type="video/mp4" /> : null}

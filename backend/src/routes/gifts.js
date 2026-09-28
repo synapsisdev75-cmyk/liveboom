@@ -439,6 +439,34 @@ router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   }
 
   const senderUid = req.user.uid;
+
+  // Trofeo de nivel: solo el slug del remitente puede enviarlo.
+  if (gift.requiredLevelSlug) {
+    try {
+      const { levelSlugFromXp } = require('../lib/levelTrophies');
+      const { readLevelXpFields } = require('../lib/adminUsersService');
+      let levelXp = 0;
+      if (firestoreConfigured()) {
+        const snap = await getAdminDb().collection('users').doc(senderUid).get();
+        levelXp = readLevelXpFields(snap.exists ? snap.data() : {}).effective;
+      }
+      const senderSlug = levelSlugFromXp(levelXp);
+      if (senderSlug !== gift.requiredLevelSlug) {
+        res.status(403).json({
+          error: `Solo puedes enviar el trofeo de tu nivel (${senderSlug.toUpperCase()}).`,
+          code: 'TROPHY_LEVEL_LOCKED',
+          requiredLevelSlug: gift.requiredLevelSlug,
+          senderLevelSlug: senderSlug,
+        });
+        return;
+      }
+    } catch (error) {
+      console.warn('[gifts/send] trophy level check', error?.message || error);
+      res.status(500).json({ error: 'No se pudo validar el trofeo de nivel' });
+      return;
+    }
+  }
+
   const senderName =
     req.dbUser?.displayName ||
     req.dbUser?.username ||

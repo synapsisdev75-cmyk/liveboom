@@ -21,6 +21,7 @@ let cache = {
   gifts: [],
 };
 let migrationDoneMemory = false;
+let levelTrophiesEnsured = false;
 
 function safeId(value) {
   return String(value || '')
@@ -51,6 +52,9 @@ function normalizeCatalogGift(raw) {
     version: Math.max(1, Math.floor(Number(raw.version) || 0)),
     image: raw.image != null ? String(raw.image) : undefined,
     video: raw.video != null ? String(raw.video) : undefined,
+    requiredLevelSlug: raw.requiredLevelSlug
+      ? String(raw.requiredLevelSlug).trim().toLowerCase()
+      : null,
   };
 }
 
@@ -61,6 +65,15 @@ function invalidateCatalogCache() {
 async function loadCatalogFromFirestore({ force = false } = {}) {
   if (!firestoreConfigured()) {
     return { version: 0, gifts: [], byId: new Map() };
+  }
+  if (!levelTrophiesEnsured) {
+    try {
+      const { ensureLevelTrophiesInCatalog } = require('./ensureLevelTrophies');
+      await ensureLevelTrophiesInCatalog();
+      levelTrophiesEnsured = true;
+    } catch (error) {
+      console.warn('[giftCatalog] ensureLevelTrophies', error?.message || error);
+    }
   }
   const now = Date.now();
   if (!force && cache.loadedAt && now - cache.loadedAt < CACHE_TTL_MS) {

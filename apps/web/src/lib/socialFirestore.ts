@@ -223,6 +223,14 @@ export type FsPost = {
   sharedFromUsername?: string;
   /** Stickers/GIF sobre la foto o el video (Publicación, Boom Clip, Flash Boom). */
   overlays?: MediaOverlayItem[];
+  /** Vista previa de enlace (Spotify, YouTube, etc.). */
+  linkPreview?: {
+    url: string;
+    title: string;
+    description: string;
+    image: string;
+    siteName: string;
+  } | null;
   updatedAt?: string;
   edited?: boolean;
   reconstruction3d?: Reconstruction3DPayload;
@@ -1966,6 +1974,17 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     updatedAt: data.updatedAt ? asIso(data.updatedAt) : undefined,
     edited: Boolean(data.edited) || Boolean(data.updatedAt),
     ...(reconstruction3d ? { reconstruction3d } : {}),
+    ...(data.linkPreview && typeof data.linkPreview === 'object'
+      ? {
+          linkPreview: {
+            url: String((data.linkPreview as Record<string, unknown>).url || ''),
+            title: String((data.linkPreview as Record<string, unknown>).title || ''),
+            description: String((data.linkPreview as Record<string, unknown>).description || ''),
+            image: String((data.linkPreview as Record<string, unknown>).image || ''),
+            siteName: String((data.linkPreview as Record<string, unknown>).siteName || ''),
+          },
+        }
+      : {}),
   };
 }
 
@@ -2854,6 +2873,13 @@ export async function createPost(input: {
   musicStartSec?: number;
   overlays?: MediaOverlayItem[];
   reconstruction3d?: Reconstruction3DPayload;
+  linkPreview?: {
+    url: string;
+    title: string;
+    description: string;
+    image: string;
+    siteName: string;
+  } | null;
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -3018,6 +3044,17 @@ export async function createPost(input: {
       : {}),
     ...(overlayPayload.length ? { overlays: overlayPayload } : {}),
     ...(input.reconstruction3d ? { reconstruction3d: input.reconstruction3d } : {}),
+    ...(input.linkPreview?.url
+      ? {
+          linkPreview: {
+            url: String(input.linkPreview.url).slice(0, 500),
+            title: String(input.linkPreview.title || '').slice(0, 160),
+            description: String(input.linkPreview.description || '').slice(0, 240),
+            image: String(input.linkPreview.image || '').slice(0, 500),
+            siteName: String(input.linkPreview.siteName || '').slice(0, 80),
+          },
+        }
+      : {}),
   });
   if (visibility === 'public' && input.caption.trim()) {
     void import('./trendsFirestore')

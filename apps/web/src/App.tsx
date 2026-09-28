@@ -18,7 +18,7 @@ import { registerPushNotifications } from './lib/pushNotifications';
 import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
 import { BootSplash } from './components/brand/BootSplash';
 import { flushPendingShare, installSharedLinkOpener } from './lib/openSharedLink';
-import { installShareIncomingListener, SHARE_INCOMING_EVENT } from './lib/shareIncoming';
+import { installShareIncomingListener, peekPendingIncomingShare, SHARE_INCOMING_EVENT } from './lib/shareIncoming';
 
 const HomeView = lazy(() =>
   import('./views/HomeView').then((m) => ({ default: m.HomeView })),
@@ -130,6 +130,8 @@ function AuthHydrator() {
     if (!ready) return;
     idlePrefetchRoutes();
     void flushPendingShare();
+    // Reintentar share nativo por si el intent llegó tras el primer paint.
+    installShareIncomingListener();
   }, [ready, uid]);
 
   return null;
@@ -137,6 +139,8 @@ function AuthHydrator() {
 
 function ShareIncomingRouter() {
   const navigate = useNavigate();
+  const ready = useAuthStore((state) => state.ready);
+
   useEffect(() => {
     function onShare() {
       navigate('/crear');
@@ -144,6 +148,15 @@ function ShareIncomingRouter() {
     window.addEventListener(SHARE_INCOMING_EVENT, onShare);
     return () => window.removeEventListener(SHARE_INCOMING_EVENT, onShare);
   }, [navigate]);
+
+  // Si el share llegó antes de montar /crear (o auth aún hidrataba), reintenta.
+  useEffect(() => {
+    if (!ready) return;
+    if (peekPendingIncomingShare()) {
+      navigate('/crear');
+    }
+  }, [ready, navigate]);
+
   return null;
 }
 

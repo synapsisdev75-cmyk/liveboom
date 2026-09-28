@@ -5,6 +5,8 @@ import type { GiftLayoutMap } from './giftLayout';
 import type { GiftMediaInfo } from './giftMedia';
 import { runtimeAllLiveGifts, runtimeCatalogLoaded, runtimeFindGift, runtimeGiftsFor } from './catalogRuntime';
 import { RETIRED_GIFT_IDS } from './retiredGifts';
+import { isLevelTrophyId } from './levelTrophies';
+import { levelFromXp } from './userLevels';
 
 export type GiftLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -32,6 +34,8 @@ export type LiveGift = {
   liveOnly?: boolean;
   /** Filtro DeepAR aplicado en la cámara del host. */
   deeparFilter?: Exclude<CallFilterId, 'none'>;
+  /** Si está definido, solo usuarios de ese nivel (slug) pueden enviarlo. */
+  requiredLevelSlug?: string | null;
 };
 
 export function giftLevelFromCoins(coins: number): GiftLevel {
@@ -83,6 +87,7 @@ function asCatalogGift(g: LiveGift): LiveGift {
     media: g.media,
     liveOnly: g.liveOnly,
     deeparFilter: g.deeparFilter,
+    requiredLevelSlug: g.requiredLevelSlug || null,
   };
 }
 
@@ -104,6 +109,7 @@ export function findLiveGift(giftId: string | undefined | null): LiveGift | null
     media: remote.media,
     liveOnly: remote.liveOnly,
     deeparFilter: remote.deeparFilter,
+    requiredLevelSlug: remote.requiredLevelSlug,
   });
 }
 
@@ -154,4 +160,24 @@ export function sortedLiveGiftCatalog(): LiveGift[] {
 
 export function giftsByLevel(level: GiftLevel) {
   return sortedLiveGiftCatalog().filter((g) => g.level === level);
+}
+
+/** True si el remitente puede enviar este regalo (trofeos = solo su nivel). */
+export function canSenderUseGift(gift: LiveGift | null | undefined, levelXp: number): boolean {
+  if (!gift) return false;
+  const required = String(gift.requiredLevelSlug || '').trim().toLowerCase();
+  if (!required) return true;
+  return levelFromXp(levelXp).slug === required;
+}
+
+export function giftLockedReason(gift: LiveGift | null | undefined, levelXp: number): string | null {
+  if (!gift?.requiredLevelSlug) return null;
+  if (canSenderUseGift(gift, levelXp)) return null;
+  const need = String(gift.requiredLevelSlug).toUpperCase();
+  const mine = levelFromXp(levelXp).title;
+  return `Solo nivel ${need} (tú eres ${mine})`;
+}
+
+export function isTrophyGift(giftId: string | null | undefined): boolean {
+  return isLevelTrophyId(giftId);
 }
