@@ -202,7 +202,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         "heading": "Dirección de notificación judicial: Villavicencio, Meta, Colombia",
-        "body": "Correo electrónico: macroreal2026@gmail.com\n\nTeléfono: (por definir)\n\nSitio web: https://liveboomapp.com"
+        "body": "Correo electrónico: macroreal2026@gmail.com\n\nTeléfono: +57 313 387 8060\n\nSitio web: https://www.macroreal.org/"
       },
       {
         "heading": "Aceptación y prueba",
@@ -222,7 +222,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
     "sections": [
       {
         "heading": "Identificación del responsable",
-        "body": "MACRO REAL S.A.S., sociedad por acciones simplificada identificada con NIT 901.525.356-9, con domicilio principal en Villavicencio, Meta, Colombia, es la responsable del tratamiento de los datos personales recopilados a través de LiveBoom.\n\nPara efectos de esta Política, las expresiones “LiveBoom” y “la Plataforma” designan el servicio, la aplicación y el sitio web; “MACRO REAL”, “la Compañía” o “nosotros” designan a MACRO REAL S.A.S.; y “titular” designa a la persona natural cuyos datos son objeto de tratamiento.\n\nLos canales destinados al ejercicio de los derechos relacionados con protección de datos son:\n\nResponsable: MACRO REAL S.A.S.\n\nNIT: 901.525.356-9\n\nDomicilio: Villavicencio, Meta, Colombia\n\nDirección física: Villavicencio, Meta, Colombia\n\nCorreo de privacidad: macroreal2026@gmail.com\n\nTeléfono: (por definir)\n\nSitio web: https://liveboomapp.com"
+        "body": "MACRO REAL S.A.S., sociedad por acciones simplificada identificada con NIT 901.525.356-9, con domicilio principal en Villavicencio, Meta, Colombia, es la responsable del tratamiento de los datos personales recopilados a través de LiveBoom.\n\nPara efectos de esta Política, las expresiones “LiveBoom” y “la Plataforma” designan el servicio, la aplicación y el sitio web; “MACRO REAL”, “la Compañía” o “nosotros” designan a MACRO REAL S.A.S.; y “titular” designa a la persona natural cuyos datos son objeto de tratamiento.\n\nLos canales destinados al ejercicio de los derechos relacionados con protección de datos son:\n\nResponsable: MACRO REAL S.A.S.\n\nNIT: 901.525.356-9\n\nDomicilio: Villavicencio, Meta, Colombia\n\nDirección física: Villavicencio, Meta, Colombia\n\nCorreo de privacidad: macroreal2026@gmail.com\n\nTeléfono: +57 313 387 8060\n\nSitio web: https://www.macroreal.org/"
       },
       {
         "heading": "Objeto de esta Política",
@@ -394,7 +394,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         "heading": "Anexo B. Aviso de privacidad",
-        "body": "MACRO REAL S.A.S. (NIT 901.525.356-9), domiciliada en Villavicencio, Meta, Colombia, con dirección Villavicencio, Meta, Colombia, correo macroreal2026@gmail.com y teléfono (por definir), es responsable del tratamiento de los datos personales que usted suministra a través de LiveBoom. Sus datos serán tratados para administrar su cuenta, prestar el servicio, personalizar su experiencia, garantizar la seguridad, cumplir la ley y las demás finalidades descritas en la Política de Privacidad. Usted tiene derecho a conocer, actualizar, rectificar y suprimir sus datos, a revocar la autorización y a presentar quejas ante la Superintendencia de Industria y Comercio. Consulte la Política completa en URL: https://liveboomapp.com/legal/privacidad."
+        "body": "MACRO REAL S.A.S. (NIT 901.525.356-9), domiciliada en Villavicencio, Meta, Colombia, con dirección Villavicencio, Meta, Colombia, correo macroreal2026@gmail.com y teléfono +57 313 387 8060, es responsable del tratamiento de los datos personales que usted suministra a través de LiveBoom. Sus datos serán tratados para administrar su cuenta, prestar el servicio, personalizar su experiencia, garantizar la seguridad, cumplir la ley y las demás finalidades descritas en la Política de Privacidad. Usted tiene derecho a conocer, actualizar, rectificar y suprimir sus datos, a revocar la autorización y a presentar quejas ante la Superintendencia de Industria y Comercio. Consulte la Política completa en URL: https://liveboomapp.com/legal/privacidad."
       },
       {
         "heading": "Historial de versiones",
@@ -430,7 +430,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         "heading": "Punto de contacto de seguridad infantil",
-        "body": "MACRO REAL S.A.S. ha designado a la siguiente persona como punto de contacto de seguridad infantil, facultada para atender notificaciones de Google Play y de las autoridades sobre contenido o conductas de explotación o abuso sexual infantil, y para explicar y ejecutar los procedimientos de revisión y aplicación de estas Normas:\n\nNombre: Equipo Legal Liveboom (MACRO REAL S.A.S.)\n\nCargo: Responsable de seguridad infantil / cumplimiento\n\nCorreo: macroreal2026@gmail.com\n\nTeléfono: (por definir)\n\nDirección: Villavicencio, Meta, Colombia"
+        "body": "MACRO REAL S.A.S. ha designado a la siguiente persona como punto de contacto de seguridad infantil, facultada para atender notificaciones de Google Play y de las autoridades sobre contenido o conductas de explotación o abuso sexual infantil, y para explicar y ejecutar los procedimientos de revisión y aplicación de estas Normas:\n\nNombre: Equipo Legal Liveboom (MACRO REAL S.A.S.)\n\nCargo: Responsable de seguridad infantil / cumplimiento\n\nCorreo: macroreal2026@gmail.com\n\nTeléfono: +57 313 387 8060\n\nDirección: Villavicencio, Meta, Colombia"
       },
       {
         "heading": "Protección de los menores en una plataforma para adultos",
@@ -622,7 +622,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         "heading": "Contacto e historial de versiones",
-        "body": "Responsable: MACRO REAL S.A.S. – NIT 901.525.356-9\n\nDirección de notificación: Villavicencio, Meta, Colombia Villavicencio, Meta, Colombia\n\ncorreo: macroreal2026@gmail.com\n\nTeléfono: xxx\n\nSitio web: xxx\n\nVersión Beta 0.1 – documento inicial de trabajo.\n\nVersión Beta 0.2 – 1 de septiembre de 2026: identificación del responsable; denuncia obligatoria en casos de explotación infantil; nuevas reglas sobre menores en contenido, imágenes íntimas sin consentimiento, deepfakes sexuales, terrorismo y organizaciones criminales, maltrato animal, apuestas y alcohol/tabaco; enumeración de características protegidas; rangos de sanciones; alcance y plazos del derecho a revisión; publicidad de influenciadores.\n\nVersión Beta 0.3 – 29 de septiembre de 2026: mayoría de edad según país de residencia y carácter adulto no sexual de la Plataforma; verificación de identidad de Creadores; redefinición del contenido sexual prohibido y del contenido sensible permitido, con filtro por defecto y sin promoción, en armonía con las políticas de las tiendas de aplicaciones; Regalos en transmisiones en vivo; nueva cláusula 26 sobre BLAST, Regalos y monetización; medidas sobre funciones económicas.\n\nVersión Beta 0.4 – 29 de septiembre de 2026: ajuste al informe técnico: denominación BLAST; transmisiones privadas de pago, batallas, Llamadas de Pago y Campañas Publicitarias incorporadas a las cláusulas 24 y 26.\n\nDOCUMENTO BETA\n\nMACRO REAL S.A.S. · LIVEBOOM"
+        "body": "Responsable: MACRO REAL S.A.S. – NIT 901.525.356-9\n\nDirección de notificación: Villavicencio, Meta, Colombia\n\ncorreo: macroreal2026@gmail.com\n\nTeléfono: +57 313 387 8060\n\nSitio web: https://www.macroreal.org/\n\nVersión Beta 0.1 – documento inicial de trabajo.\n\nVersión Beta 0.2 – 1 de septiembre de 2026: identificación del responsable; denuncia obligatoria en casos de explotación infantil; nuevas reglas sobre menores en contenido, imágenes íntimas sin consentimiento, deepfakes sexuales, terrorismo y organizaciones criminales, maltrato animal, apuestas y alcohol/tabaco; enumeración de características protegidas; rangos de sanciones; alcance y plazos del derecho a revisión; publicidad de influenciadores.\n\nVersión Beta 0.3 – 29 de septiembre de 2026: mayoría de edad según país de residencia y carácter adulto no sexual de la Plataforma; verificación de identidad de Creadores; redefinición del contenido sexual prohibido y del contenido sensible permitido, con filtro por defecto y sin promoción, en armonía con las políticas de las tiendas de aplicaciones; Regalos en transmisiones en vivo; nueva cláusula 26 sobre BLAST, Regalos y monetización; medidas sobre funciones económicas.\n\nVersión Beta 0.4 – 29 de septiembre de 2026: ajuste al informe técnico: denominación BLAST; transmisiones privadas de pago, batallas, Llamadas de Pago y Campañas Publicitarias incorporadas a las cláusulas 24 y 26.\n\nDOCUMENTO BETA\n\nMACRO REAL S.A.S. · LIVEBOOM"
       }
     ]
   },
@@ -730,7 +730,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         "heading": "Dirección de notificación judicial: Villavicencio, Meta, Colombia",
-        "body": "Correo de soporte y pagos: macroreal2026@gmail.com\n\nTeléfono: (por definir)\n\nSitio web: https://liveboomapp.com"
+        "body": "Correo de soporte y pagos: macroreal2026@gmail.com\n\nTeléfono: +57 313 387 8060\n\nSitio web: https://www.macroreal.org/"
       },
       {
         "heading": "Aceptación y prueba",
@@ -770,7 +770,7 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         "heading": "6. Contacto",
-        "body": "MACRO REAL S.A.S. · macroreal2026@gmail.com · https://liveboomapp.com"
+        "body": "MACRO REAL S.A.S. · macroreal2026@gmail.com · +57 313 387 8060 · https://www.macroreal.org/"
       }
     ]
   }
