@@ -95,11 +95,11 @@ export const LEGAL_DOCS: LegalDoc[] = [
   {
     slug: 'seguridad-infantil',
     title: 'Estándares de seguridad infantil',
-    updated: '4 de septiembre de 2026',
+    updated: '29 de septiembre de 2026',
     sections: [
       {
         heading: '1. Compromiso de Liveboom',
-        body: 'Liveboom es una red social de transmisiones en vivo, contenido corto y comunidad. Nos oponemos al abuso y explotación sexual infantil (CSAE, por sus siglas en inglés) y al material de abuso sexual infantil (CSAM). Está estrictamente prohibido crear, subir, transmitir, compartir, solicitar o almacenar CSAM o cualquier contenido o conducta que sexualmente explote, abuse o ponga en peligro a menores.',
+        body: 'Liveboom es una red social de transmisiones en vivo, contenido corto y comunidad. Nos oponemos al abuso y explotación sexual infantil (CSAE / EASI) y al material de abuso sexual infantil (CSAM). Está estrictamente prohibido crear, subir, transmitir, compartir, solicitar o almacenar CSAM o cualquier contenido o conducta que sexualmente explote, abuse o ponga en peligro a menores.',
       },
       {
         heading: '2. Solo mayores de 18 años',
@@ -114,8 +114,8 @@ export const LEGAL_DOCS: LegalDoc[] = [
         body: 'Cuando tengamos conocimiento efectivo de CSAM o de conductas CSAE en Liveboom: (a) retiramos o bloqueamos el contenido; (b) restringimos o cerramos las cuentas involucradas; (c) conservamos evidencia según la ley aplicable; y (d) cooperamos con autoridades competentes cuando corresponda. Actuamos conforme a estos estándares, a nuestros Términos y a la legislación aplicable.',
       },
       {
-        heading: '5. Cómo reportar',
-        body: 'Si ves contenido o conducta que pueda afectar la seguridad de menores, repórtalo de inmediato escribiendo a macroreal2026@gmail.com (asunto: “Seguridad infantil / CSAM”) e incluye enlaces, capturas y el usuario involucrado cuando sea posible. También puedes usar los canales de soporte o denuncia disponibles dentro de la app. No reenvíes archivos de CSAM; describe el hallazgo y facilita la ubicación en la plataforma.',
+        heading: '5. Cómo reportar (dentro de la app)',
+        body: 'Puedes enviar comentarios y denuncias de seguridad infantil sin salir de LiveBoom: ve a Configuración (Perfil → editar) → «Reportar un problema». El formulario in-app permite elegir la categoría «Seguridad infantil / CSAM» y describir el hallazgo. También puedes reportar usuarios desde el chat (menú de seguridad). No reenvíes archivos de CSAM; describe el hallazgo y facilita la ubicación en la plataforma. Contacto adicional por correo: macroreal2026@gmail.com (asunto: “Seguridad infantil / CSAM”).',
       },
       {
         heading: '6. Cumplimiento legal',
@@ -123,11 +123,11 @@ export const LEGAL_DOCS: LegalDoc[] = [
       },
       {
         heading: '7. Punto de contacto CSAM',
-        body: 'Contacto designado para prácticas de prevención de CSAM y cumplimiento de la política de estándares de seguridad infantil de Google Play: macroreal2026@gmail.com. Nombre de referencia del contacto: Equipo Legal Liveboom.',
+        body: 'Contacto designado para prácticas de prevención de CSAM y cumplimiento de la política de estándares de seguridad infantil de Google Play: macroreal2026@gmail.com. Nombre de referencia del contacto: Equipo Legal Liveboom (Macro Real S.A.S).',
       },
       {
         heading: '8. Relación con otros documentos',
-        body: 'Estos estándares complementan los Términos y Condiciones y el Aviso de Privacidad de Liveboom. En caso de conflicto sobre seguridad infantil y CSAM, prevalecen estas normas de protección.',
+        body: 'Estos estándares complementan los Términos y Condiciones y el Aviso de Privacidad de Liveboom. En caso de conflicto sobre seguridad infantil y CSAM, prevalecen estas normas de protección. Documento público: https://liveboomapp.com/legal/seguridad-infantil',
       },
     ],
   },

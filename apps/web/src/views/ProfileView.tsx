@@ -1,5 +1,7 @@
 import { sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 import {
+  Flag,
+  HelpCircle,
   BadgeCheck,
   Bell,
   Camera,
@@ -23,6 +25,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
+import { InAppFeedbackModal } from '../components/legal/InAppFeedbackModal';
 import { CallSettingsPanel } from '../components/social/CallSettingsPanel';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
 import { api, type SessionUser } from '../lib/api';
@@ -214,6 +217,8 @@ export function ProfileView() {
   const [notifyMsg, setNotifyMsg] = useState(true);
   const [notifyGifts, setNotifyGifts] = useState(true);
   const [privateProfile, setPrivateProfile] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const galleryAvatarRef = useRef<HTMLInputElement>(null);
   const cameraAvatarRef = useRef<HTMLInputElement>(null);
@@ -974,6 +979,41 @@ export function ProfileView() {
           <Card title={t('settings.callsTitle')} subtitle={t('settings.callsSub')}>
             <CallSettingsPanel />
           </Card>
+          <Card title={t('settings.supportHelp')} subtitle={t('settings.reportProblem')}>
+            <div className="space-y-3">
+              <RowLink
+                icon={<Flag size={18} />}
+                title={t('settings.reportProblem')}
+                subtitle="Envía comentarios o denuncias sin salir de la app"
+                onClick={() => setFeedbackOpen(true)}
+              />
+              <RowLink
+                icon={<Shield size={18} />}
+                title={t('legal.childSafety')}
+                subtitle="Estándares públicos contra CSAE / CSAM"
+                to="/legal/seguridad-infantil"
+              />
+              <RowLink
+                icon={<HelpCircle size={18} />}
+                title={t('settings.terms')}
+                subtitle={t('settings.privacyPolicy')}
+                to="/legal/terminos"
+              />
+            </div>
+          </Card>
+          <InAppFeedbackModal
+            open={feedbackOpen}
+            onClose={() => setFeedbackOpen(false)}
+            onToast={(msg) => {
+              setFeedbackToast(msg);
+              window.setTimeout(() => setFeedbackToast(null), 4000);
+            }}
+          />
+          {feedbackToast ? (
+            <p className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-center text-sm font-semibold text-emerald-200">
+              {feedbackToast}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 
 const REPORT_TO = 'josemanuelperessosa0@gmail.com';
-const SUBJECT = '[LiveBoom] Nuevo reporte de usuario';
+const SUBJECT_USER = '[LiveBoom] Nuevo reporte de usuario';
+const SUBJECT_FEEDBACK = '[LiveBoom] Comentario / denuncia in-app';
 
 function formatBody(payload) {
   const reported = payload.reported || {};
@@ -29,6 +30,26 @@ function formatBody(payload) {
   return lines.join('\n');
 }
 
+function formatFeedbackBody(payload) {
+  const reporter = payload.reporter || {};
+  const lines = [
+    'Comentario / denuncia enviada desde dentro de la app (sin salir).',
+    '',
+    `Categoría: ${payload.category || 'general'}`,
+    '',
+    'Usuario que escribe:',
+    `- nombre: ${reporter.displayName || '—'}`,
+    `- @username: @${reporter.username || '—'}`,
+    `- userId interno: ${reporter.uid || '—'}`,
+    '',
+    `Fecha/hora: ${payload.timestamp || new Date().toISOString()}`,
+    '',
+    'Mensaje:',
+    payload.message || '—',
+  ];
+  return lines.join('\n');
+}
+
 function smtpConfigured() {
   const host = String(process.env.SMTP_HOST || (process.env.GMAIL_USER ? 'smtp.gmail.com' : '')).trim();
   const user = String(process.env.SMTP_USER || process.env.GMAIL_USER || '').trim();
@@ -36,7 +57,7 @@ function smtpConfigured() {
   return { host, user, pass, ok: Boolean(host && user && pass) };
 }
 
-async function sendWithResend(text) {
+async function sendWithResend(text, subject) {
   const key = String(process.env.RESEND_API_KEY || '').trim();
   if (!key) return null;
   const from = String(process.env.MAIL_FROM || 'LiveBoom <reports@liveboomapp.com>').trim();
@@ -49,7 +70,7 @@ async function sendWithResend(text) {
     body: JSON.stringify({
       from,
       to: [REPORT_TO],
-      subject: SUBJECT,
+      subject: subject || SUBJECT_USER,
       text,
     }),
   });
@@ -60,7 +81,7 @@ async function sendWithResend(text) {
   return 'resend';
 }
 
-async function sendWithSmtp(text) {
+async function sendWithSmtp(text, subject) {
   const { host, user, pass, ok } = smtpConfigured();
   if (!ok) return null;
   const nodemailer = require('nodemailer');
@@ -75,7 +96,7 @@ async function sendWithSmtp(text) {
   await transporter.sendMail({
     from: process.env.MAIL_FROM || user,
     to: REPORT_TO,
-    subject: SUBJECT,
+    subject: subject || SUBJECT_USER,
     text,
     messageId: `<report-${crypto.randomUUID()}@liveboomapp.com>`,
   });
@@ -84,9 +105,20 @@ async function sendWithSmtp(text) {
 
 async function sendReportEmail(payload) {
   const text = formatBody(payload);
-  const resend = await sendWithResend(text);
+  const resend = await sendWithResend(text, SUBJECT_USER);
   if (resend) return { provider: resend };
-  const smtp = await sendWithSmtp(text);
+  const smtp = await sendWithSmtp(text, SUBJECT_USER);
+  if (smtp) return { provider: smtp };
+  const err = new Error('email_not_configured');
+  err.code = 'email_not_configured';
+  throw err;
+}
+
+async function sendFeedbackEmail(payload) {
+  const text = formatFeedbackBody(payload);
+  const resend = await sendWithResend(text, SUBJECT_FEEDBACK);
+  if (resend) return { provider: resend };
+  const smtp = await sendWithSmtp(text, SUBJECT_FEEDBACK);
   if (smtp) return { provider: smtp };
   const err = new Error('email_not_configured');
   err.code = 'email_not_configured';
@@ -96,5 +128,7 @@ async function sendReportEmail(payload) {
 module.exports = {
   REPORT_TO,
   sendReportEmail,
+  sendFeedbackEmail,
   formatBody,
+  formatFeedbackBody,
 };

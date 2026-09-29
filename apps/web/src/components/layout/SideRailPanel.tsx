@@ -65,6 +65,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useMessagesMenuStore } from '../../store/messagesMenuStore';
 import { MessagesSideRail } from '../social/MessagesQuickMenu';
 import { SidebarWalletDock } from './SidebarWalletDock';
+import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
 
 type SuggestedUser = {
   uid: string;
@@ -1189,6 +1190,8 @@ function SettingsRail() {
   const profile = useAuthStore((state) => state.profile);
   const firebaseUser = useAuthStore((state) => state.firebaseUser);
   const [xp, setXp] = useState(0);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -1298,30 +1301,73 @@ function SettingsRail() {
       <section className="rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <p className="mb-2 text-sm font-bold text-white">{t('settings.supportHelp')}</p>
         <ul className="space-y-1">
-          {(
-            [
-              { to: '/legal/terminos', labelKey: 'settings.helpCenter' as const, icon: HelpCircle },
-              { to: '/legal/terminos', labelKey: 'settings.terms' as const, icon: HelpCircle },
-              { to: '/legal/privacidad', labelKey: 'settings.privacyPolicy' as const, icon: ShieldCheck },
-              { to: '/mensajes', labelKey: 'settings.reportProblem' as const, icon: HelpCircle },
-            ]
-          ).map((item) => {
-            const Icon = item.icon;
-            return (
-              <li key={item.labelKey}>
-                <Link
-                  to={item.to}
-                  className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
-                >
-                  <Icon size={14} className="text-zinc-500" />
-                  <span className="min-w-0 flex-1">{t(item.labelKey)}</span>
-                  <ChevronRight size={14} className="text-zinc-600" />
-                </Link>
-              </li>
-            );
-          })}
+          <li>
+            <Link
+              to="/legal/terminos"
+              className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <HelpCircle size={14} className="text-zinc-500" />
+              <span className="min-w-0 flex-1">{t('settings.helpCenter')}</span>
+              <ChevronRight size={14} className="text-zinc-600" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/legal/terminos"
+              className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <HelpCircle size={14} className="text-zinc-500" />
+              <span className="min-w-0 flex-1">{t('settings.terms')}</span>
+              <ChevronRight size={14} className="text-zinc-600" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/legal/privacidad"
+              className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <ShieldCheck size={14} className="text-zinc-500" />
+              <span className="min-w-0 flex-1">{t('settings.privacyPolicy')}</span>
+              <ChevronRight size={14} className="text-zinc-600" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/legal/seguridad-infantil"
+              className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <ShieldCheck size={14} className="text-zinc-500" />
+              <span className="min-w-0 flex-1">{t('legal.childSafety')}</span>
+              <ChevronRight size={14} className="text-zinc-600" />
+            </Link>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="flex w-full items-center gap-2 rounded-lg px-1 py-2 text-left text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <HelpCircle size={14} className="text-zinc-500" />
+              <span className="min-w-0 flex-1">{t('settings.reportProblem')}</span>
+              <ChevronRight size={14} className="text-zinc-600" />
+            </button>
+          </li>
         </ul>
       </section>
+
+      <InAppFeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        onToast={(msg) => {
+          setFeedbackToast(msg);
+          window.setTimeout(() => setFeedbackToast(null), 4000);
+        }}
+      />
+      {feedbackToast ? (
+        <p className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-center text-[11px] font-semibold text-emerald-200">
+          {feedbackToast}
+        </p>
+      ) : null}
 
       <section className="lb-palette-promo overflow-hidden rounded-2xl p-3.5">
         <div className="flex items-start gap-2">

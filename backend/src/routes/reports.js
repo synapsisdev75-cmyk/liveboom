@@ -3,7 +3,7 @@ const express = require('express');
 const { FieldValue } = require('firebase-admin/firestore');
 const { asFn } = require('../lib/asFn');
 const { getAdminDb, firestoreConfigured } = require('../lib/firestoreAdmin');
-const { sendReportEmail } = require('../lib/sendReportEmail');
+const { sendReportEmail, sendFeedbackEmail } = require('../lib/sendReportEmail');
 
 const router = express.Router();
 const requireAuth = asFn(require('../middleware/requireAuth'));
@@ -11,6 +11,7 @@ const requireAuth = asFn(require('../middleware/requireAuth'));
 const REASON_MAX = 1000;
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const RATE_MAX = 5;
+const FEEDBACK_CATEGORIES = new Set(['general', 'child_safety', 'abuse', 'bug', 'other']);
 
 function sanitizeReason(raw) {
   return String(raw || '')
@@ -155,6 +156,95 @@ router.post('/', requireAuth, async (req, res) => {
     }
     console.error('[reports] create failed', error);
     res.status(500).json({ error: 'No se pudo guardar el reporte' });
+  }
+});
+
+/** Comentarios / denuncias in-app (Google Play Child Safety Standards). */
+router.post('/feedback', requireAuth, async (req, res) => {
+  try {
+    if (!firestoreConfigured()) {
+      res.status(503).json({ error: 'Comentarios no disponibles en este momento' });
+      return;
+    }
+
+    const reporterUid = String(req.user?.uid || '').trim();
+    const categoryRaw = String(req.body?.category || 'general').trim().toLowerCase();
+    const category = FEEDBACK_CATEGORIES.has(categoryRaw) ? categoryRaw : 'general';
+    const message = sanitizeReason(req.body?.message);
+
+    if (!reporterUid) {
+      res.status(401).json({ error: 'No autenticado' });
+      return;
+    }
+    if (!message) {
+      res.status(400).json({ error: 'Escribe tu mensaje.' });
+      return;
+    }
+
+    const db = getAdminDb();
+    await assertRateLimit(db, reporterUid);
+
+    const reporterSnap = await db.collection('users').doc(reporterUid).get();
+    const reporter = publicChip(reporterUid, reporterSnap.exists ? reporterSnap.data() : {});
+    if (!reporter.username) {
+      reporter.username = String(req.user.email || '').split('@')[0] || reporterUid.slice(0, 12);
+      reporter.displayName = String(req.user.name || reporter.displayName);
+    }
+
+    const timestamp = new Date().toISOString();
+    const reportId = crypto.randomUUID();
+    const doc = {
+      reportId,
+      reporterUserId: reporterUid,
+      reportedUserId: null,
+      conversationId: null,
+      reason: message,
+      category,
+      type: 'in_app_feedback',
+      status: 'pending',
+      context: 'Configuración / Enviar comentarios (in-app)',
+      createdAt: FieldValue.serverTimestamp(),
+      createdAtMs: Date.now(),
+      emailSent: false,
+      emailError: null,
+      reporterSnapshot: reporter,
+      reportedSnapshot: null,
+    };
+
+    await db.collection('reports').doc(reportId).set(doc);
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      await sendFeedbackEmail({
+        reporter,
+        timestamp,
+        category,
+        message,
+      });
+      emailSent = true;
+      await db.collection('reports').doc(reportId).set(
+        { emailSent: true, emailError: null, emailSentAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+    } catch (error) {
+      emailError = error && error.message ? String(error.message).slice(0, 400) : 'email_failed';
+      console.error('[reports] feedback email failed', reportId, emailError);
+      await db.collection('reports').doc(reportId).set(
+        { emailSent: false, emailError },
+        { merge: true },
+      );
+    }
+
+    res.status(201).json({ ok: true, reportId, emailSent, emailError: emailSent ? null : emailError });
+  } catch (error) {
+    const status = Number(error?.status) || 500;
+    if (status === 429) {
+      res.status(429).json({ error: error.message });
+      return;
+    }
+    console.error('[reports] feedback failed', error);
+    res.status(500).json({ error: 'No se pudo enviar el comentario' });
   }
 });
 
