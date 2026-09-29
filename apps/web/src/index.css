@@ -2380,6 +2380,28 @@ html:has(.lb-auth-page) #root {
   overscroll-behavior: none;
 }
 
+/* Documentos legales: #root sigue sin scroll de página; el panel .lb-legal-page sí. */
+html:has(.lb-legal-page),
+html:has(.lb-legal-page) body,
+html:has(.lb-legal-page) #root {
+  height: var(--lb-vv-height, 100dvh);
+  max-height: var(--lb-vv-height, 100dvh);
+  overflow: hidden;
+}
+
+.lb-legal-page {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--lb-vv-height, 100dvh);
+  max-height: var(--lb-vv-height, 100dvh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding-top: var(--lb-safe-top, env(safe-area-inset-top, 0px));
+}
+
 .lb-auth-page {
   position: relative;
   display: flex;

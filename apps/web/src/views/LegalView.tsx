@@ -11,8 +11,8 @@ export function LegalView() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-boom-bg text-white">
-      <header className="border-b border-white/10 bg-boom-panel/80 px-4 py-4 backdrop-blur-xl sm:px-8">
+    <div className="lb-legal-page bg-boom-bg text-white">
+      <header className="sticky top-0 z-10 border-b border-white/10 bg-boom-panel/95 px-4 py-4 backdrop-blur-xl sm:px-8">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
           <Link to="/">
             <Logo />
@@ -23,7 +23,7 @@ export function LegalView() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+      <main className="mx-auto max-w-3xl px-4 py-8 pb-[max(2.5rem,var(--lb-safe-bottom))] sm:px-6 sm:py-12">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-boom-cyan">Legal</p>
         <h1 className="mt-2 text-2xl font-bold sm:text-3xl">{doc.title}</h1>
         <p className="mt-2 text-sm text-zinc-400">
