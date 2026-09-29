@@ -20,6 +20,7 @@ router.post(
     const body = String(req.body?.body || '').trim();
     const channel = String(req.body?.channel || 'general').trim();
     const data = req.body?.data && typeof req.body.data === 'object' ? req.body.data : {};
+    const imageUrl = String(req.body?.imageUrl || data.imageUrl || '').trim() || null;
 
     if (!recipientUids.length) {
       res.status(400).json({ error: 'recipientUids requerido' });
@@ -36,12 +37,14 @@ router.post(
       from: req.user?.uid || req.auth?.uid || '?',
       recipients: capped.length,
       channel,
+      image: Boolean(imageUrl),
     });
     const result = await sendPushToUsers({
       recipientUids: capped,
       title: title || 'LiveBoom',
       body,
       channel,
+      imageUrl,
       data: {
         ...data,
         channel,

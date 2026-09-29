@@ -76,6 +76,8 @@ type LiveMediaPluginApi = {
     body: string;
     channel?: 'calls' | 'messages' | 'friends' | 'general';
     id?: number;
+    /** https — Big Picture (estilo Facebook) en bandeja Android. */
+    imageUrl?: string | null;
   }) => Promise<{ id: number }>;
   cancelNotification: (opts: { id: number }) => Promise<void>;
   updatePresentationHudState: (opts: {
@@ -1338,14 +1340,17 @@ export async function showNativeSystemNotification(input: {
   body: string;
   channel?: 'calls' | 'messages' | 'friends' | 'general';
   id?: number;
+  imageUrl?: string | null;
 }): Promise<number | null> {
   if (!isNativeAndroidApp()) return null;
   try {
+    const imageUrl = String(input.imageUrl || '').trim();
     const res = await LiveMedia.showNotification({
       title: input.title,
       body: input.body,
       channel: input.channel || 'general',
       id: input.id,
+      ...( /^https:\/\//i.test(imageUrl) ? { imageUrl } : {}),
     });
     return res.id;
   } catch {

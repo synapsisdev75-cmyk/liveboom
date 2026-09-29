@@ -2606,6 +2606,51 @@ export async function sweepAuthorReelLifecycle(authorUid: string) {
   if (pending > 0) await batch.commit();
 }
 
+const PUBLIC_SITE = 'https://liveboomapp.com';
+
+/** FCM Big Picture exige https público (foto del post, carátula o trofeo/caricatura). */
+function toPublicHttpsUrl(url: string | null | undefined): string | null {
+  const raw = String(url || '').trim();
+  if (!raw) return null;
+  if (/^https:\/\//i.test(raw)) return raw.slice(0, 500);
+  if (raw.startsWith('/')) return `${PUBLIC_SITE}${raw}`.slice(0, 500);
+  return null;
+}
+
+async function resolveFriendPostImageUrl(
+  preferred: string | null | undefined,
+  authorUid: string,
+): Promise<string | null> {
+  const direct = toPublicHttpsUrl(preferred);
+  if (direct) return direct;
+  try {
+    const snap = await getDoc(doc(db, 'users', authorUid));
+    if (!snap.exists()) return null;
+    const data = snap.data() as Record<string, unknown>;
+    const avatar = toPublicHttpsUrl(
+      (typeof data.avatarUrl === 'string' && data.avatarUrl) ||
+        (typeof data.photoURL === 'string' && data.photoURL) ||
+        null,
+    );
+    if (avatar) return avatar;
+    const organic = Math.max(0, Math.floor(Number(data.levelXp) || 0));
+    const pinnedRaw = data.levelXpPinned;
+    const pinned =
+      pinnedRaw == null || pinnedRaw === ''
+        ? null
+        : Math.max(0, Math.floor(Number(pinnedRaw) || 0));
+    const effective = pinned != null ? pinned : organic;
+    const [{ levelFromXp }, { trophyForLevelSlug }] = await Promise.all([
+      import('./userLevels'),
+      import('./levelTrophies'),
+    ]);
+    const trophy = trophyForLevelSlug(levelFromXp(effective).slug);
+    return toPublicHttpsUrl(trophy?.image || null);
+  } catch {
+    return null;
+  }
+}
+
 export async function notifyFriendsAboutPost(input: {
   authorUid: string;
   authorUsername: string;
@@ -2615,8 +2660,10 @@ export async function notifyFriendsAboutPost(input: {
   story?: boolean;
   postFormat?: 'story' | 'post';
   mediaType?: 'photo' | 'video' | 'text';
+  /** Foto, carátula de video o caricatura/trofeo (https o path /…). */
+  imageUrl?: string | null;
 }) {
-  const recipients = Array.from(new Set(input.recipientUids.filter(Boolean))).slice(0, 40);
+  const recipients = Array.from(new Set(input.recipientUids.filter(Boolean))).slice(0, 50);
   if (recipients.length === 0) return 0;
 
   const batch = writeBatch(db);
@@ -2633,10 +2680,24 @@ export async function notifyFriendsAboutPost(input: {
     ? `${input.authorName} publicó un Flash Boom`
     : input.postFormat === 'post' && input.mediaType === 'video'
       ? `${input.authorName} publicó un Boom Clip`
-      : `${input.authorName} publicó algo nuevo`;
+      : input.mediaType === 'video'
+        ? `${input.authorName} publicó un video`
+        : input.mediaType === 'photo'
+          ? `${input.authorName} publicó una foto`
+          : `${input.authorName} publicó algo nuevo`;
+  const body =
+    input.story
+      ? 'Nuevo Flash Boom de un amigo'
+      : input.mediaType === 'video'
+        ? 'Toca para ver el video'
+        : input.mediaType === 'photo'
+          ? 'Toca para ver la foto'
+          : 'Toca para abrir';
 
+  const pushRecipients: string[] = [];
   for (const uidRecipient of recipients) {
     if (uidRecipient === input.authorUid) continue;
+    pushRecipients.push(uidRecipient);
     const ref = doc(collection(db, 'users', uidRecipient, 'postAlerts'));
     batch.set(ref, {
       authorUid: input.authorUid,
@@ -2647,12 +2708,33 @@ export async function notifyFriendsAboutPost(input: {
       mediaType: input.mediaType || null,
       title,
       href,
+      imageUrl: toPublicHttpsUrl(input.imageUrl) || null,
       createdAt: serverTimestamp(),
       createdAtMs: at,
     });
   }
   await batch.commit();
-  return recipients.filter((uidRecipient) => uidRecipient !== input.authorUid).length;
+
+  if (pushRecipients.length) {
+    const imageUrl = await resolveFriendPostImageUrl(input.imageUrl, input.authorUid);
+    try {
+      const { enqueuePushNotify } = await import('./pushNotifications');
+      enqueuePushNotify({
+        recipientUids: pushRecipients,
+        title,
+        body,
+        channel: 'friends',
+        type: input.story ? 'flash_boom' : input.mediaType === 'video' ? 'boom_clip' : 'post',
+        href,
+        fromUid: input.authorUid,
+        imageUrl,
+      });
+    } catch {
+      /* push opcional */
+    }
+  }
+
+  return pushRecipients.length;
 }
 
 function postPermalinkHref(input: {
@@ -3073,7 +3155,19 @@ export async function createPost(input: {
     mediaType: input.type,
   }).catch(() => undefined);
 
-  if (input.notifyFriends && visibility !== 'private' && (visibility !== 'circle' || isStory)) {
+  // Video / Boom Clip: avisar amigos siempre (notificación rica con foto/carátula).
+  // Foto/texto: solo si el autor activa "Avisar amigos".
+  const shouldNotifyFriends =
+    visibility !== 'private' &&
+    (visibility !== 'circle' || isStory) &&
+    (Boolean(input.notifyFriends) || input.type === 'video' || isBoomClip);
+
+  if (shouldNotifyFriends) {
+    const notifyImage =
+      thumbUrl ||
+      (input.type === 'photo' ? mediaUrl : null) ||
+      (input.linkPreview?.image ? String(input.linkPreview.image) : null) ||
+      null;
     void (async () => {
       try {
         if (isStory) {
@@ -3097,6 +3191,7 @@ export async function createPost(input: {
             story: true,
             postFormat: 'story',
             mediaType: input.type,
+            imageUrl: notifyImage,
           });
           return;
         }
@@ -3109,6 +3204,7 @@ export async function createPost(input: {
           recipientUids: friends.map((friend) => friend.uid),
           postFormat: postFormat || undefined,
           mediaType: input.type,
+          imageUrl: notifyImage,
         });
       } catch {
         /* Avisos no bloquean publicar. */
@@ -3200,6 +3296,7 @@ export async function createRepost(input: {
       postId: ref.id,
       recipientUids: friends.map((friend) => friend.uid),
       mediaType: 'text',
+      imageUrl: toPublicHttpsUrl(source.thumbUrl || source.mediaUrl || null),
     }).catch(() => undefined);
   }
 
@@ -3323,7 +3420,10 @@ export async function updatePost(input: {
     previousHandles: mentionHandlesFrom(data.mentionedUsernames, String(data.caption || '')),
     mediaType: input.type,
   }).catch(() => undefined);
-  if (input.notifyFriends && visibility !== 'private') {
+  const shouldNotifyUpdate =
+    visibility !== 'private' &&
+    (Boolean(input.notifyFriends) || input.type === 'video');
+  if (shouldNotifyUpdate) {
     const friends = await listFriends(input.authorUid);
     void notifyFriendsAboutPost({
       authorUid: input.authorUid,
@@ -3332,6 +3432,10 @@ export async function updatePost(input: {
       postId: input.postId,
       recipientUids: friends.map((friend) => friend.uid),
       mediaType: input.type,
+      imageUrl:
+        (typeof data.thumbUrl === 'string' && data.thumbUrl) ||
+        (input.type === 'photo' ? mediaUrl : null) ||
+        mediaUrl,
     }).catch(() => undefined);
   }
 

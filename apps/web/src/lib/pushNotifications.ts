@@ -128,6 +128,7 @@ export async function registerPushNotifications(uid: string | null | undefined):
         channel,
         title,
         body: body || 'Nueva notificación',
+        imageUrl: data.imageUrl || null,
       });
     });
 
@@ -159,6 +160,8 @@ export function enqueuePushNotify(input: {
   /** Chat abierto: el receptor puede silenciar el banner si está dentro. */
   chatId?: string;
   fromUid?: string;
+  /** URL https de foto/carátula para Big Picture (estilo Facebook). */
+  imageUrl?: string | null;
 }): void {
   const recipientUids = [...new Set(input.recipientUids.filter(Boolean))].slice(0, 50);
   if (!recipientUids.length) return;
@@ -170,6 +173,8 @@ export function enqueuePushNotify(input: {
   };
   if (input.chatId) data.chatId = input.chatId;
   if (input.fromUid) data.fromUid = input.fromUid;
+  const imageUrl = String(input.imageUrl || '').trim();
+  if (/^https:\/\//i.test(imageUrl)) data.imageUrl = imageUrl.slice(0, 500);
   void api<{ ok?: boolean; sent?: number; skipped?: boolean }>('/api/push/notify', {
     method: 'POST',
     body: JSON.stringify({
@@ -177,6 +182,7 @@ export function enqueuePushNotify(input: {
       title: input.title,
       body: input.body,
       channel,
+      imageUrl: data.imageUrl || null,
       data,
     }),
   })

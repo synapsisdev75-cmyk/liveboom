@@ -59,6 +59,38 @@ const LEVEL_TROPHIES = [
     image: '/gifts/trophy-estrella.png?v=1',
     animation: 'Trofeo de nivel ESTRELLA',
   },
+  {
+    id: 'trophy_corona',
+    slug: 'corona',
+    name: 'Trofeo Corona',
+    emoji: '🏆',
+    image: '/gifts/trophy-corona.png?v=2',
+    animation: 'Trofeo de nivel CORONA',
+  },
+  {
+    id: 'trophy_diamante',
+    slug: 'diamante',
+    name: 'Trofeo Diamante',
+    emoji: '🏆',
+    image: '/gifts/trophy-diamante.png?v=2',
+    animation: 'Trofeo de nivel DIAMANTE',
+  },
+  {
+    id: 'trophy_titan',
+    slug: 'titan',
+    name: 'Trofeo Titán',
+    emoji: '🏆',
+    image: '/gifts/trophy-titan.png?v=2',
+    animation: 'Trofeo de nivel TITAN',
+  },
+  {
+    id: 'trophy_leyenda',
+    slug: 'leyenda',
+    name: 'Trofeo Leyenda',
+    emoji: '🏆',
+    image: '/gifts/trophy-leyenda.png?v=2',
+    animation: 'Trofeo de nivel LEYENDA',
+  },
 ];
 
 function levelSlugFromXp(xp) {

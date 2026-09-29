@@ -61,6 +61,7 @@ async function sendPushToUsers({
   body,
   channel = 'general',
   data = {},
+  imageUrl = null,
 }) {
   const { tokens, tokenOwners } = await listTokensForUids(recipientUids);
   if (!tokens.length) {
@@ -77,6 +78,10 @@ async function sendPushToUsers({
   // Capacitor / Android necesitan channel en data para enrutado en foreground.
   if (!stringData.channel) stringData.channel = String(channel || 'general');
 
+  const safeImage = String(imageUrl || '').trim();
+  const hasImage = /^https:\/\//i.test(safeImage);
+  if (hasImage) stringData.imageUrl = safeImage.slice(0, 500);
+
   let sent = 0;
   let failed = 0;
 
@@ -85,26 +90,43 @@ async function sendPushToUsers({
   for (let i = 0; i < tokens.length; i += chunkSize) {
     const chunk = tokens.slice(i, i + chunkSize);
     try {
+      const notification = {
+        title: String(title || 'LiveBoom').slice(0, 80),
+        body: String(body || '').slice(0, 180),
+      };
+      if (hasImage) notification.image = safeImage.slice(0, 500);
+
+      const androidNotification = {
+        channelId,
+        sound: 'default',
+        priority: 'high',
+        defaultVibrateTimings: true,
+        visibility: 'public',
+        icon: 'ic_stat_liveboom',
+        color: '#E879F9',
+      };
+      if (hasImage) androidNotification.imageUrl = safeImage.slice(0, 500);
+
       const res = await messaging().sendEachForMulticast({
         tokens: chunk,
-        notification: {
-          title: String(title || 'LiveBoom').slice(0, 80),
-          body: String(body || '').slice(0, 180),
-        },
+        notification,
         data: stringData,
         android: {
           priority: 'high',
-          notification: {
-            channelId,
-            sound: 'default',
-            priority: 'high',
-            defaultVibrateTimings: true,
-            visibility: 'public',
-            icon: 'ic_stat_liveboom',
-            color: '#E879F9',
-            // Silueta blanca en drawable; no usar el launcher a color.
-          },
+          notification: androidNotification,
         },
+        apns: hasImage
+          ? {
+              payload: {
+                aps: {
+                  'mutable-content': 1,
+                },
+              },
+              fcmOptions: {
+                imageUrl: safeImage.slice(0, 500),
+              },
+            }
+          : undefined,
       });
       sent += res.successCount;
       failed += res.failureCount;
@@ -126,7 +148,7 @@ async function sendPushToUsers({
     }
   }
 
-  console.log('[push] result', { sent, failed, tokens: tokens.length, channel: channelId });
+  console.log('[push] result', { sent, failed, tokens: tokens.length, channel: channelId, image: hasImage });
   return { sent, failed, skipped: false, tokens: tokens.length };
 }
 
