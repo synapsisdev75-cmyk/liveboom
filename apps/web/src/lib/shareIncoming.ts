@@ -4,7 +4,10 @@ export type IncomingShareFile = {
   name: string;
   mimeType: string;
   size: number;
-  base64: string;
+  /** Ruta absoluta en cache nativo (preferido; evita OOM). */
+  path?: string;
+  /** Legacy: solo archivos pequeños antiguos. */
+  base64?: string;
 };
 
 export type IncomingSharePayload = {
@@ -36,8 +39,10 @@ let pendingShare: PendingIncomingShare | null = null;
 let listenerInstalled = false;
 
 function base64ToFile(item: IncomingShareFile): File | null {
+  const b64 = String(item.base64 || '');
+  if (!b64) return null;
   try {
-    const raw = atob(item.base64);
+    const raw = atob(b64);
     const bytes = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
     return new File([bytes], item.name || 'shared.bin', {
@@ -48,9 +53,33 @@ function base64ToFile(item: IncomingShareFile): File | null {
   }
 }
 
-export function filesFromSharePayload(
+async function pathToFile(item: IncomingShareFile): Promise<File | null> {
+  const path = String(item.path || '').trim();
+  if (!path) return null;
+  try {
+    const url = Capacitor.convertFileSrc(path);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    const blob = await res.blob();
+    if (!blob.size) return null;
+    return new File([blob], item.name || 'shared.bin', {
+      type: item.mimeType || blob.type || 'application/octet-stream',
+    });
+  } catch (err) {
+    console.warn('[share] pathToFile', path, err);
+    return null;
+  }
+}
+
+async function fileFromShareItem(item: IncomingShareFile): Promise<File | null> {
+  if (item.path) return pathToFile(item);
+  if (item.base64) return base64ToFile(item);
+  return null;
+}
+
+export async function filesFromSharePayload(
   payload: IncomingSharePayload | null | undefined,
-): PendingIncomingShare {
+): Promise<PendingIncomingShare> {
   // Spotify / YouTube often put the title in EXTRA_SUBJECT and the URL in EXTRA_TEXT.
   const subject = String(payload?.subject || '').trim();
   const body = String(payload?.text || '').trim();
@@ -60,7 +89,7 @@ export function filesFromSharePayload(
   }
   const files: File[] = [];
   for (const item of payload?.files || []) {
-    const file = base64ToFile(item);
+    const file = await fileFromShareItem(item);
     if (file) files.push(file);
   }
   return { files, text };
@@ -83,10 +112,12 @@ export function takePendingIncomingShare(): PendingIncomingShare | null {
 }
 
 function dispatchShare(payload: IncomingSharePayload) {
-  const detail = filesFromSharePayload(payload);
-  if (!detail.files.length && !detail.text) return;
-  pendingShare = detail;
-  window.dispatchEvent(new CustomEvent(SHARE_INCOMING_EVENT, { detail }));
+  void (async () => {
+    const detail = await filesFromSharePayload(payload);
+    if (!detail.files.length && !detail.text) return;
+    pendingShare = detail;
+    window.dispatchEvent(new CustomEvent(SHARE_INCOMING_EVENT, { detail }));
+  })();
 }
 
 async function pullNativePending() {
