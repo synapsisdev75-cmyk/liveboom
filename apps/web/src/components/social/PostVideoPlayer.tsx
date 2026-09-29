@@ -216,7 +216,7 @@ export function PostVideoPlayer({
   embedded = false,
   hideClose = false,
   contentBadge = null,
-  actionRailLayout = 'corner',
+  actionRailLayout: _actionRailLayout = 'corner',
   immersiveLandscapeLayout = false,
   mediaWidth: mediaWidthProp,
   mediaHeight: mediaHeightProp,
