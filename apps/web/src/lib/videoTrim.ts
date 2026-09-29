@@ -128,6 +128,89 @@ async function trimWithMediabunny(
   }
 }
 
+/** Umbral: remux en memoria solo si el archivo cabe (evita OOM en móvil). */
+const FAST_START_MAX_BYTES = 48 * 1024 * 1024;
+
+/**
+ * Remux a MP4 con moov al inicio (fastStart) sin recortar.
+ * Acelera el primer frame en Explorar / Publicaciones con videos largos.
+ * Si falla o el archivo es demasiado grande, el llamador debe usar el original.
+ */
+export async function remuxVideoFastStart(
+  file: File | Blob,
+  signal?: AbortSignal,
+  onProgress?: (progress: number) => void,
+): Promise<File> {
+  throwIfAborted(signal);
+  if (file.size <= 0 || file.size > FAST_START_MAX_BYTES) {
+    throw new Error('Archivo fuera de rango para fast-start');
+  }
+  const { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, Mp4OutputFormat, Output } =
+    await import('mediabunny');
+  throwIfAborted(signal);
+  const input = new Input({
+    source: new BlobSource(file),
+    formats: ALL_FORMATS,
+  });
+  try {
+    const target = new BufferTarget();
+    const output = new Output({
+      format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
+      target,
+    });
+    const conversion = await Conversion.init({
+      input,
+      output,
+      tracks: 'primary',
+      showWarnings: false,
+    });
+    throwIfAborted(signal);
+    if (!conversion.isValid) {
+      throw new Error('No se pudo remuxear el video');
+    }
+    conversion.onProgress = (progress) => {
+      onProgress?.(Math.max(0, Math.min(1, progress)));
+    };
+    const onAbort = () => {
+      void conversion.cancel();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      await conversion.execute();
+    } catch (error) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
+    throwIfAborted(signal);
+    const buffer = target.buffer;
+    if (!buffer || buffer.byteLength < 32) {
+      throw new Error('Remux vacío');
+    }
+    onProgress?.(1);
+    const baseName =
+      file instanceof File ? file.name.replace(/\.[^.]+$/, '') || 'video' : 'video';
+    return new File([buffer], `${baseName}-fs.mp4`, { type: 'video/mp4' });
+  } finally {
+    input.dispose();
+  }
+}
+
+/** true si conviene remux (video largo o música / webm). */
+export function shouldRemuxForFastStart(
+  file: File | Blob,
+  durationSec: number,
+): boolean {
+  if (file.size <= 32_000 || file.size > FAST_START_MAX_BYTES) return false;
+  const type = String((file as File).type || '').toLowerCase();
+  if (type.includes('webm')) return true;
+  const duration = Math.max(0, Number(durationSec) || 0);
+  if (duration >= 15) return true;
+  // Sin duración conocida: archivos medianos suelen ser clips largos.
+  return file.size >= 3 * 1024 * 1024;
+}
+
 async function trimWithRecorder(
   file: File,
   start: number,

@@ -28,6 +28,7 @@ import {
 } from '../lib/exploreRanking';
 import { isStoryPost } from '../lib/storyLifecycle';
 import { listenExploreVideoPool, listenFollowing, type FsPost } from '../lib/socialFirestore';
+import { warmExploreActiveVideo } from '../lib/feedVideoWarmup';
 import { useAuthStore } from '../store/authStore';
 import { useT } from '../i18n';
 
@@ -286,6 +287,8 @@ export function ExploreView() {
         links.push(thumb);
       }
     }
+    const active = reels[idx];
+    if (active?.mediaUrl) warmExploreActiveVideo(active.mediaUrl);
     return () => {
       for (const link of links) link.remove();
     };

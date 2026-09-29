@@ -42,8 +42,9 @@ function isNativeApp() {
 }
 
 function connectionBudget(): NavBudget {
-  // APK: un vecino en metadata. Precargar 3 videos completos satura el WebView.
-  if (isNativeApp()) return { plus2: false, preload: 'metadata', warmPlay: false };
+  // APK: precarga el siguiente con bytes iniciales (auto), sin warmPlay ni +2.
+  // metadata-only dejaba los videos largos en negro hasta el moov completo.
+  if (isNativeApp()) return { plus2: false, preload: 'auto', warmPlay: false };
   if (typeof navigator === 'undefined') return { plus2: true, preload: 'auto', warmPlay: true };
   const conn = (
     navigator as Navigator & {

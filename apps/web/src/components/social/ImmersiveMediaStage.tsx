@@ -259,19 +259,28 @@ export function ImmersiveMediaStage({
       {mediaUrl && !mediaCover ? (
         <div className="lb-immersive-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
           {mediaKind === 'video' ? (
-            <video
-              src={mediaUrl}
-              poster={
-                Capacitor.isNativePlatform()
-                  ? posterUrl || TRANSPARENT_VIDEO_POSTER
-                  : undefined
-              }
-              className="lb-immersive-backdrop__media"
-              muted
-              playsInline
-              preload="metadata"
-              tabIndex={-1}
-            />
+            posterUrl && !posterUrl.startsWith('data:') ? (
+              <img
+                src={posterUrl}
+                alt=""
+                className="lb-immersive-backdrop__media"
+                draggable={false}
+              />
+            ) : (
+              <video
+                src={mediaUrl}
+                poster={
+                  Capacitor.isNativePlatform()
+                    ? posterUrl || TRANSPARENT_VIDEO_POSTER
+                    : undefined
+                }
+                className="lb-immersive-backdrop__media"
+                muted
+                playsInline
+                preload="metadata"
+                tabIndex={-1}
+              />
+            )
           ) : (
             <img src={mediaUrl} alt="" className="lb-immersive-backdrop__media" draggable={false} />
           )}

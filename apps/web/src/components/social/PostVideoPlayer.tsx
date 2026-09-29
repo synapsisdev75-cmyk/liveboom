@@ -735,6 +735,14 @@ export function PostVideoPlayer({
       {!resolvedPoster && !frameReady ? (
         <div className="pointer-events-none absolute inset-0 z-[1] bg-zinc-900" />
       ) : null}
+      {!frameReady ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-[2] grid place-items-center"
+          aria-hidden
+        >
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/25 border-t-cyan-300" />
+        </div>
+      ) : null}
       <video
         ref={videoRef}
         src={src}
@@ -883,7 +891,7 @@ export function PostVideoPlayer({
                     reelNavigation.onNext();
                   }}
                 />
-                {playbackFlash ? (
+                {playbackFlash && frameReady ? (
                   <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
                     <div className="lb-playback-flash grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm sm:h-[4.5rem] sm:w-[4.5rem]">
                       {playbackFlash === 'play' ? (
@@ -897,7 +905,7 @@ export function PostVideoPlayer({
               </>
             ) : (
               <>
-                {playbackFlash ? (
+                {playbackFlash && frameReady ? (
                   <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
                     <div className="lb-playback-flash grid h-16 w-16 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm sm:h-[4.5rem] sm:w-[4.5rem]">
                       {playbackFlash === 'play' ? (

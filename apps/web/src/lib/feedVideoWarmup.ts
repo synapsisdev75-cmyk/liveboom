@@ -148,6 +148,14 @@ function warmOne(url: string) {
   });
 }
 
+/** Precarga corta del video activo en Explorar (no descarga el archivo entero). */
+export function warmExploreActiveVideo(url: string | null | undefined) {
+  if (typeof document === 'undefined' || saveDataOn()) return;
+  const mediaUrl = String(url || '').trim();
+  if (!mediaUrl || warmedUrls.has(mediaUrl)) return;
+  void warmOne(mediaUrl);
+}
+
 /** Primera tanda del feed. Llamadas posteriores no reinician la precarga. */
 export function warmLongFeedVideos(posts: WarmPost[]) {
   if (phase !== 'idle' || typeof document === 'undefined') return;

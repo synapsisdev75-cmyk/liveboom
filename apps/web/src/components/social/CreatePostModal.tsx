@@ -1334,6 +1334,18 @@ export function CreatePostModal({
         );
       }
 
+      // Videos largos / música: moov al inicio para que Explorar arranque sin esperar el archivo entero.
+      if (publishKind === 'video' && uploadFile) {
+        try {
+          const { remuxVideoFastStart, shouldRemuxForFastStart } = await import('../../lib/videoTrim');
+          if (shouldRemuxForFastStart(uploadFile, durationSec)) {
+            uploadFile = await remuxVideoFastStart(uploadFile);
+          }
+        } catch {
+          /* Si el remux falla, se publica el original. */
+        }
+      }
+
       if (isEditMode && editPost?.id) {
         const displayUrls = albumUrls.length ? albumUrls : previewUrl ? [previewUrl] : [];
         let mediaSlots: Array<{ file?: File | Blob | null; url?: string | null }> = [];

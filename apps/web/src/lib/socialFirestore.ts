@@ -3033,19 +3033,20 @@ export async function createPost(input: {
           : input.type === 'video'
             ? 'clip.mp4'
             : 'photo.jpg';
-      const clipExtrasPromise = isBoomClip
-        ? (async () => {
-            const meta = await readVideoSizeAndPortraitPoster(mediaToUpload);
-            const thumbUploaded = await uploadUserMedia(
-              input.authorUid,
-              meta.poster,
-              'thumb.jpg',
-              visibility,
-              'boom_clip',
-            );
-            return { width: meta.width, height: meta.height, thumbUrl: thumbUploaded.url };
-          })().catch(() => null)
-        : Promise.resolve(null);
+      const clipExtrasPromise =
+        input.type === 'video'
+          ? (async () => {
+              const meta = await readVideoSizeAndPortraitPoster(mediaToUpload);
+              const thumbUploaded = await uploadUserMedia(
+                input.authorUid,
+                meta.poster,
+                'thumb.jpg',
+                visibility,
+                storageKind,
+              );
+              return { width: meta.width, height: meta.height, thumbUrl: thumbUploaded.url };
+            })().catch(() => null)
+          : Promise.resolve(null);
       const [uploaded, clipExtras] = await Promise.all([
         uploadUserMedia(
           input.authorUid,
