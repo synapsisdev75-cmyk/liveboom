@@ -93,8 +93,21 @@
     </noscript>
   </head>
   <body>
-    <div id="lb-boot-splash" aria-hidden="true">
-      <img src="/brand/logo-clear.png" alt="" />
+    <div id="lb-boot-splash" aria-busy="true" aria-live="polite">
+      <div class="lb-boot-splash__stack">
+        <img src="/brand/logo-clear.png" alt="LiveBoom" />
+        <div
+          class="lb-boot-splash__track"
+          id="lb-boot-progress"
+          role="progressbar"
+          aria-label="Cargando LiveBoom"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="6"
+        >
+          <div class="lb-boot-splash__fill" id="lb-boot-progress-fill" style="width:6%"></div>
+        </div>
+      </div>
     </div>
     <style>
       #lb-boot-splash {
@@ -108,24 +121,108 @@
         overflow: hidden;
         pointer-events: auto;
       }
+      .lb-boot-splash__stack {
+        display: flex;
+        width: min(82vw, 18rem);
+        flex-direction: column;
+        align-items: center;
+        gap: 1.15rem;
+      }
       #lb-boot-splash img {
-        width: min(78vw, 17rem);
-        height: min(46vw, 10rem);
-        object-fit: cover;
-        object-position: center 56%;
+        width: 100%;
+        height: auto;
+        max-height: min(46vw, 10.5rem);
+        object-fit: contain;
+        object-position: center;
+        filter: drop-shadow(0 0 18px rgba(34, 211, 238, 0.18));
+      }
+      .lb-boot-splash__track {
+        position: relative;
+        width: min(72%, 11.5rem);
+        height: 0.42rem;
+        overflow: hidden;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02)),
+          rgba(255, 255, 255, 0.06);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.28),
+          0 0 12px rgba(236, 72, 153, 0.22),
+          0 0 22px rgba(34, 211, 238, 0.16);
+      }
+      .lb-boot-splash__fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 6%;
+        border-radius: inherit;
+        background:
+          linear-gradient(90deg, #ec4899 0%, #a855f7 42%, #22d3ee 100%);
+        box-shadow:
+          0 0 10px rgba(236, 72, 153, 0.75),
+          0 0 18px rgba(34, 211, 238, 0.55),
+          inset 0 1px 0 rgba(255, 255, 255, 0.55);
+        transition: width 220ms ease-out;
+      }
+      .lb-boot-splash__fill::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          105deg,
+          transparent 0%,
+          rgba(255, 255, 255, 0.45) 45%,
+          transparent 70%
+        );
+        animation: lb-boot-sheen 1.25s linear infinite;
+      }
+      @keyframes lb-boot-sheen {
+        from { transform: translateX(-120%); }
+        to { transform: translateX(160%); }
       }
       #lb-boot-splash.is-done {
         opacity: 0;
         visibility: hidden;
         pointer-events: none;
-        transition: opacity 180ms ease;
+        transition: opacity 220ms ease, visibility 0s linear 220ms;
       }
     </style>
     <script>
-      setTimeout(function () {
-        var splash = document.getElementById('lb-boot-splash');
-        if (splash) splash.classList.add('is-done');
-      }, 12000);
+      (function () {
+        var fill = document.getElementById('lb-boot-progress-fill');
+        var bar = document.getElementById('lb-boot-progress');
+        var pct = 6;
+        var target = 18;
+        var tick = setInterval(function () {
+          if (!fill) return;
+          if (pct < target) {
+            pct = Math.min(target, pct + 0.35);
+            fill.style.width = pct.toFixed(1) + '%';
+            if (bar) bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+          } else if (target < 42) {
+            target = Math.min(42, target + 0.08);
+          }
+        }, 50);
+        window.__lbBootProgress = {
+          setTarget: function (n) {
+            target = Math.max(target, Math.min(100, Number(n) || 0));
+          },
+          setExact: function (n) {
+            pct = Math.max(pct, Math.min(100, Number(n) || 0));
+            target = pct;
+            if (fill) fill.style.width = pct.toFixed(1) + '%';
+            if (bar) bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+          },
+          stop: function () {
+            clearInterval(tick);
+          },
+        };
+        setTimeout(function () {
+          var splash = document.getElementById('lb-boot-splash');
+          if (splash) splash.classList.add('is-done');
+          if (window.__lbBootProgress) window.__lbBootProgress.stop();
+        }, 12000);
+      })();
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

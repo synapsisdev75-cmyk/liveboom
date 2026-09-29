@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { getExploreFeedMuted } from './exploreFeedMute';
 
 /**
  * Pool de <video> solo para Explorar: latest-wins + prefetch N-1 / N+1 / N+2.
@@ -198,13 +199,15 @@ export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: 
   if (!url || gen !== navGen) return;
 
   const warmed = slotFor(url);
-  video.muted = true;
-  video.defaultMuted = true;
+  const preferMuted = getExploreFeedMuted();
+  video.muted = preferMuted;
+  video.defaultMuted = preferMuted;
   video.playsInline = true;
   video.preload = 'auto';
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
-  video.setAttribute('muted', '');
+  if (preferMuted) video.setAttribute('muted', '');
+  else video.removeAttribute('muted');
 
   if (!sameSrc(video, url)) {
     try {

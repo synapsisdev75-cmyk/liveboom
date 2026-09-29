@@ -27,6 +27,11 @@ import {
   releaseExclusivePlayback,
   releaseUnmuted,
 } from '../../lib/videoPlayback';
+import {
+  getExploreFeedMuted,
+  setExploreFeedMuted,
+  subscribeExploreFeedMuted,
+} from '../../lib/exploreFeedMute';
 import { useVideoAspect } from '../../lib/videoAspect';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { GO_HOME_EVENT } from '../../lib/goHome';
@@ -260,7 +265,9 @@ export function PostVideoPlayer({
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
   const [runtimePoster, setRuntimePoster] = useState<string | null>(null);
   const expandedRef = useRef(false);
-  const [muted, setMuted] = useState(true);
+  // Explorar / viewers overlay: un solo mute compartido para todo el feed.
+  const shareExploreMute = Boolean(fastNav);
+  const [muted, setMuted] = useState(() => (shareExploreMute ? getExploreFeedMuted() : true));
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
 
@@ -410,11 +417,13 @@ export function PostVideoPlayer({
         videoRef.current?.pause();
       },
       mute: () => {
+        /* Explorar comparte mute: claimUnmuted no debe silenciar a los demás. */
+        if (shareExploreMute) return;
         setMuted(true);
         if (videoRef.current) videoRef.current.muted = true;
       },
     });
-  }, [playerId]);
+  }, [playerId, shareExploreMute]);
 
   // Autoplay muted en viewport (solo inline; nunca pausar al expandir)
   useEffect(() => {
@@ -470,7 +479,11 @@ export function PostVideoPlayer({
     const kick = () => {
       if (cancelled) return;
       if (fastNav && !exploreNavIsCurrent(bindGen)) return;
-      video.muted = true;
+      const preferMuted = shareExploreMute ? getExploreFeedMuted() : true;
+      video.muted = preferMuted;
+      video.defaultMuted = preferMuted;
+      if (preferMuted) video.setAttribute('muted', '');
+      else video.removeAttribute('muted');
       void video.play().catch(() => undefined);
     };
     // Varios eventos: en WebView Android loadeddata a veces llega tarde o no basta.
@@ -489,7 +502,7 @@ export function PostVideoPlayer({
       window.clearTimeout(retry2);
       // No pausar en fastNav: el pause deja el overlay play nativo gris del WebView Android.
     };
-  }, [overlayOnly, src, postId, fastNav]);
+  }, [overlayOnly, src, postId, fastNav, shareExploreMute, muted]);
 
   const flashPlayback = useCallback((state: 'play' | 'pause') => {
     setPlaybackFlash(state);
@@ -578,17 +591,30 @@ export function PostVideoPlayer({
   }, [expanded, playerId, embedded, overlayOnly, restorePlaybackSnapshot]);
 
   useEffect(() => {
+    if (!shareExploreMute) return;
+    return subscribeExploreFeedMuted(setMuted);
+  }, [shareExploreMute]);
+
+  useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
     el.muted = muted;
+    el.defaultMuted = muted;
+    if (muted) el.setAttribute('muted', '');
+    else el.removeAttribute('muted');
+    if (shareExploreMute) return;
     if (!muted) claimUnmuted(playerId);
     else releaseUnmuted(playerId);
-  }, [muted, playerId]);
+  }, [muted, playerId, shareExploreMute]);
 
   function toggleMute(event: MouseEvent) {
     event.stopPropagation();
     setMuted((value) => {
       const next = !value;
+      if (shareExploreMute) {
+        setExploreFeedMuted(next);
+        return next;
+      }
       if (!next) claimUnmuted(playerId);
       else releaseUnmuted(playerId);
       return next;
@@ -815,10 +841,11 @@ export function PostVideoPlayer({
 
   const immersiveW = pubW || videoAspect.width || 9;
   const immersiveH = pubH || videoAspect.height || 16;
-  // PC: rail al lado del media. Celular girado: rail dentro del video (corner).
-  const useLandscapeAside = isDesktop;
+  // PC: rail al lado solo en Publicaciones; Explorar/Clip/Flash van anclados al video
+  // para que no se desplacen al abrir/cerrar el menú lateral.
+  const useLandscapeAside = isDesktop && !overlayOnly && !reelFeed && !storyMode;
   const parkRailAtDeviceEdge = deviceLandscape;
-  const expandedRailLayout = useLandscapeAside ? 'aside' : actionRailLayout;
+  const expandedRailLayout = useLandscapeAside ? 'aside' : 'corner';
   /** Publicaciones (feed): contain en fullscreen; Explorar/clips mantienen auto. */
   const publicationFillMode = !overlayOnly && !immersiveLandscapeLayout ? 'contain' : 'auto';
 
@@ -836,7 +863,7 @@ export function PostVideoPlayer({
           mediaKind="video"
           posterUrl={resolvedPoster}
           embedded={embedded}
-          landscapeRailAside
+          landscapeRailAside={useLandscapeAside}
           fillMode={publicationFillMode}
           insets={{
             top: storyMode ? 36 : overlayOnly || reelFeed ? 0 : 40,
@@ -980,10 +1007,10 @@ export function PostVideoPlayer({
               <button
                 type="button"
                 onClick={closeExpand}
-                className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm"
+                className="lb-explore-exit pointer-events-auto inline-grid h-10 w-10 rounded-full bg-black/50 text-white backdrop-blur-sm"
                 aria-label="Cerrar"
               >
-                <X size={18} />
+                <X size={17} strokeWidth={2.4} aria-hidden />
               </button>
             )}
             <div className="pointer-events-none flex items-center gap-2">

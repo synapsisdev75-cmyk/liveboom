@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronRight, Coins, Gift, Info, Radio, Video } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Coins, Gift, Info, Radio, Video } from 'lucide-react';
 import { apiPublic } from '../../lib/api';
 import { listenLiveActivity, type LiveActivityEntry } from '../../lib/liveGiftsFirestore';
 import { LIVEBOOM_REACTION_ASSETS } from '../../lib/liveBoomReactionAssets';
@@ -66,6 +66,7 @@ export function ActivityHistory({
 }) {
   const profile = useAuthStore((state) => state.profile);
   const [lives, setLives] = useState<LiveActivity[]>([]);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -135,7 +136,7 @@ export function ActivityHistory({
   const hasBlasts = totalGifts + totalBlasts > 0;
 
   return (
-    <section className="lb-activity-summary">
+    <section className={`lb-activity-summary${expanded ? ' is-expanded' : ''}`}>
       <div className="lb-activity-summary__head">
         <span className="lb-activity-summary__mark" aria-hidden>
           <Radio size={16} />
@@ -147,101 +148,109 @@ export function ActivityHistory({
           </p>
         </div>
         {showAllLink ? (
-          <Link to="/actividad" className="lb-activity-summary__more">
-            Ver más
-            <ChevronRight size={14} />
-          </Link>
+          <button
+            type="button"
+            className="lb-activity-summary__more"
+            aria-expanded={expanded}
+            aria-controls="lb-activity-summary-panel"
+            onClick={() => setExpanded((open) => !open)}
+          >
+            {expanded ? 'Ver menos' : 'Ver más'}
+            {expanded ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+          </button>
         ) : null}
       </div>
 
-      <div className="lb-activity-summary__grid">
-        <Link to="/actividad" className="lb-activity-card lb-activity-card--lives">
-          <span className="lb-activity-card__icon">
-            <Video size={15} />
-          </span>
-          <span className="lb-activity-card__label">
-            Lives
-            <span title="Total de transmisiones finalizadas" className="inline-flex">
-              <Info size={11} aria-hidden />
+      {expanded || !showAllLink ? (
+        <div id="lb-activity-summary-panel" className="lb-activity-summary__grid">
+          <Link to="/actividad" className="lb-activity-card lb-activity-card--lives">
+            <span className="lb-activity-card__icon">
+              <Video size={15} />
             </span>
-          </span>
-          {totalLives > 0 ? (
-            <>
-              <strong className="lb-activity-card__value">{totalLives.toLocaleString('es-CO')}</strong>
-              <span className="lb-activity-card__hint">Transmisiones totales</span>
-            </>
-          ) : (
-            <span className="lb-activity-card__empty">Aún sin transmisiones</span>
-          )}
-          <ChevronRight size={14} className="lb-activity-card__chevron" />
-        </Link>
+            <span className="lb-activity-card__label">
+              Lives
+              <span title="Total de transmisiones finalizadas" className="inline-flex">
+                <Info size={11} aria-hidden />
+              </span>
+            </span>
+            {totalLives > 0 ? (
+              <>
+                <strong className="lb-activity-card__value">{totalLives.toLocaleString('es-CO')}</strong>
+                <span className="lb-activity-card__hint">Transmisiones totales</span>
+              </>
+            ) : (
+              <span className="lb-activity-card__empty">Aún sin transmisiones</span>
+            )}
+            <ChevronRight size={14} className="lb-activity-card__chevron" />
+          </Link>
 
-        <Link to="/actividad" className="lb-activity-card lb-activity-card--react">
-          <span className="lb-activity-card__icon">
-            <Radio size={15} />
-          </span>
-          <span className="lb-activity-card__label">
-            Interacciones
-            <span title="Reacciones positivas y negativas en tu contenido" className="inline-flex">
-              <Info size={11} aria-hidden />
+          <Link to="/actividad" className="lb-activity-card lb-activity-card--react">
+            <span className="lb-activity-card__icon">
+              <Radio size={15} />
             </span>
-          </span>
-          {hasInteractions ? (
-            <span className="lb-activity-card__split">
-              <span className="lb-activity-metric">
-                <img
-                  src={positives > 0 ? LIVEBOOM_REACTION_ASSETS.likeOn : LIVEBOOM_REACTION_ASSETS.likeOff}
-                  alt=""
-                  className="lb-activity-bomb"
-                />
-                <strong>{positives.toLocaleString('es-CO')}</strong>
-                <em>Positivas</em>
-              </span>
-              <span className="lb-activity-metric">
-                <img
-                  src={negatives > 0 ? LIVEBOOM_REACTION_ASSETS.dislikeOn : LIVEBOOM_REACTION_ASSETS.dislikeOff}
-                  alt=""
-                  className="lb-activity-bomb"
-                />
-                <strong>{negatives.toLocaleString('es-CO')}</strong>
-                <em>Negativas</em>
+            <span className="lb-activity-card__label">
+              Interacciones
+              <span title="Reacciones positivas y negativas en tu contenido" className="inline-flex">
+                <Info size={11} aria-hidden />
               </span>
             </span>
-          ) : (
-            <span className="lb-activity-card__empty">Sin interacciones todavía</span>
-          )}
-          <ChevronRight size={14} className="lb-activity-card__chevron" />
-        </Link>
+            {hasInteractions ? (
+              <span className="lb-activity-card__split">
+                <span className="lb-activity-metric">
+                  <img
+                    src={positives > 0 ? LIVEBOOM_REACTION_ASSETS.likeOn : LIVEBOOM_REACTION_ASSETS.likeOff}
+                    alt=""
+                    className="lb-activity-bomb"
+                  />
+                  <strong>{positives.toLocaleString('es-CO')}</strong>
+                  <em>Positivas</em>
+                </span>
+                <span className="lb-activity-metric">
+                  <img
+                    src={negatives > 0 ? LIVEBOOM_REACTION_ASSETS.dislikeOn : LIVEBOOM_REACTION_ASSETS.dislikeOff}
+                    alt=""
+                    className="lb-activity-bomb"
+                  />
+                  <strong>{negatives.toLocaleString('es-CO')}</strong>
+                  <em>Negativas</em>
+                </span>
+              </span>
+            ) : (
+              <span className="lb-activity-card__empty">Sin interacciones todavía</span>
+            )}
+            <ChevronRight size={14} className="lb-activity-card__chevron" />
+          </Link>
 
-        <Link to="/actividad" className="lb-activity-card lb-activity-card--blasts">
-          <span className="lb-activity-card__icon">
-            <Gift size={15} />
-          </span>
-          <span className="lb-activity-card__label">
-            Ganancias
-            <span title="Monto disponible según Blast ganados en tus lives" className="inline-flex">
-              <Info size={11} aria-hidden />
+          <Link to="/actividad" className="lb-activity-card lb-activity-card--blasts">
+            <span className="lb-activity-card__icon">
+              <Gift size={15} />
             </span>
-          </span>
-          {hasBlasts ? (
-            <span className="lb-activity-card__split">
-              <span className="lb-activity-metric">
-                <Gift size={14} className="text-pink-300" />
-                <strong>{totalGifts.toLocaleString('es-CO')}</strong>
-                <em>Regalos recibidos</em>
-              </span>
-              <span className="lb-activity-metric">
-                <Coins size={14} className="text-amber-300" />
-                <strong>{totalBlasts.toLocaleString('es-CO')} BLAST</strong>
-                <em>Para retirar</em>
+            <span className="lb-activity-card__label">
+              Ganancias
+              <span title="Monto disponible según Blast ganados en tus lives" className="inline-flex">
+                <Info size={11} aria-hidden />
               </span>
             </span>
-          ) : (
-            <span className="lb-activity-card__empty">Sin movimientos todavía</span>
-          )}
-          <ChevronRight size={14} className="lb-activity-card__chevron" />
-        </Link>
-      </div>
+            {hasBlasts ? (
+              <span className="lb-activity-card__split">
+                <span className="lb-activity-metric">
+                  <Gift size={14} className="text-pink-300" />
+                  <strong>{totalGifts.toLocaleString('es-CO')}</strong>
+                  <em>Regalos recibidos</em>
+                </span>
+                <span className="lb-activity-metric">
+                  <Coins size={14} className="text-amber-300" />
+                  <strong>{totalBlasts.toLocaleString('es-CO')} BLAST</strong>
+                  <em>Para retirar</em>
+                </span>
+              </span>
+            ) : (
+              <span className="lb-activity-card__empty">Sin movimientos todavía</span>
+            )}
+            <ChevronRight size={14} className="lb-activity-card__chevron" />
+          </Link>
+        </div>
+      ) : null}
     </section>
   );
 }

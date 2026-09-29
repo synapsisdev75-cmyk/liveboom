@@ -419,15 +419,15 @@ export function ExploreView() {
       {/* Salir: PC a la izquierda; móvil landscape en círculo arriba-derecha. */}
       <Link
         to="/"
-        className={`lb-explore-exit pointer-events-auto absolute z-[35] grid h-11 w-11 min-h-11 min-w-11 place-items-center rounded-full border border-white/25 bg-black/70 text-white shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/85 hover:border-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/80 ${
+        className={`lb-explore-exit pointer-events-auto absolute z-[35] h-11 w-11 min-h-11 min-w-11 rounded-full border border-white/25 bg-black/70 text-white shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/85 hover:border-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/80 ${
           deviceLandscape
-            ? 'right-[max(0.5rem,var(--lb-safe-right))] top-[max(0.45rem,var(--lb-safe-top))] inline-flex lg:left-[max(0.5rem,var(--lb-safe-left))] lg:right-auto'
-            : 'left-[max(0.5rem,var(--lb-safe-left))] top-[max(0.5rem,var(--lb-safe-top))] hidden lg:inline-flex'
+            ? 'inline-grid right-[max(0.5rem,var(--lb-safe-right))] top-[max(0.45rem,var(--lb-safe-top))] lg:left-[max(0.5rem,var(--lb-safe-left))] lg:right-auto'
+            : 'left-[max(0.5rem,var(--lb-safe-left))] top-[max(0.5rem,var(--lb-safe-top))] hidden lg:inline-grid'
         }`}
         aria-label={t('nav.home')}
         title={t('nav.home')}
       >
-        <X size={18} strokeWidth={2.4} aria-hidden />
+        <X size={17} strokeWidth={2.4} aria-hidden />
       </Link>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center pt-[var(--lb-safe-top)] lg:pt-3">
         <div className="lb-explore-chrome pointer-events-auto flex max-w-full items-center justify-center overflow-x-auto px-[clamp(2.6rem,12vw,4.25rem)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

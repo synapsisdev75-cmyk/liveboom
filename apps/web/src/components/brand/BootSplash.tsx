@@ -8,6 +8,17 @@ export const HOME_FEED_READY_EVENT = 'liveboom:home-feed-ready';
 
 let homeFeedMarked = false;
 
+type BootProgressApi = {
+  setTarget: (n: number) => void;
+  setExact: (n: number) => void;
+  stop: () => void;
+};
+
+function bootProgress(): BootProgressApi | null {
+  if (typeof window === 'undefined') return null;
+  return (window as Window & { __lbBootProgress?: BootProgressApi }).__lbBootProgress || null;
+}
+
 export function markHomeFeedReady() {
   if (homeFeedMarked || typeof window === 'undefined') return;
   homeFeedMarked = true;
@@ -20,7 +31,7 @@ const FEED_WAIT_MS = 5000;
 
 /**
  * Mantiene el splash hasta la sesión, el feed de inicio y la precarga
- * del arranque de los videos largos.
+ * del arranque de los videos largos. Actualiza la barra real del splash.
  */
 export function BootSplash() {
   const ready = useAuthStore((state) => state.ready);
@@ -56,14 +67,32 @@ export function BootSplash() {
   const waitingWarm = Boolean(onHome && warmPhase === 'running' && !warmTimedOut);
   const visible = !ready || waitingFeed || waitingWarm;
 
+  // Barra real: hitos de sesión / feed / warm (nunca baja).
+  useEffect(() => {
+    const api = bootProgress();
+    if (!api) return;
+    let target = 22;
+    if (ready) target = 52;
+    if (!waitingFeed) target = Math.max(target, 78);
+    if (!waitingWarm) target = Math.max(target, 92);
+    if (!visible) target = 100;
+    api.setTarget(target);
+    if (!visible) {
+      api.setExact(100);
+      window.setTimeout(() => api.stop(), 260);
+    }
+  }, [ready, waitingFeed, waitingWarm, visible]);
+
   useEffect(() => {
     const splash = document.getElementById('lb-boot-splash');
     if (!splash) return;
     if (visible) {
       splash.classList.remove('is-done');
+      splash.setAttribute('aria-busy', 'true');
       return;
     }
     splash.classList.add('is-done');
+    splash.setAttribute('aria-busy', 'false');
   }, [visible]);
 
   return null;
