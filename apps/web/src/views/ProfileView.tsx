@@ -995,6 +995,12 @@ export function ProfileView() {
               />
               <RowLink
                 icon={<HelpCircle size={18} />}
+                title={t('legal.community')}
+                subtitle={t('legal.monetization')}
+                to="/legal/comunidad"
+              />
+              <RowLink
+                icon={<HelpCircle size={18} />}
                 title={t('settings.terms')}
                 subtitle={t('settings.privacyPolicy')}
                 to="/legal/terminos"

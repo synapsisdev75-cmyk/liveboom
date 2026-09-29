@@ -1,4 +1,4 @@
-import type { Catalog } from './es';
+﻿import type { Catalog } from './es';
 
 export const it: Catalog = {
   nav: {
@@ -380,6 +380,8 @@ export const it: Catalog = {
     privacy: 'Privacy',
     cookies: 'Cookie',
     childSafety: 'Sicurezza dei minori',
+    community: 'Community',
+    monetization: 'Monetization',
   },
   category: {
     musica: 'Musica',

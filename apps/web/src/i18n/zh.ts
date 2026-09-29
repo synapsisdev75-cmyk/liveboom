@@ -1,4 +1,4 @@
-import type { Catalog } from './es';
+﻿import type { Catalog } from './es';
 
 export const zh: Catalog = {
   nav: {
@@ -378,6 +378,8 @@ export const zh: Catalog = {
     privacy: '隐私',
     cookies: 'Cookie',
     childSafety: '儿童安全',
+    community: 'Community',
+    monetization: 'Monetization',
   },
   category: {
     musica: '音乐',

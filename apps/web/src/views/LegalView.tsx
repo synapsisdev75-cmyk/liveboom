@@ -26,7 +26,13 @@ export function LegalView() {
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-boom-cyan">Legal</p>
         <h1 className="mt-2 text-2xl font-bold sm:text-3xl">{doc.title}</h1>
-        <p className="mt-2 text-sm text-zinc-400">Última actualización: {doc.updated}</p>
+        <p className="mt-2 text-sm text-zinc-400">
+          Última actualización: {doc.updated}
+          {doc.version ? ` · ${doc.version}` : ''}
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          MACRO REAL S.A.S. · NIT 901.525.356-9 · Villavicencio, Meta, Colombia
+        </p>
 
         <nav className="mt-6 flex flex-wrap gap-2">
           {LEGAL_DOCS.map((item) => (
@@ -44,11 +50,17 @@ export function LegalView() {
           ))}
         </nav>
 
-        <article className="prose-invert mt-8 space-y-6">
+        <article className="prose-invert mt-8 space-y-8">
           {doc.sections.map((section) => (
-            <section key={section.heading}>
+            <section key={section.heading + section.body.slice(0, 24)}>
               <h2 className="text-lg font-semibold text-white">{section.heading}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-zinc-300">{section.body}</p>
+              <div className="mt-2 space-y-3 text-sm leading-relaxed text-zinc-300">
+                {section.body.split(/\n\n+/).map((para, idx) => (
+                  <p key={idx} className="whitespace-pre-wrap">
+                    {para}
+                  </p>
+                ))}
+              </div>
             </section>
           ))}
         </article>

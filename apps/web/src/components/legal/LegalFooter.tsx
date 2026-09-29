@@ -20,12 +20,20 @@ export function LegalFooter({ compact = false }: { compact?: boolean }) {
           {t('legal.privacy')}
         </Link>
         <span aria-hidden="true">·</span>
-        <Link to="/legal/cookies" className="hover:text-boom-cyan">
-          {t('legal.cookies')}
+        <Link to="/legal/comunidad" className="hover:text-boom-cyan">
+          {t('legal.community')}
         </Link>
         <span aria-hidden="true">·</span>
         <Link to="/legal/seguridad-infantil" className="hover:text-boom-cyan">
           {t('legal.childSafety')}
+        </Link>
+        <span aria-hidden="true">·</span>
+        <Link to="/legal/monetizacion" className="hover:text-boom-cyan">
+          {t('legal.monetization')}
+        </Link>
+        <span aria-hidden="true">·</span>
+        <Link to="/legal/cookies" className="hover:text-boom-cyan">
+          {t('legal.cookies')}
         </Link>
       </div>
     </footer>

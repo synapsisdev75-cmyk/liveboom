@@ -378,6 +378,8 @@ export const es = {
     privacy: 'Privacidad',
     cookies: 'Cookies',
     childSafety: 'Seguridad infantil',
+    community: 'Comunidad',
+    monetization: 'Monetización',
   },
   category: {
     musica: 'Música',
