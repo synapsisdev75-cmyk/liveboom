@@ -238,10 +238,11 @@ try {
     {
       region: 'us-central1',
       schedule: 'every 1 minutes',
-      memory: '2GiB',
+      memory: '8GiB',
       timeoutSeconds: 540,
       maxInstances: 1,
-      cpu: 2,
+      cpu: 4,
+      ephemeralStorage: '8GiB',
     },
     async () => {
       const { processGiftAlphaQueue } = require('./src/lib/giftAlphaConvert');
@@ -272,9 +273,10 @@ try {
     {
       document: 'gift_alpha_jobs/{jobId}',
       region: 'us-central1',
-      memory: '2GiB',
+      memory: '8GiB',
       timeoutSeconds: 540,
-      cpu: 2,
+      cpu: 4,
+      ephemeralStorage: '8GiB',
     },
     async (event) => {
       const before = event.data?.before?.data() || null;
@@ -296,9 +298,10 @@ try {
     {
       document: 'gift_bg_jobs/{jobId}',
       region: 'us-central1',
-      memory: '2GiB',
+      memory: '8GiB',
       timeoutSeconds: 540,
-      cpu: 2,
+      cpu: 4,
+      ephemeralStorage: '8GiB',
     },
     async (event) => {
       const before = event.data?.before?.data() || null;

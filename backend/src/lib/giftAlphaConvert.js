@@ -21,7 +21,7 @@ const LIMITS = {
   /**
    * Fuentes MOV ProRes 4444 Full HD antes de comprimir a WebM.
    */
-  maxMovBytes: 650 * 1024 * 1024,
+  maxMovBytes: 900 * 1024 * 1024,
   maxDurationSec: 30,
   maxEdge: 1080,
   maxJobsPerGift: 1,
@@ -69,13 +69,6 @@ function safeGiftSourcePath(raw) {
   if (!/\.(mov|mp4|webm)$/i.test(value)) return null;
   if (value.split('/').length !== 3) return null;
   return value;
-}
-
-function contentTypeForSourceExt(ext) {
-  const value = String(ext || '').toLowerCase();
-  if (value === '.webm') return 'video/webm';
-  if (value === '.mp4') return 'video/mp4';
-  return 'video/quicktime';
 }
 
 function downloadUrlFor(bucketName, objectPath, token) {
@@ -400,7 +393,7 @@ async function probeFile(filePath) {
       '-show_streams',
       filePath,
     ],
-    { timeoutMs: 40_000 },
+    { timeoutMs: 90_000 },
   );
   try {
     return JSON.parse(stdout);
@@ -430,12 +423,22 @@ async function sampleAlpha(bin, filePath, decoderArgs = []) {
         'null',
         '-',
       ],
-      { timeoutMs: 45_000 },
+      { timeoutMs: 90_000 },
     );
     return classifyAlphaSamples(parseSignalStats(stderr));
   } catch {
     return { usable: null, opaque: null, fullyTransparent: null };
   }
+}
+
+function vp9EncodeTuning(encoder) {
+  const cores = Math.max(2, Math.min(4, (os.cpus() || []).length || 2));
+  return {
+    crf: encoder === 'libvpx' ? '24' : '28',
+    cpuUsed: '4',
+    threads: String(cores),
+    tileColumns: cores >= 4 ? '2' : '1',
+  };
 }
 
 function evenDim(value, maxEdge) {
@@ -590,10 +593,13 @@ async function convertWithProgress({
   const videoOnly = `${tmpOut}.vonly.webm`;
   const videoTarget = wantAudio ? videoOnly : tmpOut;
 
+  const tune = vp9EncodeTuning(encoder);
   const args = [
     '-hide_banner',
     '-nostdin',
     '-y',
+    '-threads',
+    tune.threads,
     '-i',
     tmpIn,
     '-map',
@@ -610,18 +616,19 @@ async function convertWithProgress({
     '-b:v',
     '0',
     '-crf',
-    encoder === 'libvpx' ? '22' : '20',
+    tune.crf,
     '-deadline',
     'good',
     '-cpu-used',
-    '2',
+    tune.cpuUsed,
     '-row-mt',
     '1',
     '-threads',
-    '2',
+    tune.threads,
     '-vf',
     vf,
   ];
+  if (encoder === 'libvpx-vp9') args.push('-tile-columns', tune.tileColumns);
   if (hasAlpha) args.push('-metadata:s:v:0', 'alpha_mode=1');
   args.push('-progress', 'pipe:1', '-nostats', '-f', 'webm', videoTarget);
 
@@ -827,6 +834,29 @@ async function enqueueGiftAlphaJob({ storagePath, giftId, createdByUid, keepAudi
   return publicJob(await readJob(jobId));
 }
 
+async function discardConvertedSource(bucket, job) {
+  const gid = safeGiftId(job && job.giftId);
+  if (!gid || !bucket) return false;
+  const dest = String((job && job.destPath) || '');
+  const candidates = [job && job.sourcePath, job && job.privatePath];
+  let removed = false;
+  for (const raw of candidates) {
+    const objectPath = String(raw || '').replace(/^\/+/, '');
+    if (!objectPath || objectPath === dest) continue;
+    const owned =
+      objectPath.startsWith(`config/gifts/${gid}-`) ||
+      objectPath.startsWith(`admin/private/gifts/${gid}/`);
+    if (!owned || /\.(png|jpe?g|webp|gif)$/i.test(objectPath)) continue;
+    try {
+      await bucket.file(objectPath).delete({ ignoreNotFound: true });
+      removed = true;
+    } catch (error) {
+      console.warn('[gift-alpha] no se pudo borrar el original', objectPath, error.message);
+    }
+  }
+  return removed;
+}
+
 async function processGiftAlphaJob(jobId) {
   if (!firestoreConfigured()) return { skipped: true };
   const id = String(jobId || '');
@@ -991,23 +1021,6 @@ async function processGiftAlphaJob(jobId) {
       },
     });
 
-    try {
-      await bucket.upload(tmpIn, {
-        destination: job.privatePath,
-        metadata: {
-          contentType: contentTypeForSourceExt(srcExt),
-          metadata: {
-            giftId: job.giftId,
-            jobId: id,
-            original: '1',
-          },
-        },
-      });
-      // Conservar el original público en config/gifts; el archivo privado es copia de archivo.
-    } catch (copyErr) {
-      console.warn('[gift-alpha] no se pudo archivar el original', copyErr.message);
-    }
-
     const url = downloadUrlFor(bucket.name, destPath, token);
     await writeJob(id, {
       status: 'done',
@@ -1016,12 +1029,15 @@ async function processGiftAlphaJob(jobId) {
       indeterminate: false,
       url,
       resultPath: destPath,
+      sourceDeleted: false,
       warning,
       error: null,
       hasAlpha: Boolean(expectAlpha),
       alphaUsable: Boolean(expectAlpha && !verified.warning),
       hasAudio: job.keepAudio === false ? false : Boolean(inspect.hasAudio),
     });
+    const removed = await discardConvertedSource(bucket, job);
+    if (removed) await writeJob(id, { sourceDeleted: true });
     return publicJob(await readJob(id));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No se pudo convertir la animación';
@@ -1429,5 +1445,6 @@ module.exports = {
   probeFile,
   ffmpegBin,
   verifyWebm,
+  discardConvertedSource,
 };
 module.exports.default = module.exports;

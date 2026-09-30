@@ -18,6 +18,11 @@ const {
 } = require('./giftAlphaConvert');
 
 describe('conversión MOV ProRes 4444 → WebM', () => {
+  it('admite fuentes MOV de hasta 900 MB', () => {
+    assert.equal(LIMITS.maxMovBytes, 900 * 1024 * 1024);
+    assert.equal(LIMITS.maxBytes, 80 * 1024 * 1024);
+  });
+
   it('rechaza rutas y regalos inseguros', () => {
     assert.equal(safeGiftSourcePath('config/gifts/besito-video.mov'), 'config/gifts/besito-video.mov');
     assert.equal(safeGiftSourcePath('config/gifts/x.webm'), 'config/gifts/x.webm');

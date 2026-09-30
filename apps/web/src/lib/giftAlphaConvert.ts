@@ -1,7 +1,7 @@
-import { ref, uploadBytesResumable } from 'firebase/storage';
 import { ApiError, getApiBase } from './api';
-import { auth, storage } from './firebase';
+import { auth } from './firebase';
 import { uploadCatalogAsset } from './catalogConfigFirestore';
+import { uploadGiftFileFast } from './giftFastUpload';
 
 export const GIFT_ANIM_LIMITS = {
   /** WebM / MP4 listos para publicar. */
@@ -9,7 +9,7 @@ export const GIFT_ANIM_LIMITS = {
   /**
    * Fuentes MOV ProRes 4444 Full HD antes de comprimirse a WebM.
    */
-  maxMovBytes: 650 * 1024 * 1024,
+  maxMovBytes: 900 * 1024 * 1024,
   maxDurationSec: 30,
   maxEdge: 1080,
 } as const;
@@ -210,22 +210,6 @@ async function pollGiftAlphaJob(
   }
 }
 
-function uploadResumable(storagePath: string, file: File, contentType: string, onPct: (n: number) => void) {
-  const storageRef = ref(storage, storagePath);
-  const task = uploadBytesResumable(storageRef, file, { contentType });
-  return new Promise<void>((resolve, reject) => {
-    task.on(
-      'state_changed',
-      (snap) => {
-        const total = snap.totalBytes || file.size || 1;
-        onPct(Math.min(100, Math.round((snap.bytesTransferred / total) * 100)));
-      },
-      reject,
-      () => resolve(),
-    );
-  });
-}
-
 export async function retryGiftAlphaJob(
   jobId: string,
   onProgress?: (job: GiftAlphaJob) => void,
@@ -281,7 +265,7 @@ export async function uploadGiftAnimation(
       : `${giftId}-${Date.now()}`;
   const storagePath = `config/gifts/${giftId}-video-${Date.now()}-${nonce.slice(0, 8)}.mov`;
   emit({ stage: 'uploading', percent: 0, indeterminate: false });
-  await uploadResumable(storagePath, file, 'video/quicktime', (pct) => {
+  await uploadGiftFileFast(storagePath, file, 'video/quicktime', (pct) => {
     emit({ stage: 'uploading', percent: pct, indeterminate: false });
   });
 

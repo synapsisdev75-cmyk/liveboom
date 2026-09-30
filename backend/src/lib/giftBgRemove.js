@@ -11,7 +11,7 @@ const path = require('path');
 const { FieldValue } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
 const { getAdminDb, firestoreConfigured } = require('./firestoreAdmin');
-const { LIMITS, safeGiftId, pixFmtHasAlpha, probeReportsAlpha, parseFfmpegProgress, sampleAlpha } = require('./giftAlphaConvert');
+const { LIMITS, safeGiftId, pixFmtHasAlpha, probeReportsAlpha, parseFfmpegProgress, sampleAlpha, discardConvertedSource } = require('./giftAlphaConvert');
 
 const STORAGE_BUCKET =
   process.env.FIREBASE_STORAGE_BUCKET || 'liveboom-app.firebasestorage.app';
@@ -545,14 +545,16 @@ async function convertKeyed({ ffmpegPath, tmpIn, tmpOut, inspect, vf, keepAudio,
     '-b:v',
     '0',
     '-crf',
-    '20',
+    '28',
     '-deadline',
     'good',
     '-cpu-used',
-    '2',
+    '4',
     '-row-mt',
     '1',
     '-threads',
+    '4',
+    '-tile-columns',
     '2',
     '-vf',
     vf,
@@ -762,6 +764,7 @@ async function processGiftBgJob(jobId) {
       height: out.height,
       error: null,
     });
+    await discardConvertedSource(getAdminBucket(), job);
     return publicJob(await readJob(id));
   } catch (error) {
     await writeJob(id, {

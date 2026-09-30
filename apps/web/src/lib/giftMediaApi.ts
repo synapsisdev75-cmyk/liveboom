@@ -1,6 +1,7 @@
-import { ref, uploadBytesResumable } from 'firebase/storage';
+import { getDownloadURL, ref } from 'firebase/storage';
 import { ApiError, getApiBase } from './api';
 import { auth, storage } from './firebase';
+import { uploadGiftFileFast } from './giftFastUpload';
 import { defaultGiftMedia, normalizeGiftMedia, type GiftMediaInfo } from './giftMedia';
 import {
   fetchGiftAlphaJob,
@@ -68,33 +69,6 @@ async function authFetch<T>(path: string, init: RequestInit = {}, timeoutMs = 40
   return data;
 }
 
-function mapGiftStorageError(err: unknown): Error {
-  const code = String((err as { code?: string } | null)?.code || '');
-  const raw = err instanceof Error ? err.message : String(err || '');
-  if (code === 'storage/unauthorized' || /storage\/unauthorized/i.test(raw)) {
-    return new Error(
-      'Storage no autorizó la subida. Con la bóveda abierta, vuelve a soltar el WebM/MOV.',
-    );
-  }
-  return err instanceof Error ? err : new Error(raw || 'Error al subir el archivo');
-}
-
-function uploadResumable(storagePath: string, file: File, contentType: string, onPct: (n: number) => void) {
-  const storageRef = ref(storage, storagePath);
-  const task = uploadBytesResumable(storageRef, file, { contentType });
-  return new Promise<void>((resolve, reject) => {
-    task.on(
-      'state_changed',
-      (snap) => {
-        const total = snap.totalBytes || file.size || 1;
-        onPct(Math.min(100, Math.round((snap.bytesTransferred / total) * 100)));
-      },
-      (err) => reject(mapGiftStorageError(err)),
-      () => resolve(),
-    );
-  });
-}
-
 function contentTypeFor(file: File): string {
   if (file.type && file.type !== 'application/octet-stream') return file.type;
   const name = file.name.toLowerCase();
@@ -133,8 +107,7 @@ export async function uploadGiftSource(
   }
   const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
   const storagePath = `config/gifts/${giftId}-original-${Date.now()}.${ext}`;
-  await uploadResumable(storagePath, file, contentTypeFor(file), (pct) => onProgress?.(pct));
-  const { getDownloadURL } = await import('firebase/storage');
+  await uploadGiftFileFast(storagePath, file, contentTypeFor(file), (pct) => onProgress?.(pct));
   const url = await getDownloadURL(ref(storage, storagePath));
   if (opts?.skipInspect) {
     return {
@@ -376,7 +349,7 @@ export async function ingestUploadedGiftAnimation(
     emit({ stage: 'done', percent: 100, indeterminate: false, warning: job.warning, label: decision.message });
     return {
       url: job.url,
-      originalUrl: uploaded.url,
+      originalUrl: '',
       storagePath: uploaded.storagePath,
       media: mediaFromInspect(
         inspectMedia,
@@ -393,7 +366,7 @@ export async function ingestUploadedGiftAnimation(
           needsReview: false,
           processingStatus: 'ready',
         },
-        uploaded.url,
+        '',
         job.url,
       ),
       decision,
@@ -419,7 +392,7 @@ export async function ingestUploadedGiftAnimation(
   emit({ stage: 'done', percent: 100, indeterminate: false, warning: bgJob.warning, label: decision.message });
   return {
     url: preserved ? uploaded.url : bgJob.url,
-    originalUrl: uploaded.url,
+    originalUrl: preserved ? uploaded.url : '',
     storagePath: uploaded.storagePath,
     media: mediaFromInspect(
       inspectMedia,
@@ -438,7 +411,7 @@ export async function ingestUploadedGiftAnimation(
         needsReview: preserved,
         processingStatus: 'ready',
       },
-      uploaded.url,
+      preserved ? uploaded.url : '',
       preserved ? null : bgJob.url,
     ),
     decision,

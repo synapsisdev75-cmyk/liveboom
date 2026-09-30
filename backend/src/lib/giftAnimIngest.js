@@ -4,7 +4,7 @@
  * Flujo al subir (una sola vez):
  * 1. El admin sube el original a config/gifts/{id}-original-{ts}.{ext}
  * 2. POST /api/gifts/ingest inspecciona formato, duración, fps, audio y alfa real
- * 3. Se conserva el original (público + copia privada al convertir)
+ * 3. Tras un WebM válido se borra el MOV/MP4 de origen. Lo ya publicado no se toca.
  * 4. Decisión:
  *    - WebM VP8/VP9 con alfa usable → ready (reutilizar)
  *    - Alfa real en MOV/MP4/WebM → convert-alpha (VP9 yuva + audio)
@@ -14,7 +14,7 @@
  * 5. Validar WebM (alfa si aplica, audio si existía) y dejar processedAsset
  * 6. LIVE / chat / editor leen giftPlaybackSrc → processedAsset
  *
- * No cobra, no envía regalos y no borra el archivo original.
+ * No cobra, no envía regalos y no borra animaciones ya publicadas.
  */
 
 const { randomUUID } = require('crypto');
@@ -58,11 +58,11 @@ const MESSAGES = {
   [REASONS.WEB_M_ALPHA]:
     'El WebM ya tiene transparencia real. Se reutiliza sin reconvertir. El original se conserva.',
   [REASONS.KEEP_ALPHA]:
-    'Se detectó canal alfa real. Se convierte a WebM VP9 conservando transparencia y audio. El original se conserva.',
+    'Se detectó canal alfa real. Se convierte a WebM VP9 con transparencia y audio. Al terminar se borra el archivo original.',
   [REASONS.CHROMA]:
-    'Fondo croma uniforme. Se quita el fondo automáticamente. El original se conserva.',
+    'Fondo croma uniforme. Se quita el fondo y se guarda solo el WebM.',
   [REASONS.PACKAGING]:
-    'Se genera un WebM de producción para LiveBoom. El original se conserva.',
+    'Se genera un WebM de producción para LiveBoom. Al terminar se borra el archivo original.',
   [REASONS.REVIEW]:
     'No hay transparencia utilizable ni un croma seguro. Se conservó el original para revisión; no se publicó una versión recortada.',
 };
@@ -136,19 +136,33 @@ async function analyzeGiftSource(storagePath) {
     throw Object.assign(new Error('FFmpeg no está disponible en el servidor.'), { code: 'NO_FFMPEG' });
   }
   const tmpIn = path.join(os.tmpdir(), `gift-ingest-${randomUUID()}${path.extname(sourcePath)}`);
+  let cleanup = null;
   try {
     const file = getAdminBucket().file(sourcePath);
     const [exists] = await file.exists();
     if (!exists) throw Object.assign(new Error('No se encontró el archivo'), { code: 'NOT_FOUND' });
-    await file.download({ destination: tmpIn });
-    const probe = await probeFile(tmpIn);
+    let location = tmpIn;
+    try {
+      const [signed] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 20 * 60 * 1000,
+      });
+      if (signed) location = signed;
+    } catch (error) {
+      console.warn('[gift-ingest] lectura remota no disponible', error.message);
+    }
+    if (location === tmpIn) {
+      await file.download({ destination: tmpIn });
+      cleanup = tmpIn;
+    }
+    const probe = await probeFile(location);
     const inspect = inspectMedia(probe);
     if (inspect.error) throw Object.assign(new Error(inspect.error), { code: 'UNSUPPORTED' });
     const hasAlphaChannel = Boolean(inspect.hasAlphaChannel || pixFmtHasAlpha(inspect.pixFmt) || probeReportsAlpha(probe));
     let alphaUsable = hasAlphaChannel ? true : null;
     let alphaWarning = null;
     if (hasAlphaChannel) {
-      const sampled = await sampleAlpha(ffmpegPath, tmpIn);
+      const sampled = await sampleAlpha(ffmpegPath, location);
       if (sampled.opaque) {
         alphaUsable = false;
         alphaWarning = 'El archivo declara canal alfa, pero los fotogramas muestreados están opacos.';
@@ -165,7 +179,7 @@ async function analyzeGiftSource(storagePath) {
     let bg = null;
     if (!(hasAlphaChannel && alphaUsable !== false)) {
       try {
-        bg = await detectBackground(ffmpegPath, tmpIn, inspect);
+        bg = await detectBackground(ffmpegPath, location, inspect);
       } catch {
         bg = { kind: 'flat', uniform: false, color: { r: 0, g: 0, b: 0 }, warning: null };
       }
@@ -183,10 +197,12 @@ async function analyzeGiftSource(storagePath) {
       bg,
     };
   } finally {
-    try {
-      fs.unlinkSync(tmpIn);
-    } catch {
-      /* ignore */
+    if (cleanup) {
+      try {
+        fs.unlinkSync(cleanup);
+      } catch {
+        /* ignore */
+      }
     }
   }
 }
