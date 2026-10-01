@@ -61,8 +61,8 @@ export function ChatTypingIndicator({ active }: Props) {
         preload="auto"
         aria-hidden
       />
-      <p className="lb-chat-typing__label -mt-5 w-[7.5rem] text-center text-[10px] font-medium leading-none tracking-wide text-zinc-400">
-        escribiendo
+      <p className="lb-chat-typing__label -mt-3 w-[7.5rem] text-center text-[10px] font-medium leading-none tracking-wide text-zinc-400">
+        Escribiendo
       </p>
     </div>
   );
