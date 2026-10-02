@@ -269,6 +269,8 @@ export function PostVideoPlayer({
   // Explorar / viewers overlay: un solo mute compartido para todo el feed.
   const shareExploreMute = Boolean(fastNav);
   const [muted, setMuted] = useState(() => (shareExploreMute ? getExploreFeedMuted() : true));
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
 
@@ -481,7 +483,8 @@ export function PostVideoPlayer({
     const kick = () => {
       if (cancelled) return;
       if (fastNav && !exploreNavIsCurrent(bindGen)) return;
-      const preferMuted = shareExploreMute ? getExploreFeedMuted() : true;
+      // canplay/canplaythrough vuelven a llegar tras rebuffer: respetar el sonido elegido.
+      const preferMuted = shareExploreMute ? getExploreFeedMuted() : mutedRef.current;
       video.muted = preferMuted;
       video.defaultMuted = preferMuted;
       if (preferMuted) video.setAttribute('muted', '');
@@ -504,7 +507,7 @@ export function PostVideoPlayer({
       window.clearTimeout(retry2);
       // No pausar en fastNav: el pause deja el overlay play nativo gris del WebView Android.
     };
-  }, [overlayOnly, src, postId, fastNav, shareExploreMute, muted]);
+  }, [overlayOnly, src, postId, fastNav, shareExploreMute]);
 
   const flashPlayback = useCallback((state: 'play' | 'pause') => {
     setPlaybackFlash(state);
