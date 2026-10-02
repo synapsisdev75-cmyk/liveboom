@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { Bold, ImagePlus, Italic, Loader2, Scissors, Underline, Wand2 } from 'lucide-react';
+import {
+  Bold,
+  ImagePlus,
+  Italic,
+  Loader2,
+  Scissors,
+  Smile,
+  Sticker,
+  Trash2,
+  Underline,
+  Wand2,
+} from 'lucide-react';
 import {
   applyMask,
   maskAtPoint,
@@ -7,6 +18,10 @@ import {
   maskPeople,
   type AlphaMask,
 } from '../../lib/stickerBackground';
+import { COMPOSER_STICKERS, COMPOSER_STICKER_PACKS, type ComposerStickerPack } from '../../lib/composerStickers';
+import { resolveEmoji } from '../../lib/liveboomEmojis';
+import { resolveFlagIcon } from '../../lib/circleFlags';
+import { EmojiPickerButton } from './EmojiPicker';
 
 const OUT = 512;
 const SOURCE_MAX_EDGE = 1024;
@@ -42,6 +57,15 @@ type TextStyle = {
   x: number;
   y: number;
 };
+
+/** Emoji o sticker encima del sticker. `src` = imagen same-origin; `char` = emoji unicode. */
+type Deco = { id: string; src?: string; char?: string; x: number; y: number; size: number };
+
+const DECO_MAX = 12;
+const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif';
+const DECO_PACKS = COMPOSER_STICKER_PACKS.filter((pack) =>
+  COMPOSER_STICKERS.some((item) => item.pack === pack.id && item.kind === 'sticker' && item.src),
+);
 
 let fontsRequested = false;
 function ensureStickerFonts(): Promise<void> {
@@ -109,13 +133,59 @@ function isDark(hex: string) {
   return 0.299 * r + 0.587 * g + 0.114 * b < 110;
 }
 
+function drawDecos(
+  ctx: CanvasRenderingContext2D,
+  decos: Deco[],
+  images: Map<string, HTMLImageElement>,
+  selectedId: string | null,
+): Map<string, Box> {
+  const boxes = new Map<string, Box>();
+  for (const deco of decos) {
+    const side = OUT * deco.size;
+    const cx = deco.x * OUT;
+    const cy = deco.y * OUT;
+    let box: Box | null = null;
+    if (deco.src) {
+      const img = images.get(deco.src);
+      if (!img || !img.complete || !img.naturalWidth) continue;
+      const ratio = img.naturalWidth / img.naturalHeight;
+      const w = ratio >= 1 ? side : side * ratio;
+      const h = ratio >= 1 ? side / ratio : side;
+      box = { x: cx - w / 2, y: cy - h / 2, w, h };
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, box.x, box.y, w, h);
+    } else if (deco.char) {
+      ctx.font = `${Math.round(side * 0.86)}px ${EMOJI_FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(deco.char, cx, cy);
+      box = { x: cx - side / 2, y: cy - side / 2, w: side, h: side };
+    }
+    if (!box) continue;
+    boxes.set(deco.id, box);
+    if (deco.id === selectedId) {
+      ctx.save();
+      ctx.setLineDash([10, 7]);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#e879f9';
+      ctx.strokeRect(box.x - 6, box.y - 6, box.w + 12, box.h + 12);
+      ctx.restore();
+    }
+  }
+  return boxes;
+}
+
 function renderSticker(
   ctx: CanvasRenderingContext2D,
   image: HTMLCanvasElement | null,
   bounds: Box | null,
   border: boolean,
   style: TextStyle,
-): { fit: Fit | null; textBox: Box | null } {
+  decos: Deco[] = [],
+  images: Map<string, HTMLImageElement> = new Map(),
+  selectedId: string | null = null,
+): { fit: Fit | null; textBox: Box | null; decoBoxes: Map<string, Box> } {
   ctx.clearRect(0, 0, OUT, OUT);
   let fit: Fit | null = null;
 
@@ -149,12 +219,14 @@ function renderSticker(
     ctx.drawImage(image, bounds.x, bounds.y, bounds.w, bounds.h, dx, dy, dw, dh);
   }
 
+  const decoBoxes = drawDecos(ctx, decos, images, selectedId);
+
   const lines = style.text
     .split('\n')
     .map((line) => line.trimEnd())
     .filter((line, i, all) => line || i < all.length - 1)
     .slice(0, 3);
-  if (!lines.some(Boolean)) return { fit, textBox: null };
+  if (!lines.some(Boolean)) return { fit, textBox: null, decoBoxes };
 
   const px = Math.round(OUT * style.size);
   ctx.font = `${style.italic ? 'italic ' : ''}${style.bold ? '800' : '500'} ${px}px ${fontFamily(style.font)}`;
@@ -191,7 +263,7 @@ function renderSticker(
     }
   });
 
-  return { fit, textBox: { x: cx - blockW / 2, y: cy - blockH / 2, w: blockW, h: blockH } };
+  return { fit, textBox: { x: cx - blockW / 2, y: cy - blockH / 2, w: blockW, h: blockH }, decoBoxes };
 }
 
 type Props = {
@@ -219,10 +291,26 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     x: 0.5,
     y: 0.86,
   });
+  const [decos, setDecos] = useState<Deco[]>([]);
+  const [selectedDeco, setSelectedDeco] = useState<string | null>(null);
+  const [imagesTick, setImagesTick] = useState(0);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [stickersOpen, setStickersOpen] = useState(false);
+  const [decoPack, setDecoPack] = useState<ComposerStickerPack>(DECO_PACKS[0]?.id ?? 'clasicos');
+  const decoPackItems = useMemo(
+    () => COMPOSER_STICKERS.filter((item) => item.pack === decoPack && item.kind === 'sticker' && item.src),
+    [decoPack],
+  );
   const inputRef = useRef<HTMLInputElement>(null);
+  const emojiBtnRef = useRef<HTMLButtonElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
-  const layoutRef = useRef<{ fit: Fit | null; textBox: Box | null }>({ fit: null, textBox: null });
-  const dragRef = useRef<{ id: number; ox: number; oy: number } | null>(null);
+  const imagesRef = useRef(new Map<string, HTMLImageElement>());
+  const layoutRef = useRef<{ fit: Fit | null; textBox: Box | null; decoBoxes: Map<string, Box> }>({
+    fit: null,
+    textBox: null,
+    decoBoxes: new Map(),
+  });
+  const dragRef = useRef<{ id: number; target: string; ox: number; oy: number } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -240,8 +328,49 @@ export function StickerCreator({ onCancel, onSave }: Props) {
   useEffect(() => {
     const ctx = previewRef.current?.getContext('2d');
     if (!ctx) return;
-    layoutRef.current = renderSticker(ctx, cutout, bounds, border, style);
-  }, [cutout, bounds, border, style, fontsTick]);
+    layoutRef.current = renderSticker(ctx, cutout, bounds, border, style, decos, imagesRef.current, selectedDeco);
+  }, [cutout, bounds, border, style, fontsTick, decos, selectedDeco, imagesTick]);
+
+  function addDeco(next: Pick<Deco, 'src' | 'char'>) {
+    if (decos.length >= DECO_MAX) {
+      setError(`Máximo ${DECO_MAX} emojis o stickers por sticker.`);
+      return;
+    }
+    if (next.src && !imagesRef.current.has(next.src)) {
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => setImagesTick((n) => n + 1);
+      img.src = next.src;
+      imagesRef.current.set(next.src, img);
+    }
+    const id = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const offset = (decos.length % 5) * 0.06;
+    setDecos((current) => [
+      ...current,
+      { id, ...next, x: 0.3 + offset, y: 0.28 + offset, size: next.src ? 0.34 : 0.24 },
+    ]);
+    setSelectedDeco(id);
+    setError(null);
+  }
+
+  function addEmoji(id: string) {
+    const liveboom = resolveEmoji(id);
+    if (liveboom) {
+      addDeco({ src: liveboom.file });
+      return;
+    }
+    const flag = resolveFlagIcon(id);
+    addDeco(flag ? { src: flag.file } : { char: id });
+  }
+
+  function patchDeco(id: string, next: Partial<Deco>) {
+    setDecos((current) => current.map((deco) => (deco.id === id ? { ...deco, ...next } : deco)));
+  }
+
+  function removeDeco(id: string) {
+    setDecos((current) => current.filter((deco) => deco.id !== id));
+    setSelectedDeco(null);
+  }
 
   async function pickFile(file: File | null) {
     if (!file) return;
@@ -313,23 +442,40 @@ export function StickerCreator({ onCancel, onSave }: Props) {
 
   function onPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     const point = toCanvasPoint(event);
-    const box = layoutRef.current.textBox;
     const slop = 18;
-    if (
-      box &&
-      point.x >= box.x - slop &&
-      point.x <= box.x + box.w + slop &&
-      point.y >= box.y - slop &&
-      point.y <= box.y + box.h + slop
-    ) {
+    const hit = (box: Box | null | undefined) =>
+      Boolean(
+        box &&
+          point.x >= box.x - slop &&
+          point.x <= box.x + box.w + slop &&
+          point.y >= box.y - slop &&
+          point.y <= box.y + box.h + slop,
+      );
+    const startDrag = (target: string, box: Box) => {
       event.currentTarget.setPointerCapture(event.pointerId);
       dragRef.current = {
         id: event.pointerId,
+        target,
         ox: point.x - (box.x + box.w / 2),
         oy: point.y - (box.y + box.h / 2),
       };
+    };
+    const textBox = layoutRef.current.textBox;
+    if (textBox && hit(textBox)) {
+      setSelectedDeco(null);
+      startDrag('text', textBox);
       return;
     }
+    for (let i = decos.length - 1; i >= 0; i--) {
+      const deco = decos[i];
+      const box = deco ? layoutRef.current.decoBoxes.get(deco.id) : undefined;
+      if (deco && box && hit(box)) {
+        setSelectedDeco(deco.id);
+        startDrag(deco.id, box);
+        return;
+      }
+    }
+    setSelectedDeco(null);
     const fit = layoutRef.current.fit;
     if (bgMode === 'touch' && source && fit) {
       const sx = fit.bx + (point.x - fit.dx) / fit.scale;
@@ -343,11 +489,10 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     const drag = dragRef.current;
     if (!drag || drag.id !== event.pointerId) return;
     const point = toCanvasPoint(event);
-    setStyle((current) => ({
-      ...current,
-      x: Math.min(1, Math.max(0, (point.x - drag.ox) / OUT)),
-      y: Math.min(1, Math.max(0, (point.y - drag.oy) / OUT)),
-    }));
+    const x = Math.min(1, Math.max(0, (point.x - drag.ox) / OUT));
+    const y = Math.min(1, Math.max(0, (point.y - drag.oy) / OUT));
+    if (drag.target === 'text') setStyle((current) => ({ ...current, x, y }));
+    else patchDeco(drag.target, { x, y });
   }
 
   function endDrag(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -355,7 +500,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
   }
 
   async function save() {
-    if (busy || (!source && !style.text.trim())) return;
+    if (busy || (!source && !style.text.trim() && decos.length === 0)) return;
     setError(null);
     setBusy('Guardando sticker…');
     try {
@@ -364,7 +509,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
       canvas.height = OUT;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Tu navegador no permite crear el sticker.');
-      renderSticker(ctx, cutout, bounds, border, style);
+      renderSticker(ctx, cutout, bounds, border, style, decos, imagesRef.current, null);
       let blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.92));
       if (!blob || blob.type !== 'image/webp') {
         blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -379,7 +524,8 @@ export function StickerCreator({ onCancel, onSave }: Props) {
   }
 
   const patch = (next: Partial<TextStyle>) => setStyle((current) => ({ ...current, ...next }));
-  const canSave = Boolean(source || style.text.trim());
+  const canSave = Boolean(source || style.text.trim() || decos.length > 0);
+  const selected = decos.find((deco) => deco.id === selectedDeco) ?? null;
   const chip = (active: boolean) =>
     `min-h-11 shrink-0 rounded-xl px-3 text-xs font-bold transition ${
       active ? 'bg-fuchsia-500 text-white' : 'bg-white/[0.06] text-zinc-300 hover:bg-white/10'
@@ -412,7 +558,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
           }`}
           aria-label="Vista previa del sticker"
         />
-        {!source && !style.text ? (
+        {!source && !style.text && decos.length === 0 ? (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
@@ -420,7 +566,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
           >
             <ImagePlus size={30} className="text-fuchsia-300" />
             <span className="font-semibold text-white">Sube una foto</span>
-            <span className="px-6 text-xs text-zinc-400">o escribe un texto abajo para un sticker solo de letras</span>
+            <span className="px-6 text-xs text-zinc-400">o usa texto, emojis y stickers de abajo</span>
           </button>
         ) : null}
         {busy ? (
@@ -436,9 +582,118 @@ export function StickerCreator({ onCancel, onSave }: Props) {
           Toca en la foto la persona, mascota u objeto que quieres conservar.
         </p>
       ) : null}
-      {style.text && !busy ? (
-        <p className="-mt-1 text-center text-[10px] text-zinc-500">Arrastra el texto para moverlo.</p>
+      {(style.text || decos.length > 0) && !busy ? (
+        <p className="-mt-1 text-center text-[10px] text-zinc-500">
+          Arrastra el texto, emojis o stickers para moverlos. Toca uno para cambiar su tamaño.
+        </p>
       ) : null}
+
+      <div>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Decorar</p>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            ref={emojiBtnRef}
+            type="button"
+            onClick={() => {
+              setStickersOpen(false);
+              setEmojiOpen((value) => !value);
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            className={chip(emojiOpen)}
+            aria-expanded={emojiOpen}
+          >
+            <span className="inline-flex items-center gap-1">
+              <Smile size={14} /> Emojis
+            </span>
+          </button>
+          <EmojiPickerButton
+            hideTrigger
+            triggerRef={emojiBtnRef}
+            open={emojiOpen}
+            onOpenChange={setEmojiOpen}
+            placement="above"
+            onPick={addEmoji}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setEmojiOpen(false);
+              setStickersOpen((value) => !value);
+            }}
+            className={chip(stickersOpen)}
+            aria-expanded={stickersOpen}
+          >
+            <span className="inline-flex items-center gap-1">
+              <Sticker size={14} /> Stickers
+            </span>
+          </button>
+        </div>
+
+        {stickersOpen ? (
+          <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {DECO_PACKS.map((pack) => (
+                <button
+                  key={pack.id}
+                  type="button"
+                  onClick={() => setDecoPack(pack.id)}
+                  className={`min-h-9 shrink-0 rounded-full px-3 text-[11px] font-bold transition ${
+                    decoPack === pack.id ? 'bg-fuchsia-500 text-white' : 'bg-white/[0.06] text-zinc-300'
+                  }`}
+                >
+                  {pack.label}
+                </button>
+              ))}
+            </div>
+            <div className="grid max-h-[min(14rem,32dvh)] grid-cols-4 gap-1.5 overflow-y-auto overscroll-contain sm:grid-cols-6">
+              {decoPackItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => addDeco({ src: item.src })}
+                  className="aspect-square rounded-xl p-1 transition hover:bg-white/[0.08] active:scale-95"
+                  title={item.label}
+                  aria-label={`Añadir ${item.label}`}
+                >
+                  <img
+                    src={item.src}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                    className="h-full w-full select-none object-contain"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {selected ? (
+          <div className="mt-2 flex items-center gap-2 rounded-2xl bg-fuchsia-500/[0.08] px-3 py-1.5">
+            <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-[11px] text-zinc-300">
+              Tamaño
+              <input
+                type="range"
+                min={0.1}
+                max={0.8}
+                step={0.01}
+                value={selected.size}
+                onChange={(event) => patchDeco(selected.id, { size: Number(event.target.value) })}
+                className="min-w-0 flex-1 accent-fuchsia-500"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => removeDeco(selected.id)}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-rose-500/20 text-rose-300"
+              aria-label="Quitar"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       {source ? (
         <div>
