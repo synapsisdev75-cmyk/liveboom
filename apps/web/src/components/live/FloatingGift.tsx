@@ -363,7 +363,7 @@ function GiftVideoBurst({
         poster={TRANSPARENT_VIDEO_POSTER}
         className={`lb-gift-burst-video bg-transparent ${
           useFillClass ? 'lb-gift-burst-video--fill object-contain' : 'lb-gift-layout-media'
-        }`}
+        } ${portrait && !bleed ? 'lb-gift-burst-video--soft' : ''}`}
         style={mediaStyle}
         playsInline
         muted
@@ -420,6 +420,7 @@ function GiftStillBurst({
   }, [durationMs, onComplete]);
 
   const size = resolveGiftMediaSize(mediaWidth, mediaHeight, frame916);
+  const portrait = size.width > 1 && size.height > 1 ? size.height >= size.width : frame916;
   const stageSlot =
     frame916 && (slot.displayArea === 'global' || slot.fullscreenMode === 'global')
       ? {
@@ -436,7 +437,7 @@ function GiftStillBurst({
         globalArea && !frame916 ? 'fixed inset-0 z-[114]' : 'absolute inset-0 z-[60]'
       } ${isGiftLayoutBleed(stageSlot) ? 'lb-gift-layout-stage--bleed' : ''} ${
         frame916 ? 'lb-gift-burst-frame916' : ''
-      }`}
+      } ${portrait && !isGiftLayoutBleed(stageSlot) ? 'lb-gift-burst--soft' : ''}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
