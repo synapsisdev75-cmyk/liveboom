@@ -27,6 +27,7 @@ import { PublicationCaption } from './PublicationCaption';
 import { ShareContentButton } from './ShareContentButton';
 import { PostViewsIndicator } from './PostViewsIndicator';
 import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
+import { PostOptionsMenu } from './PostOptionsMenu';
 
 export type RepostSourcePost = {
   id: string;
@@ -397,6 +398,7 @@ export function RepostPostCard({
               En vivo
             </Link>
           ) : null}
+          <PostOptionsMenu />
         </div>
       </div>
 

@@ -1,5 +1,5 @@
-import { Flag, MessageCircle } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { MessageCircle } from 'lucide-react';
+import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { PostReactionUser } from '../../lib/socialFirestore';
 import { profileHref } from '../../lib/profileFirestore';
@@ -9,7 +9,7 @@ import { ShareContentButton } from './ShareContentButton';
 import { PostViewsIndicator } from './PostViewsIndicator';
 import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
-import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
+import { PostOptionsMenu } from './PostOptionsMenu';
 import { useT } from '../../i18n';
 import type { GiftLayoutVariantId } from '../../lib/giftLayout';
 
@@ -106,7 +106,6 @@ export function PostActionRail({
   giftLayoutContext = 'publicaciones',
 }: Props) {
   const t = useT();
-  const [reportOpen, setReportOpen] = useState(false);
   const profilePath =
     authorUsername || authorUid ? profileHref(authorUsername || 'user', authorUid) : null;
   const resolvedShareText = shareText ?? t('share.lookAtThis');
@@ -200,18 +199,7 @@ export function PostActionRail({
         </span>
       </div>
 
-      <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.2rem)]">
-        <OverlayIconButton
-          active={reportOpen}
-          activeClass="bg-amber-400 text-zinc-950"
-          onClick={() => setReportOpen(true)}
-        >
-          <Flag className="lb-action-rail__icon" size={20} />
-        </OverlayIconButton>
-        <span className="lb-action-rail__label min-h-[14px] font-bold text-white drop-shadow">
-          {t('actions.report')}
-        </span>
-      </div>
+      <PostOptionsMenu variant="rail" />
 
       <PostReceivedGiftsButton postId={postId} authorUid={authorUid} variant="rail" />
 
@@ -231,8 +219,6 @@ export function PostActionRail({
           className="lb-action-rail-share"
         />
       ) : null}
-
-      <InAppFeedbackModal open={reportOpen} onClose={() => setReportOpen(false)} />
     </div>
   );
 }

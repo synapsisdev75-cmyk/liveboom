@@ -41,6 +41,7 @@ import {
   type SocialPost,
 } from '../components/social/SocialPostCard';
 import { RepostPostCard } from '../components/social/RepostPostCard';
+import { PostOptionsMenu } from '../components/social/PostOptionsMenu';
 import { isRepostPost } from '../lib/socialFirestore';
 import { UserAvatar } from '../components/profile/UserAvatar';
 import { apiPublic } from '../lib/api';
@@ -247,6 +248,7 @@ function HomePublicationCard({
               En vivo
             </Link>
           ) : null}
+          <PostOptionsMenu />
         </div>
       </div>
 

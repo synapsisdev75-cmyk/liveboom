@@ -35,6 +35,7 @@ import { ReelGiftControls } from '../feed/ReelGiftControls';
 import { PostReceivedGiftsButton } from './PostReceivedGiftsButton';
 import { isBoomClipPost, isPublicationPost } from '../../lib/contentType';
 import { RepostPostCard } from './RepostPostCard';
+import { PostOptionsMenu } from './PostOptionsMenu';
 import { isRepostPost } from '../../lib/socialFirestore';
 import type { Reconstruction3DPayload } from '../../lib/reconstruction3d/types';
 import { Reconstruction3DViewer } from './Reconstruction3DViewer';
@@ -726,6 +727,9 @@ function StandardPostCard({
         pubChrome ? 'lb-pub-card border-white/[0.12]' : 'border-white/10'
       }`}
     >
+      <div className="flex items-center justify-end pr-1 pt-1">
+        <PostOptionsMenu />
+      </div>
       {post.visibility ? (
         <p className="border-b border-white/5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
           {post.visibility === 'public'
