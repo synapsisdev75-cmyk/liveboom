@@ -1,6 +1,7 @@
-import { Camera, Image, Send, Video } from 'lucide-react';
+import { Camera, Image, Send, Sticker, Video } from 'lucide-react';
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import type { ComposerGif } from '../../lib/composerGifs';
+import type { ComposerSticker } from '../../lib/composerStickers';
 import { insertEmojiToken } from '../../lib/liveboomEmojis';
 import { mediaKindFromFile } from '../../lib/mediaFile';
 import { UserAvatar } from '../profile/UserAvatar';
@@ -9,10 +10,23 @@ import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { EmojiPickerButton } from './EmojiPicker';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { GifPickerSheet } from './GifPickerSheet';
+import { StickerPickerSheet } from './StickerPickerSheet';
 import { useT } from '../../i18n';
 
 const COMMENT_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
 const COMMENT_VIDEO_MAX_SEC = 60;
+
+function scrollParentOf(el: HTMLElement): HTMLElement | null {
+  let node = el.parentElement;
+  while (node && node !== document.body) {
+    const { overflowY } = getComputedStyle(node);
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
 
 export type CommentDraftAttachment = {
   kind: CommentMediaKind;
@@ -20,6 +34,7 @@ export type CommentDraftAttachment = {
   file?: File;
   gifUrl?: string;
   gifPreviewUrl?: string;
+  stickerUrl?: string;
 };
 
 type Props = {
@@ -56,12 +71,56 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
   const resolvedPlaceholder = placeholder ?? t('comments.write');
   const [attach, setAttach] = useState<CommentDraftAttachment | null>(null);
   const [gifOpen, setGifOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
   const [localError, setLocalError] = useState<string | null>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const keyboardSettleRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => keyboardSettleRef.current?.(), []);
+
+  /**
+   * Táctil: al abrir el teclado, esperar a que termine de cambiar el viewport
+   * y llevar la barra a la vista con scroll suave (sin saltos en cadena).
+   */
+  function settleAboveKeyboard() {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    keyboardSettleRef.current?.();
+    const vv = window.visualViewport;
+    let timer = 0;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      cleanup();
+      const form = formRef.current;
+      if (!form || !form.contains(document.activeElement)) return;
+      const rect = form.getBoundingClientRect();
+      const top = (vv?.offsetTop ?? 0) + 12;
+      const bottom = (vv?.offsetTop ?? 0) + (vv?.height ?? window.innerHeight) - 12;
+      const delta = rect.bottom > bottom ? rect.bottom - bottom : rect.top < top ? rect.top - top : 0;
+      if (Math.abs(delta) < 2) return;
+      const scroller = scrollParentOf(form);
+      scroller?.scrollBy({ top: delta, behavior: 'smooth' });
+    };
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(finish, 160);
+    };
+    const cap = window.setTimeout(finish, 700);
+    function cleanup() {
+      window.clearTimeout(timer);
+      window.clearTimeout(cap);
+      vv?.removeEventListener('resize', onResize);
+      keyboardSettleRef.current = null;
+    }
+    vv?.addEventListener('resize', onResize);
+    keyboardSettleRef.current = cleanup;
+  }
 
   useEffect(() => {
     return () => {
@@ -118,6 +177,19 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
     setGifOpen(false);
   }
 
+  function pickSticker(sticker: ComposerSticker) {
+    setStickerOpen(false);
+    if (sticker.kind === 'text') {
+      const text = sticker.text?.trim();
+      if (!text) return;
+      const next = value && !/\s$/.test(value) ? `${value} ${text}` : `${value}${text}`;
+      if (next.length <= 280) onChange(next);
+      return;
+    }
+    if (!sticker.src) return;
+    replaceAttach({ kind: 'sticker', previewUrl: sticker.src, stickerUrl: sticker.src });
+  }
+
   async function publish() {
     if (disabled || busy) return;
     if (!value.trim() && !attach) return;
@@ -135,8 +207,13 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
 
   return (
     <form
+      ref={formRef}
       className={`lb-comment-bar ${overlay ? 'lb-comment-bar--overlay' : ''}`}
       onClick={(event) => event.stopPropagation()}
+      onFocus={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') settleAboveKeyboard();
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -286,10 +363,29 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
               setLocalError(null);
               setCameraOpen(false);
               setMediaMenuOpen(false);
+              setStickerOpen(false);
               setGifOpen(true);
             }}
           >
             GIF
+          </button>
+
+          <button
+            type="button"
+            className={`lb-comment-bar__tool ${stickerOpen ? 'is-active' : ''}`}
+            disabled={disabled || busy}
+            aria-label="Stickers"
+            title="Stickers"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setLocalError(null);
+              setCameraOpen(false);
+              setMediaMenuOpen(false);
+              setGifOpen(false);
+              setStickerOpen(true);
+            }}
+          >
+            <Sticker size={18} />
           </button>
 
           <button
@@ -320,6 +416,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
       {localError ? <p className="lb-comment-bar__error">{localError}</p> : null}
 
       <GifPickerSheet open={gifOpen} onClose={() => setGifOpen(false)} onPick={pickGif} />
+      <StickerPickerSheet open={stickerOpen} onClose={() => setStickerOpen(false)} onPick={pickSticker} />
       <FlashBoomCameraCapture
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}

@@ -3608,7 +3608,7 @@ export async function setPostBoom(
   );
 }
 
-export type PostCommentMediaType = 'image' | 'video' | 'gif';
+export type PostCommentMediaType = 'image' | 'video' | 'gif' | 'sticker';
 
 export type PostCommentMedia = {
   mediaUrl: string;
@@ -3641,7 +3641,7 @@ export type PostCommentReply = {
 
 function asCommentMediaType(value: unknown): PostCommentMediaType | null {
   const raw = String(value || '').trim();
-  if (raw === 'image' || raw === 'video' || raw === 'gif') return raw;
+  if (raw === 'image' || raw === 'video' || raw === 'gif' || raw === 'sticker') return raw;
   return null;
 }
 

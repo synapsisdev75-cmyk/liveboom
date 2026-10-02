@@ -9056,6 +9056,27 @@ a.lb-entity:active,
   object-fit: cover;
 }
 
+.lb-comment-thumb--sticker,
+.lb-comment-thumb--sticker .lb-comment-thumb__media {
+  border: 0;
+  background: transparent;
+}
+
+.lb-comment-thumb--composer.lb-comment-thumb--sticker .lb-comment-thumb__media {
+  width: clamp(3.5rem, 16vw, 4.5rem);
+  height: clamp(3.5rem, 16vw, 4.5rem);
+}
+
+.lb-comment-thumb--thread.lb-comment-thumb--sticker,
+.lb-comment-thumb--thread.lb-comment-thumb--sticker .lb-comment-thumb__media {
+  min-width: 0;
+}
+
+.lb-comment-thumb--thread.lb-comment-thumb--sticker .lb-comment-thumb__media {
+  width: clamp(4.5rem, 22vw, 6.5rem);
+  height: clamp(4.5rem, 22vw, 6.5rem);
+}
+
 .lb-comment-thumb--video .lb-comment-thumb__media {
   pointer-events: none;
   min-width: min(11.25rem, 100%);

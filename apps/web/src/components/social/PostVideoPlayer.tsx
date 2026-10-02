@@ -1322,6 +1322,8 @@ export function PostComments({
           mediaType: 'gif',
           mediaPreviewUrl: attachment.gifPreviewUrl || attachment.previewUrl,
         };
+      } else if (attachment?.kind === 'sticker' && attachment.stickerUrl) {
+        media = { mediaUrl: attachment.stickerUrl, mediaType: 'sticker' };
       } else if (attachment?.file) {
         const uploaded = await uploadUserMedia(
           profile.firebaseUid,

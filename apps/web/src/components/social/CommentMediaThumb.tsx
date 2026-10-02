@@ -47,9 +47,16 @@ export function CommentMediaThumb({
   const [durationLabel, setDurationLabel] = useState('');
   const isVideo = kind === 'video';
   const isGif = kind === 'gif';
+  const isSticker = kind === 'sticker';
   const canOpen = Boolean(onOpen) && !removable;
-  const displaySrc = isGif ? url : previewUrl || url;
-  const label = isVideo ? 'Video del comentario' : isGif ? 'GIF del comentario' : 'Foto del comentario';
+  const displaySrc = isGif || isSticker ? url : previewUrl || url;
+  const label = isVideo
+    ? 'Video del comentario'
+    : isGif
+      ? 'GIF del comentario'
+      : isSticker
+        ? 'Sticker del comentario'
+        : 'Foto del comentario';
 
   useEffect(() => {
     if (!isVideo) return;
@@ -80,7 +87,13 @@ export function CommentMediaThumb({
   return (
     <span
       className={`${SIZE_CLASS[size]} ${isVideo ? 'lb-comment-thumb--video' : ''} ${
-        isGif ? 'lb-comment-thumb--gif' : kind === 'image' ? 'lb-comment-thumb--image' : ''
+        isGif
+          ? 'lb-comment-thumb--gif'
+          : isSticker
+            ? 'lb-comment-thumb--sticker'
+            : kind === 'image'
+              ? 'lb-comment-thumb--image'
+              : ''
       }`}
     >
       {isVideo ? (
