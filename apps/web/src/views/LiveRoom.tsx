@@ -295,6 +295,9 @@ import { useAuthStore } from '../store/authStore';
 import { useCatalogConfigStore } from '../store/catalogConfigStore';
 import { getLocale } from '../store/localeStore';
 import { TranslatedText } from '../components/i18n/TranslatedText';
+import { MessageTranslateButton } from '../components/i18n/MessageTranslateButton';
+import { shouldTranslateMessage } from '../lib/translateText';
+import type { AppLocale } from '../i18n/locales';
 import { useT } from '../i18n';
 
 type LockGiftRequirement = {
@@ -6888,6 +6891,13 @@ function ChatPanel({
   const [inviteBanner, setInviteBanner] = useState<string | null>(null);
   const [pinnedBottom, setPinnedBottom] = useState(true);
   const [chatHidden, setChatHidden] = useState(() => !isHostRoom && !canPublish);
+  const [liveTx, setLiveTx] = useState<Record<string, AppLocale>>({});
+  const clearLiveTx = (messageId: string) =>
+    setLiveTx((current) => {
+      const next = { ...current };
+      delete next[messageId];
+      return next;
+    });
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const seen = useRef(new Set<string>((liveChatCache.get(roomName) ?? []).map((msg) => msg.id)));
@@ -7641,12 +7651,23 @@ function ChatPanel({
                   authorUid={message.authorUid}
                   trailing={hostChip}
                 >
-                  <span className="lb-live-chat-msg__text">
-                    <TranslatedText
-                      text={message.text}
-                      sourceLang={message.sourceLang}
-                      mine={Boolean(profile?.firebaseUid && message.authorUid === profile.firebaseUid)}
-                    />
+                  <span className="lb-live-chat-msg__text flex min-w-0 items-start">
+                    <span className="min-w-0 flex-1">
+                      <TranslatedText
+                        text={message.text}
+                        sourceLang={message.sourceLang}
+                        mine={Boolean(profile?.firebaseUid && message.authorUid === profile.firebaseUid)}
+                        forceTarget={liveTx[message.id] ?? null}
+                        onClearForced={() => clearLiveTx(message.id)}
+                      />
+                    </span>
+                    {shouldTranslateMessage(message.text) ? (
+                      <MessageTranslateButton
+                        translatedTo={liveTx[message.id] ?? null}
+                        onTranslate={(lang) => setLiveTx((current) => ({ ...current, [message.id]: lang }))}
+                        onClear={() => clearLiveTx(message.id)}
+                      />
+                    ) : null}
                   </span>
                 </LiveChatUserIdentity>
               </div>

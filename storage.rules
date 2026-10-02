@@ -180,6 +180,15 @@ service firebase.storage {
       allow write: if isChatParticipant(chatId) && isAllowedChatFile();
     }
 
+    // Stickers creados por el usuario («Crea tu sticker»): se envían en chats y publicaciones.
+    match /users/{userId}/stickers/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(userId)
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|webp)');
+      allow delete: if isOwner(userId);
+    }
+
     // Media de grupos (portada / chat) bajo la carpeta del usuario — permisos fiables.
     match /users/{userId}/groups/{fileName} {
       allow read: if true;

@@ -1,7 +1,8 @@
 import { BOOM_EMOJIS, LIVEBOOM_EMOJIS } from './liveboomEmojis';
 import { STICKER_PACKS, STICKER_PACK_ITEMS, type StickerPackId } from './stickerPacks.data';
 
-export type ComposerStickerPack = 'clasicos' | StickerPackId;
+/** `mios` = stickers creados por el usuario (Storage, no catálogo). */
+export type ComposerStickerPack = 'clasicos' | 'mios' | StickerPackId;
 
 export type ComposerSticker = {
   id: string;

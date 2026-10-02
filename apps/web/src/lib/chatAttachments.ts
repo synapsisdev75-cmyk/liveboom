@@ -178,10 +178,11 @@ export function previewChatAttachment(file: File): ChatAttachmentPreview | { err
   };
 }
 
-/** Stickers del catálogo propio (`/stickers/...`), servidos desde el mismo hosting. */
+/** Stickers del catálogo (`/stickers/...`) o creados por usuarios (Storage `users/{uid}/stickers/`). */
 export function isChatStickerUrl(url: string | null | undefined): boolean {
   if (!url) return false;
-  return /^(?:https?:\/\/[^/]+)?\/stickers\/[^?#]+\.(?:webp|png|gif)(?:[?#]|$)/i.test(url);
+  if (/^(?:https?:\/\/[^/]+)?\/stickers\/[^?#]+\.(?:webp|png|gif)(?:[?#]|$)/i.test(url)) return true;
+  return /\/o\/users%2F[^/?#%]+%2Fstickers%2F[^/?#]+\.(?:webp|png)(?:[?#]|$)/i.test(url);
 }
 
 export function isAnimatedChatGif(url: string | null | undefined, mediaType?: string | null): boolean {
