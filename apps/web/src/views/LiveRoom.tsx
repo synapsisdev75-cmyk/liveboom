@@ -36,7 +36,7 @@ import {
   MessageCircle,
   Plus,
   Gamepad2,
-  Coins,
+  Sticker,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -67,6 +67,11 @@ import {
 } from '../lib/livePrivateAccessFirestore';
 import { LiveNewCoinGoalModal } from '../components/live/LiveNewCoinGoalModal';
 import { LiveChatUserIdentity } from '../components/live/LiveChatUserIdentity';
+import { EmojiInput, type EmojiInputHandle } from '../components/social/EmojiInput';
+import { EmojiPickerButton } from '../components/social/EmojiPicker';
+import { StickerPickerSheet } from '../components/social/StickerPickerSheet';
+import type { ComposerSticker } from '../lib/composerStickers';
+import { isChatStickerUrl } from '../lib/chatAttachments';
 import type { AchievedWish } from '../lib/liveWishAchieved';
 import { GiftBoxStrip } from '../components/live/GiftBoxStrip';
 import { FaceMeshGiftOverlay, type ActiveFaceGift } from '../components/live/FaceMeshGiftOverlay';
@@ -433,6 +438,16 @@ type ChatMessage = {
   gift?: { giftId: string; emoji: string; name: string; combo?: number };
   levelBadge?: string;
 };
+
+/** Sticker en chat LIVE: viaja como texto para no cambiar el esquema de mensajes. */
+const LIVE_CHAT_STICKER_PREFIX = '[sticker]';
+const LIVE_CHAT_EMOJI_SIZE = 20;
+
+function liveChatStickerSrc(text: string): string | null {
+  if (!text.startsWith(LIVE_CHAT_STICKER_PREFIX)) return null;
+  const src = text.slice(LIVE_CHAT_STICKER_PREFIX.length).trim();
+  return isChatStickerUrl(src) ? src : null;
+}
 
 /** Combo visible en chat LIVE (x2–x10). */
 function clampLiveGiftCombo(value: unknown): number {
@@ -6899,7 +6914,8 @@ function ChatPanel({
       return next;
     });
   const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<EmojiInputHandle>(null);
+  const [stickerOpen, setStickerOpen] = useState(false);
   const seen = useRef(new Set<string>((liveChatCache.get(roomName) ?? []).map((msg) => msg.id)));
   const levelXpRef = useRef(0);
   const giftChatComboRef = useRef<{ key: string; messageId: string; count: number; at: number }>({
@@ -7237,8 +7253,8 @@ function ChatPanel({
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     setPinnedBottom(dist < 80);
   }
-  async function sendMessage() {
-    const value = text.trim();
+  async function sendMessage(override?: string) {
+    const value = (override ?? text).trim();
     if (!value || !profile) return;
     const author = profile.displayName || profile.handle || 'Liveboomer';
     const message: ChatMessage = {
@@ -7249,7 +7265,7 @@ function ChatPanel({
       sourceLang: getLocale(),
     };
     pushMessage(message);
-    setText('');
+    if (override === undefined) setText('');
     persistChatCopy(message);
     void publishLiveChatMessage(roomName, {
       clientId: message.id,
@@ -7262,6 +7278,17 @@ function ChatPanel({
       await publishRoomData(room, { type: 'chat', ...message });
     } catch (error) {
       console.error('[chat] publishData', error);
+    }
+  }
+
+  function sendLiveSticker(sticker: ComposerSticker) {
+    setStickerOpen(false);
+    if (sticker.kind === 'text' && sticker.text) {
+      void sendMessage(sticker.text);
+      return;
+    }
+    if (sticker.src && isChatStickerUrl(sticker.src)) {
+      void sendMessage(`${LIVE_CHAT_STICKER_PREFIX}${sticker.src}`);
     }
   }
 
@@ -7651,6 +7678,15 @@ function ChatPanel({
                   authorUid={message.authorUid}
                   trailing={hostChip}
                 >
+                  {liveChatStickerSrc(message.text) ? (
+                    <img
+                      src={liveChatStickerSrc(message.text) ?? undefined}
+                      alt="Sticker"
+                      loading="lazy"
+                      draggable={false}
+                      className="lb-live-chat-msg__sticker mt-0.5 block h-[clamp(4rem,18vw,5.5rem)] w-[clamp(4rem,18vw,5.5rem)] object-contain drop-shadow"
+                    />
+                  ) : (
                   <span className="lb-live-chat-msg__text flex min-w-0 items-start">
                     <span className="min-w-0 flex-1">
                       <TranslatedText
@@ -7659,6 +7695,7 @@ function ChatPanel({
                         mine={Boolean(profile?.firebaseUid && message.authorUid === profile.firebaseUid)}
                         forceTarget={liveTx[message.id] ?? null}
                         onClearForced={() => clearLiveTx(message.id)}
+                        emojiSize={LIVE_CHAT_EMOJI_SIZE}
                       />
                     </span>
                     {shouldTranslateMessage(message.text) ? (
@@ -7669,6 +7706,7 @@ function ChatPanel({
                       />
                     ) : null}
                   </span>
+                  )}
                 </LiveChatUserIdentity>
               </div>
             );
@@ -7751,7 +7789,7 @@ function ChatPanel({
             <Gift size={14} /> Ver todos los regalos
           </button>
         ) : null}
-        <div className="flex gap-2">
+        <div className="lb-live-chat-composer flex min-w-0 items-center gap-1.5 sm:gap-2">
           {!isHostRoom ? (
           <button
             type="button"
@@ -7765,37 +7803,54 @@ function ChatPanel({
             <Gift size={18} />
           </button>
           ) : null}
-          {!isHostRoom ? (
-            <button
-              type="button"
-              onClick={() => setRechargeOpen(true)}
-              className="inline-flex h-11 shrink-0 items-center gap-1 rounded-xl border border-amber-400/35 bg-zinc-900/90 px-2.5 text-[11px] font-bold text-amber-200 lg:hidden"
-              aria-label="Recargar coins"
-            >
-              <Coins size={14} className="text-amber-400" />
-              Recargar
-            </button>
-          ) : null}
-          <input
+          <EmojiPickerButton
+            placement="above"
+            title="Emojis"
+            onPick={(id) => inputRef.current?.insertToken(id)}
+            buttonClassName="lb-live-chat-tool grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-zinc-900/90 text-amber-300 transition hover:bg-zinc-800"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setOpenGifts(false);
+              setStickerOpen(true);
+            }}
+            className="lb-live-chat-tool grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-zinc-900/90 text-cyan-300 transition hover:bg-zinc-800"
+            aria-label="Stickers"
+            title="Stickers"
+            aria-pressed={stickerOpen}
+          >
+            <Sticker size={19} />
+          </button>
+          <EmojiInput
             ref={inputRef}
             value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void sendMessage();
-            }}
+            onChange={setText}
+            onEnterSubmit={() => void sendMessage()}
+            maxLength={500}
             placeholder={t('chat.writeMessage')}
-            className="lb-live-chat-input h-11 flex-1 rounded-full px-3.5 text-sm outline-none lg:rounded-xl"
+            emojiSize={LIVE_CHAT_EMOJI_SIZE}
+            className="min-w-0"
+            fieldClassName="lb-live-chat-input flex h-11 items-center rounded-full lg:rounded-xl"
+            padClassName="px-3.5 py-0"
+            mirrorTextClassName=""
+            placeholderClassName="lb-live-chat-input__placeholder"
           />
           <button
             type="button"
             onClick={() => void sendMessage()}
-            className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-teal-500 text-zinc-950"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-teal-500 text-zinc-950"
             aria-label="Enviar"
           >
             <Send size={16} />
           </button>
         </div>
       </div>
+      <StickerPickerSheet
+        open={stickerOpen}
+        onClose={() => setStickerOpen(false)}
+        onPick={sendLiveSticker}
+      />
       {rechargeOpen
         ? createPortal(
             <div className="fixed inset-0 z-[220]">

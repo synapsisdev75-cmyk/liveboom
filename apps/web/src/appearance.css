@@ -1241,6 +1241,22 @@ html[data-lb-theme='light'] .lb-live-stage .lb-live-chat-input::placeholder {
   -webkit-text-fill-color: var(--text-muted);
 }
 
+/* LIVE: campo con espejo de emojis (EmojiInput). */
+.lb-live-chat-input .lb-live-chat-input__placeholder {
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
+}
+
+.lb-live-chat-input .lb-emoji-caret {
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--text-primary);
+}
+
+.lb-live-chat-input input.caret-white {
+  caret-color: var(--text-primary);
+}
+
 /* LIVE escritorio: panel de chat/regalos sigue el tema. En móvil el chat sigue transparente sobre el video. */
 @media (min-width: 1024px) {
   html[data-lb-theme='light'] .lb-live-chat-float {
