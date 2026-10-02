@@ -7803,39 +7803,42 @@ function ChatPanel({
             <Gift size={18} />
           </button>
           ) : null}
-          <EmojiPickerButton
-            placement="above"
-            title="Emojis"
-            onPick={(id) => inputRef.current?.insertToken(id)}
-            buttonClassName="lb-live-chat-tool grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-zinc-900/90 text-amber-300 transition hover:bg-zinc-800"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setOpenGifts(false);
-              setStickerOpen(true);
-            }}
-            className="lb-live-chat-tool grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-zinc-900/90 text-cyan-300 transition hover:bg-zinc-800"
-            aria-label="Stickers"
-            title="Stickers"
-            aria-pressed={stickerOpen}
-          >
-            <Sticker size={19} />
-          </button>
-          <EmojiInput
-            ref={inputRef}
-            value={text}
-            onChange={setText}
-            onEnterSubmit={() => void sendMessage()}
-            maxLength={500}
-            placeholder={t('chat.writeMessage')}
-            emojiSize={LIVE_CHAT_EMOJI_SIZE}
-            className="min-w-0"
-            fieldClassName="lb-live-chat-input flex h-11 items-center rounded-full lg:rounded-xl"
-            padClassName="px-3.5 py-0"
-            mirrorTextClassName=""
-            placeholderClassName="lb-live-chat-input__placeholder"
-          />
+          <div className="lb-live-chat-input flex h-11 min-w-0 flex-1 items-center rounded-full pr-1 lg:rounded-xl">
+            <EmojiInput
+              ref={inputRef}
+              value={text}
+              onChange={setText}
+              onEnterSubmit={() => void sendMessage()}
+              maxLength={500}
+              placeholder={t('chat.writeMessage')}
+              emojiSize={LIVE_CHAT_EMOJI_SIZE}
+              className="min-w-0"
+              fieldClassName="flex h-11 items-center"
+              padClassName="pl-3.5 pr-1 py-0"
+              mirrorTextClassName=""
+              placeholderClassName="lb-live-chat-input__placeholder truncate"
+            />
+            <EmojiPickerButton
+              placement="above"
+              title="Emojis"
+              onPick={(id) => inputRef.current?.insertToken(id)}
+              buttonClassName="lb-live-chat-tool grid h-10 w-10 shrink-0 place-items-center rounded-full transition"
+            />
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                setOpenGifts(false);
+                setStickerOpen(true);
+              }}
+              className="lb-live-chat-tool grid h-10 w-10 shrink-0 place-items-center rounded-full transition"
+              aria-label="Stickers"
+              title="Stickers"
+              aria-pressed={stickerOpen}
+            >
+              <Sticker size={20} />
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => void sendMessage()}

@@ -1257,6 +1257,19 @@ html[data-lb-theme='light'] .lb-live-stage .lb-live-chat-input::placeholder {
   caret-color: var(--text-primary);
 }
 
+.lb-live-chat-input .lb-live-chat-tool {
+  color: var(--text-muted);
+  -webkit-text-fill-color: currentColor;
+}
+
+.lb-live-chat-input .lb-live-chat-tool:hover,
+.lb-live-chat-input .lb-live-chat-tool:focus-visible,
+.lb-live-chat-input .lb-live-chat-tool[aria-expanded='true'],
+.lb-live-chat-input .lb-live-chat-tool[aria-pressed='true'] {
+  color: var(--text-primary);
+  background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+}
+
 /* LIVE escritorio: panel de chat/regalos sigue el tema. En móvil el chat sigue transparente sobre el video. */
 @media (min-width: 1024px) {
   html[data-lb-theme='light'] .lb-live-chat-float {
