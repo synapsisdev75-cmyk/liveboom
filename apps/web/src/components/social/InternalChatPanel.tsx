@@ -27,6 +27,8 @@ import {
   Reply,
   Smile,
   ChevronDown,
+  ChevronLeft,
+  Languages,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -41,6 +43,9 @@ import { ChatVoiceRecorderBar } from './ChatVoiceRecorderBar';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { TranslatedText } from '../i18n/TranslatedText';
 import { useT } from '../../i18n';
+import { APP_LOCALES, LOCALE_META, type AppLocale } from '../../i18n/locales';
+import { useLocaleStore } from '../../store/localeStore';
+import { readChatTranslateTarget, writeChatTranslateTarget } from '../../lib/chatTranslatePref';
 import { GifPickerSheet } from './GifPickerSheet';
 import { CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
@@ -782,6 +787,31 @@ export function InternalChatPanel({
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [newMsgOpen, setNewMsgOpen] = useState(false);
   const [menuMessageId, setMenuMessageId] = useState<string | null>(null);
+  const appLocale = useLocaleStore((state) => state.locale);
+  const [txTargetPref, setTxTargetPref] = useState<AppLocale | null>(() => readChatTranslateTarget());
+  const txTarget = txTargetPref ?? appLocale;
+  const [manualTx, setManualTx] = useState<Record<string, AppLocale>>({});
+  const [txPickerOpen, setTxPickerOpen] = useState(false);
+  useEffect(() => {
+    setTxPickerOpen(false);
+  }, [menuMessageId]);
+
+  function translateMessageTo(messageId: string, lang: AppLocale, remember: boolean) {
+    if (remember) {
+      writeChatTranslateTarget(lang);
+      setTxTargetPref(lang);
+    }
+    setManualTx((current) => ({ ...current, [messageId]: lang }));
+    setMenuMessageId(null);
+  }
+
+  function clearMessageTranslation(messageId: string) {
+    setManualTx((current) => {
+      const next = { ...current };
+      delete next[messageId];
+      return next;
+    });
+  }
   const [reactMessageId, setReactMessageId] = useState<string | null>(null);
   const deleteMenuRootRef = useRef<HTMLDivElement>(null);
   const closeDeleteMenu = useCallback(() => {
@@ -2714,6 +2744,8 @@ export function InternalChatPanel({
                                   sourceLang={message.sourceLang}
                                   mine={message.mine}
                                   emojiSize={CHAT_EMOJI_SIZE}
+                                  forceTarget={manualTx[message.id] ?? null}
+                                  onClearForced={() => clearMessageTranslation(message.id)}
                                 />
                                 {message.editedAt ? (
                                   <span className="ml-1 text-[9px] opacity-60">{t('chat.edited')}</span>
@@ -2847,6 +2879,45 @@ export function InternalChatPanel({
                                 }`}
                                 role="menu"
                               >
+                                {txPickerOpen && plainText ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTxPickerOpen(false)}
+                                      className="lb-chat-msg-menu__item lb-chat-msg-menu__item--head"
+                                    >
+                                      <ChevronLeft size={14} className="opacity-80" />
+                                      Traducir a…
+                                    </button>
+                                    <div className="lb-chat-msg-menu__langs">
+                                      {APP_LOCALES.map((lang) => (
+                                        <button
+                                          key={lang}
+                                          type="button"
+                                          role="menuitemradio"
+                                          aria-checked={txTarget === lang}
+                                          onClick={() => translateMessageTo(message.id, lang, true)}
+                                          className={`lb-chat-msg-menu__item ${
+                                            txTarget === lang ? 'is-current' : ''
+                                          }`}
+                                        >
+                                          <img
+                                            src={LOCALE_META[lang].flagSrc}
+                                            alt=""
+                                            className="h-3.5 w-5 shrink-0 rounded-[2px] object-cover"
+                                          />
+                                          <span className="min-w-0 flex-1 truncate">
+                                            {LOCALE_META[lang].nativeName}
+                                          </span>
+                                          {txTarget === lang ? (
+                                            <Check size={13} className="shrink-0 opacity-90" />
+                                          ) : null}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </>
+                                ) : (
+                                <>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2865,6 +2936,40 @@ export function InternalChatPanel({
                                   <Reply size={14} className="opacity-80" />
                                   Responder
                                 </button>
+                                {plainText ? (
+                                  manualTx[message.id] ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        clearMessageTranslation(message.id);
+                                        setMenuMessageId(null);
+                                      }}
+                                      className="lb-chat-msg-menu__item"
+                                    >
+                                      <Languages size={14} className="opacity-80" />
+                                      Ver original
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => translateMessageTo(message.id, txTarget, false)}
+                                      className="lb-chat-msg-menu__item"
+                                    >
+                                      <Languages size={14} className="opacity-80" />
+                                      Traducir a {LOCALE_META[txTarget].nativeName}
+                                    </button>
+                                  )
+                                ) : null}
+                                {plainText ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setTxPickerOpen(true)}
+                                    className="lb-chat-msg-menu__item"
+                                  >
+                                    <Languages size={14} className="opacity-0" aria-hidden />
+                                    Traducir a otro idioma…
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => void removeMessage(message.id, 'me')}
@@ -2879,6 +2984,8 @@ export function InternalChatPanel({
                                 >
                                   Eliminar para todos
                                 </button>
+                                </>
+                                )}
                               </div>
                             ) : null}
                           </span>

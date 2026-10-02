@@ -15918,6 +15918,23 @@ a.lb-entity:active,
   color: var(--accent-primary);
 }
 
+.lb-chat-msg-menu__item--head {
+  font-weight: 700;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-soft, var(--border-default));
+}
+
+.lb-chat-msg-menu__langs {
+  max-height: min(15rem, 42dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.lb-chat-msg-menu__item.is-current {
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+
 @media (pointer: coarse) {
   .lb-chat-msg-menu__item {
     min-height: 2.75rem;
@@ -16151,11 +16168,24 @@ a.lb-entity:active,
   caret-color: var(--text-primary);
 }
 
+/* Un solo caret: con espejo de emojis activo el nativo se oculta y el visible es .lb-emoji-caret. */
+.lb-chat-composer-field textarea.caret-transparent,
+.lb-chat-composer-field input.caret-transparent {
+  caret-color: transparent;
+}
+
 .lb-chat-composer-field .lb-emoji-caret {
   width: 1.5px;
   max-height: 1.15rem;
   border-radius: 1px;
   background: var(--text-primary);
+  animation: lb-emoji-caret-blink 1.05s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-chat-composer-field .lb-emoji-caret {
+    animation: none;
+  }
 }
 
 .lb-chat-composer-row {
