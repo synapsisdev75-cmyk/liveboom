@@ -761,9 +761,9 @@ export function UserProfileView() {
                       );
                     });
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200"
                 >
-                  <Ban size={16} />
+                  <Ban size={14} />
                   Desbloquear
                 </button>
               ) : (
@@ -805,9 +805,9 @@ export function UserProfileView() {
                   {publicProfile.canMessage ? (
                     <Link
                       to={`/mensajes?con=${encodeURIComponent(publicProfile.username)}`}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-400/30"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/20 px-3 py-1.5 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-400/30"
                     >
-                      <MessageCircle size={16} />
+                      <MessageCircle size={14} />
                       Mensaje
                     </Link>
                   ) : null}
@@ -873,9 +873,9 @@ export function UserProfileView() {
                         );
                       });
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/10"
                   >
-                    <Ban size={16} />
+                    <Ban size={14} />
                     Bloquear usuario
                   </button>
                 </>
@@ -883,9 +883,9 @@ export function UserProfileView() {
               <button
                 type="button"
                 onClick={() => setReportOpen(true)}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-amber-400/35 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100"
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/35 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-100"
               >
-                <Flag size={16} />
+                <Flag size={14} />
                 {t('actions.reportProfile')}
               </button>
                 </div>
