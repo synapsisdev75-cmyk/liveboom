@@ -408,6 +408,7 @@ export const en: Catalog = {
     share: 'Share',
     report: 'Report',
     reportPost: 'Report post',
+    reportProfile: 'Report profile',
     more: 'More',
     moreOptions: 'More options',
     shareNow: 'Share now',

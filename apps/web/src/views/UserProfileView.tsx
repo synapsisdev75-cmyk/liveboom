@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { updateProfile } from 'firebase/auth';
-import { Ban, Camera, ChevronRight, MessageCircle, Plus, User, Users } from 'lucide-react';
+import { Ban, Camera, ChevronRight, Flag, MessageCircle, Plus, User, Users } from 'lucide-react';
 import { ActivityHistory } from '../components/live/ActivityHistory';
 import { ReelFeedViewer, type ReelFeedItem } from '../components/feed/ReelFeedViewer';
 import { CreatePostModal } from '../components/social/CreatePostModal';
@@ -53,6 +53,7 @@ import { useUiStore } from '../store/uiStore';
 import { isBoomClipPost, isPublicationPost, canEditOwnedPublication } from '../lib/contentType';
 import { isStoryPost } from '../lib/storyLifecycle';
 import { BOOM_CLIP_LABEL } from '../lib/brand';
+import { InAppFeedbackModal } from '../components/legal/InAppFeedbackModal';
 
 type PublicProfile = {
   username: string;
@@ -129,6 +130,7 @@ export function UserProfileView() {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [profileMedia, setProfileMedia] = useState<CommentMediaViewerItem | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -878,6 +880,14 @@ export function UserProfileView() {
                   </button>
                 </>
               )}
+              <button
+                type="button"
+                onClick={() => setReportOpen(true)}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-amber-400/35 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100"
+              >
+                <Flag size={16} />
+                {t('actions.reportProfile')}
+              </button>
                 </div>
             </div>
         </div>
@@ -1081,6 +1091,10 @@ export function UserProfileView() {
           collapsibleCaption
           onClose={() => setExpandVideoId(null)}
         />
+      ) : null}
+
+      {publicProfile && !publicProfile.isOwnProfile ? (
+        <InAppFeedbackModal open={reportOpen} onClose={() => setReportOpen(false)} />
       ) : null}
 
       <CommentMediaViewer

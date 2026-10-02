@@ -406,6 +406,7 @@ export const zh: Catalog = {
     share: '分享',
     report: '举报',
     reportPost: '举报帖子',
+    reportProfile: '举报主页',
     more: '更多',
     moreOptions: '更多选项',
     shareNow: '立即分享',

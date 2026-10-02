@@ -408,6 +408,7 @@ export const it: Catalog = {
     share: 'Condividi',
     report: 'Segnala',
     reportPost: 'Segnala pubblicazione',
+    reportProfile: 'Segnala profilo',
     more: 'Altro',
     moreOptions: 'Altre opzioni',
     shareNow: 'Condividi ora',

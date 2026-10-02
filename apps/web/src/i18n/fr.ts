@@ -408,6 +408,7 @@ export const fr: Catalog = {
     share: 'Partager',
     report: 'Signaler',
     reportPost: 'Signaler la publication',
+    reportProfile: 'Signaler le profil',
     more: 'Plus',
     moreOptions: 'Plus d’options',
     shareNow: 'Partager maintenant',

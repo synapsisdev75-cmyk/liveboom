@@ -406,6 +406,7 @@ export const es = {
     share: 'Compartir',
     report: 'Reportar',
     reportPost: 'Reportar publicación',
+    reportProfile: 'Reportar perfil',
     more: 'Más',
     moreOptions: 'Más opciones',
     shareNow: 'Compartir ahora',

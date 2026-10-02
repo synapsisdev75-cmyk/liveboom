@@ -408,6 +408,7 @@ export const pt: Catalog = {
     share: 'Compartilhar',
     report: 'Denunciar',
     reportPost: 'Denunciar publicação',
+    reportProfile: 'Denunciar perfil',
     more: 'Mais',
     moreOptions: 'Mais opções',
     shareNow: 'Compartilhar agora',
