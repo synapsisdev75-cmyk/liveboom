@@ -547,15 +547,6 @@ export function MainLayout() {
           )}
           <button
             type="button"
-            onClick={() => setFeedbackOpen(true)}
-            className="inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-xl bg-white/10 px-2 text-[11px] font-bold text-white ring-1 ring-white/15 backdrop-blur-md"
-            aria-label={t('settings.reportProblem')}
-          >
-            <Flag size={15} aria-hidden />
-            <span className="max-[380px]:sr-only">{t('actions.report')}</span>
-          </button>
-          <button
-            type="button"
             onClick={() => setMenuOpen(true)}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/10 text-zinc-200 ring-1 ring-white/15 backdrop-blur-md"
             aria-label={t('nav.openMenu')}
