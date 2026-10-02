@@ -7735,6 +7735,7 @@ function ChatPanel({
               error={giftError}
               rechargeNeeded={rechargeNeeded}
               onRecharge={() => setRechargeOpen(true)}
+              hideHeaderRecharge
               preselectGiftId={pendingGiftId}
               onCancelConfirm={() => setPendingGiftId(null)}
               onSelect={(id, multiplier) => {

@@ -78,6 +78,8 @@ type Props = {
   coins?: number;
   rechargeNeeded?: number | null;
   onRecharge?: () => void;
+  /** Oculta "Recargar" de la cabecera; el aviso de saldo insuficiente se mantiene. */
+  hideHeaderRecharge?: boolean;
   compact?: boolean;
   /** Dentro de GiftCatalogLayer: llena el panel y el grid hace scroll. */
   floating?: boolean;
@@ -95,6 +97,7 @@ export function GiftBoxStrip({
   coins,
   rechargeNeeded,
   onRecharge,
+  hideHeaderRecharge = false,
   compact,
   floating,
   preselectGiftId,
@@ -170,7 +173,7 @@ export function GiftBoxStrip({
             <span className="gift-box-strip__coins">{coins.toLocaleString('es-CO')}</span>
           ) : null}
         </p>
-        {onRecharge ? (
+        {onRecharge && !hideHeaderRecharge ? (
           <button
             type="button"
             onClick={onRecharge}
