@@ -178,6 +178,12 @@ export function previewChatAttachment(file: File): ChatAttachmentPreview | { err
   };
 }
 
+/** Stickers del catálogo propio (`/stickers/...`), servidos desde el mismo hosting. */
+export function isChatStickerUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /^(?:https?:\/\/[^/]+)?\/stickers\/[^?#]+\.(?:webp|png|gif)(?:[?#]|$)/i.test(url);
+}
+
 export function isAnimatedChatGif(url: string | null | undefined, mediaType?: string | null): boolean {
   if (!url) return false;
   if (mediaType === 'gif') return true;

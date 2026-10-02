@@ -48,6 +48,7 @@ import {
   CHAT_FILE_ACCEPT,
   formatChatFileSize,
   isAnimatedChatGif,
+  isChatStickerUrl,
   previewChatAttachment,
   type ChatAttachmentPreview,
 } from '../../lib/chatAttachments';
@@ -215,7 +216,7 @@ function persistGiftAnimPlayedIds(uid: string, ids: Set<string>) {
 function replySnippetForMessage(message: ChatMessage): string {
   if (message.deleted || message.deletedForEveryone || message.hiddenForMe) return 'Mensaje eliminado';
   if (message.fileName) return message.fileName;
-  if (message.mediaType === 'image') return 'Foto';
+  if (message.mediaType === 'image') return isChatStickerUrl(message.mediaUrl) ? 'Sticker' : 'Foto';
   if (message.mediaType === 'video') return 'Video';
   if (message.mediaType === 'audio') return 'Audio';
   if (message.mediaType === 'gif') return 'GIF';
@@ -1652,7 +1653,7 @@ export function InternalChatPanel({
       return;
     }
     if (sticker.src) {
-      await send(sticker.label || 'Sticker', { mediaUrl: sticker.src, mediaType: 'image' });
+      await send('Sticker', { mediaUrl: sticker.src, mediaType: 'image' });
     }
   }
 
@@ -2401,6 +2402,8 @@ export function InternalChatPanel({
               const isVideo = !gone && message.mediaType === 'video' && Boolean(message.mediaUrl);
               const isGif = !gone && isAnimatedChatGif(message.mediaUrl, message.mediaType);
               const isFile = !gone && message.mediaType === 'file' && Boolean(message.mediaUrl);
+              const isSticker =
+                !gone && message.mediaType === 'image' && isChatStickerUrl(message.mediaUrl);
               const isGift = !gone && Boolean(message.giftId);
               const giftItem = isGift ? findLiveGift(message.giftId) : null;
               const giftMult = isGift ? parseChatGiftMultiplier(message.text) : 1;
@@ -2415,6 +2418,7 @@ export function InternalChatPanel({
                 !isAudio &&
                 !isVideo &&
                 !isFile &&
+                !isSticker &&
                 !isGift &&
                 message.text &&
                 !/^🎤\s*Audio$/i.test(message.text.trim()) &&
@@ -2535,7 +2539,7 @@ export function InternalChatPanel({
                       </button>
                       <div
                         className={`break-words ${
-                          isVideo
+                          isVideo || isSticker
                             ? 'bg-transparent p-0'
                             : `lb-chat-bubble rounded-2xl py-2.5 text-[13px] leading-relaxed ${
                                 message.mine
@@ -2567,7 +2571,16 @@ export function InternalChatPanel({
                             {isVideo && message.mediaUrl ? (
                               <VideoNoteBubble src={message.mediaUrl} mine={message.mine} />
                             ) : null}
-                            {message.mediaType === 'image' || isGif ? (
+                            {isSticker ? (
+                              <img
+                                src={message.mediaUrl!}
+                                alt="Sticker"
+                                loading="lazy"
+                                decoding="async"
+                                draggable={false}
+                                className="lb-chat-sticker block h-[clamp(7.5rem,32vw,10rem)] w-[clamp(7.5rem,32vw,10rem)] select-none object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.45)]"
+                              />
+                            ) : message.mediaType === 'image' || isGif ? (
                               message.mediaUrl ? (
                               <button
                                 type="button"
