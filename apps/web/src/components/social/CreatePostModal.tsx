@@ -1,5 +1,5 @@
 import { useBackLayer } from '../../lib/backLayer';
-import { Bell, Box, Camera, ChevronLeft, ChevronRight, Globe, Image, LayoutGrid, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
+import { Bell, Camera, ChevronLeft, ChevronRight, Globe, Image, LayoutGrid, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
@@ -19,7 +19,6 @@ import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/mediaFile';
 import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
-import { useUiStore } from '../../store/uiStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput } from './EmojiInput';
 import { VideoTrimEditor } from './VideoTrimEditor';
@@ -167,7 +166,6 @@ export function CreatePostModal({
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
   const [collageOpen, setCollageOpen] = useState(false);
   const [reconstruction, setReconstruction] = useState<ReconstructionDraft | null>(getReconstructionDraft());
-  const setToast = useUiStore((state) => state.setToast);
   const [photoEditOpen, setPhotoEditOpen] = useState(false);
   const [photoEdits, setPhotoEdits] = useState<Record<number, PhotoEditValues>>({});
   const [editHistory, setEditHistory] = useState<PhotoEditValues[]>([DEFAULT_PHOTO_EDIT]);
@@ -1990,19 +1988,6 @@ export function CreatePostModal({
                   Collage
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setToast('Futuras actualizaciones. Espéralo muy pronto.', 'info');
-                  window.setTimeout(() => setToast(null), 4200);
-                }}
-                className={`lb-recon3d-btn ${reconstruction?.status === 'ready' ? 'is-active' : ''}`}
-                aria-label="Reconstrucción 3D"
-              >
-                <Box size={16} />
-                <span className="hidden sm:inline">Reconstrucción 3D</span>
-                <span className="sm:hidden">3D</span>
-              </button>
               {showVisibility ? (
                 <div
                   className="lb-composer-privacy ml-auto flex min-h-11 min-w-0 max-w-full items-center rounded-lg p-0.5"
