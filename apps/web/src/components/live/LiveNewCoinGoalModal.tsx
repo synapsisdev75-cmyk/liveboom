@@ -67,7 +67,7 @@ export function LiveNewCoinGoalModal({ open, busy = false, error, onClose, onCre
           }}
         >
           <p id="lb-live-new-goal-title" className="lb-live-new-goal__title">
-            Nueva meta en coins
+            Nueva meta en Blast
           </p>
           <label className="lb-live-new-goal__label" htmlFor="lb-live-new-goal-input">
             Objetivo

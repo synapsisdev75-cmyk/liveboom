@@ -75,7 +75,7 @@ export function TransmitView() {
   const [category, setCategory] = useState(() => String(gamingInbound.category || ''));
   const [description, setDescription] = useState('');
   const [goalCoins, setGoalCoins] = useState('500');
-  const [goalLabel, setGoalLabel] = useState('Meta en coins');
+  const [goalLabel, setGoalLabel] = useState('Meta en Blast');
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [allowGifts, setAllowGifts] = useState(true);
   const [liveChat, setLiveChat] = useState(true);
@@ -381,7 +381,7 @@ export function TransmitView() {
         isPrivate: followersOnly,
         category: category || profile.category || 'otro',
         goalCoins: Math.max(0, Math.floor(Number(goalCoins) || 0)),
-        goalLabel: goalLabel.trim().slice(0, 80) || 'Meta en coins',
+        goalLabel: goalLabel.trim().slice(0, 80) || 'Meta en Blast',
         aspectRatio,
         broadcastMode,
         description: description.trim().slice(0, 200),

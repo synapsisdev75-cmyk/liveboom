@@ -418,7 +418,7 @@ export function ViewerLiveInfoBar({
               type="button"
               onClick={onRecharge}
               className="grid h-7 w-7 place-items-center rounded-full bg-violet-600 text-sm font-bold text-white"
-              aria-label="Añadir coins"
+              aria-label="Añadir Blast"
             >
               +
             </button>

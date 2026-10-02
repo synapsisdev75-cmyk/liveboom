@@ -1105,7 +1105,7 @@ export function ProfileView() {
         <Card title={t('settings.tabWallet')} subtitle={t('settings.walletSub')}>
           <p className="text-3xl font-bold text-cyan-300">
             {profile.coinsBalance.toLocaleString(bcp47For(t.locale))}{' '}
-            <span className="text-base font-semibold text-zinc-400">coins</span>
+            <span className="text-base font-semibold text-zinc-400">Blast</span>
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link

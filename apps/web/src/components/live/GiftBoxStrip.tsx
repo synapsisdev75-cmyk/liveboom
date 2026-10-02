@@ -281,7 +281,7 @@ export function GiftBoxStrip({
               onClick={onRecharge}
               className="lb-gift-confirm__recharge mx-2.5 mb-2 min-h-11 w-[calc(100%-1.25rem)] shrink-0 rounded-lg py-1.5 text-xs font-bold sm:mx-3 sm:w-[calc(100%-1.5rem)]"
             >
-              Recargar Coins
+              Recargar Blast
             </button>
           ) : null}
         </>

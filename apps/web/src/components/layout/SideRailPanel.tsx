@@ -313,7 +313,7 @@ function SearchFriendsRail() {
   function inviteFriends() {
     copyInvite();
     window.open(
-      `https://wa.me/?text=${encodeURIComponent(`Únete a LiveBoom y gana coins: ${inviteUrl}`)}`,
+      `https://wa.me/?text=${encodeURIComponent(`Únete a LiveBoom y gana Blast: ${inviteUrl}`)}`,
       '_blank',
       'noopener',
     );
@@ -683,10 +683,10 @@ function ActivityRail() {
         <div className="mt-3 overflow-hidden rounded-xl bg-zinc-950/60 p-2">
           {coords.length === 0 ? (
             <p className="px-2 py-8 text-center text-xs text-zinc-500">
-              Cuando transmitas, verás tu curva de coins aquí.
+              Cuando transmitas, verás tu curva de Blast aquí.
             </p>
           ) : (
-            <svg viewBox={`0 0 ${w} ${h}`} className="h-28 w-full" role="img" aria-label="Coins por LIVE">
+            <svg viewBox={`0 0 ${w} ${h}`} className="h-28 w-full" role="img" aria-label="Blast por LIVE">
               <defs>
                 <linearGradient id="actChartFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.35" />
@@ -724,7 +724,7 @@ function ActivityRail() {
                     fontSize="9"
                     fontWeight="700"
                   >
-                    {peak.v.toLocaleString('es-CO')} coins
+                    {peak.v.toLocaleString('es-CO')} Blast
                   </text>
                 </g>
               ) : null}
@@ -734,7 +734,7 @@ function ActivityRail() {
         <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
           <div>
             <p className="text-zinc-500">Promedio por LIVE</p>
-            <p className="font-bold text-white">{avgCoins.toLocaleString('es-CO')} coins</p>
+            <p className="font-bold text-white">{avgCoins.toLocaleString('es-CO')} Blast</p>
           </div>
           <div>
             <p className="text-zinc-500">Mejor día</p>
@@ -912,7 +912,7 @@ function TransmitRail() {
           <div>
             <p className="text-sm font-bold">¡Invita y gana más!</p>
             <p className="lb-palette-promo__lead mt-1 text-[11px] leading-snug">
-              Invita amigos y recibe recompensas en coins cuando se registren y comiencen a transmitir.
+              Invita amigos y recibe recompensas en Blast cuando se registren y comiencen a transmitir.
             </p>
           </div>
         </div>

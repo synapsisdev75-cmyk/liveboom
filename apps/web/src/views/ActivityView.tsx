@@ -315,7 +315,7 @@ export function ActivityView() {
         name: live.displayName || live.username || profile?.displayName || 'Tú',
         username: live.username || profile?.handle || '',
         avatarUrl: profile?.avatarUrl ?? null,
-        action: `finalizó «${live.title}» · ${(live.coinsEarned || 0).toLocaleString('es-CO')} coins`,
+        action: `finalizó «${live.title}» · ${(live.coinsEarned || 0).toLocaleString('es-CO')} Blast`,
         at: new Date(live.endedAt || live.startedAt).getTime() || Date.now(),
       });
     }
@@ -443,7 +443,7 @@ export function ActivityView() {
                 deltaClass: timeMs >= prevTimeMs ? 'text-emerald-400' : 'text-zinc-500',
               },
               {
-                label: 'Coins generados',
+                label: 'Blast generados',
                 value: coinsMonth.toLocaleString('es-CO'),
                 delta: `${coinsMonth >= coinsPrev ? '+' : ''}${Math.abs(coinsMonth - coinsPrev).toLocaleString('es-CO')} vs mes anterior`,
                 Icon: Coins,
@@ -526,7 +526,7 @@ export function ActivityView() {
               {(
                 [
                   {
-                    label: 'Coins',
+                    label: 'Blast',
                     value: formatCompact(lastLive.coinsEarned || 0),
                     Icon: Coins,
                     tone: 'text-amber-300',

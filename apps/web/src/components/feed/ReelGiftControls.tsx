@@ -91,7 +91,7 @@ export function ReelGiftControls({
     const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
     const totalCoins = catalog.coins * mult;
     if (coins < totalCoins) {
-      setGiftError('No tienes Coins suficientes');
+      setGiftError('No tienes Blast suficientes');
       setRechargeNeeded(totalCoins);
       return;
     }

@@ -257,7 +257,7 @@ export async function markLiveRoomActive(
       guestInvites: [],
       guestBanned: [],
       goalCoins: target,
-      goalLabel: String(meta?.goalLabel || '').trim().slice(0, 80) || 'Meta en coins',
+      goalLabel: String(meta?.goalLabel || '').trim().slice(0, 80) || 'Meta en Blast',
       coinGoal,
       coinGoalHistory: [],
       coinGoalGifters: {},

@@ -43,7 +43,7 @@ export function WalletView() {
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-boom-cyan">Mi Billetera</p>
       <h1 className="mt-1 text-3xl font-bold text-white">
         {balance.toLocaleString('es-ES')}{' '}
-        <span className="text-lg font-semibold text-boom-gold">COINS</span>
+        <span className="text-lg font-semibold text-boom-gold">BLAST</span>
       </h1>
       <div className="mt-4 flex flex-wrap gap-2">
         <button
@@ -51,7 +51,7 @@ export function WalletView() {
           onClick={() => setOpen(true)}
           className="rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-2 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105"
         >
-          Recargar Coins
+          Recargar Blast
         </button>
         <button
           type="button"

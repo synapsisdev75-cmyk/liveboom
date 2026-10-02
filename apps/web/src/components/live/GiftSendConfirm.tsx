@@ -55,7 +55,7 @@ export function GiftSendConfirm({
           <p className="lb-gift-confirm__title">¿Enviar {gift.name}?</p>
           <p className="lb-gift-confirm__cost">
             <Coins size={12} className="inline shrink-0" />
-            {total.toLocaleString('es-CO')} coins
+            {total.toLocaleString('es-CO')} Blast
             {multiplier > 1 ? (
               <span className="lb-gift-confirm__cost-hint">
                 ({gift.coins.toLocaleString('es-CO')} ×{multiplier})
@@ -110,7 +110,7 @@ export function GiftSendConfirm({
           onClick={onRecharge}
           className="lb-gift-confirm__recharge mt-2 w-full min-h-11 rounded-lg text-sm font-bold"
         >
-          Recargar Coins
+          Recargar Blast
         </button>
       ) : null}
     </div>

@@ -770,7 +770,7 @@ export function LiveRoom() {
         isPrivate: Boolean(launch.isPrivate ?? isPrivate),
         aspectRatio: aspectRatioLockedRef.current,
         goalCoins: Number(launch.goalCoins) || 0,
-        goalLabel: launch.goalLabel || 'Meta en coins',
+        goalLabel: launch.goalLabel || 'Meta en Blast',
       }).catch((error) =>
         console.error('[live] mark active', error),
       );
@@ -1095,7 +1095,7 @@ export function LiveRoom() {
     const catalog = findLiveGift(giftId);
     if (!catalog) return;
     if (coinsBalance < catalog.coins) {
-      setGateGiftError('Saldo insuficiente. Recarga coins para continuar.');
+      setGateGiftError('Saldo insuficiente. Recarga Blast para continuar.');
       return;
     }
     setGateGiftError(null);
@@ -1661,8 +1661,8 @@ function LiveGoalWishHud({
             <p className="lb-live-viewer-goal__meta">
               {goal.earned.toLocaleString('es-CO')}
               {goal.goal > 0
-                ? ` / ${goal.goal.toLocaleString('es-CO')} coins${statusText}`
-                : ' coins'}
+                ? ` / ${goal.goal.toLocaleString('es-CO')} Blast${statusText}`
+                : ' Blast'}
               {goal.top ? ` · Top: ${goal.top}` : ''}
             </p>
             {isHost && goal.reached && onNewGoal ? (
@@ -5086,7 +5086,7 @@ function CreatorStage({
       earned: current,
       goal: progress.target || target,
       pct,
-      label: liveStats?.goalLabel || goalLabel || 'Meta en coins',
+      label: (liveStats?.goalLabel || goalLabel || 'Meta en Blast').replace(/\bcoins\b/gi, 'Blast'),
       top: coinGoalTop || liveStats?.topGifters[0]?.name || '',
       reached: progress.reached,
     } satisfies LiveCoinGoalInfo;
@@ -6238,7 +6238,7 @@ function CreatorStage({
                 <dd className="font-semibold text-white">{peakViewersRef.current}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-zinc-400">Coins recibidos</dt>
+                <dt className="text-zinc-400">Blast recibidos</dt>
                 <dd className="font-semibold text-cyan-300">
                   {(liveStats?.coinsEarned || 0).toLocaleString('es-CO')}
                 </dd>
@@ -7307,7 +7307,7 @@ function ChatPanel({
       return;
     }
     if (coins < totalCoins) {
-      setGiftError('Saldo insuficiente. Recarga coins para continuar.');
+      setGiftError('Saldo insuficiente. Recarga Blast para continuar.');
       setRechargeNeeded(totalCoins);
       setOpenGifts(true);
       setPendingGiftId(giftId);

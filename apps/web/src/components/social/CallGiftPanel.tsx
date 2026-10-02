@@ -71,7 +71,7 @@ export function CallGiftPanel() {
     const totalCoins = catalogGift.coins * multiplier;
     const coins = profile.coinsBalance ?? 0;
     if (!validateCoinsBalance(coins, totalCoins)) {
-      setGiftError('No tienes Coins suficientes');
+      setGiftError('No tienes Blast suficientes');
       setRechargeNeeded(totalCoins);
       return;
     }

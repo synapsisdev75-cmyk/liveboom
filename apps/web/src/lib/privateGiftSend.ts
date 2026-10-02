@@ -77,7 +77,7 @@ export async function sendPrivateGiftToPeer(input: {
   const totalCoins = catalog.coins * multiplier;
   const coins = input.sender.coinsBalance ?? 0;
   if (!validateCoinsBalance(coins, totalCoins)) {
-    throw new Error('No tienes Coins suficientes');
+    throw new Error('No tienes Blast suficientes');
   }
 
   try {

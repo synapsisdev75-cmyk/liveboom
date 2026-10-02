@@ -83,7 +83,7 @@ export function giftSendErrorMessage(error: unknown): string {
     return 'No se pudo completar el envío. Intenta de nuevo en un momento.';
   }
   if (status === 402 || /insuficiente|saldo/i.test(raw)) {
-    return 'Saldo insuficiente. Recarga coins para continuar.';
+    return 'Saldo insuficiente. Recarga Blast para continuar.';
   }
   if (status === 401 || /no hay sesión/i.test(raw)) {
     return 'Inicia sesión para enviar regalos';
@@ -118,7 +118,7 @@ export async function sendLiveboomGift(input: SendGiftInput): Promise<SendGiftRe
   }
 
   if (input.senderBalance < totalCoins) {
-    throw new Error('Saldo insuficiente. Recarga coins para continuar.');
+    throw new Error('Saldo insuficiente. Recarga Blast para continuar.');
   }
 
   if (input.recipientUid && input.recipientUid === input.senderUid) {

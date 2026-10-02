@@ -972,7 +972,7 @@ router.get('/token/:roomName', requireAuth, async (req, res) => {
         error: 'Live con candado',
         code: 'LIVE_LOCKED',
         lock,
-        message: `Envía ${lock?.emoji || '🎁'} ${lock?.giftName || 'el regalo'} (${lock?.coins || 0} coins) para entrar`,
+        message: `Envía ${lock?.emoji || '🎁'} ${lock?.giftName || 'el regalo'} (${lock?.coins || 0} Blast) para entrar`,
       });
       return;
     }

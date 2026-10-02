@@ -44,7 +44,7 @@ export function StreamCard({ stream, onOpen }: Props) {
       </span>
       {stream.isPrivate ? (
         <span className="absolute right-3 top-3 flex items-center gap-1 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-boom-gold">
-          <Lock size={10} /> {stream.lockPrice} coins
+          <Lock size={10} /> {stream.lockPrice} Blast
         </span>
       ) : null}
       <div className="absolute bottom-3 left-3 right-3">

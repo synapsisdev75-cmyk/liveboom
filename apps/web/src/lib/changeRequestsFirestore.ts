@@ -20,7 +20,7 @@ export const CHANGE_REQUEST_SECTIONS = [
   { id: 'actividad', label: 'Actividad', hint: 'Notificaciones / actividad' },
   { id: 'perfil', label: 'Perfil', hint: 'Perfil propio y edición' },
   { id: 'buscar', label: 'Buscar amigos', hint: 'Búsqueda de usuarios' },
-  { id: 'billetera', label: 'Mi billetera', hint: 'Coins, packs, retiros' },
+  { id: 'billetera', label: 'Mi billetera', hint: 'Blast, packs, retiros' },
   { id: 'live', label: 'LIVE / Transmitir', hint: 'Sala en vivo y transmisión' },
   { id: 'otro', label: 'Otro', hint: 'Cualquier otra pantalla' },
 ] as const;

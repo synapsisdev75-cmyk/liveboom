@@ -46,7 +46,7 @@ export function InteractionPanel() {
     const mult = [1, 2, 4, 8].includes(multiplier) ? multiplier : 1;
     const total = gift.coins * mult;
     if (coins < total) {
-      setToast('Saldo insuficiente. Recarga coins para continuar.');
+      setToast('Saldo insuficiente. Recarga Blast para continuar.');
       window.setTimeout(() => setToast(null), 2600);
       return;
     }
@@ -161,7 +161,7 @@ export function InteractionPanel() {
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Caja de Regalos</p>
           <p className="truncate text-sm font-bold text-white">
-            SALDO: {coins.toLocaleString('es-ES')} COINS
+            SALDO: {coins.toLocaleString('es-ES')} BLAST
           </p>
         </div>
         <button
@@ -170,7 +170,7 @@ export function InteractionPanel() {
           className="rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-2 text-xs font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105"
         >
           <WalletCards size={13} />
-          Recargar Coins
+          Recargar Blast
         </button>
       </div>
     </aside>

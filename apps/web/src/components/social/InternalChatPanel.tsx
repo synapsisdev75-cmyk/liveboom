@@ -1735,7 +1735,7 @@ export function InternalChatPanel({
     const totalCoins = catalog.coins * mult;
     const coins = profile.coinsBalance ?? 0;
     if (!validateCoinsBalance(coins, totalCoins)) {
-      setGiftError('No tienes Coins suficientes');
+      setGiftError('No tienes Blast suficientes');
       setRechargeNeeded(totalCoins);
       return;
     }
@@ -2728,7 +2728,7 @@ export function InternalChatPanel({
                                 </span>
                                 <span className="lb-chat-gift-card__name">{giftItem?.name || 'Regalo'}</span>
                                 {giftItem ? (
-                                  <span className="lb-chat-gift-card__coins">{giftItem.coins} coins</span>
+                                  <span className="lb-chat-gift-card__coins">{giftItem.coins} Blast</span>
                                 ) : null}
                                 {canReplayGift ? (
                                   <span className="lb-chat-gift-card__cta">Toca para ver</span>
