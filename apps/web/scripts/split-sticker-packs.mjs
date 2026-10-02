@@ -10,11 +10,10 @@ const OUT_DIR = path.join(root, 'public', 'stickers');
 const CATALOG_FILE = path.join(root, 'src', 'lib', 'stickerPacks.data.ts');
 
 const OUT_SIZE = 400;
-const CORNER_RATIO = 0.14;
 
 /**
  * Hojas fuente (1024×1024). Etiquetas fila a fila, izquierda a derecha.
- * `bg`: fondo de la hoja — se conserva dentro de cada sticker.
+ * `bg`: fondo de la hoja — se elimina; queda la silueta con borde blanco.
  */
 const SHEETS = [
   {
@@ -202,6 +201,78 @@ function findComponents(data, W, H, channels, bg) {
   return { labels, comps };
 }
 
+/**
+ * Separa componentes que unen varios stickers por el "puente" donde se tocan: erosiona hasta que se
+ * separen, toma cada núcleo como semilla de su celda y crece por el contenido original (BFS).
+ */
+function splitMerged(labels, mergedIds, W, H, cellOf) {
+  const inMerged = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) if (mergedIds.has(labels[i])) inMerged[i] = 1;
+
+  const pixelCell = new Int16Array(W * H).fill(-1);
+  const queue = new Int32Array(W * H);
+  let head = 0;
+  let tail = 0;
+
+  const core = erode(inMerged, W, H, 5);
+  const seen = new Uint8Array(W * H);
+  const stack = new Int32Array(W * H);
+  for (let start = 0; start < W * H; start++) {
+    if (!core[start] || seen[start]) continue;
+    const pixels = [];
+    let sp = 0;
+    stack[sp++] = start;
+    seen[start] = 1;
+    let sx = 0;
+    let sy = 0;
+    let minX = W, minY = H, maxX = 0, maxY = 0;
+    while (sp > 0) {
+      const i = stack[--sp];
+      pixels.push(i);
+      const x = i % W;
+      const y = (i - x) / W;
+      sx += x;
+      sy += y;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      const nbrs = [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1];
+      for (const n of nbrs) {
+        if (n >= 0 && core[n] && !seen[n]) {
+          seen[n] = 1;
+          stack[sp++] = n;
+        }
+      }
+    }
+    if (pixels.length < 200) continue;
+    const spansCells = cellOf(minX, minY) !== cellOf(maxX, maxY);
+    const cell = cellOf(sx / pixels.length, sy / pixels.length);
+    for (const i of pixels) {
+      pixelCell[i] = spansCells ? cellOf(i % W, Math.floor(i / W)) : cell;
+      queue[tail++] = i;
+    }
+  }
+
+  while (head < tail) {
+    const i = queue[head++];
+    const x = i % W;
+    const y = (i - x) / W;
+    const nbrs = [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, y > 0 ? i - W : -1, y < H - 1 ? i + W : -1];
+    for (const n of nbrs) {
+      if (n >= 0 && inMerged[n] && pixelCell[n] === -1) {
+        pixelCell[n] = pixelCell[i];
+        queue[tail++] = n;
+      }
+    }
+  }
+
+  for (let i = 0; i < W * H; i++) {
+    if (inMerged[i] && pixelCell[i] === -1) pixelCell[i] = cellOf(i % W, Math.floor(i / W));
+  }
+  return pixelCell;
+}
+
 function boxGap(a, b) {
   const gx = Math.max(0, a.minX - b.maxX, b.minX - a.maxX);
   const gy = Math.max(0, a.minY - b.maxY, b.minY - a.maxY);
@@ -238,13 +309,15 @@ function assignOwners(labels, comps, W, H, sheet) {
     }
   });
 
-  if (mergedIds.size) {
+  const pixelCell = mergedIds.size ? splitMerged(labels, mergedIds, W, H, cellOf) : null;
+
+  if (pixelCell) {
     const parts = new Map();
     for (let i = 0; i < W * H; i++) {
       if (!mergedIds.has(labels[i])) continue;
       const x = i % W;
       const y = (i - x) / W;
-      const cell = cellOf(x, y);
+      const cell = pixelCell[i];
       const p = parts.get(cell) || { cell, minX: x, minY: y, maxX: x, maxY: y };
       p.minX = Math.min(p.minX, x);
       p.minY = Math.min(p.minY, y);
@@ -281,7 +354,7 @@ function assignOwners(labels, comps, W, H, sheet) {
         bestCell = m.cell;
       }
     }
-    compOwner[id] = bestCell;
+    compOwner[id] = c.area < 300 && bestGap > 28 ? -2 : bestCell;
   });
   const owner = new Int16Array(W * H).fill(-2);
   for (let i = 0; i < W * H; i++) {
@@ -289,7 +362,7 @@ function assignOwners(labels, comps, W, H, sheet) {
     if (l < 0) continue;
     const o = compOwner[l];
     if (o === -2) continue;
-    owner[i] = o === -1 ? cellOf(i % W, Math.floor(i / W)) : o;
+    owner[i] = o === -1 ? pixelCell[i] : o;
   }
   return owner;
 }
@@ -358,26 +431,91 @@ function fillHoles(mask, w, h) {
   return out;
 }
 
-function roundedMaskSvg(size) {
-  const r = Math.round(size * CORNER_RATIO);
-  return Buffer.from(
-    `<svg width="${size}" height="${size}"><rect x="0" y="0" width="${size}" height="${size}" rx="${r}" ry="${r}" fill="#fff"/></svg>`,
-  );
+function toGray(mask) {
+  const buf = Buffer.alloc(mask.length);
+  for (let i = 0; i < mask.length; i++) buf[i] = mask[i] ? 255 : 0;
+  return buf;
 }
 
-function sheetBackground(data, W, H, channels) {
-  const pts = [
-    [4, 4], [W - 5, 4], [4, H - 5], [W - 5, H - 5],
-    [Math.floor(W / 2), 2], [2, Math.floor(H / 2)],
-  ];
-  let r = 0, g = 0, b = 0;
-  for (const [x, y] of pts) {
-    const p = (y * W + x) * channels;
-    r += data[p];
-    g += data[p + 1];
-    b += data[p + 2];
+/** Dilatación redondeada (desenfoque gaussiano + umbral) para un contorno de sticker suave. */
+async function roundDilate(mask, w, h, r) {
+  const blurred = await sharp(toGray(mask), { raw: { width: w, height: h, channels: 1 } })
+    .blur(Math.max(0.3, r / 2))
+    .extractChannel(0)
+    .raw()
+    .toBuffer();
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) out[i] = mask[i] || blurred[i] > 7 ? 1 : 0;
+  return out;
+}
+
+function erode(mask, w, h, r) {
+  const inv = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) inv[i] = mask[i] ? 0 : 1;
+  const grown = dilate(inv, w, h, r);
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) out[i] = grown[i] ? 0 : 1;
+  return out;
+}
+
+/**
+ * Quita astillas de stickers vecinos: conserva la pieza mayor y las piezas a ≤ `maxGap` px de ella
+ * (o grandes por sí mismas). En hojas oscuras el borde blanco encierra todo, así que `maxGap` = 0.
+ */
+async function keepMainParts(mask, w, h, maxGap) {
+  const comp = new Int32Array(w * h).fill(-1);
+  const areas = [];
+  const stack = new Int32Array(w * h);
+  for (let start = 0; start < w * h; start++) {
+    if (!mask[start] || comp[start] !== -1) continue;
+    const id = areas.length;
+    let area = 0;
+    let sp = 0;
+    stack[sp++] = start;
+    comp[start] = id;
+    while (sp > 0) {
+      const i = stack[--sp];
+      area++;
+      const x = i % w;
+      const y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const n = ny * w + nx;
+          if (mask[n] && comp[n] === -1) {
+            comp[n] = id;
+            stack[sp++] = n;
+          }
+        }
+      }
+    }
+    areas.push(area);
   }
-  return { r: Math.round(r / pts.length), g: Math.round(g / pts.length), b: Math.round(b / pts.length) };
+  if (areas.length <= 1) return mask;
+  const mainId = areas.indexOf(Math.max(...areas));
+  const main = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (comp[i] === mainId) main[i] = 1;
+  const near = maxGap > 0 ? await roundDilate(main, w, h, maxGap) : main;
+  const keepIds = new Set([mainId]);
+  for (let i = 0; i < w * h; i++) {
+    const id = comp[i];
+    if (id < 0 || keepIds.has(id)) continue;
+    if ((maxGap > 0 && near[i]) || areas[id] >= areas[mainId] * 0.25) keepIds.add(id);
+  }
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (comp[i] >= 0 && keepIds.has(comp[i])) out[i] = 1;
+  return out;
+}
+
+/** Alfa con borde antialias. */
+async function softEdge(mask, w, h) {
+  return sharp(toGray(mask), { raw: { width: w, height: h, channels: 1 } })
+    .blur(0.7)
+    .extractChannel(0)
+    .raw()
+    .toBuffer();
 }
 
 async function splitSheet(sheet) {
@@ -386,10 +524,11 @@ async function splitSheet(sheet) {
   const W = info.width;
   const H = info.height;
   const channels = info.channels;
-  const bgColor = sheetBackground(data, W, H, channels);
   const { labels, comps } = findComponents(data, W, H, channels, sheet.bg);
   const owner = assignOwners(labels, comps, W, H, sheet);
-  const pad = sheet.bg === 'dark' ? 6 : 12;
+  /** Hojas oscuras ya traen el borde blanco; en las claras el borde blanco se pierde con el fondo. */
+  const border = sheet.bg === 'dark' ? 3.5 : 10;
+  const pad = Math.ceil(border) + 4;
   const out = [];
 
   for (let row = 0; row < sheet.rows; row++) {
@@ -422,26 +561,27 @@ async function splitSheet(sheet) {
           if (owner[(minY + y) * W + minX + x] === index) own[y * w + x] = 1;
         }
       }
-      const keep = fillHoles(dilate(own, w, h, pad), w, h);
-      const pixels = Buffer.alloc(w * h * 3);
+      const art = fillHoles(await keepMainParts(own, w, h, sheet.bg === 'dark' ? 0 : 30), w, h);
+      const silhouette = fillHoles(await roundDilate(art, w, h, border), w, h);
+      const solid = sheet.bg === 'dark' ? erode(art, w, h, 2) : art;
+      const alpha = await softEdge(silhouette, w, h);
+
+      const pixels = Buffer.alloc(w * h * 4);
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
-          const o = (y * w + x) * 3;
-          const who = owner[(minY + y) * W + minX + x];
-          if (keep[y * w + x] && (who === index || who === -2)) {
-            const p = ((minY + y) * W + minX + x) * channels;
-            pixels[o] = data[p];
-            pixels[o + 1] = data[p + 1];
-            pixels[o + 2] = data[p + 2];
-          } else {
-            pixels[o] = bgColor.r;
-            pixels[o + 1] = bgColor.g;
-            pixels[o + 2] = bgColor.b;
-          }
+          const i = y * w + x;
+          const o = i * 4;
+          const src = (minY + y) * W + minX + x;
+          const p = src * channels;
+          const inArt = solid[i] && (owner[src] === index || owner[src] === -2);
+          pixels[o] = inArt ? data[p] : 255;
+          pixels[o + 1] = inArt ? data[p + 1] : 255;
+          pixels[o + 2] = inArt ? data[p + 2] : 255;
+          pixels[o + 3] = alpha[i];
         }
       }
 
-      const side = Math.round(Math.max(w, h) * 1.06);
+      const side = Math.round(Math.max(w, h) * 1.04);
       const extendX = side - w;
       const extendY = side - h;
 
@@ -449,22 +589,20 @@ async function splitSheet(sheet) {
       const file = `${sheet.pack}/${id}.webp`;
       fs.mkdirSync(path.join(OUT_DIR, sheet.pack), { recursive: true });
 
-      const squared = await sharp(pixels, { raw: { width: w, height: h, channels: 3 } })
+      const squared = await sharp(pixels, { raw: { width: w, height: h, channels: 4 } })
         .extend({
           left: Math.floor(extendX / 2),
           right: Math.ceil(extendX / 2),
           top: Math.floor(extendY / 2),
           bottom: Math.ceil(extendY / 2),
-          background: bgColor,
+          background: { r: 255, g: 255, b: 255, alpha: 0 },
         })
-        .resize(OUT_SIZE, OUT_SIZE, { kernel: 'lanczos3' })
-        .sharpen({ sigma: 0.6 })
         .png()
         .toBuffer();
 
       await sharp(squared)
-        .ensureAlpha()
-        .composite([{ input: roundedMaskSvg(OUT_SIZE), blend: 'dest-in' }])
+        .resize(OUT_SIZE, OUT_SIZE, { kernel: 'lanczos3' })
+        .sharpen({ sigma: 0.5 })
         .webp({ quality: 90, alphaQuality: 100, effort: 5 })
         .toFile(path.join(OUT_DIR, file));
 
