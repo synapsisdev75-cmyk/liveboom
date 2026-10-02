@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Clapperboard, Loader2, Plus, X } from 'lucide-react';
 import {
   COMPOSER_STICKERS,
   COMPOSER_STICKER_PACKS,
@@ -32,7 +32,7 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
   const [mine, setMine] = useState<CustomSticker[]>(() => (uid ? cachedCustomStickers(uid) ?? [] : []));
   const [mineLoading, setMineLoading] = useState(false);
   const [mineError, setMineError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<'photo' | 'video' | null>(null);
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -59,7 +59,7 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
 
   useEffect(() => {
     if (!open) {
-      setCreating(false);
+      setCreating(null);
       setEditing(false);
     }
   }, [open]);
@@ -68,7 +68,7 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
     if (!uid) throw new Error('Inicia sesión para guardar stickers.');
     const sticker = await saveCustomSticker(uid, blob);
     setMine((current) => [sticker, ...current.filter((item) => item.id !== sticker.id)]);
-    setCreating(false);
+    setCreating(null);
   }
 
   async function removeSticker(sticker: CustomSticker) {
@@ -100,7 +100,9 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
     >
       <div className="flex max-h-[min(88dvh,46rem)] w-full max-w-xl flex-col overflow-hidden rounded-t-3xl border border-fuchsia-400/35 bg-zinc-950 pb-[max(0.75rem,var(--lb-safe-bottom))] sm:rounded-3xl">
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
-          <p className="text-sm font-bold text-fuchsia-200">{creating ? 'Crea tu sticker' : 'Sticker'}</p>
+          <p className="text-sm font-bold text-fuchsia-200">
+            {creating === 'video' ? 'Sticker con movimiento' : creating ? 'Crea tu sticker' : 'Sticker'}
+          </p>
           <button
             type="button"
             onClick={onClose}
@@ -145,7 +147,12 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
         ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
           {creating ? (
-            <StickerCreator onCancel={() => setCreating(false)} onSave={saveSticker} />
+            <StickerCreator
+              key={creating}
+              initialKind={creating}
+              onCancel={() => setCreating(null)}
+              onSave={saveSticker}
+            />
           ) : pack === 'mios' ? (
             !uid ? (
               <p className="px-2 py-8 text-center text-sm text-zinc-400">Inicia sesión para crear tus stickers.</p>
@@ -171,13 +178,25 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
                     type="button"
                     onClick={() => {
                       setEditing(false);
-                      setCreating(true);
+                      setCreating('photo');
                     }}
                     disabled={mine.length >= CUSTOM_STICKER_MAX}
                     className="flex aspect-square flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-fuchsia-400/50 bg-fuchsia-500/[0.06] text-fuchsia-200 transition hover:bg-fuchsia-500/[0.12] disabled:opacity-40"
                   >
                     <Plus size={26} />
                     <span className="text-[11px] font-bold">Crear sticker</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(false);
+                      setCreating('video');
+                    }}
+                    disabled={mine.length >= CUSTOM_STICKER_MAX}
+                    className="flex aspect-square flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-violet-400/50 bg-violet-500/[0.08] px-1 text-center text-violet-200 transition hover:bg-violet-500/[0.14] disabled:opacity-40"
+                  >
+                    <Clapperboard size={24} />
+                    <span className="text-[11px] font-bold leading-tight">Con movimiento</span>
                   </button>
                   {mineLoading ? (
                     <div className="grid aspect-square place-items-center text-zinc-500">

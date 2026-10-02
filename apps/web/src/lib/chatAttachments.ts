@@ -182,7 +182,7 @@ export function previewChatAttachment(file: File): ChatAttachmentPreview | { err
 export function isChatStickerUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   if (/^(?:https?:\/\/[^/]+)?\/stickers\/[^?#]+\.(?:webp|png|gif)(?:[?#]|$)/i.test(url)) return true;
-  return /\/o\/users%2F[^/?#%]+%2Fstickers%2F[^/?#]+\.(?:webp|png)(?:[?#]|$)/i.test(url);
+  return /\/o\/users%2F[^/?#%]+%2Fstickers%2F[^/?#]+\.(?:webp|png|gif)(?:[?#]|$)/i.test(url);
 }
 
 export function isAnimatedChatGif(url: string | null | undefined, mediaType?: string | null): boolean {

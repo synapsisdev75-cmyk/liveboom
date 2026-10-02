@@ -161,6 +161,24 @@ export function maskCoverage(mask: AlphaMask): number {
   return on / Math.max(1, mask.data.length);
 }
 
+/** Centro (0‥1) de la zona visible de la máscara; sirve para seguir un objeto entre fotogramas. */
+export function maskCentroid(mask: AlphaMask): { x: number; y: number } | null {
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let y = 0; y < mask.height; y++) {
+    for (let x = 0; x < mask.width; x++) {
+      if ((mask.data[y * mask.width + x] ?? 0) > 0.5) {
+        sx += x;
+        sy += y;
+        n++;
+      }
+    }
+  }
+  if (!n) return null;
+  return { x: sx / n / Math.max(1, mask.width - 1), y: sy / n / Math.max(1, mask.height - 1) };
+}
+
 /** Aplica la máscara como canal alfa (bordes suaves) sobre una copia de la imagen. */
 export function applyMask(image: HTMLCanvasElement, mask: AlphaMask): HTMLCanvasElement {
   const out = document.createElement('canvas');

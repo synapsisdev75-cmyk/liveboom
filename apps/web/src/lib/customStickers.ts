@@ -102,7 +102,7 @@ export async function listCustomStickers(uid: string): Promise<CustomSticker[]> 
 }
 
 export async function saveCustomSticker(uid: string, blob: Blob): Promise<CustomSticker> {
-  const ext = blob.type === 'image/webp' ? 'webp' : 'png';
+  const ext = blob.type === 'image/webp' ? 'webp' : blob.type === 'image/gif' ? 'gif' : 'png';
   const createdAt = Date.now();
   const storagePath = `${folder(uid)}/${createdAt}.${ext}`;
   const objectRef = ref(storage, storagePath);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   Bold,
+  Clapperboard,
   ImagePlus,
   Italic,
   Loader2,
@@ -14,6 +15,7 @@ import {
 import {
   applyMask,
   maskAtPoint,
+  maskCentroid,
   maskCoverage,
   maskPeople,
   type AlphaMask,
@@ -21,6 +23,14 @@ import {
 import { COMPOSER_STICKERS, COMPOSER_STICKER_PACKS, type ComposerStickerPack } from '../../lib/composerStickers';
 import { resolveEmoji } from '../../lib/liveboomEmojis';
 import { resolveFlagIcon } from '../../lib/circleFlags';
+import {
+  ANIM_FPS,
+  ANIM_MAX_SECONDS,
+  ANIM_MIN_SECONDS,
+  encodeTransparentGif,
+  extractVideoFrames,
+  frameSequence,
+} from '../../lib/stickerVideo';
 import { EmojiPickerButton } from './EmojiPicker';
 
 const OUT = 512;
@@ -62,6 +72,8 @@ type TextStyle = {
 type Deco = { id: string; src?: string; char?: string; x: number; y: number; size: number };
 
 const DECO_MAX = 12;
+const ANIM_OUT_SIZES = [320, 256, 200];
+const ANIM_MAX_BYTES = 4.5 * 1024 * 1024;
 const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif';
 const DECO_PACKS = COMPOSER_STICKER_PACKS.filter((pack) =>
   COMPOSER_STICKERS.some((item) => item.pack === pack.id && item.kind === 'sticker' && item.src),
@@ -266,14 +278,38 @@ function renderSticker(
   return { fit, textBox: { x: cx - blockW / 2, y: cy - blockH / 2, w: blockW, h: blockH }, decoBoxes };
 }
 
+function unionBounds(boxes: Box[]): Box | null {
+  if (!boxes.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const box of boxes) {
+    minX = Math.min(minX, box.x);
+    minY = Math.min(minY, box.y);
+    maxX = Math.max(maxX, box.x + box.w);
+    maxY = Math.max(maxY, box.y + box.h);
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+type VideoDraft = { url: string; duration: number; start: number; length: number };
+
 type Props = {
   onCancel: () => void;
   onSave: (blob: Blob) => Promise<void>;
+  /** `video` = sticker con movimiento (recorte de video → GIF animado). */
+  initialKind?: 'photo' | 'video';
 };
 
-export function StickerCreator({ onCancel, onSave }: Props) {
-  const [source, setSource] = useState<HTMLCanvasElement | null>(null);
-  const [mask, setMask] = useState<AlphaMask | null>(null);
+export function StickerCreator({ onCancel, onSave, initialKind = 'photo' }: Props) {
+  const [frames, setFrames] = useState<HTMLCanvasElement[]>([]);
+  const [masks, setMasks] = useState<(AlphaMask | null)[] | null>(null);
+  const [videoDraft, setVideoDraft] = useState<VideoDraft | null>(null);
+  const [bounce, setBounce] = useState(false);
+  const [frameTick, setFrameTick] = useState(0);
+  const source = frames[0] ?? null;
+  const animated = frames.length > 1;
   const [bgMode, setBgMode] = useState<BgMode>('original');
   const [border, setBorder] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -302,6 +338,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     [decoPack],
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
   const imagesRef = useRef(new Map<string, HTMLImageElement>());
@@ -322,14 +359,48 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     };
   }, []);
 
-  const cutout = useMemo(() => (source && mask ? applyMask(source, mask) : source), [source, mask]);
-  const bounds = useMemo(() => (cutout ? alphaBounds(cutout) : null), [cutout]);
+  const cutouts = useMemo(
+    () =>
+      frames.map((frame, i) => {
+        const frameMask = masks?.[i];
+        return frameMask ? applyMask(frame, frameMask) : frame;
+      }),
+    [frames, masks],
+  );
+  const bounds = useMemo(() => unionBounds(cutouts.map((canvas) => alphaBounds(canvas))), [cutouts]);
+  const sequence = useMemo(() => frameSequence(cutouts.length, bounce), [cutouts.length, bounce]);
+  const pickingObject = bgMode === 'touch' && !masks;
+  const currentFrame = pickingObject
+    ? (cutouts[0] ?? null)
+    : (cutouts[sequence[frameTick % Math.max(1, sequence.length)] ?? 0] ?? null);
+
+  useEffect(() => {
+    if (!animated || busy || pickingObject) return;
+    const timer = window.setInterval(() => setFrameTick((n) => n + 1), 1000 / ANIM_FPS);
+    return () => window.clearInterval(timer);
+  }, [animated, busy, pickingObject]);
 
   useEffect(() => {
     const ctx = previewRef.current?.getContext('2d');
     if (!ctx) return;
-    layoutRef.current = renderSticker(ctx, cutout, bounds, border, style, decos, imagesRef.current, selectedDeco);
-  }, [cutout, bounds, border, style, fontsTick, decos, selectedDeco, imagesTick]);
+    layoutRef.current = renderSticker(
+      ctx,
+      currentFrame,
+      bounds,
+      border,
+      style,
+      decos,
+      imagesRef.current,
+      selectedDeco,
+    );
+  }, [currentFrame, bounds, border, style, fontsTick, decos, selectedDeco, imagesTick]);
+
+  const draftUrl = videoDraft?.url ?? null;
+  useEffect(() => {
+    return () => {
+      if (draftUrl) URL.revokeObjectURL(draftUrl);
+    };
+  }, [draftUrl]);
 
   function addDeco(next: Pick<Deco, 'src' | 'char'>) {
     if (decos.length >= DECO_MAX) {
@@ -372,18 +443,55 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     setSelectedDeco(null);
   }
 
+  function openPicker(kind: 'photo' | 'video') {
+    const input = inputRef.current;
+    if (!input) return;
+    input.accept = kind === 'video' ? 'video/*' : 'image/*';
+    input.click();
+  }
+
   async function pickFile(file: File | null) {
     if (!file) return;
+    if (file.type.startsWith('video/')) {
+      setError(null);
+      setBusy('Cargando video…');
+      const url = URL.createObjectURL(file);
+      try {
+        const probe = document.createElement('video');
+        probe.preload = 'metadata';
+        probe.muted = true;
+        probe.playsInline = true;
+        probe.src = url;
+        await new Promise<void>((resolve, reject) => {
+          probe.onloadedmetadata = () => resolve();
+          probe.onerror = () => reject(new Error('No se pudo abrir este video. Prueba con MP4 o WebM.'));
+        });
+        const duration = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : ANIM_MAX_SECONDS;
+        probe.removeAttribute('src');
+        setVideoDraft({
+          url,
+          duration,
+          start: 0,
+          length: Math.max(Math.min(ANIM_MIN_SECONDS, duration), Math.min(3, duration)),
+        });
+      } catch (err) {
+        URL.revokeObjectURL(url);
+        setError(err instanceof Error ? err.message : 'No se pudo abrir el video.');
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
     if (!file.type.startsWith('image/')) {
-      setError('Elige una foto (JPG, PNG o WebP).');
+      setError('Elige una foto (JPG, PNG o WebP) o un video.');
       return;
     }
     setError(null);
     setBusy('Cargando foto…');
     try {
       const canvas = await fileToCanvas(file);
-      setSource(canvas);
-      setMask(null);
+      setFrames([canvas]);
+      setMasks(null);
       setBgMode('original');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo abrir la foto.');
@@ -392,20 +500,58 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     }
   }
 
+  async function confirmClip() {
+    const video = videoRef.current;
+    if (!video || !videoDraft || busy) return;
+    setError(null);
+    setBusy('Preparando clip…');
+    try {
+      const next = await extractVideoFrames(video, videoDraft.start, videoDraft.length, ANIM_FPS, (done, total) =>
+        setBusy(`Preparando clip ${done}/${total}…`),
+      );
+      setFrames(next);
+      setMasks(null);
+      setBgMode('original');
+      setFrameTick(0);
+      setVideoDraft(null);
+    } catch (err) {
+      setError(err instanceof Error && err.message !== 'timeout' ? err.message : 'No se pudo leer el video.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function maskAllFrames(
+    label: string,
+    run: (frame: HTMLCanvasElement) => Promise<AlphaMask>,
+  ): Promise<AlphaMask[]> {
+    const out: AlphaMask[] = [];
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+      if (!frame) continue;
+      if (frames.length > 1) setBusy(`${label} ${i + 1}/${frames.length}…`);
+      out.push(await run(frame));
+    }
+    return out;
+  }
+
+  const averageCoverage = (list: AlphaMask[]) =>
+    list.reduce((sum, item) => sum + maskCoverage(item), 0) / Math.max(1, list.length);
+
   async function runAuto() {
     if (!source || busy) return;
     setBgMode('auto');
     setError(null);
     setBusy('Quitando fondo…');
     try {
-      const next = await maskPeople(source);
-      if (maskCoverage(next) < 0.02) {
-        setMask(null);
+      const next = await maskAllFrames('Quitando fondo', (frame) => maskPeople(frame));
+      if (averageCoverage(next) < 0.02) {
+        setMasks(null);
         setBgMode('touch');
-        setError('No encontré una persona. Toca en la foto lo que quieres conservar.');
+        setError(`No encontré una persona. Toca en ${animated ? 'el video' : 'la foto'} lo que quieres conservar.`);
         return;
       }
-      setMask(next);
+      setMasks(next);
     } catch (err) {
       setBgMode('original');
       setError(err instanceof Error ? err.message : 'No se pudo quitar el fondo.');
@@ -419,12 +565,17 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     setError(null);
     setBusy('Recortando…');
     try {
-      const next = await maskAtPoint(source, nx, ny);
-      if (maskCoverage(next) < 0.005) {
+      let point = { x: nx, y: ny };
+      const next = await maskAllFrames('Recortando', async (frame) => {
+        const frameMask = await maskAtPoint(frame, point.x, point.y);
+        if (maskCoverage(frameMask) >= 0.005) point = maskCentroid(frameMask) ?? point;
+        return frameMask;
+      });
+      if (averageCoverage(next) < 0.005) {
         setError('No pude separar eso. Toca más al centro del objeto.');
         return;
       }
-      setMask(next);
+      setMasks(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo recortar.');
     } finally {
@@ -499,6 +650,31 @@ export function StickerCreator({ onCancel, onSave }: Props) {
     if (dragRef.current?.id === event.pointerId) dragRef.current = null;
   }
 
+  async function encodeAnimated(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): Promise<Blob> {
+    const order = frameSequence(cutouts.length, bounce);
+    let blob: Blob | null = null;
+    for (const size of ANIM_OUT_SIZES) {
+      const small = document.createElement('canvas');
+      small.width = size;
+      small.height = size;
+      const sctx = small.getContext('2d', { willReadFrequently: true });
+      if (!sctx) throw new Error('Tu navegador no permite crear el sticker.');
+      const images: ImageData[] = [];
+      for (let i = 0; i < order.length; i++) {
+        setBusy(`Creando animación ${i + 1}/${order.length}…`);
+        renderSticker(ctx, cutouts[order[i] ?? 0] ?? null, bounds, border, style, decos, imagesRef.current, null);
+        sctx.clearRect(0, 0, size, size);
+        sctx.imageSmoothingQuality = 'high';
+        sctx.drawImage(canvas, 0, 0, size, size);
+        images.push(sctx.getImageData(0, 0, size, size));
+        if (i % 6 === 5) await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      blob = encodeTransparentGif(images, Math.round(1000 / ANIM_FPS));
+      if (blob.size <= ANIM_MAX_BYTES) return blob;
+    }
+    throw new Error('La animación quedó muy pesada. Acorta el clip o quita el rebote.');
+  }
+
   async function save() {
     if (busy || (!source && !style.text.trim() && decos.length === 0)) return;
     setError(null);
@@ -509,7 +685,11 @@ export function StickerCreator({ onCancel, onSave }: Props) {
       canvas.height = OUT;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Tu navegador no permite crear el sticker.');
-      renderSticker(ctx, cutout, bounds, border, style, decos, imagesRef.current, null);
+      if (animated) {
+        await onSave(await encodeAnimated(canvas, ctx));
+        return;
+      }
+      renderSticker(ctx, cutouts[0] ?? null, bounds, border, style, decos, imagesRef.current, null);
       let blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.92));
       if (!blob || blob.type !== 'image/webp') {
         blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -544,7 +724,100 @@ export function StickerCreator({ onCancel, onSave }: Props) {
         }}
       />
 
-      <div className="relative mx-auto w-full max-w-[min(100%,18rem)]">
+      {videoDraft ? (
+        <div className="flex flex-col gap-2">
+          <div className="relative mx-auto w-full max-w-[min(100%,18rem)] overflow-hidden rounded-2xl bg-black">
+            <video
+              ref={videoRef}
+              src={videoDraft.url}
+              muted
+              playsInline
+              autoPlay
+              loop
+              preload="auto"
+              className="block aspect-square w-full object-contain"
+              onLoadedData={(event) => {
+                event.currentTarget.currentTime = videoDraft.start;
+              }}
+              onTimeUpdate={(event) => {
+                const video = event.currentTarget;
+                if (busy) return;
+                if (video.currentTime < videoDraft.start || video.currentTime > videoDraft.start + videoDraft.length) {
+                  video.currentTime = videoDraft.start;
+                }
+              }}
+            />
+            {busy ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 text-xs font-semibold text-white">
+                <Loader2 size={22} className="animate-spin" />
+                {busy}
+              </div>
+            ) : null}
+          </div>
+          <p className="text-center text-[11px] font-semibold text-cyan-300">
+            Elige el momento del video ({ANIM_MIN_SECONDS}–{ANIM_MAX_SECONDS} s) para tu sticker con movimiento.
+          </p>
+          <label className="flex min-h-11 items-center gap-2 text-[11px] text-zinc-300">
+            <span className="w-16 shrink-0">Inicio</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, videoDraft.duration - videoDraft.length)}
+              step={0.1}
+              value={videoDraft.start}
+              disabled={Boolean(busy)}
+              onChange={(event) => {
+                const start = Number(event.target.value);
+                setVideoDraft((current) => (current ? { ...current, start } : current));
+                if (videoRef.current) videoRef.current.currentTime = start;
+              }}
+              className="min-w-0 flex-1 accent-fuchsia-500"
+            />
+            <span className="w-10 shrink-0 text-right tabular-nums">{videoDraft.start.toFixed(1)}s</span>
+          </label>
+          <label className="flex min-h-11 items-center gap-2 text-[11px] text-zinc-300">
+            <span className="w-16 shrink-0">Duración</span>
+            <input
+              type="range"
+              min={Math.min(ANIM_MIN_SECONDS, videoDraft.duration)}
+              max={Math.min(ANIM_MAX_SECONDS, videoDraft.duration)}
+              step={0.5}
+              value={videoDraft.length}
+              disabled={Boolean(busy)}
+              onChange={(event) => {
+                const length = Number(event.target.value);
+                setVideoDraft((current) =>
+                  current
+                    ? { ...current, length, start: Math.min(current.start, Math.max(0, current.duration - length)) }
+                    : current,
+                );
+              }}
+              className="min-w-0 flex-1 accent-fuchsia-500"
+            />
+            <span className="w-10 shrink-0 text-right tabular-nums">{videoDraft.length.toFixed(1)}s</span>
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setVideoDraft(null)}
+              disabled={Boolean(busy)}
+              className="min-h-11 flex-1 rounded-xl bg-white/[0.08] text-sm font-semibold text-zinc-200 disabled:opacity-50"
+            >
+              Volver
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmClip()}
+              disabled={Boolean(busy)}
+              className="min-h-11 flex-[2] rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-500 text-sm font-bold text-white disabled:opacity-50"
+            >
+              Usar este momento
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className={`relative mx-auto w-full max-w-[min(100%,18rem)] ${videoDraft ? 'hidden' : ''}`}>
         <canvas
           ref={previewRef}
           width={OUT}
@@ -559,15 +832,36 @@ export function StickerCreator({ onCancel, onSave }: Props) {
           aria-label="Vista previa del sticker"
         />
         {!source && !style.text && decos.length === 0 ? (
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-fuchsia-400/45 text-center text-sm text-zinc-300"
-          >
-            <ImagePlus size={30} className="text-fuchsia-300" />
-            <span className="font-semibold text-white">Sube una foto</span>
-            <span className="px-6 text-xs text-zinc-400">o usa texto, emojis y stickers de abajo</span>
-          </button>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-fuchsia-400/45 p-4 text-center">
+            <div className={`flex w-full gap-2 ${initialKind === 'video' ? 'flex-row-reverse' : ''}`}>
+              <button
+                type="button"
+                onClick={() => openPicker('photo')}
+                className="flex min-h-20 flex-1 flex-col items-center justify-center gap-1 rounded-2xl bg-white/[0.06] text-xs font-semibold text-white hover:bg-white/10"
+              >
+                <ImagePlus size={24} className="text-fuchsia-300" />
+                Foto
+              </button>
+              <button
+                type="button"
+                onClick={() => openPicker('video')}
+                className={`flex min-h-20 flex-1 flex-col items-center justify-center gap-1 rounded-2xl text-xs font-semibold text-white ${
+                  initialKind === 'video'
+                    ? 'bg-gradient-to-br from-fuchsia-500/40 to-violet-500/40 ring-1 ring-fuchsia-400/60'
+                    : 'bg-white/[0.06] hover:bg-white/10'
+                }`}
+              >
+                <Clapperboard size={24} className="text-fuchsia-300" />
+                Video (con movimiento)
+              </button>
+            </div>
+            <span className="px-2 text-xs text-zinc-400">o usa texto, emojis y stickers de abajo</span>
+          </div>
+        ) : null}
+        {animated && !busy ? (
+          <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-fuchsia-500/85 px-2 py-0.5 text-[10px] font-bold text-white">
+            Con movimiento
+          </span>
         ) : null}
         {busy ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-black/55 text-xs font-semibold text-white">
@@ -577,9 +871,9 @@ export function StickerCreator({ onCancel, onSave }: Props) {
         ) : null}
       </div>
 
-      {bgMode === 'touch' && source && !busy ? (
+      {bgMode === 'touch' && source && !busy && !videoDraft ? (
         <p className="text-center text-[11px] font-semibold text-cyan-300">
-          Toca en la foto la persona, mascota u objeto que quieres conservar.
+          Toca en {animated ? 'el video' : 'la foto'} la persona, mascota u objeto que quieres conservar.
         </p>
       ) : null}
       {(style.text || decos.length > 0) && !busy ? (
@@ -695,7 +989,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
         ) : null}
       </div>
 
-      {source ? (
+      {source && !videoDraft ? (
         <div>
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Fondo</p>
           <div className="flex flex-wrap gap-1.5">
@@ -707,6 +1001,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
             <button
               type="button"
               onClick={() => {
+                if (animated) setMasks(null);
                 setBgMode('touch');
                 setError(null);
               }}
@@ -719,7 +1014,7 @@ export function StickerCreator({ onCancel, onSave }: Props) {
             <button
               type="button"
               onClick={() => {
-                setMask(null);
+                setMasks(null);
                 setBgMode('original');
               }}
               className={chip(bgMode === 'original')}
@@ -729,8 +1024,18 @@ export function StickerCreator({ onCancel, onSave }: Props) {
             <button type="button" onClick={() => setBorder((value) => !value)} className={chip(border)}>
               Borde blanco
             </button>
-            <button type="button" onClick={() => inputRef.current?.click()} className={chip(false)}>
-              Cambiar foto
+            {animated ? (
+              <button
+                type="button"
+                onClick={() => setBounce((value) => !value)}
+                className={chip(bounce)}
+                aria-pressed={bounce}
+              >
+                Rebote
+              </button>
+            ) : null}
+            <button type="button" onClick={() => openPicker(animated ? 'video' : 'photo')} className={chip(false)}>
+              {animated ? 'Cambiar video' : 'Cambiar foto'}
             </button>
           </div>
         </div>

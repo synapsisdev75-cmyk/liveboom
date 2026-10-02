@@ -184,8 +184,12 @@ service firebase.storage {
     match /users/{userId}/stickers/{fileName} {
       allow read: if signedIn();
       allow create, update: if isOwner(userId)
-        && request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/(png|webp)');
+        && (
+          (request.resource.size < 2 * 1024 * 1024
+            && request.resource.contentType.matches('image/(png|webp)'))
+          || (request.resource.size < 5 * 1024 * 1024
+            && request.resource.contentType == 'image/gif')
+        );
       allow delete: if isOwner(userId);
     }
 
