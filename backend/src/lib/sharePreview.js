@@ -19,8 +19,18 @@ function isShareCrawler(userAgent) {
   );
 }
 
+/** Navegador interno de Instagram / Facebook / TikTok, etc. en Android. */
+function isAndroidInAppBrowser(userAgent) {
+  const ua = String(userAgent || '');
+  if (!/Android/i.test(ua)) return false;
+  return /Instagram|FBAN|FBAV|FB_IAB|FBIOS|Messenger|TikTok|musical_ly|BytedanceWebview|trill|\bLine\/|Snapchat|Twitter|LinkedInApp|Pinterest/i.test(
+    ua,
+  );
+}
+
 function shareClientKind(userAgent) {
   const ua = String(userAgent || '');
+  if (isAndroidInAppBrowser(ua)) return 'android-inapp';
   if (/\bwv\b/.test(ua)) return 'app';
   if (/Android/i.test(ua)) return 'android';
   if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
@@ -94,7 +104,7 @@ function webPostPath(preview, postId) {
   return `/u/${handle}?${params.toString()}`;
 }
 
-function renderShareOgHtml({ preview, pageUrl }) {
+function renderShareOgHtml({ preview, pageUrl, webUrl = '' }) {
   const title = escapeHtml(preview.title);
   const description = escapeHtml(preview.description);
   const image = escapeHtml(preview.image);
@@ -138,8 +148,59 @@ function renderShareOgHtml({ preview, pageUrl }) {
   </head>
   <body>
     <p>${description}</p>
+    ${
+      webUrl
+        ? `<p><a href="${escapeHtml(webUrl)}">Ver publicación en LiveBoom</a></p>
+    <script>window.location.replace(${JSON.stringify(webUrl)});</script>`
+        : ''
+    }
   </body>
 </html>`;
+}
+
+/** Saca el enlace del navegador interno (Instagram, Facebook…) al navegador predeterminado de Android. */
+function renderOpenInBrowserHtml({ webUrl }) {
+  const safeWeb = escapeHtml(webUrl);
+  const target = new URL(webUrl);
+  const intent =
+    'intent://' +
+    target.host +
+    target.pathname +
+    target.search +
+    '#Intent;scheme=https;S.browser_fallback_url=' +
+    encodeURIComponent(webUrl) +
+    ';end';
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LiveBoom</title>
+  </head>
+  <body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#0a0a0b;color:#fff;font-family:system-ui,sans-serif;text-align:center">
+    <div style="padding:1.5rem">
+      <p>Abriendo LiveBoom en tu navegador…</p>
+      <p><a href="${safeWeb}" style="display:inline-block;min-height:44px;line-height:44px;padding:0 1.25rem;border-radius:999px;background:#22d3ee;color:#000;font-weight:600;text-decoration:none">Ver publicación</a></p>
+    </div>
+    <script>
+      (function () {
+        var hidden = false;
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'hidden') hidden = true;
+        });
+        window.location.href = ${JSON.stringify(intent)};
+        setTimeout(function () {
+          if (!hidden) window.location.replace(${JSON.stringify(webUrl)});
+        }, 1200);
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
+/** Abrir la app / tienda desde el enlace solo cuando las apps estén publicadas (SHARE_APP_HANDOFF=1). */
+function shareAppHandoffEnabled() {
+  return String(process.env.SHARE_APP_HANDOFF || '').trim() === '1';
 }
 
 function renderShareHandoffHtml({ kind, postId, webUrl }) {
@@ -268,11 +329,19 @@ async function handleSharePreview(req, res) {
       .status(200)
       .set('Content-Type', 'text/html; charset=utf-8')
       .set('Cache-Control', 'public, max-age=300')
-      .send(renderShareOgHtml({ preview, pageUrl }));
+      .send(renderShareOgHtml({ preview, pageUrl, webUrl }));
     return;
   }
   const kind = shareClientKind(ua);
-  if (kind === 'desktop' || kind === 'app') {
+  if (kind === 'android-inapp') {
+    res
+      .status(200)
+      .set('Content-Type', 'text/html; charset=utf-8')
+      .set('Cache-Control', 'no-store')
+      .send(renderOpenInBrowserHtml({ webUrl }));
+    return;
+  }
+  if (!shareAppHandoffEnabled() || kind === 'desktop' || kind === 'app') {
     res.redirect(302, webUrl);
     return;
   }
@@ -289,6 +358,7 @@ module.exports = {
   SITE_ORIGIN,
   escapeHtml,
   isShareCrawler,
+  isAndroidInAppBrowser,
   shareClientKind,
   sharePostIdFromPath,
   isSafePostId,
@@ -296,5 +366,7 @@ module.exports = {
   webPostPath,
   renderShareOgHtml,
   renderShareHandoffHtml,
+  renderOpenInBrowserHtml,
+  shareAppHandoffEnabled,
   handleSharePreview,
 };

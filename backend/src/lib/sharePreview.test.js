@@ -6,6 +6,8 @@ const {
   sharePostIdFromPath,
   previewFromPost,
   renderShareOgHtml,
+  renderOpenInBrowserHtml,
+  shareAppHandoffEnabled,
   webPostPath,
 } = require('./sharePreview');
 
@@ -21,6 +23,28 @@ test('el dispositivo manda a tienda o al sitio', () => {
   assert.equal(shareClientKind('Mozilla/5.0 (Linux; Android 14; wv)'), 'app');
   assert.equal(shareClientKind('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'), 'ios');
   assert.equal(shareClientKind('Mozilla/5.0 (Windows NT 10.0)'), 'desktop');
+  assert.equal(
+    shareClientKind('Mozilla/5.0 (Linux; Android 14; wv) Chrome/120 Instagram 300.0.0'),
+    'android-inapp',
+  );
+  assert.equal(
+    shareClientKind('Mozilla/5.0 (Linux; Android 14; wv) Chrome/120 [FB_IAB/FB4A;FBAV/450.0]'),
+    'android-inapp',
+  );
+});
+
+test('sin apps publicadas, el enlace abre el sitio en el navegador', () => {
+  delete process.env.SHARE_APP_HANDOFF;
+  assert.equal(shareAppHandoffEnabled(), false);
+  const html = renderOpenInBrowserHtml({ webUrl: 'https://liveboomapp.com/u/yemdups?post=abc&uid=uid1' });
+  assert.match(html, /intent:\/\/liveboomapp\.com\/u\/yemdups\?post=abc&uid=uid1#Intent;scheme=https;/);
+  assert.doesNotMatch(html, /play\.google\.com/);
+  const og = renderShareOgHtml({
+    preview: previewFromPost({ username: 'yemdups', visibility: 'public', type: 'text' }),
+    pageUrl: 'https://liveboomapp.com/s/abc',
+    webUrl: 'https://liveboomapp.com/u/yemdups?post=abc',
+  });
+  assert.match(og, /Ver publicación en LiveBoom/);
 });
 
 test('la vista previa usa el video público y no filtra uno privado', () => {
