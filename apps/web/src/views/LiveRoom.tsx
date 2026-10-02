@@ -7815,7 +7815,7 @@ function ChatPanel({
               emojiSize={LIVE_CHAT_EMOJI_SIZE}
               className="min-w-0"
               fieldClassName="flex h-11 items-center"
-              padClassName="pl-3.5 pr-1 py-0"
+              padClassName="pl-3.5 pr-1 py-[13px]"
               mirrorTextClassName=""
               placeholderClassName="lb-live-chat-input__placeholder truncate"
             />
