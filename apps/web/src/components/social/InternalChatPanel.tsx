@@ -2448,6 +2448,7 @@ export function InternalChatPanel({
               const gone = Boolean(message.deleted || message.deletedForEveryone || message.hiddenForMe);
               const isAudio = !gone && message.mediaType === 'audio' && Boolean(message.mediaUrl);
               const isVideo = !gone && message.mediaType === 'video' && Boolean(message.mediaUrl);
+              const isVideoNote = isVideo && /^🎬\s*Nota de video$/i.test(message.text.trim());
               const isGif = !gone && isAnimatedChatGif(message.mediaUrl, message.mediaType);
               const isFile = !gone && message.mediaType === 'file' && Boolean(message.mediaUrl);
               const isSticker =
@@ -2616,8 +2617,17 @@ export function InternalChatPanel({
                                 </span>
                               </button>
                             ) : null}
-                            {isVideo && message.mediaUrl ? (
+                            {isVideoNote && message.mediaUrl ? (
                               <VideoNoteBubble src={message.mediaUrl} mine={message.mine} />
+                            ) : isVideo && message.mediaUrl ? (
+                              <video
+                                src={message.mediaUrl}
+                                controls
+                                playsInline
+                                preload="metadata"
+                                onClick={(event) => event.stopPropagation()}
+                                className="lb-chat-video mb-1 block max-h-[min(20rem,50dvh)] w-[min(16rem,62vw)] max-w-full rounded-xl bg-black object-contain"
+                              />
                             ) : null}
                             {isSticker ? (
                               <button
