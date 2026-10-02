@@ -1396,6 +1396,76 @@ html[data-lb-theme='light'] .lb-gift-combo-badge__img {
   outline: none;
 }
 
+.lb-chat-gift-card {
+  display: flex;
+  min-width: 7.5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem 0.5rem 0.35rem;
+  color: var(--text-primary, #fff);
+  background: transparent;
+  border: 0;
+  transition: transform 0.15s ease;
+  --lb-gift-tag: var(--accent-primary, #d946ef);
+}
+
+.lb-chat-gift-card.is-in {
+  --lb-gift-tag: #f59e0b;
+}
+
+html[data-lb-theme='light'] .lb-chat-gift-card.is-in {
+  --lb-gift-tag: #b45309;
+}
+
+.lb-chat-gift-card__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-bottom: 0.15rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--lb-gift-tag);
+  border: 1px solid color-mix(in srgb, var(--lb-gift-tag) 55%, transparent);
+  background: color-mix(in srgb, var(--lb-gift-tag) 12%, transparent);
+}
+
+.lb-chat-gift-card__name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.lb-chat-gift-card__coins {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: #fbbf24;
+}
+
+html[data-lb-theme='light'] .lb-chat-gift-card__name {
+  text-shadow: none;
+}
+
+html[data-lb-theme='light'] .lb-chat-gift-card__coins {
+  color: #b45309;
+}
+
+.lb-chat-gift-card__cta {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  color: var(--accent-secondary, #22d3ee);
+}
+
+.lb-chat-gift-card.is-replay:hover,
+.lb-chat-gift-card.is-replay:focus-visible {
+  transform: scale(1.04);
+  outline: none;
+}
+
 .lb-gift-combo-badge--corner {
   top: max(0.35rem, 3%);
   right: max(0.35rem, 4%);

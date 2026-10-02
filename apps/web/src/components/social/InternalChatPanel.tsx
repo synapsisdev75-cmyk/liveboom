@@ -1,5 +1,7 @@
 import {
+  ArrowDownLeft,
   ArrowLeft,
+  ArrowUpRight,
   BadgeCheck,
   Camera,
   Check,
@@ -2539,7 +2541,7 @@ export function InternalChatPanel({
                       </button>
                       <div
                         className={`break-words ${
-                          isVideo || isSticker
+                          isVideo || isSticker || isGift
                             ? 'bg-transparent p-0'
                             : `lb-chat-bubble rounded-2xl py-2.5 text-[13px] leading-relaxed ${
                                 message.mine
@@ -2632,20 +2634,24 @@ export function InternalChatPanel({
                                   window.clearTimeout(holdTimerRef.current);
                                   replayOfflineGiftOnce(message);
                                 }}
-                                className={`mb-1 flex min-w-[9rem] flex-col items-center gap-1 rounded-xl py-1 transition ${
-                                  canReplayGift
-                                    ? 'lb-chat-gift-replay cursor-pointer active:scale-[0.98]'
-                                    : 'cursor-default'
+                                className={`lb-chat-gift-card ${message.mine ? 'is-out' : 'is-in'} ${
+                                  canReplayGift ? 'is-replay cursor-pointer active:scale-[0.98]' : 'cursor-default'
                                 }`}
-                                aria-label={
-                                  canReplayGift
-                                    ? `Ver animación de ${giftItem?.name || 'regalo'}`
-                                    : giftItem?.name || 'Regalo'
-                                }
+                                aria-label={`${message.mine ? 'Regalo enviado' : 'Regalo recibido'}: ${
+                                  giftItem?.name || 'Regalo'
+                                }${canReplayGift ? '. Toca para ver la animación' : ''}`}
                                 title={canReplayGift ? 'Toca una vez para ver la animación' : undefined}
                               >
-                                <span className="relative inline-flex">
-                                  <GiftVisual gift={giftItem} size={56} />
+                                <span className="lb-chat-gift-card__tag">
+                                  {message.mine ? (
+                                    <ArrowUpRight size={11} strokeWidth={2.6} aria-hidden />
+                                  ) : (
+                                    <ArrowDownLeft size={11} strokeWidth={2.6} aria-hidden />
+                                  )}
+                                  {message.mine ? 'Enviaste' : 'Recibiste'}
+                                </span>
+                                <span className="relative inline-flex drop-shadow-[0_4px_10px_rgba(0,0,0,0.45)]">
+                                  <GiftVisual gift={giftItem} size={72} />
                                   {giftMult > 1 ? (
                                     <GiftComboBadge
                                       combo={giftMult}
@@ -2654,12 +2660,12 @@ export function InternalChatPanel({
                                     />
                                   ) : null}
                                 </span>
-                                <p className="text-xs font-semibold">{giftItem?.name || 'Regalo'}</p>
+                                <span className="lb-chat-gift-card__name">{giftItem?.name || 'Regalo'}</span>
                                 {giftItem ? (
-                                  <p className="text-[10px] opacity-80">{giftItem.coins} coins</p>
+                                  <span className="lb-chat-gift-card__coins">{giftItem.coins} coins</span>
                                 ) : null}
                                 {canReplayGift ? (
-                                  <p className="text-[9px] font-semibold text-cyan-300/90">Toca para ver</p>
+                                  <span className="lb-chat-gift-card__cta">Toca para ver</span>
                                 ) : null}
                               </button>
                             ) : null}
