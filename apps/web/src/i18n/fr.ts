@@ -406,6 +406,7 @@ export const fr: Catalog = {
     commentLive: 'Commentaire',
     reply: 'Répondre',
     share: 'Partager',
+    report: 'Signaler',
     shareNow: 'Partager maintenant',
     sharing: 'Partage…',
     shareOn: 'Partager sur',

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { submitInAppFeedback, type FeedbackCategory } from '../../lib/userReports';
+import { useAuthStore } from '../../store/authStore';
 
 const MESSAGE_MAX = 1000;
 
@@ -25,6 +26,7 @@ type Props = {
  * requerido por la política de estándares de seguridad infantil de Google Play.
  */
 export function InAppFeedbackModal({ open, onClose, onToast }: Props) {
+  const signedIn = useAuthStore((state) => Boolean(state.firebaseUser || state.profile));
   const [category, setCategory] = useState<FeedbackCategory>('child_safety');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -34,6 +36,10 @@ export function InAppFeedbackModal({ open, onClose, onToast }: Props) {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!signedIn) {
+      setError('Inicia sesión en LiveBoom para enviar este reporte.');
+      return;
+    }
     const text = message.trim();
     if (!text) {
       setError('Escribe tu mensaje.');
@@ -139,6 +145,14 @@ export function InAppFeedbackModal({ open, onClose, onToast }: Props) {
         <p className="lb-chat-report-count">
           {message.length} / {MESSAGE_MAX}
         </p>
+        {!signedIn ? (
+          <p className="mt-2 text-[12px] leading-snug text-zinc-300">
+            <Link to="/login" className="font-semibold text-cyan-300 underline underline-offset-2" onClick={onClose}>
+              Inicia sesión
+            </Link>{' '}
+            dentro de LiveBoom para enviar el reporte. No hace falta salir de la app.
+          </p>
+        ) : null}
         {error ? <p className="lb-chat-report-error">{error}</p> : null}
 
         <div className="lb-chat-report-actions">

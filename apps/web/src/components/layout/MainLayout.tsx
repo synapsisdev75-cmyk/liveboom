@@ -1,6 +1,7 @@
 import {
   ChevronRight,
   Clock,
+  Flag,
   Home,
   Menu,
   MessageCircle,
@@ -38,6 +39,7 @@ import { SidebarSuggestedCreatorsCard } from './SidebarSuggestedCreatorsCard';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { LiquidBottomNav } from './LiquidBottomNav';
 import { Logo } from '../brand/Logo';
+import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
 import { AppearanceControl } from '../appearance/AppearanceControl';
 import { bcp47For, useT } from '../../i18n';
 import { useLocaleStore } from '../../store/localeStore';
@@ -348,6 +350,7 @@ export function MainLayout() {
   const toast = useUiStore((state) => state.toast);
   const toastTone = useUiStore((state) => state.toastTone);
   const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   /** retract = iconos + expandir al pasar; fixed = sidebar siempre abierto. */
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => readSidebarMode());
@@ -544,14 +547,38 @@ export function MainLayout() {
           )}
           <button
             type="button"
+            onClick={() => setFeedbackOpen(true)}
+            className="inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-xl bg-white/10 px-2 text-[11px] font-bold text-white ring-1 ring-white/15 backdrop-blur-md"
+            aria-label={t('settings.reportProblem')}
+          >
+            <Flag size={15} aria-hidden />
+            <span className="max-[380px]:sr-only">{t('actions.report')}</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setMenuOpen(true)}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10 text-zinc-200 ring-1 ring-white/15 backdrop-blur-md"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/10 text-zinc-200 ring-1 ring-white/15 backdrop-blur-md"
             aria-label={t('nav.openMenu')}
           >
             <Menu size={17} />
           </button>
         </div>
       </header>
+
+      {hideExploreHeader ? (
+        <button
+          type="button"
+          onClick={() => setFeedbackOpen(true)}
+          className="fixed z-40 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-black/75 px-3 text-xs font-bold text-white ring-1 ring-white/30 backdrop-blur-md"
+          style={{
+            top: 'max(0.45rem, var(--lb-safe-top))',
+            right: 'max(0.45rem, var(--lb-safe-right))',
+          }}
+        >
+          <Flag size={15} aria-hidden />
+          {t('actions.report')}
+        </button>
+      ) : null}
 
       <aside
         className={`lb-sidebar hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] py-3 md:flex ${
@@ -658,6 +685,17 @@ export function MainLayout() {
                 scrollable
               />
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                setFeedbackOpen(true);
+              }}
+              className="mt-2 inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300/40 text-xs font-semibold text-amber-100"
+            >
+              <Flag size={14} />
+              {t('settings.reportProblem')}
+            </button>
             {profile ? (
               <button
                 type="button"
@@ -676,6 +714,8 @@ export function MainLayout() {
       ) : null}
 
       {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
+
+      <InAppFeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {profile ? <MessagesFloatingHost /> : null}
 

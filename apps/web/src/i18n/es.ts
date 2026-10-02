@@ -404,6 +404,7 @@ export const es = {
     commentLive: 'Comentario',
     reply: 'Responder',
     share: 'Compartir',
+    report: 'Reportar',
     shareNow: 'Compartir ahora',
     sharing: 'Compartiendo…',
     shareOn: 'Compartir en',

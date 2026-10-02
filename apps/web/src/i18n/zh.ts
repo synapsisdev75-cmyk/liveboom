@@ -404,6 +404,7 @@ export const zh: Catalog = {
     commentLive: '评论',
     reply: '回复',
     share: '分享',
+    report: '举报',
     shareNow: '立即分享',
     sharing: '分享中…',
     shareOn: '分享到',
