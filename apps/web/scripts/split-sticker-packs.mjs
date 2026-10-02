@@ -10,6 +10,8 @@ const OUT_DIR = path.join(root, 'public', 'stickers');
 const CATALOG_FILE = path.join(root, 'src', 'lib', 'stickerPacks.data.ts');
 
 const OUT_SIZE = 400;
+/** Subir al regenerar para que los navegadores no muestren la versión cacheada. */
+const ASSET_VERSION = 2;
 
 /**
  * Hojas fuente (1024×1024). Etiquetas fila a fila, izquierda a derecha.
@@ -509,6 +511,147 @@ async function keepMainParts(mask, w, h, maxGap) {
   return out;
 }
 
+/** Línea gris clara del contorno troquelado en hojas claras: no es parte del dibujo. */
+function isDieCutLine(data, p) {
+  const r = data[p];
+  const g = data[p + 1];
+  const b = data[p + 2];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return min >= 170 && max - min <= 30;
+}
+
+/**
+ * Hojas claras: fondo y borde blanco tienen el mismo tono; el troquel solo se distingue por su línea
+ * gris tenue. Inunda desde el borde del recorte por píxeles casi blancos (o de otro sticker) y
+ * devuelve lo no alcanzado = troquel completo con su borde blanco.
+ */
+function dieCutRegion(data, W, channels, owner, index, offX, offY, w, h) {
+  const open = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const src = (offY + y) * W + offX + x;
+      const p = src * channels;
+      const min = Math.min(data[p], data[p + 1], data[p + 2]);
+      const other = owner[src] >= 0 && owner[src] !== index;
+      open[y * w + x] = min >= 245 || other ? 1 : 0;
+    }
+  }
+  const pass = erode(open, w, h, 1);
+  const outside = new Uint8Array(w * h);
+  const stack = new Int32Array(w * h);
+  let sp = 0;
+  for (let x = 0; x < w; x++) {
+    for (const i of [x, (h - 1) * w + x]) if (pass[i] && !outside[i]) { outside[i] = 1; stack[sp++] = i; }
+  }
+  for (let y = 0; y < h; y++) {
+    for (const i of [y * w, y * w + w - 1]) if (pass[i] && !outside[i]) { outside[i] = 1; stack[sp++] = i; }
+  }
+  while (sp > 0) {
+    const i = stack[--sp];
+    const x = i % w;
+    const y = (i - x) / w;
+    const nbrs = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+    for (const n of nbrs) {
+      if (n >= 0 && pass[n] && !outside[n]) {
+        outside[n] = 1;
+        stack[sp++] = n;
+      }
+    }
+  }
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) out[i] = outside[i] ? 0 : 1;
+  return out;
+}
+
+/**
+ * Quita el borde blanco troquelado: BFS desde el exterior de la silueta a través de píxeles claros
+ * y poco saturados, como mucho `depth` px hacia dentro (no se come pelo blanco ni cuerpos claros).
+ */
+function peelBorder(mask, data, W, channels, offX, offY, w, h, depth) {
+  const borderLike = (i) => {
+    const x = i % w;
+    const y = (i - x) / w;
+    const p = ((offY + y) * W + offX + x) * channels;
+    const r = data[p];
+    const g = data[p + 1];
+    const b = data[p + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    return min >= 175 && max - min <= 38;
+  };
+  const dist = new Int16Array(w * h).fill(-1);
+  const queue = new Int32Array(w * h);
+  let head = 0;
+  let tail = 0;
+  for (let i = 0; i < w * h; i++) {
+    if (!mask[i]) continue;
+    const x = i % w;
+    const y = (i - x) / w;
+    const edge =
+      x === 0 || y === 0 || x === w - 1 || y === h - 1 ||
+      !mask[i - 1] || !mask[i + 1] || !mask[i - w] || !mask[i + w];
+    if (edge && borderLike(i)) {
+      dist[i] = 1;
+      queue[tail++] = i;
+    }
+  }
+  const limit = depth === 'auto' ? 0x7fff : depth;
+  const stops = [];
+  while (head < tail) {
+    const i = queue[head++];
+    if (dist[i] >= limit) continue;
+    const x = i % w;
+    const y = (i - x) / w;
+    const nbrs = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+    for (const n of nbrs) {
+      if (n < 0 || !mask[n] || dist[n] !== -1) continue;
+      if (!borderLike(n)) {
+        stops.push(dist[i]);
+        continue;
+      }
+      dist[n] = dist[i] + 1;
+      queue[tail++] = n;
+    }
+  }
+  let cutoff = limit;
+  if (depth === 'auto') {
+    stops.sort((a, b) => a - b);
+    const thickness = stops.length ? stops[Math.floor(stops.length * 0.6)] : 0;
+    cutoff = Math.min(28, thickness + 3);
+  }
+  const removed = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (dist[i] !== -1 && dist[i] <= cutoff) removed[i] = 1;
+  if (depth === 'auto') {
+    // Huecos cóncavos del troquel: blanco plano conectado al borde ya quitado, sin límite de profundidad.
+    const flatWhite = (i) => {
+      const x = i % w;
+      const y = (i - x) / w;
+      const p = ((offY + y) * W + offX + x) * channels;
+      const min = Math.min(data[p], data[p + 1], data[p + 2]);
+      const max = Math.max(data[p], data[p + 1], data[p + 2]);
+      return min >= 244 && max - min <= 10;
+    };
+    head = 0;
+    tail = 0;
+    for (let i = 0; i < w * h; i++) if (removed[i]) queue[tail++] = i;
+    while (head < tail) {
+      const i = queue[head++];
+      const x = i % w;
+      const y = (i - x) / w;
+      const nbrs = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
+      for (const n of nbrs) {
+        if (n < 0 || !mask[n] || removed[n] || !flatWhite(n)) continue;
+        removed[n] = 1;
+        queue[tail++] = n;
+      }
+    }
+  }
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (mask[i] && !removed[i]) out[i] = 1;
+  return out;
+}
+
 /** Alfa con borde antialias. */
 async function softEdge(mask, w, h) {
   return sharp(toGray(mask), { raw: { width: w, height: h, channels: 1 } })
@@ -526,9 +669,9 @@ async function splitSheet(sheet) {
   const channels = info.channels;
   const { labels, comps } = findComponents(data, W, H, channels, sheet.bg);
   const owner = assignOwners(labels, comps, W, H, sheet);
-  /** Hojas oscuras ya traen el borde blanco; en las claras el borde blanco se pierde con el fondo. */
-  const border = sheet.bg === 'dark' ? 3.5 : 10;
-  const pad = Math.ceil(border) + 4;
+  /** Grosor máximo (px de hoja) del borde blanco troquelado que se pela desde fuera (hojas oscuras). */
+  const borderDepth = 16;
+  const pad = sheet.bg === 'light' ? 16 : 6;
   const out = [];
 
   for (let row = 0; row < sheet.rows; row++) {
@@ -558,25 +701,40 @@ async function splitSheet(sheet) {
       const own = new Uint8Array(w * h);
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
-          if (owner[(minY + y) * W + minX + x] === index) own[y * w + x] = 1;
+          const src = (minY + y) * W + minX + x;
+          if (owner[src] !== index) continue;
+          if (sheet.bg === 'light' && isDieCutLine(data, src * channels)) continue;
+          own[y * w + x] = 1;
         }
       }
-      const art = fillHoles(await keepMainParts(own, w, h, sheet.bg === 'dark' ? 0 : 30), w, h);
-      const silhouette = fillHoles(await roundDilate(art, w, h, border), w, h);
-      const solid = sheet.bg === 'dark' ? erode(art, w, h, 2) : art;
-      const alpha = await softEdge(silhouette, w, h);
+      let figure;
+      if (sheet.bg === 'dark') {
+        const art = erode(fillHoles(await keepMainParts(own, w, h, 0), w, h), w, h, 2);
+        const peeled = peelBorder(art, data, W, channels, minX, minY, w, h, borderDepth);
+        figure = fillHoles(await keepMainParts(peeled, w, h, 30), w, h);
+      } else {
+        const colored = fillHoles(await keepMainParts(own, w, h, 30), w, h);
+        const dieCut = fillHoles(
+          await keepMainParts(dieCutRegion(data, W, channels, owner, index, minX, minY, w, h), w, h, 0),
+          w,
+          h,
+        );
+        const peeled = peelBorder(dieCut, data, W, channels, minX, minY, w, h, 'auto');
+        const merged = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) merged[i] = colored[i] || peeled[i] ? 1 : 0;
+        figure = fillHoles(await keepMainParts(merged, w, h, 30), w, h);
+      }
+      const alpha = await softEdge(erode(figure, w, h, 1), w, h);
 
       const pixels = Buffer.alloc(w * h * 4);
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const i = y * w + x;
           const o = i * 4;
-          const src = (minY + y) * W + minX + x;
-          const p = src * channels;
-          const inArt = solid[i] && (owner[src] === index || owner[src] === -2);
-          pixels[o] = inArt ? data[p] : 255;
-          pixels[o + 1] = inArt ? data[p + 1] : 255;
-          pixels[o + 2] = inArt ? data[p + 2] : 255;
+          const p = ((minY + y) * W + minX + x) * channels;
+          pixels[o] = data[p];
+          pixels[o + 1] = data[p + 1];
+          pixels[o + 2] = data[p + 2];
           pixels[o + 3] = alpha[i];
         }
       }
@@ -606,7 +764,7 @@ async function splitSheet(sheet) {
         .webp({ quality: 90, alphaQuality: 100, effort: 5 })
         .toFile(path.join(OUT_DIR, file));
 
-      out.push({ id, label, pack: sheet.pack, src: `/stickers/${file}` });
+      out.push({ id, label, pack: sheet.pack, src: `/stickers/${file}?v=${ASSET_VERSION}` });
     }
   }
   return out;
