@@ -1,4 +1,4 @@
-import { Bell, Box, Camera, ChevronLeft, ChevronRight, Globe, Image, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
+import { Bell, Box, Camera, ChevronLeft, ChevronRight, Globe, Image, LayoutGrid, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
@@ -30,6 +30,7 @@ import type { SocialPost } from './SocialPostCard';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
 import { GifPickerSheet } from './GifPickerSheet';
 import { StickerPickerSheet } from './StickerPickerSheet';
+import { CollageMakerSheet } from './CollageMakerSheet';
 import { PhotoEditPanel } from './PhotoEditPanel';
 import {
   canAddOverlay,
@@ -163,6 +164,7 @@ export function CreatePostModal({
   const [gifAttach, setGifAttach] = useState<ComposerGif | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
+  const [collageOpen, setCollageOpen] = useState(false);
   const [reconstruction, setReconstruction] = useState<ReconstructionDraft | null>(getReconstructionDraft());
   const setToast = useUiStore((state) => state.setToast);
   const [photoEditOpen, setPhotoEditOpen] = useState(false);
@@ -1972,6 +1974,20 @@ export function CreatePostModal({
                 <Smile size={14} />
                 Sticker
               </button>
+              {composeTab !== 'boomclip' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMediaMenuOpen(false);
+                    setCollageOpen(true);
+                  }}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 px-2.5 text-[11px] font-bold text-zinc-950"
+                  aria-label="Collage"
+                >
+                  <LayoutGrid size={14} />
+                  Collage
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
@@ -2256,6 +2272,21 @@ export function CreatePostModal({
         open={stickerPickerOpen}
         onClose={() => setStickerPickerOpen(false)}
         onPick={pickSticker}
+      />
+      <CollageMakerSheet
+        open={collageOpen}
+        onClose={() => setCollageOpen(false)}
+        initialFiles={
+          kind === 'photo'
+            ? (mediaFiles.length ? mediaFiles : [mediaFile]).filter((file): file is File => Boolean(file))
+            : []
+        }
+        defaultAspect={composeTab === 'flashboom' ? '9:16' : '4:5'}
+        onApply={(file) => {
+          setCollageOpen(false);
+          if (composeTab === 'boomclip') return;
+          applyMediaFile(file, 'photo');
+        }}
       />
     </>
   );
