@@ -443,6 +443,7 @@ function ChatAttachMenu({
   onCamera,
   onVideoNote,
   onFile,
+  onGif,
 }: {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
@@ -452,6 +453,7 @@ function ChatAttachMenu({
   onCamera: () => void;
   onVideoNote: () => void;
   onFile: () => void;
+  onGif: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, ready: false });
@@ -575,6 +577,12 @@ function ChatAttachMenu({
             <FileText size={18} />
           </span>
           Archivo
+        </button>
+        <button type="button" role="menuitem" className="lb-chat-attach-cell" onClick={() => pick(onGif)}>
+          <span className="lb-chat-attach-ico is-gif" aria-hidden>
+            GIF
+          </span>
+          GIF
         </button>
       </div>
       <button type="button" role="menuitem" className="lb-chat-attach-note" onClick={() => pick(onVideoNote)}>
@@ -3219,6 +3227,11 @@ export function InternalChatPanel({
                   onCamera={() => setCameraOpen(true)}
                   onVideoNote={() => setVideoNoteOpen(true)}
                   onFile={() => attachFileRef.current?.click()}
+                  onGif={() => {
+                    setGifOpen(true);
+                    setEmojiPickerOpen(false);
+                    setStickerOpen(false);
+                  }}
                 />
               </div>
               <form
@@ -3265,21 +3278,6 @@ export function InternalChatPanel({
                       buttonClassName={`lb-chat-composer-tool${emojiPickerOpen ? ' is-on' : ''}`}
                       onPick={(id) => composerInputRef.current?.insertToken(id)}
                     />
-                    <button
-                      type="button"
-                      className={`lb-chat-composer-tool${gifOpen ? ' is-on' : ''}`}
-                      aria-label="GIF"
-                      title="GIF"
-                      aria-pressed={gifOpen}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setGifOpen((open) => !open);
-                        setEmojiPickerOpen(false);
-                        setAttachOpen(false);
-                      }}
-                    >
-                      <span className="lb-chat-composer-gif-mark">GIF</span>
-                    </button>
                     <button
                       type="button"
                       className={`lb-chat-composer-tool${stickerOpen ? ' is-on' : ''}`}
