@@ -302,6 +302,13 @@ service cloud.firestore {
         allow write: if isSelf(userId);
       }
 
+      match /savedStickers/{stickerId} {
+        allow read, delete: if isSelf(userId);
+        allow create, update: if isSelf(userId)
+          && request.resource.data.src is string
+          && request.resource.data.src.size() < 2048;
+      }
+
       match /freeCallContacts/{contactId} {
         allow get: if isSelf(userId) || isSelf(contactId);
         allow list: if isSelf(userId);

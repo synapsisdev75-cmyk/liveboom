@@ -117,6 +117,7 @@ import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { registerChatCallSurface } from '../../lib/chatCallSurface';
 import { profileHref } from '../../lib/profileFirestore';
 import { StickerPickerSheet } from './StickerPickerSheet';
+import { StickerViewerSheet } from './StickerViewerSheet';
 import type { ComposerSticker } from '../../lib/composerStickers';
 
 type Props = {
@@ -773,6 +774,7 @@ export function InternalChatPanel({
   >([]);
   const [giftLayoutContext, setGiftLayoutContext] = useState<GiftLayoutVariantId>('chat');
   const [mediaViewer, setMediaViewer] = useState<{ url: string; gif?: boolean } | null>(null);
+  const [stickerViewer, setStickerViewer] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [listTab, setListTab] = useState<ListTab>('todos');
@@ -2604,14 +2606,24 @@ export function InternalChatPanel({
                               <VideoNoteBubble src={message.mediaUrl} mine={message.mine} />
                             ) : null}
                             {isSticker ? (
-                              <img
-                                src={message.mediaUrl!}
-                                alt="Sticker"
-                                loading="lazy"
-                                decoding="async"
-                                draggable={false}
-                                className="lb-chat-sticker block h-[clamp(7.5rem,32vw,10rem)] w-[clamp(7.5rem,32vw,10rem)] select-none object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.45)]"
-                              />
+                              <button
+                                type="button"
+                                className="block rounded-2xl"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setStickerViewer(message.mediaUrl!);
+                                }}
+                                aria-label="Ver sticker"
+                              >
+                                <img
+                                  src={message.mediaUrl!}
+                                  alt="Sticker"
+                                  loading="lazy"
+                                  decoding="async"
+                                  draggable={false}
+                                  className="lb-chat-sticker block h-[clamp(7.5rem,32vw,10rem)] w-[clamp(7.5rem,32vw,10rem)] select-none object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.45)]"
+                                />
+                              </button>
                             ) : message.mediaType === 'image' || isGif ? (
                               message.mediaUrl ? (
                               <button
@@ -3406,6 +3418,7 @@ export function InternalChatPanel({
         onClose={() => setStickerOpen(false)}
         onPick={(sticker) => void sendStickerMessage(sticker)}
       />
+      <StickerViewerSheet src={stickerViewer} onClose={() => setStickerViewer(null)} />
       {giftsOpen ? (
         <GiftCatalogLayer open={giftsOpen} triggerRef={giftTriggerRef} onClose={() => setGiftsOpen(false)}>
           <GiftBoxStrip

@@ -75,7 +75,7 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
     if (!uid) return;
     setMine((current) => current.filter((item) => item.id !== sticker.id));
     try {
-      await deleteCustomSticker(uid, sticker.storagePath);
+      await deleteCustomSticker(uid, sticker);
     } catch {
       setMine((current) => [sticker, ...current]);
       setMineError('No se pudo borrar el sticker.');
@@ -153,7 +153,7 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
               <>
                 <div className="mb-2 flex items-center justify-between px-1">
                   <p className="text-[11px] text-zinc-400">
-                    {mine.length}/{CUSTOM_STICKER_MAX} · Sube fotos, quita el fondo y añade texto.
+                    {mine.length}/{CUSTOM_STICKER_MAX} · Crea los tuyos o guarda los que te envíen.
                   </p>
                   {mine.length > 0 ? (
                     <button
