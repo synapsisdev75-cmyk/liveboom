@@ -17,6 +17,7 @@ import {
   Plus,
   Search,
   Send,
+  Sticker,
   MoreHorizontal,
   Trash2,
   Video,
@@ -3134,6 +3135,22 @@ export function InternalChatPanel({
                       }}
                     >
                       <span className="lb-chat-composer-gif-mark">GIF</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`lb-chat-composer-tool${stickerOpen ? ' is-on' : ''}`}
+                      aria-label="Sticker"
+                      title="Sticker"
+                      aria-pressed={stickerOpen}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setStickerOpen(true);
+                        setGifOpen(false);
+                        setEmojiPickerOpen(false);
+                        setAttachOpen(false);
+                      }}
+                    >
+                      <Sticker />
                     </button>
                   </div>
                 </div>
