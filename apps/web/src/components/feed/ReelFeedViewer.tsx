@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -78,6 +79,7 @@ export function ReelFeedViewer({
   exploreFastNav = false,
 }: Props) {
   useBodyScrollLock(!embedded);
+  useBackLayer(!embedded, onClose);
   const profile = useAuthStore((state) => state.profile);
   const [index, setIndex] = useState(() =>
     Math.min(Math.max(initialIndex, 0), Math.max(reels.length - 1, 0)),

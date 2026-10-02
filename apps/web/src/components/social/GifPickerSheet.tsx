@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
@@ -13,6 +14,7 @@ export function GifPickerSheet({ open, onClose, onPick }: Props) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<ComposerGif[]>([]);
   const [busy, setBusy] = useState(false);
+  useBackLayer(open, onClose);
 
   useEffect(() => {
     if (!open) return;

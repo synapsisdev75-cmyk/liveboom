@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import {
   Check,
   Copy,
@@ -162,6 +163,7 @@ export function ShareModal({
   const captionInputRef = useRef<EmojiInputHandle>(null);
 
   useBodyScrollLock(open);
+  useBackLayer(open, onClose);
 
   useEffect(() => {
     if (!open) return;

@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import {
   Globe,
   Lock,
@@ -272,6 +273,7 @@ export function PostVideoPlayer({
   const [giftsOpen, setGiftsOpen] = useState(false);
 
   const closeExpandRef = useRef<() => void>(() => undefined);
+  useBackLayer(expanded && !overlayOnly, () => closeExpandRef.current());
   useEffect(() => {
     const onHome = () => closeExpandRef.current();
     window.addEventListener(GO_HOME_EVENT, onHome);

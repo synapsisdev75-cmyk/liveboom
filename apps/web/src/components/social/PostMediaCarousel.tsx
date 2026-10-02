@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -73,6 +74,7 @@ export function PostMediaCarousel({
   const [commentsOpen, setCommentsOpen] = useState(false);
 
   const closeExpandRef = useRef<() => void>(() => undefined);
+  useBackLayer(expanded, () => closeExpandRef.current());
   useEffect(() => {
     const onHome = () => closeExpandRef.current();
     window.addEventListener(GO_HOME_EVENT, onHome);

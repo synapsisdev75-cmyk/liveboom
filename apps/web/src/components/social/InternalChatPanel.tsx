@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import {
   ArrowDownLeft,
   ArrowLeft,
@@ -728,6 +729,10 @@ export function InternalChatPanel({
   const [activeUid, setActiveUid] = useState<string | null>(
     floatingPeer?.uid || searchParams.get('conUid'),
   );
+  const chatBreakpoint = useBreakpoint();
+  useBackLayer(isPage && !isFloating && Boolean(activeUid) && chatBreakpoint === 'phone', () =>
+    setActiveUid(null),
+  );
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -775,6 +780,7 @@ export function InternalChatPanel({
   const [giftLayoutContext, setGiftLayoutContext] = useState<GiftLayoutVariantId>('chat');
   const [mediaViewer, setMediaViewer] = useState<{ url: string; gif?: boolean } | null>(null);
   const [stickerViewer, setStickerViewer] = useState<string | null>(null);
+  useBackLayer(Boolean(mediaViewer), () => setMediaViewer(null));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
   const [listTab, setListTab] = useState<ListTab>('todos');

@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { Camera, RefreshCcw, SwitchCamera, Video, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -61,6 +62,7 @@ export function FlashBoomCameraCapture({
   defaultMode = 'photo',
 }: Props) {
   useBodyScrollLock(open);
+  useBackLayer(open, onClose);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);

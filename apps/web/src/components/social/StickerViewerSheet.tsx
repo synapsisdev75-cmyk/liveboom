@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
@@ -35,6 +36,7 @@ export function StickerViewerSheet({ src, onClose }: Props) {
   const [creator, setCreator] = useState<PublicFsUser | null>(null);
   const [creatorLoading, setCreatorLoading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>('checking');
+  useBackLayer(Boolean(src), onClose);
 
   useEffect(() => {
     setCreator(null);

@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { Bell, Box, Camera, ChevronLeft, ChevronRight, Globe, Image, LayoutGrid, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -1463,6 +1464,7 @@ export function CreatePostModal({
   const showPanel = isInline || open;
   const isModalOpen = showPanel && !isInline;
   useBodyScrollLock(isModalOpen || cameraCaptureOpen);
+  useBackLayer(isModalOpen, () => (discardOpen ? setDiscardOpen(false) : requestClose()));
   const modalTitle = isEditMode
     ? 'Editar publicación'
     : isFlashBoom

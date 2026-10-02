@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { Gift } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -110,6 +111,7 @@ function PostReceivedGiftsPanel({
   const [hasMore, setHasMore] = useState(false);
 
   useBodyScrollLock(true);
+  useBackLayer(true, onClose);
 
   useEffect(() => {
     setStatus('loading');

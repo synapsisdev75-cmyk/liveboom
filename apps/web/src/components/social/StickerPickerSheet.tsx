@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Clapperboard, Loader2, Plus, X } from 'lucide-react';
@@ -34,6 +35,7 @@ export function StickerPickerSheet({ open, onClose, onPick }: Props) {
   const [mineError, setMineError] = useState<string | null>(null);
   const [creating, setCreating] = useState<'photo' | 'video' | null>(null);
   const [editing, setEditing] = useState(false);
+  useBackLayer(open, () => (creating ? setCreating(null) : onClose()));
 
   useEffect(() => {
     if (!open || pack !== 'mios' || !uid) return;

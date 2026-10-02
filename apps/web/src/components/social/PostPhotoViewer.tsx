@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -108,6 +109,7 @@ export function PostPhotoViewer({
   const [giftsOpen, setGiftsOpen] = useState(false);
 
   const closeExpandRef = useRef<() => void>(() => undefined);
+  useBackLayer(expanded && !overlayOnly, () => closeExpandRef.current());
   useEffect(() => {
     const onHome = () => closeExpandRef.current();
     window.addEventListener(GO_HOME_EVENT, onHome);

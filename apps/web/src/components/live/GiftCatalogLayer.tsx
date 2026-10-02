@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import {
   useCallback,
   useEffect,
@@ -85,6 +86,7 @@ export function GiftCatalogLayer({ open, onClose, children }: Props) {
   } | null>(() => (typeof window === 'undefined' ? null : fitGiftPanelCentered(false)));
 
   useBodyScrollLock(open);
+  useBackLayer(open, onClose);
 
   const updatePosition = useCallback(() => {
     const panel = panelRef.current;

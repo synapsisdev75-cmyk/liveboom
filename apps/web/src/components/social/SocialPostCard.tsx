@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { Globe, Lock, Loader2, MessageCircle, MoreHorizontal, Pencil, Trash2, UserMinus, UserPlus, UserX, Users } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -168,6 +169,7 @@ export function FollowListModal({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useBodyScrollLock(true);
+  useBackLayer(true, () => onCloseRef.current());
 
   useEffect(() => {
     const active = document.activeElement;

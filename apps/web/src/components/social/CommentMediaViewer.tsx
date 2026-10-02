@@ -1,3 +1,4 @@
+import { useBackLayer } from '../../lib/backLayer';
 import { Circle, Maximize2, Square, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -31,6 +32,7 @@ export function CommentMediaViewer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [cropShape, setCropShape] = useState<ProfilePhotoCropShape>('square');
   useBodyScrollLock(Boolean(item));
+  useBackLayer(Boolean(item), onClose);
 
   useEffect(() => {
     setCropShape('square');
