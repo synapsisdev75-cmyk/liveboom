@@ -1174,6 +1174,7 @@ export function CreatePostModal({
       kind: sticker.kind === 'text' ? 'text' : 'sticker',
       src: sticker.src,
       text: sticker.text,
+      scale: sticker.scale,
     });
   }
 
