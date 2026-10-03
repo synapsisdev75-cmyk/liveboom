@@ -71,7 +71,7 @@ export function PostOptionsMenu({ variant = 'header' }: Props) {
       {menuOpen && typeof document !== 'undefined'
         ? createPortal(
             <div
-              className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55"
+              className="fixed inset-0 z-[125] flex items-end justify-center bg-black/55"
               role="presentation"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {

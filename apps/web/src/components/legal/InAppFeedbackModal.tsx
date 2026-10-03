@@ -63,11 +63,17 @@ export function InAppFeedbackModal({ open, onClose, onToast }: Props) {
 
   return createPortal(
     <div
-      className="lb-chat-report-backdrop"
+      className="lb-chat-report-backdrop lb-inapp-feedback-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="lb-inapp-feedback-title"
-      onClick={() => {
+      onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === 'Escape' && !sending) onClose();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
         if (!sending) onClose();
       }}
     >
