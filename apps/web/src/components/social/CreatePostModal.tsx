@@ -1626,7 +1626,7 @@ export function CreatePostModal({
                   emojiSize={POST_EMOJI_SIZE}
                   growToMaxScroll
                   fieldClassName="publication-composer-field w-full min-w-0 max-w-full rounded-xl"
-                  padClassName={captionMax != null ? 'pb-7 pl-3 pr-[3.75rem] pt-2' : 'py-2 pl-3 pr-[3.75rem]'}
+                  padClassName="py-2 pl-3 pr-[3.75rem]"
                   mirrorTextClassName="publication-composer-text"
                   placeholderClassName="publication-composer-placeholder"
                 />
@@ -1640,13 +1640,13 @@ export function CreatePostModal({
                 onRangesChange={setTextStyleRanges}
               />
               {captionMax != null ? (
-                <span
-                  className={`pointer-events-none absolute bottom-1.5 right-[3.75rem] z-[2] text-[10px] leading-none font-semibold tabular-nums ${
+                <p
+                  className={`pointer-events-none mt-1 pr-1 text-right text-[10px] font-semibold leading-none tabular-nums ${
                     caption.length >= captionMax ? 'text-fuchsia-300' : 'text-zinc-500'
                   }`}
                 >
                   {caption.length}/{captionMax}
-                </span>
+                </p>
               ) : null}
             </div>
 
