@@ -67,6 +67,7 @@ type Props = {
   commentsPanelOpen?: boolean;
   showGifts?: boolean;
   onGiftsOpenChange?: (open: boolean) => void;
+  onOptionsOpenChange?: (open: boolean) => void;
   /** `media` = anclado al borde del video; `viewport` = borde de pantalla (legacy). */
   anchor?: 'media' | 'viewport';
   /** `aside` = columna al lado del media (PC, igual que Explorar). */
@@ -101,6 +102,7 @@ export function PostActionRail({
   commentsPanelOpen = false,
   showGifts = true,
   onGiftsOpenChange,
+  onOptionsOpenChange,
   anchor = 'viewport',
   layout = 'default',
   giftLayoutContext = 'publicaciones',
@@ -218,7 +220,7 @@ export function PostActionRail({
         />
       ) : null}
 
-      <PostOptionsMenu variant="rail" />
+      <PostOptionsMenu variant="rail" onOpenChange={onOptionsOpenChange} />
     </div>
   );
 }

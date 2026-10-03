@@ -1,5 +1,5 @@
 import { Flag, MoreHorizontal } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../../i18n';
 import { useBackLayer } from '../../lib/backLayer';
@@ -8,18 +8,27 @@ import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
 type Props = {
   /** `rail` = botón circular sobre el video. `header` = tres puntos de la publicación. */
   variant?: 'header' | 'rail';
+  /** Menú o denuncia abiertos (Flash Boom pausa el avance mientras tanto). */
+  onOpenChange?: (open: boolean) => void;
 };
 
 /**
  * Menú de la publicación (tres puntos). La denuncia que pide Google Play
  * vive aquí, sin salir de la app.
  */
-export function PostOptionsMenu({ variant = 'header' }: Props) {
+export function PostOptionsMenu({ variant = 'header', onOpenChange }: Props) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const optionsActive = menuOpen || reportOpen;
 
   useBackLayer(menuOpen, () => setMenuOpen(false));
+
+  useEffect(() => {
+    if (!optionsActive || !onOpenChange) return;
+    onOpenChange(true);
+    return () => onOpenChange(false);
+  }, [optionsActive, onOpenChange]);
 
   function openReport() {
     setMenuOpen(false);

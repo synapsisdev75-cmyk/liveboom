@@ -277,6 +277,7 @@ export function PostVideoPlayer({
   mutedRef.current = muted;
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   const closeExpandRef = useRef<() => void>(() => undefined);
   useBackLayer(expanded && !overlayOnly, () => closeExpandRef.current());
@@ -301,7 +302,7 @@ export function PostVideoPlayer({
     caption?.trim() ||
     (authorUsername ? `Mira este video de @${authorUsername} en LiveBoom` : 'Mira este video en LiveBoom');
   const videoAspect = useVideoAspect(skipRemoteAspectProbe ? null : src);
-  const storyHeld = commentsPanelOpen || giftsOpen;
+  const storyHeld = commentsPanelOpen || giftsOpen || optionsOpen;
 
   useEffect(() => {
     if (videoAspect.isReady) {
@@ -406,12 +407,12 @@ export function PostVideoPlayer({
     if (!storyMode) return;
     const video = videoRef.current;
     if (!video) return;
-    if (commentsPanelOpen || giftsOpen) {
+    if (storyHeld) {
       video.pause();
       return;
     }
     void video.play().catch(() => undefined);
-  }, [commentsPanelOpen, giftsOpen, storyMode, src, postId]);
+  }, [storyHeld, storyMode, src, postId]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -1000,6 +1001,7 @@ export function PostVideoPlayer({
               mediaType="video"
               commentsPanelOpen={commentsPanelOpen}
               onGiftsOpenChange={setGiftsOpen}
+              onOptionsOpenChange={setOptionsOpen}
               anchor="media"
               layout={expandedRailLayout}
               giftLayoutContext={storyMode ? 'flash_boom' : reelFeed ? 'boom_clip' : 'publicaciones'}

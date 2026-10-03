@@ -107,6 +107,7 @@ export function PostPhotoViewer({
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
 
   const closeExpandRef = useRef<() => void>(() => undefined);
   useBackLayer(expanded && !overlayOnly, () => closeExpandRef.current());
@@ -145,7 +146,7 @@ export function PostPhotoViewer({
 
   useEffect(() => {
     if (!storyMode || !expanded) return;
-    if (commentsOpen || giftsOpen) {
+    if (commentsOpen || giftsOpen || optionsOpen) {
       photoLastTickRef.current = null;
       return;
     }
@@ -165,7 +166,7 @@ export function PostPhotoViewer({
     };
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [storyMode, expanded, commentsOpen, giftsOpen, src, postId]);
+  }, [storyMode, expanded, commentsOpen, giftsOpen, optionsOpen, src, postId]);
 
   const shareUrl =
     authorUsername && postId ? buildPostShareUrl(authorUsername, postId, authorUid) : null;
@@ -395,6 +396,7 @@ export function PostPhotoViewer({
                 mediaType="photo"
                 commentsPanelOpen={commentsOpen}
                 onGiftsOpenChange={setGiftsOpen}
+                onOptionsOpenChange={setOptionsOpen}
                 anchor="media"
                 layout={useLandscapeAside ? 'aside' : 'corner'}
                 giftLayoutContext={storyMode ? 'flash_boom' : 'publicaciones'}
