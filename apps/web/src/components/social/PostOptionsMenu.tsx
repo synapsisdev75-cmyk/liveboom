@@ -73,14 +73,17 @@ export function PostOptionsMenu({ variant = 'header' }: Props) {
             <div
               className="fixed inset-0 z-[80] flex items-end justify-center bg-black/55"
               role="presentation"
-              onClick={() => setMenuOpen(false)}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen(false);
+              }}
             >
               <div
                 role="menu"
                 aria-label={t('actions.moreOptions')}
                 className="w-full max-w-lg rounded-t-3xl bg-zinc-950 px-3 pt-3 shadow-2xl ring-1 ring-white/10"
                 style={{ paddingBottom: 'max(0.85rem, var(--lb-safe-bottom))' }}
-                onClick={(event) => event.stopPropagation()}
               >
                 <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
                 <button
