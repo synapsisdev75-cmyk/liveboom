@@ -2957,6 +2957,21 @@ html[data-lb-theme='light'] .lb-chat-msg-menu {
   box-shadow: 0 10px 28px color-mix(in srgb, var(--bg-primary) 28%, transparent);
 }
 
+html[data-lb-theme='light'] .lb-inapp-feedback-select {
+  background: var(--surface-input);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  color-scheme: light;
+}
+
+html[data-lb-theme='light'] .lb-inapp-feedback .text-amber-100 {
+  color: #78350f;
+}
+
+html[data-lb-theme='light'] .lb-inapp-feedback .text-amber-300 {
+  color: #b45309;
+}
+
 html[data-lb-theme='light'] .lb-chat-call-chip.is-mine {
   background: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-elevated));
 }
