@@ -347,7 +347,7 @@ function GiftVideoBurst({
 
   return (
     <motion.div
-      className={`pointer-events-none flex flex-col items-center justify-center ${
+      className={`lb-gift-burst-host pointer-events-none flex flex-col items-center justify-center ${
         pinToViewport
           ? 'fixed inset-0 z-[114]'
           : 'absolute inset-0 z-[60]'
@@ -433,7 +433,7 @@ function GiftStillBurst({
 
   return (
     <motion.div
-      className={`pointer-events-none ${
+      className={`lb-gift-burst-host pointer-events-none ${
         globalArea && !frame916 ? 'fixed inset-0 z-[114]' : 'absolute inset-0 z-[60]'
       } ${isGiftLayoutBleed(stageSlot) ? 'lb-gift-layout-stage--bleed' : ''} ${
         frame916 ? 'lb-gift-burst-frame916' : ''

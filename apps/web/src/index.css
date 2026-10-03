@@ -1299,8 +1299,15 @@ html[data-lb-theme='light'] .gift-box-item video {
   object-position: center;
 }
 
-/* Pantalla ancha: regalos 9:16 sin cortes duros; los bordes se funden con el fondo. */
-@media (min-aspect-ratio: 1/1) {
+/*
+ * Regalo 9:16 en un área más ancha (LIVE 16:9, chat en PC, tablet…): bordes que se funden.
+ * Se mide el área del regalo, no la pantalla: un LIVE 16:9 en celular vertical también aplica.
+ */
+.lb-gift-burst-host {
+  container: lb-gift-burst / size;
+}
+
+@container lb-gift-burst (min-aspect-ratio: 5/8) {
   .lb-gift-burst-video--soft,
   .lb-gift-burst--soft .lb-gift-layout-media {
     -webkit-mask-image:
