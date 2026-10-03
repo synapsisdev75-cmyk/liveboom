@@ -1321,6 +1321,28 @@ html[data-lb-theme='light'] .gift-box-item video {
   }
 }
 
+/* LIVE 16:9: resplandor ambiental del regalo 9:16 (canvas 64×36 agrandado y desenfocado). */
+.lb-gift-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 40% 62% at 50% 50%, #000 30%, transparent 100%);
+  mask-image: radial-gradient(ellipse 40% 62% at 50% 50%, #000 30%, transparent 100%);
+}
+
+.lb-gift-ambient canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20%;
+  height: 20%;
+  transform: translate(-50%, -50%) scale(4.2);
+  filter: blur(5px) saturate(1.4);
+  opacity: 0.38;
+}
+
 /* Multiplicador x1–x10: aparece pequeño → pop, esquina visible del regalo (no tapa el centro). */
 .lb-gift-combo-badge {
   position: absolute;

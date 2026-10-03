@@ -182,12 +182,15 @@ function GiftVideoBurst({
   durationMs,
   mediaWidth,
   mediaHeight,
+  ambient = false,
   onComplete,
 }: {
   src: string;
   senderName?: string;
   combo?: number;
   animScale?: number;
+  /** LIVE 16:9: resplandor con los colores del regalo a los lados de un 9:16. */
+  ambient?: boolean;
   fillViewport?: boolean;
   /** Chat: llena el hilo, no toda la ventana. */
   fillParent?: boolean;
@@ -200,6 +203,7 @@ function GiftVideoBurst({
   onComplete?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const ambientRef = useRef<HTMLCanvasElement>(null);
   const doneRef = useRef(false);
   const scale = clampGiftAnimScale(animScale);
   const catalogSize = resolveGiftMediaSize(mediaWidth, mediaHeight, frame916);
@@ -253,6 +257,7 @@ function GiftVideoBurst({
             objectFit: 'contain' as const,
           }
         : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
+  const showAmbient = ambient && portrait && !bleed;
   const useFillClass = (fillViewport || frame916) && !stageSlot && !fillParent;
   const pinToViewport = Boolean(
     !frame916 &&
@@ -345,6 +350,26 @@ function GiftVideoBurst({
     };
   }, [src, volume, durationMs]);
 
+  // Un solo decode: se copia el cuadro actual a un canvas diminuto que el CSS agranda y desenfoca.
+  useEffect(() => {
+    if (!showAmbient) return;
+    const video = videoRef.current;
+    const ctx = ambientRef.current?.getContext('2d');
+    if (!video || !ctx) return;
+    let raf = 0;
+    let tick = 0;
+    const draw = () => {
+      raf = window.requestAnimationFrame(draw);
+      tick += 1;
+      if (tick % 2 || video.readyState < 2 || !video.videoWidth) return;
+      const { width, height } = ctx.canvas;
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(video, 0, 0, width, height);
+    };
+    raf = window.requestAnimationFrame(draw);
+    return () => window.cancelAnimationFrame(raf);
+  }, [showAmbient, src]);
+
   return (
     <motion.div
       className={`lb-gift-burst-host pointer-events-none flex flex-col items-center justify-center ${
@@ -357,6 +382,11 @@ function GiftVideoBurst({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
+      {showAmbient ? (
+        <div className="lb-gift-ambient" aria-hidden>
+          <canvas ref={ambientRef} width={64} height={36} />
+        </div>
+      ) : null}
       <video
         ref={videoRef}
         src={src}
@@ -550,7 +580,23 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
         </AnimatePresence>
       );
     }
-    const slot = cell.slot;
+    const live169 = variant === 'live_16_9';
+    // Sin colocación 16:9 propia en el editor: el regalo usa todo el alto (o todo el escenario si es 16:9).
+    const auto169 = live169 && cell.source !== 'exact' && cell.source !== 'variant';
+    const slot: typeof cell.slot = auto169
+      ? {
+          ...cell.slot,
+          fit: 'contain',
+          scale: 1,
+          x: 50,
+          y: 50,
+          anchorX: 0.5,
+          anchorY: 0.5,
+          displayArea: 'live',
+          fullscreenMode: 'none',
+          crop: null,
+        }
+      : cell.slot;
     const globalArea = slot.displayArea === 'global' || slot.fullscreenMode === 'global';
     // LIVE 9:16: siempre dentro del stage vertical (no portal al desktop completo).
     const pinGlobal = globalArea && !chatLike && !frame916;
@@ -565,6 +611,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           fillParent={chatLike && globalArea}
           frame916={frame916}
           slot={slot}
+          ambient={live169}
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
           mediaWidth={gift.media?.width}
