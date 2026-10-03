@@ -20,6 +20,8 @@ import {
   type MessagesPopupPeer,
 } from '../../store/messagesMenuStore';
 import { UserAvatar } from '../profile/UserAvatar';
+import { CHAT_LIST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import { EmojiText } from './EmojiText';
 import { InternalChatPanel } from './InternalChatPanel';
 
 /** Clics en estos nodos no minimizan la ventana celular (overlays / UI de mensajes). */
@@ -267,10 +269,17 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
                       chat.unread > 0 ? 'font-medium text-zinc-200' : 'text-zinc-500'
                     }`}
                   >
-                    {chatListPreview(chat.lastMessage, {
-                      fromMe: chat.lastFromUid === profile?.firebaseUid,
-                      name: chat.displayName || chat.username,
-                    }) || 'Conversación'}
+                    <EmojiText
+                      text={
+                        chatListPreview(chat.lastMessage, {
+                          fromMe: chat.lastFromUid === profile?.firebaseUid,
+                          name: chat.displayName || chat.username,
+                        }) || 'Conversación'
+                      }
+                      size={CHAT_LIST_EMOJI_SIZE}
+                      interactive={false}
+                      className="lb-chat-list-preview"
+                    />
                   </span>
                 </span>
                 {chat.unread > 0 ? (

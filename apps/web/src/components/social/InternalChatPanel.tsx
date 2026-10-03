@@ -48,7 +48,8 @@ import { APP_LOCALES, LOCALE_META, type AppLocale } from '../../i18n/locales';
 import { useLocaleStore } from '../../store/localeStore';
 import { readChatTranslateTarget, writeChatTranslateTarget } from '../../lib/chatTranslatePref';
 import { GifPickerSheet } from './GifPickerSheet';
-import { CHAT_EMOJI_SIZE, isEmojiOnlyText } from '../../lib/liveboomEmojis';
+import { CHAT_EMOJI_SIZE, CHAT_LIST_EMOJI_SIZE, isEmojiOnlyText } from '../../lib/liveboomEmojis';
+import { EmojiText } from './EmojiText';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
 import { patchChatNotifyContext } from '../../lib/chatNotifyContext';
 import { api } from '../../lib/api';
@@ -2276,10 +2277,19 @@ export function InternalChatPanel({
                             ? 'Llamando...'
                             : peerWriting
                               ? 'escribiendo…'
-                            : chatListPreview(friend.lastMessage, {
-                                fromMe: friend.lastFromUid === profile?.firebaseUid,
-                                name: friend.displayName || friend.username,
-                              }) || `@${friend.username}`}
+                            : (
+                                <EmojiText
+                                  text={
+                                    chatListPreview(friend.lastMessage, {
+                                      fromMe: friend.lastFromUid === profile?.firebaseUid,
+                                      name: friend.displayName || friend.username,
+                                    }) || `@${friend.username}`
+                                  }
+                                  size={CHAT_LIST_EMOJI_SIZE}
+                                  interactive={false}
+                                  className="lb-chat-list-preview"
+                                />
+                              )}
                       </span>
                     </span>
                     <span className="flex shrink-0 flex-col items-end gap-1">

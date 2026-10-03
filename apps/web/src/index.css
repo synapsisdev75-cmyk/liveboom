@@ -8583,6 +8583,11 @@ body {
   font-family: 'Segoe UI Emoji', 'Noto Color Emoji', 'Apple Color Emoji', 'Twemoji Mozilla', sans-serif;
 }
 
+.lb-emoji-text.lb-chat-list-preview {
+  white-space: nowrap;
+  font-family: inherit;
+}
+
 .lb-entity {
   position: relative;
   z-index: 1;

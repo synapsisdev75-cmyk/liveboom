@@ -6,6 +6,8 @@ import { EMOTICON_EMOJIS as importedEmoticones } from 'virtual:liveboom-emoticon
 export const SENT_EMOJI_SIZE = 30;
 export const SENT_EMOJI_SIZE_COMPACT = 28;
 export const CHAT_EMOJI_SIZE = 28;
+/** Vista previa de la última línea en la lista de chats */
+export const CHAT_LIST_EMOJI_SIZE = 16;
 export const POST_EMOJI_SIZE = 26;
 
 /** Comentarios de video (alias de enviados) */
