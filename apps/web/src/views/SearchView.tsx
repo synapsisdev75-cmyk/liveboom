@@ -443,7 +443,7 @@ export function SearchView() {
       setResultTab(intent);
       return;
     }
-    const strongPerson = results.some((user) => scoreUserMatch(value, user) >= 45);
+    const strongPerson = results.some((user) => scoreUserMatch(value, user) >= 30);
     if (strongPerson) setResultTab('people');
     else if (postResults.length > 0) setResultTab('posts');
     else setResultTab('people');
