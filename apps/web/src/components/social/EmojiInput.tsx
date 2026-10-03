@@ -767,7 +767,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       const mirror = mirrorRef.current;
       const down = pointerDownAt.current;
       pointerDownAt.current = null;
-      if (field && mirror && value && event.detail > 0) {
+      const fromPointer = event.clientX !== 0 || event.clientY !== 0;
+      if (field && mirror && value && fromPointer) {
         const start = field.selectionStart ?? 0;
         const end = field.selectionEnd ?? 0;
         if (start === end) {
@@ -776,7 +777,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         } else if (
           down &&
           !down.touch &&
-          event.detail === 1 &&
+          event.detail <= 1 &&
           Math.hypot(event.clientX - down.x, event.clientY - down.y) > 3
         ) {
           const from = caretIndexFromPoint(mirror, down.x, down.y);
