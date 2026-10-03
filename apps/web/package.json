@@ -24,7 +24,6 @@
     "@liveboom/dataconnect": "file:src/lib/dataconnect",
     "@livekit/components-react": "^2.9.24",
     "@livekit/components-styles": "^1.2.0",
-    "@mediapipe/tasks-vision": "^0.10.21",
     "agora-rtc-sdk-ng": "^4.24.8",
     "deepar": "^5.6.20",
     "firebase": "^12.1.0",
