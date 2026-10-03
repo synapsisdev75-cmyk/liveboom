@@ -1641,7 +1641,7 @@ export function CreatePostModal({
               />
               {captionMax != null ? (
                 <span
-                  className={`pointer-events-none absolute bottom-2 right-2 text-[10px] font-semibold tabular-nums ${
+                  className={`pointer-events-none absolute bottom-1.5 right-[3.75rem] z-[2] text-[10px] leading-none font-semibold tabular-nums ${
                     caption.length >= captionMax ? 'text-fuchsia-300' : 'text-zinc-500'
                   }`}
                 >
