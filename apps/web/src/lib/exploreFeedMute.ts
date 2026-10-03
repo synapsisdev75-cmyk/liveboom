@@ -1,5 +1,5 @@
 /**
- * Preferencia de audio compartida en Explorar (y viewers overlay del feed).
+ * Preferencia de audio compartida en Explorar y en los visores overlay (Boom Clip / Flash Boom).
  * Unmute en un video ⇒ unmute en todos; mute ⇒ mute en todos.
  */
 
@@ -31,8 +31,12 @@ export function subscribeExploreFeedMuted(listener: (muted: boolean) => void) {
 }
 
 let soundUnlockArmed = false;
+const blockedVideos = new Set<HTMLVideoElement>();
+let onSoundUnlocked: (() => void) | null = null;
 
 function disarmSoundUnlock() {
+  blockedVideos.clear();
+  onSoundUnlocked = null;
   if (!soundUnlockArmed) return;
   soundUnlockArmed = false;
   window.removeEventListener('pointerdown', unlockSoundOnGesture, true);
@@ -40,43 +44,59 @@ function disarmSoundUnlock() {
 }
 
 function unlockSoundOnGesture(event: Event) {
+  const videos = [...blockedVideos];
+  const after = onSoundUnlocked;
   disarmSoundUnlock();
   // El botón de sonido ya alterna por sí mismo dentro del gesto.
   if (event.target instanceof Element && event.target.closest('.lb-media-mute-fab')) return;
   // iOS solo deja quitar el mute dentro del gesto: aplicar al <video> en el mismo tick.
-  document.querySelectorAll<HTMLVideoElement>('.lb-explore-view video').forEach((video) => {
+  for (const video of videos) {
+    if (!video.isConnected) continue;
     video.muted = false;
     video.defaultMuted = false;
     video.removeAttribute('muted');
-  });
-  setExploreFeedMuted(false);
+  }
+  if (after) after();
+  else setExploreFeedMuted(false);
 }
 
-function armSoundUnlock() {
-  if (soundUnlockArmed || typeof window === 'undefined') return;
+function armSoundUnlock(video: HTMLVideoElement, after?: () => void) {
+  if (typeof window === 'undefined') return;
+  blockedVideos.add(video);
+  if (after) onSoundUnlocked = after;
+  if (soundUnlockArmed) return;
   soundUnlockArmed = true;
   window.addEventListener('pointerdown', unlockSoundOnGesture, true);
   window.addEventListener('keydown', unlockSoundOnGesture, true);
 }
 
-/** Explorar arranca con sonido. Llamar antes de montar los players. */
+/** Explorar / visor de Boom Clip o Flash Boom arranca con sonido. Llamar antes de montar los players. */
 export function enterExploreWithSound() {
   setExploreFeedMuted(false);
   return disarmSoundUnlock;
 }
 
 /**
- * play() de Explorar: si el navegador bloquea el autoplay con audio, sigue en mudo
+ * play() con sonido: si el navegador bloquea el autoplay con audio, sigue en mudo
  * para no congelar el video y reactiva el sonido en el primer toque.
+ * Sin `onBlocked` usa la preferencia compartida de Explorar / visores.
  */
-export function playExploreVideo(video: HTMLVideoElement) {
+export function playVideoWithSound(
+  video: HTMLVideoElement,
+  handlers?: { onBlocked: () => void; onUnlocked: () => void },
+) {
   return video.play().catch((error: unknown) => {
     if (video.muted || (error as { name?: string } | null)?.name !== 'NotAllowedError') return;
     video.muted = true;
     video.defaultMuted = true;
     video.setAttribute('muted', '');
-    setExploreFeedMuted(true);
-    armSoundUnlock();
+    if (handlers) handlers.onBlocked();
+    else setExploreFeedMuted(true);
+    armSoundUnlock(video, handlers?.onUnlocked);
     void video.play().catch(() => undefined);
   });
+}
+
+export function playExploreVideo(video: HTMLVideoElement) {
+  return playVideoWithSound(video);
 }

@@ -25,6 +25,7 @@ import {
   exploreNavRelease,
 } from '../../lib/exploreVideoPool';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
+import { enterExploreWithSound } from '../../lib/exploreFeedMute';
 
 export type ReelFeedItem = {
   id: string;
@@ -80,6 +81,9 @@ export function ReelFeedViewer({
 }: Props) {
   useBodyScrollLock(!embedded);
   useBackLayer(!embedded, onClose);
+  // Boom Clip / Flash Boom: cada apertura del visor arranca con sonido (Explorar lo hace en ExploreView).
+  const [leaveViewerSound] = useState(() => (exploreFastNav ? null : enterExploreWithSound()));
+  useEffect(() => leaveViewerSound ?? undefined, [leaveViewerSound]);
   const profile = useAuthStore((state) => state.profile);
   const [index, setIndex] = useState(() =>
     Math.min(Math.max(initialIndex, 0), Math.max(reels.length - 1, 0)),

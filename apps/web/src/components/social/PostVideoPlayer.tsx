@@ -31,6 +31,7 @@ import {
 import {
   getExploreFeedMuted,
   playExploreVideo,
+  playVideoWithSound,
   setExploreFeedMuted,
   subscribeExploreFeedMuted,
 } from '../../lib/exploreFeedMute';
@@ -155,6 +156,8 @@ type Props = {
 };
 
 const SEEK_STEP_SEC = 10;
+/** Publicación expandida: el ícono sigue al <video> vía volumechange, sin mute compartido. */
+const SOUND_FALLBACK_LOCAL = { onBlocked: () => undefined, onUnlocked: () => undefined };
 
 function MediaMuteFab({
   muted,
@@ -267,8 +270,8 @@ export function PostVideoPlayer({
   const [expanded, setExpanded] = useState(startExpanded || overlayOnly);
   const [runtimePoster, setRuntimePoster] = useState<string | null>(null);
   const expandedRef = useRef(false);
-  // Explorar / viewers overlay: un solo mute compartido para todo el feed.
-  const shareExploreMute = Boolean(fastNav);
+  // Explorar / visores overlay (Boom Clip, Flash Boom): un solo mute compartido para todo el feed.
+  const shareExploreMute = Boolean(fastNav) || overlayOnly;
   const [muted, setMuted] = useState(() => (shareExploreMute ? getExploreFeedMuted() : true));
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
@@ -565,19 +568,24 @@ export function PostVideoPlayer({
       if (Number.isFinite(snap.time)) {
         video.currentTime = snap.time;
       }
-      video.muted = snap.muted;
+      // Visores con sonido compartido siguen la preferencia común, no el snapshot inicial (mudo).
+      const nextMuted = shareExploreMute ? getExploreFeedMuted() : snap.muted;
+      video.muted = nextMuted;
       video.volume = snap.volume;
-      setMuted(snap.muted);
-      if (!snap.muted) claimUnmuted(playerId);
-      else releaseUnmuted(playerId);
+      setMuted(nextMuted);
+      if (!shareExploreMute) {
+        if (!nextMuted) claimUnmuted(playerId);
+        else releaseUnmuted(playerId);
+      }
       if (snap.playing) {
-        void video.play().catch(() => undefined);
+        if (nextMuted) void video.play().catch(() => undefined);
+        else void playVideoWithSound(video, SOUND_FALLBACK_LOCAL);
       }
     };
 
     if (video.readyState >= 2) apply();
     else video.addEventListener('loadeddata', apply, { once: true });
-  }, [playerId]);
+  }, [playerId, shareExploreMute]);
 
   // Expandido: portal a body + restaurar reproducción al montar el video
   useLayoutEffect(() => {
@@ -648,6 +656,9 @@ export function PostVideoPlayer({
       return;
     }
     capturePlaybackSnapshot();
+    // Al abrir el video a pantalla completa arranca con sonido.
+    playbackSnapshotRef.current.muted = false;
+    playbackSnapshotRef.current.playing = true;
     expandedRef.current = true;
     setExpanded(true);
   }
