@@ -640,33 +640,24 @@ html[data-lb-theme] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
   display: none;
 }
 
-/* Bomba de Explorar: arriba-derecha en su propio círculo, espejo del mute (arriba-izquierda). */
+/* Bomba de Explorar: arriba-derecha sin fondo, espejo del mute (arriba-izquierda, mismo tamaño). */
 .lb-explore-view .lb-immersive-media-box::after {
   content: '';
   position: absolute;
   top: max(0.4rem, var(--lb-safe-top, env(safe-area-inset-top, 0px)));
   right: max(0.4rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
   z-index: 36;
-  box-sizing: border-box;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--media-control-border, #22d3ee) 48%, transparent);
-  background:
-    url('/brand/explore-icon-cut.png') center / 76% no-repeat,
-    var(--media-control-bg, rgba(8, 8, 14, 0.72));
-  box-shadow:
-    var(--media-control-shadow, 0 0 0 transparent),
-    0 6px 16px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  width: clamp(30px, 3.6dvh, 38px);
+  height: clamp(30px, 3.6dvh, 38px);
+  background: url('/brand/explore-icon-cut.png') center / contain no-repeat;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
   pointer-events: none;
 }
 
-@media (pointer: coarse) {
+@media (min-width: 1024px) {
   .lb-explore-view .lb-immersive-media-box::after {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: clamp(38px, 5.2dvh, 52px);
+    height: clamp(38px, 5.2dvh, 52px);
   }
 }
 
