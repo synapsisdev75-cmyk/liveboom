@@ -4,7 +4,7 @@ import type { ComposerGif } from '../../lib/composerGifs';
 import type { ComposerSticker } from '../../lib/composerStickers';
 import { insertEmojiToken } from '../../lib/liveboomEmojis';
 import { mediaKindFromFile } from '../../lib/mediaFile';
-import { textStyleProps, type PostTextStyle } from '../../lib/postTextStyle';
+import { textStyleProps, type PostTextStyle, type TextStyleRange } from '../../lib/postTextStyle';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CommentMediaThumb, type CommentMediaKind } from './CommentMediaThumb';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
@@ -54,6 +54,9 @@ type Props = {
   /** Si se pasa `onTextStyleChange`, la barra muestra el botón "Aa". */
   textStyle?: PostTextStyle | null;
   onTextStyleChange?: (style: PostTextStyle) => void;
+  /** Estilo por fragmento seleccionado (requiere `ref` al campo). */
+  textStyleRanges?: TextStyleRange[];
+  onTextStyleRangesChange?: (ranges: TextStyleRange[]) => void;
 };
 
 export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function CommentComposerBar(
@@ -71,6 +74,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
     displayName,
     textStyle,
     onTextStyleChange,
+    textStyleRanges,
+    onTextStyleRangesChange,
   },
   ref,
 ) {
@@ -211,7 +216,9 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
 
   const canSend = !disabled && !busy && Boolean(value.trim() || attach);
   const showAvatar = Boolean(avatarUid || avatarSrc);
-  const styled = textStyleProps(onTextStyleChange ? textStyle : null);
+  const draftStyle = onTextStyleChange ? textStyle : null;
+  const draftRanges = onTextStyleChange ? textStyleRanges : undefined;
+  const styled = textStyleProps(draftStyle, draftRanges);
 
   return (
     <form
@@ -266,6 +273,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           disabled={disabled || busy}
           maxLength={280}
           emojiSize={18}
+          mirrorTextStyle={draftStyle}
+          mirrorTextStyleRanges={draftRanges}
           className="lb-comment-bar__field"
           padClassName="px-3 py-2"
           mirrorTextClassName={overlay ? 'text-white/90' : 'lb-comment-bar__value'}
@@ -285,6 +294,10 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
               onChange={onTextStyleChange}
               disabled={disabled || busy}
               buttonClassName={`lb-comment-bar__tool ${disabled || busy ? 'is-disabled' : ''}`}
+              text={value}
+              getSelection={() => (typeof ref === 'object' ? ref?.current?.getSelection() : null)}
+              ranges={textStyleRanges}
+              onRangesChange={onTextStyleRangesChange}
             />
           ) : null}
           <EmojiPickerButton

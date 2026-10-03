@@ -18,6 +18,7 @@ import { PostPhotoViewer } from '../social/PostPhotoViewer';
 import { PostVideoPlayer } from '../social/PostVideoPlayer';
 import { originalPostPath } from '../social/RepostPostCard';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
+import type { PostTextStyle, TextStyleRange } from '../../lib/postTextStyle';
 import {
   exploreNavMarkGesture,
   exploreNavRecordFrame,
@@ -46,6 +47,9 @@ export type ReelFeedItem = {
   sharedFromAuthorUid?: string | null;
   sharedFromUsername?: string | null;
   overlays?: MediaOverlayItem[];
+  /** Estilo del texto ("Aa") y fragmentos con estilo propio. */
+  textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
 };
 
 type Props = {
@@ -325,6 +329,8 @@ export function ReelFeedViewer({
           key={reel.id}
           src={reel.mediaUrl}
           caption={reel.caption}
+          captionTextStyle={reel.textStyle}
+          captionTextStyleRanges={reel.textStyleRanges}
           postId={originId}
           authorUid={originUid}
           authorUsername={originUsername}
@@ -353,6 +359,8 @@ export function ReelFeedViewer({
           authorUsername={originUsername}
           authorAvatarUrl={reel.authorAvatarUrl}
           caption={reel.caption}
+          captionTextStyle={reel.textStyle}
+          captionTextStyleRanges={reel.textStyleRanges}
           likes={likes}
           dislikes={dislikes}
           viewerReaction={viewerReaction}

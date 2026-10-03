@@ -26,7 +26,12 @@ import { db } from './firebase';
 import { getLocale } from '../store/localeStore';
 import { LIVE_BOOM_ROUND_GOAL } from './liveBoomRound';
 import { roomKey } from './roomKey';
-import { parsePostTextStyle, type PostTextStyle } from './postTextStyle';
+import {
+  parsePostTextStyle,
+  parseTextStyleRanges,
+  type PostTextStyle,
+  type TextStyleRange,
+} from './postTextStyle';
 
 export type LiveGiftEvent = {
   id: string;
@@ -1093,6 +1098,7 @@ export type LiveChatMessage = {
   sourceLang?: string | null;
   gift?: { giftId: string; emoji: string; name: string; combo?: number } | null;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
   createdAtMs: number;
 };
 
@@ -1124,6 +1130,7 @@ export function listenLiveChat(
               }
             : null,
           textStyle: parsePostTextStyle(data.textStyle),
+          textStyleRanges: parseTextStyleRanges(data.textStyleRanges, String(data.text || '').length),
           createdAtMs: Number(data.createdAtMs || 0),
         };
       })
@@ -1159,17 +1166,22 @@ export async function publishLiveChatMessage(
     sourceLang?: string | null;
     gift?: { giftId: string; emoji: string; name: string; combo?: number } | null;
     textStyle?: PostTextStyle | null;
+    /** Relativos a `text` ya recortado. */
+    textStyleRanges?: TextStyleRange[];
   },
 ) {
+  const text = message.text.slice(0, 500);
   const textStyle = message.gift ? null : parsePostTextStyle(message.textStyle);
+  const textStyleRanges = message.gift ? [] : parseTextStyleRanges(message.textStyleRanges, text.length);
   await addDoc(collection(db, 'liveRooms', roomKey(roomName), 'messages'), {
     clientId: message.clientId,
     authorUid: message.authorUid,
     author: message.author,
-    text: message.text.slice(0, 500),
+    text,
     sourceLang: message.sourceLang || getLocale(),
     gift: message.gift || null,
     ...(textStyle ? { textStyle } : {}),
+    ...(textStyleRanges.length ? { textStyleRanges } : {}),
     createdAt: serverTimestamp(),
     createdAtMs: Date.now(),
   });

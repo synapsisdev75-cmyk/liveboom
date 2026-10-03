@@ -6,14 +6,18 @@ import {
   POST_TEXT_COLORS,
   POST_TEXT_FLAGS,
   POST_TEXT_FONTS,
+  applyTextStyleRange,
   isDefaultPostTextStyle,
   postTextColor,
   postTextFont,
+  textStyleAt,
   togglePostTextFlag,
   usePostTextFonts,
   type PostTextFlagId,
   type PostTextStyle,
+  type TextStyleRange,
 } from '../../lib/postTextStyle';
+import { emojiTokenCovering } from '../../lib/liveboomEmojis';
 import { fitPickerToViewport } from './EmojiPicker';
 
 const FLAG_ICONS: Record<PostTextFlagId, ComponentType<{ size?: number; strokeWidth?: number }>> = {
@@ -39,11 +43,21 @@ type Props = {
   /** Clase del botón en `toolbar` (para igualar los demás iconos de la barra). */
   buttonClassName?: string;
   disabled?: boolean;
+  /**
+   * Estilo por fragmento: con texto seleccionado en el campo, el panel edita solo esa parte.
+   * Sin estas props el "Aa" sigue aplicando a todo el texto.
+   */
+  text?: string;
+  getSelection?: () => { start: number; end: number } | null | undefined;
+  ranges?: TextStyleRange[];
+  onRangesChange?: (next: TextStyleRange[]) => void;
 };
+
+type Selection = { start: number; end: number };
 
 /**
  * Botón "Aa": tipo de letra, color y estilos (negrita, cursiva, subrayado, tachado,
- * mayúsculas, resaltado, neón) para todo el texto del mensaje.
+ * mayúsculas, resaltado, neón) para todo el texto o para la parte seleccionada.
  */
 export function TextStyleButton({
   value: rawValue,
@@ -51,9 +65,14 @@ export function TextStyleButton({
   variant = 'field',
   buttonClassName = '',
   disabled = false,
+  text = '',
+  getSelection,
+  ranges = [],
+  onRangesChange,
 }: Props) {
   const value = rawValue ?? DEFAULT_POST_TEXT_STYLE;
   const [open, setOpen] = useState(false);
+  const [selection, setSelection] = useState<Selection | null>(null);
   const [coords, setCoords] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(
     null,
   );
@@ -61,9 +80,51 @@ export function TextStyleButton({
   const panelRef = useRef<HTMLDivElement>(null);
   const font = postTextFont(value.font);
   const color = postTextColor(value.color);
-  const styled = !isDefaultPostTextStyle(value);
+  const styled = !isDefaultPostTextStyle(value) || ranges.length > 0;
   const floating = variant === 'toolbar';
   usePostTextFonts(open || font.family != null);
+
+  /** Selección del campo ajustada para no partir un emoji; null = sin selección (todo el texto). */
+  const readSelection = (): Selection | null => {
+    if (!getSelection || !onRangesChange) return null;
+    const live = getSelection();
+    if (!live || live.end <= live.start) return null;
+    const start = emojiTokenCovering(text, live.start)?.start ?? live.start;
+    const end = Math.min(emojiTokenCovering(text, live.end)?.end ?? live.end, text.length);
+    return end > start ? { start, end } : null;
+  };
+
+  const activeSelection = open && selection && selection.end <= text.length ? selection : null;
+  const current = activeSelection ? textStyleAt(ranges, activeSelection.start, value) : value;
+  const currentFont = postTextFont(current.font);
+  const currentColor = postTextColor(current.color);
+  const canReset = activeSelection
+    ? ranges.some((range) => range.start < activeSelection.end && range.end > activeSelection.start)
+    : styled;
+
+  function apply(next: PostTextStyle) {
+    const target = readSelection() ?? activeSelection;
+    if (target && onRangesChange) {
+      if (target !== activeSelection) setSelection(target);
+      onRangesChange(applyTextStyleRange(ranges, target.start, target.end, next, value));
+      return;
+    }
+    onChange(next);
+  }
+
+  function reset() {
+    if (activeSelection && onRangesChange) {
+      onRangesChange(applyTextStyleRange(ranges, activeSelection.start, activeSelection.end, value, value));
+      return;
+    }
+    onChange(DEFAULT_POST_TEXT_STYLE);
+    if (ranges.length) onRangesChange?.([]);
+  }
+
+  function toggle() {
+    if (!open) setSelection(readSelection());
+    setOpen(!open);
+  }
 
   const updatePosition = useCallback(() => {
     const trigger = buttonRef.current;
@@ -135,11 +196,11 @@ export function TextStyleButton({
 
   const panelBody = (
     <>
-      <p className="lb-post-textstyle__title">Estilo</p>
+      <p className="lb-post-textstyle__title">{activeSelection ? 'Estilo de la selección' : 'Estilo'}</p>
       <div className="lb-post-textstyle__flags">
         {POST_TEXT_FLAGS.map((flag) => {
           const Icon = FLAG_ICONS[flag.id];
-          const active = Boolean(value[flag.id]);
+          const active = Boolean(current[flag.id]);
           return (
             <button
               key={flag.id}
@@ -147,7 +208,7 @@ export function TextStyleButton({
               title={flag.label}
               aria-label={flag.label}
               aria-pressed={active}
-              onClick={() => onChange(togglePostTextFlag(value, flag.id))}
+              onClick={() => apply(togglePostTextFlag(current, flag.id))}
               className={`lb-post-textstyle__flag lb-post-textstyle__flag--${flag.id}${active ? ' is-active' : ''}`}
             >
               <Icon size={17} strokeWidth={2.4} />
@@ -159,18 +220,18 @@ export function TextStyleButton({
       <p className="lb-post-textstyle__title">Tipo de letra</p>
       <div className="lb-post-textstyle__fonts">
         {POST_TEXT_FONTS.map((item) => {
-          const active = item.id === font.id;
+          const active = item.id === currentFont.id;
           return (
             <button
               key={item.id}
               type="button"
               aria-pressed={active}
-              onClick={() => onChange({ ...value, font: item.id })}
+              onClick={() => apply({ ...current, font: item.id })}
               className={`lb-post-textstyle__font${active ? ' is-active' : ''}`}
             >
               <span
                 className="lb-post-textstyle__font-sample"
-                style={{ fontFamily: item.family ?? undefined, color: color.value ?? undefined }}
+                style={{ fontFamily: item.family ?? undefined, color: currentColor.value ?? undefined }}
               >
                 Aa
               </span>
@@ -183,7 +244,7 @@ export function TextStyleButton({
       <p className="lb-post-textstyle__title">Color</p>
       <div className="lb-post-textstyle__colors">
         {POST_TEXT_COLORS.map((item) => {
-          const active = item.id === color.id;
+          const active = item.id === currentColor.id;
           return (
             <button
               key={item.id}
@@ -191,7 +252,7 @@ export function TextStyleButton({
               title={item.label}
               aria-label={item.label}
               aria-pressed={active}
-              onClick={() => onChange({ ...value, color: item.id })}
+              onClick={() => apply({ ...current, color: item.id })}
               className={`lb-post-textstyle__swatch${item.value ? '' : ' is-auto'}${active ? ' is-active' : ''}`}
               style={item.value ? { background: item.value } : undefined}
             >
@@ -204,8 +265,8 @@ export function TextStyleButton({
       <div className="lb-post-textstyle__foot">
         <button
           type="button"
-          disabled={!styled}
-          onClick={() => onChange(DEFAULT_POST_TEXT_STYLE)}
+          disabled={!canReset}
+          onClick={reset}
           className="lb-post-textstyle__reset"
         >
           Restablecer
@@ -246,7 +307,7 @@ export function TextStyleButton({
           aria-expanded={open}
           disabled={disabled}
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => setOpen((current) => !current)}
+          onClick={toggle}
           className={`lb-ts-trigger ${buttonClassName}${styled ? ' is-on' : ''}${open ? ' is-active' : ''}`}
         >
           {glyph}
@@ -294,7 +355,7 @@ export function TextStyleButton({
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggle}
         className={`lb-post-textstyle__btn${styled ? ' is-on' : ''}`}
       >
         {glyph}

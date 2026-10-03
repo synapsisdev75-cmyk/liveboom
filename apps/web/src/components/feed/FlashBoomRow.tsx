@@ -40,6 +40,8 @@ function toStoryReel(post: FsPost): StoryReel {
     sharedFromUsername: post.sharedFromUsername,
     overlays: post.overlays,
     storyExpiresAtMs: post.storyExpiresAtMs ?? null,
+    textStyle: post.textStyle ?? null,
+    textStyleRanges: post.textStyleRanges,
   };
 }
 

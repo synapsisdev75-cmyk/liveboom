@@ -26,6 +26,8 @@ import type { PublicFsUser } from '../../lib/profileFirestore';
 import { mentionQueryAt } from '../../lib/textEntities';
 import { UserAvatar } from '../profile/UserAvatar';
 import { EmojiText } from './EmojiText';
+import { StyledText } from './StyledText';
+import type { PostTextStyle, TextStyleRange } from '../../lib/postTextStyle';
 
 type BaseProps = {
   value: string;
@@ -53,6 +55,9 @@ type BaseProps = {
   growMode?: 'none' | 'publication' | 'comment' | 'message';
   /** Enter envía (Shift+Enter = salto de línea en multiline). */
   onEnterSubmit?: () => void;
+  /** Fragmentos con estilo propio ("Aa" sobre una selección) dibujados en el espejo. */
+  mirrorTextStyle?: PostTextStyle | null;
+  mirrorTextStyleRanges?: TextStyleRange[] | null;
 };
 
 type InputProps = BaseProps &
@@ -70,6 +75,8 @@ export type EmojiInputHandle = {
   focus: () => void;
   /** Inserta un emoji (LiveBoom o Unicode) en el cursor, sin borrar el texto. */
   insertToken: (id: string) => void;
+  /** Selección actual del campo (se conserva aunque haya perdido el foco). */
+  getSelection: () => { start: number; end: number };
 };
 
 const inputInner =
@@ -197,6 +204,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       growMode,
       onEnterSubmit,
       multiline,
+      mirrorTextStyle,
+      mirrorTextStyleRanges,
       ...rest
     } = props;
 
@@ -243,6 +252,12 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         pendingCaret.current = caret;
         savedCaret.current = { start: caret, end: caret };
         onChange(next);
+      },
+      getSelection: () => {
+        const field = fieldRef.current;
+        const start = field?.selectionStart ?? savedCaret.current?.start ?? value.length;
+        const end = field?.selectionEnd ?? savedCaret.current?.end ?? start;
+        return { start: Math.min(start, end), end: Math.max(start, end) };
       },
     }));
 
@@ -547,7 +562,18 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     const caretClass = showCustomCaret ? 'caret-transparent' : 'caret-white';
 
     const mirror = value ? (
-      <EmojiText text={value} size={emojiSize} fitInput className={mirrorTextClassName} />
+      mirrorTextStyleRanges?.length ? (
+        <StyledText
+          text={value}
+          textStyle={mirrorTextStyle}
+          textStyleRanges={mirrorTextStyleRanges}
+          size={emojiSize}
+          fitInput
+          className={mirrorTextClassName}
+        />
+      ) : (
+        <EmojiText text={value} size={emojiSize} fitInput className={mirrorTextClassName} />
+      )
     ) : (
       <span className={placeholderClassName}>{placeholder}</span>
     );

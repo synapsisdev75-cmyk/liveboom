@@ -1,7 +1,12 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
-import { textStyleProps, useTextStyleFonts, type PostTextStyle } from '../../lib/postTextStyle';
-import { EmojiText } from './EmojiText';
+import {
+  textStyleProps,
+  useTextStyleFonts,
+  type PostTextStyle,
+  type TextStyleRange,
+} from '../../lib/postTextStyle';
+import { StyledText } from './StyledText';
 
 /**
  * Descripción con Ver más / Ver menos (Inicio, perfil, Expandir, Boom Clip y Flash Boom).
@@ -11,19 +16,23 @@ export function PublicationCaption({
   caption,
   variant = 'feed',
   textStyle = null,
+  textStyleRanges = null,
 }: {
   caption: string;
   variant?: 'feed' | 'overlay';
-  /** Tipo de letra y color elegidos al publicar (solo Publicación). */
+  /** Tipo de letra y color elegidos al publicar. */
   textStyle?: PostTextStyle | null;
+  /** Fragmentos con estilo propio (relativos al caption guardado, ya recortado). */
+  textStyleRanges?: TextStyleRange[] | null;
 }) {
   const text = String(caption || '').trim();
   const bodyRef = useRef<HTMLParagraphElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const overlay = variant === 'overlay';
-  useTextStyleFonts(textStyle);
-  const styled = textStyleProps(textStyle);
+  const ranges = text === caption ? textStyleRanges : null;
+  useTextStyleFonts(textStyle, ranges);
+  const styled = textStyleProps(textStyle, ranges);
 
   useLayoutEffect(() => {
     setExpanded(false);
@@ -72,7 +81,7 @@ export function PublicationCaption({
           } ${styled.className}`}
           style={styled.style}
         >
-          <EmojiText text={text} size={POST_EMOJI_SIZE} />
+          <StyledText text={text} textStyle={textStyle} textStyleRanges={ranges} size={POST_EMOJI_SIZE} />
           {expanded && overflows ? (
             <>
               {' '}
@@ -111,7 +120,15 @@ export function PublicationCaption({
 }
 
 /** Capa inferior del visor Expandir (foto/carrusel): scrim + 3 líneas. */
-export function PublicationCaptionOverlay({ caption }: { caption: string }) {
+export function PublicationCaptionOverlay({
+  caption,
+  textStyle = null,
+  textStyleRanges = null,
+}: {
+  caption: string;
+  textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[] | null;
+}) {
   const text = String(caption || '').trim();
   if (!text) return null;
   return (
@@ -121,7 +138,12 @@ export function PublicationCaptionOverlay({ caption }: { caption: string }) {
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="publication-caption-overlay bg-gradient-to-t from-black from-[20%] via-black/75 to-transparent">
-        <PublicationCaption caption={text} variant="overlay" />
+        <PublicationCaption
+          caption={text}
+          variant="overlay"
+          textStyle={textStyle}
+          textStyleRanges={text === caption ? textStyleRanges : null}
+        />
       </div>
     </div>
   );

@@ -43,7 +43,13 @@ import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { ChatVoiceRecorderBar } from './ChatVoiceRecorderBar';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { TextStyleButton } from './TextStyleButton';
-import { textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../../lib/postTextStyle';
+import {
+  textStyleProps,
+  useTextStyleFontsIn,
+  useTextStyleRangesDraft,
+  type PostTextStyle,
+  type TextStyleRange,
+} from '../../lib/postTextStyle';
 import { TranslatedText } from '../i18n/TranslatedText';
 import { useT } from '../../i18n';
 import { APP_LOCALES, LOCALE_META, type AppLocale } from '../../i18n/locales';
@@ -768,6 +774,7 @@ export function InternalChatPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [draftStyle, setDraftStyle] = useState<PostTextStyle | null>(null);
+  const [draftRanges, setDraftRanges] = useTextStyleRangesDraft(draft);
   useTextStyleFontsIn(messages);
   const [replyTo, setReplyTo] = useState<ChatReplyTo | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -955,9 +962,12 @@ export function InternalChatPanel({
     activeUidRef.current = activeUid;
     if (!activeUid) {
       setDraft('');
+      setDraftRanges([], '');
       return;
     }
-    setDraft(draftByPeerRef.current[activeUid] || '');
+    const restored = draftByPeerRef.current[activeUid] || '';
+    setDraft(restored);
+    setDraftRanges([], restored);
   }, [activeUid, profile?.firebaseUid]);
 
   // Persistencia continua del borrador del chat abierto.
@@ -1534,6 +1544,7 @@ export function InternalChatPanel({
       giftId?: string | null;
       replyTo?: ChatReplyTo | null;
       textStyle?: PostTextStyle | null;
+      textStyleRanges?: TextStyleRange[];
     },
   ) {
     if (!profile || !activeFriend) return;
@@ -2833,12 +2844,14 @@ export function InternalChatPanel({
                             ) : plainText ? (
                               <p
                                 className={`whitespace-pre-wrap ${
-                                  isEmojiOnly ? '' : textStyleProps(message.textStyle).className
+                                  isEmojiOnly
+                                    ? ''
+                                    : textStyleProps(message.textStyle, message.textStyleRanges).className
                                 }`}
                                 style={
                                   isEmojiOnly
                                     ? { fontSize: CHAT_EMOJI_SIZE, lineHeight: 1.2 }
-                                    : textStyleProps(message.textStyle).style
+                                    : textStyleProps(message.textStyle, message.textStyleRanges).style
                                 }
                               >
                                 <TranslatedText
@@ -2846,6 +2859,8 @@ export function InternalChatPanel({
                                   sourceLang={message.sourceLang}
                                   mine={message.mine}
                                   emojiSize={CHAT_EMOJI_SIZE}
+                                  textStyle={isEmojiOnly ? null : message.textStyle}
+                                  textStyleRanges={isEmojiOnly ? null : message.textStyleRanges}
                                   forceTarget={manualTx[message.id] ?? null}
                                   onClearForced={() => clearMessageTranslation(message.id)}
                                 />
@@ -3319,13 +3334,14 @@ export function InternalChatPanel({
                 onSubmit={(event) => {
                   event.preventDefault();
                   const link = detectLink(draft);
-                  void send(draft, link ? { linkUrl: link, textStyle: draftStyle } : { textStyle: draftStyle });
+                  const styling = { textStyle: draftStyle, textStyleRanges: draftRanges };
+                  void send(draft, link ? { linkUrl: link, ...styling } : styling);
                 }}
               >
                 <div className="lb-chat-composer-row">
                   <div
-                    className={`contents ${textStyleProps(draftStyle).className}`}
-                    style={textStyleProps(draftStyle).style}
+                    className={`contents ${textStyleProps(draftStyle, draftRanges).className}`}
+                    style={textStyleProps(draftStyle, draftRanges).style}
                   >
                   <EmojiInput
                     ref={composerInputRef}
@@ -3337,10 +3353,13 @@ export function InternalChatPanel({
                     onChange={(next) => setDraft(next.slice(0, MAX_CHAT_MESSAGE_LENGTH))}
                     onEnterSubmit={() => {
                       const link = detectLink(draft);
-                      void send(draft, link ? { linkUrl: link, textStyle: draftStyle } : { textStyle: draftStyle });
+                      const styling = { textStyle: draftStyle, textStyleRanges: draftRanges };
+                      void send(draft, link ? { linkUrl: link, ...styling } : styling);
                     }}
                     placeholder="Escribe un mensaje..."
                     emojiSize={CHAT_EMOJI_SIZE}
+                    mirrorTextStyle={draftStyle}
+                    mirrorTextStyleRanges={draftRanges}
                     className="lb-chat-composer-grow min-w-0 flex-1"
                     fieldClassName="min-w-0"
                     padClassName="py-2.5 pr-1.5"
@@ -3353,6 +3372,10 @@ export function InternalChatPanel({
                       value={draftStyle}
                       onChange={setDraftStyle}
                       buttonClassName="lb-chat-composer-tool"
+                      text={draft}
+                      getSelection={() => composerInputRef.current?.getSelection()}
+                      ranges={draftRanges}
+                      onRangesChange={setDraftRanges}
                     />
                     <EmojiPickerButton
                       open={emojiPickerOpen}

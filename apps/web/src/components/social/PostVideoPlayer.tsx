@@ -49,9 +49,16 @@ import {
   exploreNavUnbindPlayer,
 } from '../../lib/exploreVideoPool';
 import { uploadUserMedia } from '../../lib/storage';
-import { textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../../lib/postTextStyle';
+import {
+  textStyleProps,
+  useTextStyleFonts,
+  useTextStyleFontsIn,
+  useTextStyleRangesDraft,
+  type PostTextStyle,
+  type TextStyleRange,
+} from '../../lib/postTextStyle';
+import { StyledText } from './StyledText';
 import { type EmojiInputHandle } from './EmojiInput';
-import { EmojiText } from './EmojiText';
 import { CommentComposerBar, type CommentDraftAttachment } from './CommentComposerBar';
 import { CommentMediaThumb, commentPlainText } from './CommentMediaThumb';
 import { CommentMediaViewer, type CommentMediaViewerItem } from './CommentMediaViewer';
@@ -81,6 +88,9 @@ type Props = {
   authorUid?: string;
   authorUsername?: string;
   caption?: string | null;
+  /** Estilo "Aa" del caption (Boom Clip / Flash Boom). */
+  captionTextStyle?: PostTextStyle | null;
+  captionTextStyleRanges?: TextStyleRange[] | null;
   likes: number;
   dislikes: number;
   viewerReaction: 'like' | 'dislike' | null;
@@ -193,6 +203,8 @@ export function PostVideoPlayer({
   authorUsername,
   authorAvatarUrl,
   caption,
+  captionTextStyle = null,
+  captionTextStyleRanges = null,
   likes,
   dislikes,
   viewerReaction,
@@ -309,6 +321,8 @@ export function PostVideoPlayer({
     (authorUsername ? `Mira este video de @${authorUsername} en LiveBoom` : 'Mira este video en LiveBoom');
   const videoAspect = useVideoAspect(skipRemoteAspectProbe ? null : src);
   const storyHeld = commentsPanelOpen || giftsOpen || railSheetOpen;
+  const captionStyled = textStyleProps(captionTextStyle, captionTextStyleRanges);
+  useTextStyleFonts(captionTextStyle, captionTextStyleRanges);
 
   useEffect(() => {
     if (videoAspect.isReady) {
@@ -1145,10 +1159,23 @@ export function PostVideoPlayer({
             ) : null}
             {caption ? (
               publicationCaption ? (
-                <PublicationCaption caption={caption} variant="overlay" />
+                <PublicationCaption
+                  caption={caption}
+                  variant="overlay"
+                  textStyle={captionTextStyle}
+                  textStyleRanges={captionTextStyleRanges}
+                />
               ) : (
-                <p className="line-clamp-3 text-sm font-medium text-white/90 drop-shadow">
-                  <EmojiText text={caption} size={COMMENT_EMOJI_SIZE} />
+                <p
+                  className={`line-clamp-3 text-sm font-medium text-white/90 drop-shadow ${captionStyled.className}`}
+                  style={captionStyled.style}
+                >
+                  <StyledText
+                    text={caption}
+                    textStyle={captionTextStyle}
+                    textStyleRanges={captionTextStyleRanges}
+                    size={COMMENT_EMOJI_SIZE}
+                  />
                 </p>
               )
             ) : null}
@@ -1316,6 +1343,7 @@ export function PostComments({
   const [comments, setComments] = useState<PostComment[]>([]);
   const [text, setText] = useState('');
   const [textStyle, setTextStyle] = useState<PostTextStyle | null>(null);
+  const [textStyleRanges, setTextStyleRanges] = useTextStyleRangesDraft(text);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(defaultOpen);
@@ -1397,7 +1425,7 @@ export function PostComments({
           displayName: profile.displayName,
           avatarUrl: profile.avatarUrl,
         },
-        body,
+        text,
         replyTo
           ? {
               parentId: replyTo.parentId,
@@ -1407,6 +1435,7 @@ export function PostComments({
           : null,
         media,
         textStyle,
+        textStyleRanges,
       );
       setText('');
       setReplyTo(null);
@@ -1446,7 +1475,7 @@ export function PostComments({
       Boolean(profile) &&
       (profile!.firebaseUid === comment.authorUid ||
         (authorUid && profile!.firebaseUid === authorUid));
-    const styled = textStyleProps(comment.textStyle);
+    const styled = textStyleProps(comment.textStyle, comment.textStyleRanges);
     return (
       <div className={`lb-comment-card min-w-0 max-w-full ${cardClass} ${isReply ? 'rounded-lg' : ''}`}>
         <div className="flex min-w-0 items-start justify-between gap-2">
@@ -1473,7 +1502,12 @@ export function PostComments({
         ) : null}
         {commentPlainText(comment.text) ? (
           <p className={`mt-0.5 min-w-0 break-words text-xs ${bodyClass} ${styled.className}`} style={styled.style}>
-            <EmojiText text={comment.text} size={COMMENT_EMOJI_SIZE} />
+            <StyledText
+              text={comment.text}
+              textStyle={comment.textStyle}
+              textStyleRanges={comment.textStyleRanges}
+              size={COMMENT_EMOJI_SIZE}
+            />
           </p>
         ) : null}
         {comment.mediaUrl && comment.mediaType ? (
@@ -1575,10 +1609,16 @@ export function PostComments({
                 </span>{' '}
                 {commentPlainText(root.text) ? (
                   <span
-                    className={`contents ${textStyleProps(root.textStyle).className}`}
-                    style={textStyleProps(root.textStyle).style}
+                    className={`contents ${textStyleProps(root.textStyle, root.textStyleRanges).className}`}
+                    style={textStyleProps(root.textStyle, root.textStyleRanges).style}
                   >
-                    <EmojiText text={root.text} size={COMMENT_EMOJI_SIZE_COMPACT} className={overlay ? 'text-white/90' : 'text-zinc-300'} />
+                    <StyledText
+                      text={root.text}
+                      textStyle={root.textStyle}
+                      textStyleRanges={root.textStyleRanges}
+                      size={COMMENT_EMOJI_SIZE_COMPACT}
+                      className={overlay ? 'text-white/90' : 'text-zinc-300'}
+                    />
                   </span>
                 ) : null}
                 {root.mediaUrl && root.mediaType ? (
@@ -1668,6 +1708,8 @@ export function PostComments({
               displayName={profile?.displayName}
               textStyle={textStyle}
               onTextStyleChange={setTextStyle}
+              textStyleRanges={textStyleRanges}
+              onTextStyleRangesChange={setTextStyleRanges}
             />
           </div>
         </div>

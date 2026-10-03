@@ -29,7 +29,13 @@ import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
-import { textStyleProps, useTextStyleFonts, type PostTextStyle } from '../../lib/postTextStyle';
+import {
+  textStyleProps,
+  useTextStyleFonts,
+  type PostTextStyle,
+  type TextStyleRange,
+} from '../../lib/postTextStyle';
+import { StyledText } from './StyledText';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
@@ -483,6 +489,7 @@ export type SocialPost = {
     siteName: string;
   } | null;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
 };
 
 /** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
@@ -490,16 +497,19 @@ export function TextNoteBody({
   caption,
   className = '',
   textStyle = null,
+  textStyleRanges = null,
 }: {
   caption?: string | null;
   className?: string;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[] | null;
 }) {
   const text = String(caption || '').trim();
   const [expanded, setExpanded] = useState(false);
   const long = text.length > 160 || text.split('\n').length > 4;
-  useTextStyleFonts(textStyle);
-  const styled = textStyleProps(textStyle);
+  const ranges = text === caption ? textStyleRanges : null;
+  useTextStyleFonts(textStyle, ranges);
+  const styled = textStyleProps(textStyle, ranges);
 
   if (!text) {
     return (
@@ -517,7 +527,7 @@ export function TextNoteBody({
         } ${styled.className}`}
         style={styled.style}
       >
-        <EmojiText text={text} size={POST_EMOJI_SIZE} />
+        <StyledText text={text} textStyle={textStyle} textStyleRanges={ranges} size={POST_EMOJI_SIZE} />
       </div>
       {long ? (
         <button
@@ -813,7 +823,7 @@ function StandardPostCard({
       ) : null}
       {post.type === 'text' || isTextOnlyPost(post) ? (
         <>
-          <TextNoteBody caption={post.caption} textStyle={post.textStyle} />
+          <TextNoteBody caption={post.caption} textStyle={post.textStyle} textStyleRanges={post.textStyleRanges} />
           {post.linkPreview?.url ? (
             <div className="px-3 pb-2">
               <LinkPreviewCard preview={post.linkPreview} compact />
@@ -991,7 +1001,12 @@ function StandardPostCard({
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
       {showFeedCaption ? (
-        <PublicationCaption key={post.id} caption={post.caption || ''} textStyle={post.textStyle} />
+        <PublicationCaption
+          key={post.id}
+          caption={post.caption || ''}
+          textStyle={post.textStyle}
+          textStyleRanges={post.textStyleRanges}
+        />
       ) : null}
       {post.linkPreview?.url ? (
         <div className="px-3 pb-2">

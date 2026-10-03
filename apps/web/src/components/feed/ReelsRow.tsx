@@ -37,6 +37,8 @@ function toReel(post: FsPost, avatarUrl?: string | null): ReelItem {
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
     overlays: post.overlays,
+    textStyle: post.textStyle ?? null,
+    textStyleRanges: post.textStyleRanges,
   };
 }
 

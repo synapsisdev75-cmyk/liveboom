@@ -26,6 +26,8 @@ function toReel(post: FsPost): ReelItem {
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
     overlays: post.overlays,
+    textStyle: post.textStyle ?? null,
+    textStyleRanges: post.textStyleRanges,
   };
 }
 

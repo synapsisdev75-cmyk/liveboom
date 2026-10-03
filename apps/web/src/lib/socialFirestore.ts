@@ -67,7 +67,13 @@ import {
   removeCommentBoom as removeCommentBoomService,
 } from './commentBoomService';
 import { parseReconstruction3d, type Reconstruction3DPayload } from './reconstruction3d/types';
-import { parsePostTextStyle, type PostTextStyle } from './postTextStyle';
+import {
+  parsePostTextStyle,
+  parseTextStyleRanges,
+  textStyleRangesForTrimmed,
+  type PostTextStyle,
+  type TextStyleRange,
+} from './postTextStyle';
 
 export type FriendshipStatus =
   | 'none'
@@ -112,6 +118,7 @@ export type ChatMessage = {
   fileSize?: number | null;
   giftId?: string | null;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
   /** Referencia al mensaje respondido (estilo WhatsApp). */
   replyTo?: ChatReplyTo | null;
   /** Reacciones emoji: emoji → uids. */
@@ -236,8 +243,10 @@ export type FsPost = {
   updatedAt?: string;
   edited?: boolean;
   reconstruction3d?: Reconstruction3DPayload;
-  /** Tipo de letra y color del texto (solo Publicación). */
+  /** Tipo de letra y color del texto (Publicación, Flash Boom, Boom Clip). */
   textStyle?: PostTextStyle | null;
+  /** Fragmentos del caption con estilo propio. */
+  textStyleRanges?: TextStyleRange[];
 };
 
 type MeProfile = {
@@ -1345,6 +1354,9 @@ export function listenMessages(
         fileSize: tombstone ? null : Number(data.fileSize) || null,
         giftId: tombstone ? null : String(data.giftId || '').trim() || null,
         textStyle: tombstone ? null : parsePostTextStyle(data.textStyle),
+        textStyleRanges: tombstone
+          ? []
+          : parseTextStyleRanges(data.textStyleRanges, String(data.text || '').length),
         replyTo: tombstone ? null : replyTo,
         emojiReactions: tombstone
           ? undefined
@@ -1394,6 +1406,7 @@ export async function editChatMessage(chatId: string, messageId: string, text: s
   if (!body) throw new Error('El mensaje no puede quedar vacío');
   await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
     text: body,
+    textStyleRanges: deleteField(),
     editedAt: serverTimestamp(),
     sourceLang: getLocale(),
   });
@@ -1856,6 +1869,7 @@ export async function sendChatMessage(
     giftId?: string | null;
     replyTo?: ChatReplyTo | null;
     textStyle?: PostTextStyle | null;
+    textStyleRanges?: TextStyleRange[];
   },
 ) {
   const body = text.trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
@@ -1885,6 +1899,9 @@ export async function sendChatMessage(
   if (giftId) payload.giftId = giftId;
   const textStyle = body && !giftId ? parsePostTextStyle(extras?.textStyle) : null;
   if (textStyle) payload.textStyle = textStyle;
+  const textStyleRanges =
+    body && !giftId ? textStyleRangesForTrimmed(text, extras?.textStyleRanges, MAX_CHAT_MESSAGE_LENGTH) : [];
+  if (textStyleRanges.length) payload.textStyleRanges = textStyleRanges;
   if (extras?.replyTo?.messageId) {
     payload.replyTo = {
       messageId: extras.replyTo.messageId,
@@ -1977,6 +1994,7 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
   const overlays = parseMediaOverlays(data.overlays);
   const reconstruction3d = parseReconstruction3d(data.reconstruction3d);
   const textStyle = parsePostTextStyle(data.textStyle);
+  const textStyleRanges = parseTextStyleRanges(data.textStyleRanges, String(data.caption || '').length);
   return {
     id,
     authorUid: String(data.authorUid || ''),
@@ -2016,6 +2034,7 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     edited: Boolean(data.edited) || Boolean(data.updatedAt),
     ...(reconstruction3d ? { reconstruction3d } : {}),
     ...(textStyle ? { textStyle } : {}),
+    ...(textStyleRanges.length ? { textStyleRanges } : {}),
     ...(data.linkPreview && typeof data.linkPreview === 'object'
       ? {
           linkPreview: {
@@ -3005,6 +3024,7 @@ export async function createPost(input: {
     siteName: string;
   } | null;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -3126,16 +3146,19 @@ export async function createPost(input: {
   }
 
   const overlayPayload = serializeMediaOverlays(input.overlays || []);
-  const textStyle = isStory || isBoomClip ? null : parsePostTextStyle(input.textStyle);
+  const captionMax = isStory ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : 2000;
+  const captionText = input.caption.trim().slice(0, captionMax);
+  const textStyle = captionText ? parsePostTextStyle(input.textStyle) : null;
+  const textStyleRanges = captionText
+    ? textStyleRangesForTrimmed(input.caption, input.textStyleRanges, captionMax)
+    : [];
   const createdAtMs = Date.now();
   const storyExpiresAtMs = isStory ? storyExpiresAtFromNow(createdAtMs) : undefined;
   const ref = await addDoc(collection(db, 'posts'), {
     authorUid: input.authorUid,
     username: input.username.toLowerCase(),
     type: input.type,
-    caption:
-      input.caption.trim().slice(0, isStory ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : 2000) ||
-      null,
+    caption: captionText || null,
     mediaUrl,
     storagePath,
     visibility,
@@ -3172,6 +3195,7 @@ export async function createPost(input: {
     ...(overlayPayload.length ? { overlays: overlayPayload } : {}),
     ...(input.reconstruction3d ? { reconstruction3d: input.reconstruction3d } : {}),
     ...(textStyle ? { textStyle } : {}),
+    ...(textStyleRanges.length ? { textStyleRanges } : {}),
     ...(input.linkPreview?.url
       ? {
           linkPreview: {
@@ -3363,6 +3387,7 @@ export async function updatePost(input: {
   authorDisplayName?: string;
   username?: string;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -3447,6 +3472,8 @@ export async function updatePost(input: {
   else patch.overlays = deleteField();
   const textStyle = parsePostTextStyle(input.textStyle);
   patch.textStyle = textStyle ?? deleteField();
+  const textStyleRanges = caption ? textStyleRangesForTrimmed(input.caption, input.textStyleRanges, 2000) : [];
+  patch.textStyleRanges = textStyleRanges.length ? textStyleRanges : deleteField();
   if (input.type === 'video' && Number(input.durationSec) > 0) {
     patch.durationSec = Math.max(1, Math.floor(Number(input.durationSec)));
   }
@@ -3680,6 +3707,7 @@ export type PostComment = {
   mediaType?: PostCommentMediaType | null;
   mediaPreviewUrl?: string | null;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
 };
 
 export type PostCommentReply = {
@@ -3713,6 +3741,7 @@ function commentsFromSnap(snap: { docs: Array<{ id: string; data: () => Record<s
       mediaType: asCommentMediaType(data.mediaType) || (mediaUrl ? inferCommentMediaType(mediaUrl) : null),
       mediaPreviewUrl: String(data.mediaPreviewUrl || '').trim() || null,
       textStyle: parsePostTextStyle(data.textStyle),
+      textStyleRanges: parseTextStyleRanges(data.textStyleRanges, String(data.text || '').length),
     };
   });
 }
@@ -3756,6 +3785,7 @@ export async function addPostComment(
   reply?: PostCommentReply | null,
   media?: PostCommentMedia | null,
   textStyle?: PostTextStyle | null,
+  textStyleRanges?: TextStyleRange[],
 ) {
   const body = text.trim().slice(0, 500);
   const mediaUrl = String(media?.mediaUrl || '').trim();
@@ -3786,6 +3816,8 @@ export async function addPostComment(
   }
   const style = body ? parsePostTextStyle(textStyle) : null;
   if (style) payload.textStyle = style;
+  const ranges = body ? textStyleRangesForTrimmed(text, textStyleRanges, 500) : [];
+  if (ranges.length) payload.textStyleRanges = ranges;
   await addDoc(collection(db, 'posts', postId, 'comments'), payload);
 }
 

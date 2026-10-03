@@ -20,12 +20,14 @@ import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/medi
 import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
-import { EmojiInput } from './EmojiInput';
+import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { TextStyleButton } from './TextStyleButton';
 import {
   DEFAULT_POST_TEXT_STYLE,
   parsePostTextStyle,
   textStyleProps,
+  textStyleRangesForTrimmed,
+  useTextStyleRangesDraft,
   type PostTextStyle,
 } from '../../lib/postTextStyle';
 import { VideoTrimEditor } from './VideoTrimEditor';
@@ -141,6 +143,8 @@ export function CreatePostModal({
   const [notifyFriends, setNotifyFriends] = useState(false);
   const [caption, setCaption] = useState('');
   const [textStyle, setTextStyle] = useState<PostTextStyle>(DEFAULT_POST_TEXT_STYLE);
+  const [textStyleRanges, setTextStyleRanges] = useTextStyleRangesDraft(caption);
+  const captionInputRef = useRef<EmojiInputHandle>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
   const [linkPreviewBusy, setLinkPreviewBusy] = useState(false);
   const linkPreviewReqRef = useRef(0);
@@ -198,6 +202,7 @@ export function CreatePostModal({
     return JSON.stringify({
       caption,
       textStyle,
+      textStyleRanges,
       visibility,
       kind,
       notifyFriends,
@@ -299,6 +304,7 @@ export function CreatePostModal({
     setComposeTab('publication');
     setCaption(post.caption || '');
     setTextStyle(post.textStyle ?? DEFAULT_POST_TEXT_STYLE);
+    setTextStyleRanges(post.textStyleRanges ?? [], post.caption || '');
     setVisibility(vis);
     setNotifyFriends(false);
     setOverlays(post.overlays || []);
@@ -341,6 +347,7 @@ export function CreatePostModal({
     editBaselineRef.current = JSON.stringify({
       caption: post.caption || '',
       textStyle: post.textStyle ?? DEFAULT_POST_TEXT_STYLE,
+      textStyleRanges: post.textStyleRanges ?? [],
       visibility: vis,
       kind: nextKind,
       notifyFriends: false,
@@ -392,6 +399,7 @@ export function CreatePostModal({
     mediaPickGenRef.current += 1;
     setCaption('');
     setTextStyle(DEFAULT_POST_TEXT_STYLE);
+    setTextStyleRanges([], '');
     setLinkPreview(null);
     setLinkPreviewBusy(false);
     linkPreviewReqRef.current += 1;
@@ -1396,6 +1404,7 @@ export function CreatePostModal({
           durationSec,
           notifyFriends: visibility !== 'private' && notifyFriends,
           textStyle,
+          textStyleRanges,
         });
         onUpdated?.({
           ...editPost,
@@ -1410,6 +1419,7 @@ export function CreatePostModal({
           overlays,
           durationSec: saved.type === 'video' ? durationSec || editPost.durationSec : editPost.durationSec,
           textStyle: parsePostTextStyle(textStyle),
+          textStyleRanges: textStyleRangesForTrimmed(caption, textStyleRanges, 2000),
           edited: true,
           updatedAt: new Date().toISOString(),
         });
@@ -1440,7 +1450,8 @@ export function CreatePostModal({
         overlays,
         reconstruction3d: reconstructionPayload,
         linkPreview,
-        textStyle: textStyleEnabled ? textStyle : null,
+        textStyle,
+        textStyleRanges,
       });
 
       onCreated?.({
@@ -1462,7 +1473,8 @@ export function CreatePostModal({
         overlays,
         reconstruction3d: reconstructionPayload,
         linkPreview,
-        textStyle: textStyleEnabled ? parsePostTextStyle(textStyle) : null,
+        textStyle: parsePostTextStyle(textStyle),
+        textStyleRanges: textStyleRangesForTrimmed(caption, textStyleRanges, captionMax ?? 2000),
       });
       if (reconReady) clearReconstructionDraft();
       reset();
@@ -1494,8 +1506,7 @@ export function CreatePostModal({
       ? 'Subiendo…'
       : 'Publicar';
   const composeRows = 1;
-  const textStyleEnabled = composeTab === 'publication';
-  const composerTextStyle = textStyleProps(textStyleEnabled ? textStyle : null);
+  const composerTextStyle = textStyleProps(textStyle, textStyleRanges);
   const captionMax = isFlashBoom ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : undefined;
 
   const panelBody = showPanel ? (
@@ -1597,11 +1608,14 @@ export function CreatePostModal({
             <div className="relative min-w-0">
               <div className={`min-w-0 ${composerTextStyle.className}`} style={composerTextStyle.style}>
                 <EmojiInput
+                  ref={captionInputRef}
                   multiline
                   rows={composeRows}
                   value={caption}
                   onChange={setCaption}
                   maxLength={captionMax}
+                  mirrorTextStyle={textStyle}
+                  mirrorTextStyleRanges={textStyleRanges}
                   placeholder={
                     isFlashBoom
                       ? `Descripción (opcional)`
@@ -1612,18 +1626,19 @@ export function CreatePostModal({
                   emojiSize={POST_EMOJI_SIZE}
                   growToMaxScroll
                   fieldClassName="publication-composer-field w-full min-w-0 max-w-full rounded-xl"
-                  padClassName={
-                    captionMax != null
-                      ? 'px-3 pb-7 pt-2'
-                      : textStyleEnabled
-                        ? 'py-2 pl-3 pr-[3.75rem]'
-                        : 'px-3 py-2'
-                  }
+                  padClassName={captionMax != null ? 'pb-7 pl-3 pr-[3.75rem] pt-2' : 'py-2 pl-3 pr-[3.75rem]'}
                   mirrorTextClassName="publication-composer-text"
                   placeholderClassName="publication-composer-placeholder"
                 />
               </div>
-              {textStyleEnabled ? <TextStyleButton value={textStyle} onChange={setTextStyle} /> : null}
+              <TextStyleButton
+                value={textStyle}
+                onChange={setTextStyle}
+                text={caption}
+                getSelection={() => captionInputRef.current?.getSelection()}
+                ranges={textStyleRanges}
+                onRangesChange={setTextStyleRanges}
+              />
               {captionMax != null ? (
                 <span
                   className={`pointer-events-none absolute bottom-2 right-2 text-[10px] font-semibold tabular-nums ${

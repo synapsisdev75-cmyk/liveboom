@@ -109,6 +109,7 @@ function toSocial(post: FsPost): SocialPost {
     reconstruction3d: post.reconstruction3d,
     linkPreview: post.linkPreview ?? null,
     textStyle: post.textStyle ?? null,
+    textStyleRanges: post.textStyleRanges,
   };
 }
 
@@ -255,7 +256,7 @@ function HomePublicationCard({
 
       {isTextOnlyPost(post) ? (
         <div className="mt-3">
-          <TextNoteBody caption={post.caption} textStyle={post.textStyle} />
+          <TextNoteBody caption={post.caption} textStyle={post.textStyle} textStyleRanges={post.textStyleRanges} />
         </div>
       ) : post.mediaUrl && post.type === 'video' ? (
         <div className="mt-3">
@@ -306,7 +307,7 @@ function HomePublicationCard({
         </div>
       ) : post.caption ? (
         <div className="mt-3">
-          <TextNoteBody caption={post.caption} textStyle={post.textStyle} />
+          <TextNoteBody caption={post.caption} textStyle={post.textStyle} textStyleRanges={post.textStyleRanges} />
         </div>
       ) : null}
 
@@ -390,7 +391,12 @@ function HomePublicationCard({
       {!isTextOnlyPost(post) &&
       (post.type === 'photo' || post.type === 'video') &&
       post.caption?.trim() ? (
-        <PublicationCaption key={post.id} caption={post.caption || ''} textStyle={post.textStyle} />
+        <PublicationCaption
+          key={post.id}
+          caption={post.caption || ''}
+          textStyle={post.textStyle}
+          textStyleRanges={post.textStyleRanges}
+        />
       ) : null}
 
       {showComments ? (
@@ -449,6 +455,8 @@ export function HomeView() {
       sharedFromAuthorUid: post.sharedFromAuthorUid,
       sharedFromUsername: post.sharedFromUsername,
       overlays: post.overlays,
+      textStyle: post.textStyle ?? null,
+      textStyleRanges: post.textStyleRanges,
     };
   }
 

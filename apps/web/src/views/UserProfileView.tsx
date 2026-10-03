@@ -92,6 +92,8 @@ function postToReel(post: SocialPost): ReelFeedItem {
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
     overlays: post.overlays,
+    textStyle: post.textStyle ?? null,
+    textStyleRanges: post.textStyleRanges,
   };
 }
 
@@ -400,6 +402,7 @@ export function UserProfileView() {
             reconstruction3d: item.reconstruction3d,
             linkPreview: item.linkPreview ?? null,
             textStyle: item.textStyle ?? null,
+            textStyleRanges: item.textStyleRanges,
           })),
         );
       },

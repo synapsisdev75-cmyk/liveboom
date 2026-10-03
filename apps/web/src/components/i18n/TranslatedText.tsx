@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { EmojiText } from '../social/TextWithEntities';
+import { StyledText } from '../social/StyledText';
+import { textStyleProps, type PostTextStyle, type TextStyleRange } from '../../lib/postTextStyle';
 import { useT } from '../../i18n';
 import { LOCALE_META, parseAppLocale, type AppLocale } from '../../i18n/locales';
 import { shouldTranslateMessage, translateText } from '../../lib/translateText';
@@ -12,6 +14,8 @@ export function TranslatedText({
   emojiSize,
   forceTarget = null,
   onClearForced,
+  textStyle = null,
+  textStyleRanges = null,
 }: {
   text: string;
   sourceLang?: string | null;
@@ -20,6 +24,12 @@ export function TranslatedText({
   /** Traducción pedida por el usuario a un idioma concreto (también en mensajes propios). */
   forceTarget?: AppLocale | null;
   onClearForced?: () => void;
+  /**
+   * Con fragmentos ("Aa" sobre una selección) el contenedor queda neutro: el original se
+   * dibuja por fragmentos y la traducción con el estilo base.
+   */
+  textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[] | null;
 }) {
   const t = useT();
   const locale = useLocaleStore((state) => state.locale);
@@ -54,14 +64,24 @@ export function TranslatedText({
   const display = (mine && !forced) || showOriginal || !translated ? text : translated;
   const source = sourceLang ? parseAppLocale(sourceLang) : null;
   const sourceName = source ? LOCALE_META[source].nativeName : null;
+  const baseStyled = textStyleProps(textStyle);
+  const body = !emojiSize ? (
+    display
+  ) : !textStyleRanges?.length ? (
+    <EmojiText text={display} size={emojiSize} />
+  ) : display === text ? (
+    <StyledText text={text} textStyle={textStyle} textStyleRanges={textStyleRanges} size={emojiSize} />
+  ) : (
+    <span className={baseStyled.className || undefined} style={baseStyled.style}>
+      <EmojiText text={display} size={emojiSize} />
+    </span>
+  );
 
   if (forced) {
     const targetName = LOCALE_META[target].nativeName;
     return (
       <span className="block min-w-0">
-        <span className="whitespace-pre-wrap break-words">
-          {emojiSize ? <EmojiText text={display} size={emojiSize} /> : display}
-        </span>
+        <span className="whitespace-pre-wrap break-words">{body}</span>
         <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] font-semibold">
           <span className="opacity-80">
             {busy
@@ -95,9 +115,7 @@ export function TranslatedText({
 
   return (
     <span className="block min-w-0">
-      <span className="whitespace-pre-wrap break-words">
-        {emojiSize ? <EmojiText text={display} size={emojiSize} /> : display}
-      </span>
+      <span className="whitespace-pre-wrap break-words">{body}</span>
       {canTranslate && (busy || translated) ? (
         <button
           type="button"

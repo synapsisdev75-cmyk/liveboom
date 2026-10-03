@@ -38,6 +38,7 @@ function toSocial(post: FsPost): SocialPost {
     reconstruction3d: post.reconstruction3d,
     linkPreview: post.linkPreview ?? null,
     textStyle: post.textStyle ?? null,
+    textStyleRanges: post.textStyleRanges,
   };
 }
 

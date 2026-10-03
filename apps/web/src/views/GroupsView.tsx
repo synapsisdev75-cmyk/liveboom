@@ -44,9 +44,14 @@ import { uploadGroupChatMedia, uploadGroupCover } from '../lib/storage';
 import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { useAuthStore } from '../store/authStore';
 import { EmojiPickerButton } from '../components/social/EmojiPicker';
-import { EmojiInput } from '../components/social/EmojiInput';
+import { EmojiInput, type EmojiInputHandle } from '../components/social/EmojiInput';
 import { TextStyleButton } from '../components/social/TextStyleButton';
-import { textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../lib/postTextStyle';
+import {
+  textStyleProps,
+  useTextStyleFontsIn,
+  useTextStyleRangesDraft,
+  type PostTextStyle,
+} from '../lib/postTextStyle';
 import { TranslatedText } from '../components/i18n/TranslatedText';
 import { useT } from '../i18n';
 
@@ -201,6 +206,8 @@ export function GroupsView() {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [draft, setDraft] = useState('');
   const [draftStyle, setDraftStyle] = useState<PostTextStyle | null>(null);
+  const [draftRanges, setDraftRanges] = useTextStyleRangesDraft(draft);
+  const draftInputRef = useRef<EmojiInputHandle>(null);
   useTextStyleFontsIn(messages);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -513,6 +520,7 @@ export function GroupsView() {
   }) {
     if (!profile || !activeId) return;
     const text = draft;
+    const ranges = draftRanges;
     if (!text.trim() && !extras?.mediaUrl && !extras?.linkUrl) return;
     setDraft('');
     try {
@@ -521,10 +529,12 @@ export function GroupsView() {
         username: profile.handle,
         text,
         textStyle: draftStyle,
+        textStyleRanges: ranges,
         ...extras,
       });
     } catch (err) {
       setDraft(text);
+      setDraftRanges(ranges, text);
       setNote(err instanceof Error ? err.message : 'No se pudo enviar');
     }
   }
@@ -1173,14 +1183,18 @@ export function GroupsView() {
                               ) : null}
                               {msg.text && msg.text !== '📷 Foto' && msg.text !== '🔗 Enlace' ? (
                                 <p
-                                  className={`whitespace-pre-wrap break-words ${textStyleProps(msg.textStyle).className}`}
-                                  style={textStyleProps(msg.textStyle).style}
+                                  className={`whitespace-pre-wrap break-words ${
+                                    textStyleProps(msg.textStyle, msg.textStyleRanges).className
+                                  }`}
+                                  style={textStyleProps(msg.textStyle, msg.textStyleRanges).style}
                                 >
                                   <TranslatedText
                                     text={msg.text}
                                     sourceLang={msg.sourceLang}
                                     mine={msg.fromUid === profile?.firebaseUid}
                                     emojiSize={CHAT_EMOJI_SIZE}
+                                    textStyle={msg.textStyle}
+                                    textStyleRanges={msg.textStyleRanges}
                                   />
                                 </p>
                               ) : msg.text === '📷 Foto' && !msg.mediaUrl ? (
@@ -1229,14 +1243,17 @@ export function GroupsView() {
                         <Link2 size={18} />
                       </button>
                       <div
-                        className={`contents ${textStyleProps(draftStyle).className}`}
-                        style={textStyleProps(draftStyle).style}
+                        className={`contents ${textStyleProps(draftStyle, draftRanges).className}`}
+                        style={textStyleProps(draftStyle, draftRanges).style}
                       >
                       <EmojiInput
+                        ref={draftInputRef}
                         value={draft}
                         onChange={setDraft}
                         placeholder={t('chat.writeGroup')}
                         emojiSize={CHAT_EMOJI_SIZE}
+                        mirrorTextStyle={draftStyle}
+                        mirrorTextStyleRanges={draftRanges}
                         fieldClassName="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 focus-within:border-cyan-500"
                         mirrorTextClassName="text-white"
                       />
@@ -1246,6 +1263,10 @@ export function GroupsView() {
                         value={draftStyle}
                         onChange={setDraftStyle}
                         buttonClassName="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
+                        text={draft}
+                        getSelection={() => draftInputRef.current?.getSelection()}
+                        ranges={draftRanges}
+                        onRangesChange={setDraftRanges}
                       />
                       <EmojiPickerButton
                         placement="above"

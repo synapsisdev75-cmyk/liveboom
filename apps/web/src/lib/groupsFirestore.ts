@@ -20,7 +20,13 @@ import { getFirestore } from 'firebase/firestore';
 import { firebaseApp } from './firebase';
 import { getLocale } from '../store/localeStore';
 import { fetchFirestoreProfile } from './profileFirestore';
-import { parsePostTextStyle, type PostTextStyle } from './postTextStyle';
+import {
+  parsePostTextStyle,
+  parseTextStyleRanges,
+  textStyleRangesForTrimmed,
+  type PostTextStyle,
+  type TextStyleRange,
+} from './postTextStyle';
 
 const db = getFirestore(firebaseApp);
 
@@ -63,6 +69,7 @@ export type GroupMessage = {
   mediaType?: 'image' | null;
   linkUrl?: string | null;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
 };
 
 function parseRole(value: unknown): GroupRole {
@@ -306,6 +313,7 @@ export function listenGroupMessages(
             mediaType: data.mediaType === 'image' ? 'image' : null,
             linkUrl: typeof data.linkUrl === 'string' ? data.linkUrl : null,
             textStyle: parsePostTextStyle(data.textStyle),
+            textStyleRanges: parseTextStyleRanges(data.textStyleRanges, String(data.text || '').length),
           };
         }),
       );
@@ -329,6 +337,7 @@ export async function sendGroupMessage(
     mediaType?: 'image' | null;
     linkUrl?: string | null;
     textStyle?: PostTextStyle | null;
+    textStyleRanges?: TextStyleRange[];
   },
 ) {
   const text = input.text.trim().slice(0, 2000);
@@ -352,6 +361,8 @@ export async function sendGroupMessage(
   if (linkUrl) payload.linkUrl = linkUrl;
   const textStyle = text ? parsePostTextStyle(input.textStyle) : null;
   if (textStyle) payload.textStyle = textStyle;
+  const textStyleRanges = text ? textStyleRangesForTrimmed(input.text, input.textStyleRanges, 2000) : [];
+  if (textStyleRanges.length) payload.textStyleRanges = textStyleRanges;
 
   await addDoc(collection(db, 'groups', groupId, 'messages'), payload);
 }

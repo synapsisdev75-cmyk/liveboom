@@ -22,6 +22,13 @@ import { PublicationCaptionOverlay } from './PublicationCaption';
 import { StorySegmentBar } from './StorySegmentBar';
 import { MediaOverlayLayer } from './MediaOverlayLayer';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
+import {
+  textStyleProps,
+  useTextStyleFonts,
+  type PostTextStyle,
+  type TextStyleRange,
+} from '../../lib/postTextStyle';
+import { StyledText } from './StyledText';
 import { STORY_PHOTO_DURATION_SEC } from '../../lib/storyLifecycle';
 import { useT } from '../../i18n';
 import {
@@ -33,6 +40,9 @@ import {
 type Props = {
   src: string;
   caption?: string | null;
+  /** Estilo "Aa" del caption (Boom Clip / Flash Boom). */
+  captionTextStyle?: PostTextStyle | null;
+  captionTextStyleRanges?: TextStyleRange[] | null;
   /** Abrir expandido al montar. */
   startExpanded?: boolean;
   onCloseExpand?: () => void;
@@ -78,6 +88,8 @@ type Props = {
 export function PostPhotoViewer({
   src,
   caption,
+  captionTextStyle = null,
+  captionTextStyleRanges = null,
   startExpanded = false,
   onCloseExpand,
   onExpandChange,
@@ -177,6 +189,8 @@ export function PostPhotoViewer({
     (authorUsername ? `Mira esta foto de @${authorUsername} en LiveBoom` : 'Mira esta foto en LiveBoom');
   const profilePath =
     authorUsername || authorUid ? profileHref(authorUsername || 'user', authorUid) : null;
+  const captionStyled = textStyleProps(captionTextStyle, captionTextStyleRanges);
+  useTextStyleFonts(captionTextStyle, captionTextStyleRanges);
 
   useEffect(() => {
     if (startExpanded || overlayOnly) setExpanded(true);
@@ -476,16 +490,30 @@ export function PostPhotoViewer({
 
         {caption && !commentsOpen ? (
           publicationCaption ? (
-            <PublicationCaptionOverlay caption={caption} />
+            <PublicationCaptionOverlay
+              caption={caption}
+              textStyle={captionTextStyle}
+              textStyleRanges={captionTextStyleRanges}
+            />
           ) : (
             <p
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 text-sm text-white/90"
+              className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 text-sm text-white/90 ${captionStyled.className}`}
               style={{
+                ...captionStyled.style,
                 paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
                 paddingLeft: 'max(4.5rem, env(safe-area-inset-left, 0px))',
               }}
             >
-              {caption}
+              {captionTextStyle || captionTextStyleRanges?.length ? (
+                <StyledText
+                  text={caption}
+                  textStyle={captionTextStyle}
+                  textStyleRanges={captionTextStyleRanges}
+                  interactive={false}
+                />
+              ) : (
+                caption
+              )}
             </p>
           )
         ) : null}

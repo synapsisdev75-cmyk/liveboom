@@ -70,7 +70,16 @@ import { LiveChatUserIdentity } from '../components/live/LiveChatUserIdentity';
 import { EmojiInput, type EmojiInputHandle } from '../components/social/EmojiInput';
 import { EmojiPickerButton } from '../components/social/EmojiPicker';
 import { TextStyleButton } from '../components/social/TextStyleButton';
-import { parsePostTextStyle, textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../lib/postTextStyle';
+import {
+  parsePostTextStyle,
+  parseTextStyleRanges,
+  textStyleProps,
+  textStyleRangesForTrimmed,
+  useTextStyleFontsIn,
+  useTextStyleRangesDraft,
+  type PostTextStyle,
+  type TextStyleRange,
+} from '../lib/postTextStyle';
 import { StickerPickerSheet } from '../components/social/StickerPickerSheet';
 import type { ComposerSticker } from '../lib/composerStickers';
 import { isChatStickerUrl } from '../lib/chatAttachments';
@@ -440,6 +449,7 @@ type ChatMessage = {
   gift?: { giftId: string; emoji: string; name: string; combo?: number };
   levelBadge?: string;
   textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
 };
 
 /** Sticker en chat LIVE: viaja como texto para no cambiar el esquema de mensajes. */
@@ -476,6 +486,7 @@ function foldLiveGiftChatLines(
     sourceLang?: string | null;
     gift?: ChatMessage['gift'] | null;
     textStyle?: PostTextStyle | null;
+    textStyleRanges?: TextStyleRange[];
     createdAtMs?: number;
   }>,
 ): ChatMessage[] {
@@ -499,6 +510,7 @@ function foldLiveGiftChatLines(
       sourceLang: msg.sourceLang || undefined,
       gift,
       textStyle: gift ? null : msg.textStyle ?? null,
+      textStyleRanges: gift ? undefined : msg.textStyleRanges,
       createdAtMs: msg.createdAtMs,
     };
     const last = out[out.length - 1];
@@ -531,6 +543,7 @@ function foldLiveGiftChatLines(
     gift: row.gift,
     levelBadge: row.levelBadge,
     textStyle: row.textStyle,
+    textStyleRanges: row.textStyleRanges,
   }));
 }
 
@@ -569,6 +582,7 @@ type RoomPayload =
       text: string;
       sourceLang?: string | null;
       textStyle?: PostTextStyle | null;
+      textStyleRanges?: TextStyleRange[];
     }
   | {
       type: 'gift';
@@ -6911,6 +6925,7 @@ function ChatPanel({
   const [messages, setMessages] = useState<ChatMessage[]>(() => liveChatCache.get(roomName) ?? []);
   const [text, setText] = useState('');
   const [draftStyle, setDraftStyle] = useState<PostTextStyle | null>(null);
+  const [draftRanges, setDraftRanges] = useTextStyleRangesDraft(text);
   useTextStyleFontsIn(messages);
   const [openGifts, setOpenGifts] = useState(false);
   const [sideTab, setSideTab] = useState<'chat' | 'gifts'>('chat');
@@ -7083,6 +7098,7 @@ function ChatPanel({
           sourceLang: msg.sourceLang || undefined,
           gift: msg.gift || undefined,
           textStyle: msg.textStyle ?? null,
+          textStyleRanges: msg.textStyleRanges,
           createdAtMs: msg.createdAtMs,
         })),
       );
@@ -7152,6 +7168,7 @@ function ChatPanel({
           text: data.text,
           sourceLang: data.sourceLang,
           textStyle: parsePostTextStyle(data.textStyle),
+          textStyleRanges: parseTextStyleRanges(data.textStyleRanges, String(data.text || '').length),
         });
         return;
       }
@@ -7276,6 +7293,7 @@ function ChatPanel({
     if (!value || !profile) return;
     const author = profile.displayName || profile.handle || 'Liveboomer';
     const textStyle = override === undefined ? parsePostTextStyle(draftStyle) : null;
+    const textStyleRanges = override === undefined ? textStyleRangesForTrimmed(text, draftRanges, 500) : [];
     const message: ChatMessage = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       author,
@@ -7283,6 +7301,7 @@ function ChatPanel({
       text: value,
       sourceLang: getLocale(),
       ...(textStyle ? { textStyle } : {}),
+      ...(textStyleRanges.length ? { textStyleRanges } : {}),
     };
     pushMessage(message);
     if (override === undefined) setText('');
@@ -7294,6 +7313,7 @@ function ChatPanel({
       text: value,
       sourceLang: message.sourceLang,
       textStyle,
+      textStyleRanges,
     }).catch((error) => console.error('[chat] firestore', error));
     try {
       await publishRoomData(room, { type: 'chat', ...message });
@@ -7710,8 +7730,8 @@ function ChatPanel({
                   ) : (
                   <span className="lb-live-chat-msg__text flex min-w-0 items-start">
                     <span
-                      className={`min-w-0 flex-1 ${textStyleProps(message.textStyle).className}`}
-                      style={textStyleProps(message.textStyle).style}
+                      className={`min-w-0 flex-1 ${textStyleProps(message.textStyle, message.textStyleRanges).className}`}
+                      style={textStyleProps(message.textStyle, message.textStyleRanges).style}
                     >
                       <TranslatedText
                         text={message.text}
@@ -7720,6 +7740,8 @@ function ChatPanel({
                         forceTarget={liveTx[message.id] ?? null}
                         onClearForced={() => clearLiveTx(message.id)}
                         emojiSize={LIVE_CHAT_EMOJI_SIZE}
+                        textStyle={message.textStyle}
+                        textStyleRanges={message.textStyleRanges}
                       />
                     </span>
                     {shouldTranslateMessage(message.text) ? (
@@ -7830,8 +7852,8 @@ function ChatPanel({
           ) : null}
           <div className="lb-live-chat-input flex h-11 min-w-0 flex-1 items-center rounded-full pr-1 lg:rounded-xl">
             <div
-              className={`contents ${textStyleProps(draftStyle).className}`}
-              style={textStyleProps(draftStyle).style}
+              className={`contents ${textStyleProps(draftStyle, draftRanges).className}`}
+              style={textStyleProps(draftStyle, draftRanges).style}
             >
             <EmojiInput
               ref={inputRef}
@@ -7841,6 +7863,8 @@ function ChatPanel({
               maxLength={500}
               placeholder={t('chat.writeMessage')}
               emojiSize={LIVE_CHAT_EMOJI_SIZE}
+              mirrorTextStyle={draftStyle}
+              mirrorTextStyleRanges={draftRanges}
               className="min-w-0"
               fieldClassName="flex h-11 items-center"
               padClassName="pl-3.5 pr-1 py-[13px]"
@@ -7853,6 +7877,10 @@ function ChatPanel({
               value={draftStyle}
               onChange={setDraftStyle}
               buttonClassName="lb-live-chat-tool grid h-10 w-10 shrink-0 place-items-center rounded-full transition"
+              text={text}
+              getSelection={() => inputRef.current?.getSelection()}
+              ranges={draftRanges}
+              onRangesChange={setDraftRanges}
             />
             <EmojiPickerButton
               placement="above"
