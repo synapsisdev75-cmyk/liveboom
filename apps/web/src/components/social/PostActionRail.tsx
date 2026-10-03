@@ -199,8 +199,6 @@ export function PostActionRail({
         </span>
       </div>
 
-      <PostOptionsMenu variant="rail" />
-
       <PostReceivedGiftsButton postId={postId} authorUid={authorUid} variant="rail" />
 
       <PostViewsIndicator postId={postId} variant="rail" recordMode="open" />
@@ -219,6 +217,8 @@ export function PostActionRail({
           className="lb-action-rail-share"
         />
       ) : null}
+
+      <PostOptionsMenu variant="rail" />
     </div>
   );
 }
