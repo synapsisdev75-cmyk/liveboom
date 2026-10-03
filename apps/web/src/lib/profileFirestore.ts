@@ -20,6 +20,7 @@ import type { SessionUser } from './api';
 import { firebaseApp } from './firebase';
 import { ensureUserStorageFolder } from './storage';
 import { normalizeBlastBalances } from './blastBalances';
+import { scoreUserMatch } from './searchMatch';
 
 const db: Firestore = getFirestore(firebaseApp);
 
@@ -464,6 +465,40 @@ export async function searchFirestoreUsers(needleRaw: string): Promise<PublicFsU
     }
   }
   return results.slice(0, 24);
+}
+
+let userSearchPool: { at: number; users: PublicFsUser[] } | null = null;
+const USER_SEARCH_POOL_TTL_MS = 5 * 60_000;
+
+/** Personas por @usuario o cualquier parte del nombre ("guevara", "Andrés"). */
+export async function searchFirestoreUsersByName(needleRaw: string): Promise<PublicFsUser[]> {
+  const raw = needleRaw.trim();
+  if (!raw) return [];
+  const [prefixed, pool] = await Promise.all([
+    searchFirestoreUsers(raw).catch(() => [] as PublicFsUser[]),
+    (async () => {
+      if (!userSearchPool || Date.now() - userSearchPool.at > USER_SEARCH_POOL_TTL_MS) {
+        const snap = await getDocs(query(collection(db, 'users'), limit(800)));
+        userSearchPool = {
+          at: Date.now(),
+          users: snap.docs
+            .map((item) => mapDoc(item.id, item.data() as Record<string, unknown>))
+            .filter((user) => user.username),
+        };
+      }
+      return userSearchPool.users;
+    })().catch(() => [] as PublicFsUser[]),
+  ]);
+  const byUid = new Map<string, { user: PublicFsUser; score: number }>();
+  for (const user of [...prefixed, ...pool]) {
+    const score = scoreUserMatch(raw, user);
+    if (score <= 0 || byUid.has(user.firebaseUid)) continue;
+    byUid.set(user.firebaseUid, { user, score });
+  }
+  return [...byUid.values()]
+    .sort((a, b) => b.score - a.score || a.user.username.localeCompare(b.user.username))
+    .slice(0, 24)
+    .map((row) => row.user);
 }
 
 export async function ensureFirestoreProfile(input: {

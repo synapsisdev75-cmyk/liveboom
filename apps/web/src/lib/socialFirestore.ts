@@ -32,6 +32,7 @@ import {
   targetReelVisibility,
 } from './reelLifecycle';
 import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from './contentType';
+import { scorePostMatch } from './searchMatch';
 import {
   isStoryActive,
   isStoryPost,
@@ -2173,6 +2174,39 @@ export function listenExploreVideoPool(onChange: (posts: FsPost[]) => void): Uns
     },
     () => onChange([]),
   );
+}
+
+let searchPoolCache: { at: number; posts: FsPost[] } | null = null;
+const SEARCH_POOL_TTL_MS = 90_000;
+
+/** Publicaciones y Boom Clips públicos que coinciden con palabras clave (carros, arriendo…). */
+export async function searchPublicPosts(raw: string, max = 30): Promise<FsPost[]> {
+  if (!auth.currentUser || !raw.trim()) return [];
+  if (!searchPoolCache || Date.now() - searchPoolCache.at > SEARCH_POOL_TTL_MS) {
+    const snap = await getDocs(
+      query(collection(db, 'posts'), where('visibility', '==', 'public'), orderBy('createdAt', 'desc'), limit(400)),
+    );
+    searchPoolCache = {
+      at: Date.now(),
+      posts: snap.docs
+        .map((item) => postFromDoc(item.id, item.data() as Record<string, unknown>))
+        .filter((post) => !isStoryPost(post) && !(isRepostPost(post) && !post.caption?.trim())),
+    };
+  }
+  return searchPoolCache.posts
+    .map((post) => ({
+      post,
+      score: scorePostMatch(raw.replace(/^#/, ''), {
+        caption: post.caption,
+        username: post.username,
+        linkTitle: post.linkPreview?.title,
+        linkDescription: post.linkPreview?.description,
+      }),
+    }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || (a.post.createdAt < b.post.createdAt ? 1 : -1))
+    .slice(0, max)
+    .map((row) => row.post);
 }
 
 /** Pool de Publicaciones públicas para ranking de Inicio. Nunca borra ni mueve docs. */

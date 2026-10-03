@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Bell,
   BookOpen,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clapperboard,
+  FileText,
   Gamepad2,
   MessageCircle,
   Mic2,
@@ -29,10 +31,16 @@ import {
   listenOutgoingRequests,
   rankFriendsByCloseness,
   rejectFriendRequest,
+  searchPublicPosts,
   sendFriendRequest,
   type FriendChip,
   type FriendRequest,
+  type FsPost,
 } from '../lib/socialFirestore';
+import { isBoomClipPost } from '../lib/contentType';
+import { scoreUserMatch, searchIntent } from '../lib/searchMatch';
+import { POST_EMOJI_SIZE } from '../lib/liveboomEmojis';
+import { EmojiText } from '../components/social/EmojiText';
 import { profileHref } from '../lib/profileFirestore';
 import { ignoreSuggestedCreator, readIgnoredSuggestionUids } from '../lib/ignoredSuggestions';
 import { useAuthStore } from '../store/authStore';
@@ -206,6 +214,67 @@ function CommunityOrbit({
   );
 }
 
+function postResultHref(post: FsPost) {
+  const params = new URLSearchParams({ post: post.id });
+  if (post.authorUid) params.set('uid', post.authorUid);
+  return `/u/${encodeURIComponent(post.username || 'liveboom')}?${params.toString()}`;
+}
+
+function postAgo(iso: string) {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${Math.max(1, m)} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h} h`;
+  return `${Math.floor(h / 24)} d`;
+}
+
+function PostResultRow({ post }: { post: FsPost }) {
+  const clip = isBoomClipPost(post);
+  const thumb =
+    post.thumbUrl ||
+    (post.type === 'photo' ? post.mediaUrls?.[0] || post.mediaUrl : null) ||
+    post.linkPreview?.image ||
+    null;
+  const kind = clip ? 'Boom Clip' : post.type === 'video' ? 'Video' : post.type === 'photo' ? 'Foto' : 'Publicación';
+  return (
+    <li>
+      <Link
+        to={postResultHref(post)}
+        className="flex min-h-[4.5rem] items-center gap-3 rounded-xl border border-white/[0.05] bg-zinc-950/50 p-2.5 transition hover:border-violet-400/40"
+      >
+        <span className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-zinc-800 text-violet-300">
+          {thumb ? (
+            <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" draggable={false} />
+          ) : clip || post.type === 'video' ? (
+            <Clapperboard size={20} />
+          ) : (
+            <FileText size={20} />
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="line-clamp-2 break-words text-sm leading-snug text-white">
+            {post.caption?.trim() ? (
+              <EmojiText text={post.caption} size={Math.round(POST_EMOJI_SIZE * 0.7)} interactive={false} />
+            ) : (
+              <span className="text-zinc-400">{kind} de @{post.username}</span>
+            )}
+          </span>
+          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-zinc-500">
+            <span className="shrink-0 rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-bold text-violet-300">
+              {kind}
+            </span>
+            <span className="truncate">@{post.username}</span>
+            {post.createdAt ? <span className="shrink-0">· {postAgo(post.createdAt)}</span> : null}
+          </span>
+        </span>
+        <ChevronRight size={16} className="shrink-0 text-zinc-600" />
+      </Link>
+    </li>
+  );
+}
+
 export function SearchView() {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
@@ -214,7 +283,12 @@ export function SearchView() {
   const headerTheme = useCommunityHeaderStore((s) =>
     isDark ? s.config.dark : s.config.light,
   );
-  const [query, setQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const [query, setQuery] = useState(() => searchParams.get('q') || '');
+  const [postResults, setPostResults] = useState<FsPost[]>([]);
+  const [postBusy, setPostBusy] = useState(false);
+  const [resultTab, setResultTab] = useState<'posts' | 'people'>('posts');
+  const tabPickedRef = useRef(false);
   const [category, setCategory] = useState('');
   const [showMoreCats, setShowMoreCats] = useState(false);
   const [results, setResults] = useState<SearchUser[]>([]);
@@ -284,13 +358,16 @@ export function SearchView() {
       return;
     }
     const value = query.trim();
+    const intent = searchIntent(value);
     const timer = window.setTimeout(() => {
       setBusy(true);
       void (async () => {
         try {
-          if (value.length >= 1) {
-            const { searchFirestoreUsers } = await import('../lib/profileFirestore');
-            const fsUsers = await searchFirestoreUsers(value);
+          if (value.length >= 1 && intent === 'posts') {
+            setResults([]);
+          } else if (value.length >= 1) {
+            const { searchFirestoreUsersByName } = await import('../lib/profileFirestore');
+            const fsUsers = await searchFirestoreUsersByName(value);
             let mapped: SearchUser[] = fsUsers
               .filter((user) => !category || user.category === category)
               .map((user) => ({
@@ -326,6 +403,51 @@ export function SearchView() {
     }, 280);
     return () => window.clearTimeout(timer);
   }, [query, category, profile?.firebaseUid]);
+
+  useEffect(() => {
+    const value = query.trim();
+    if (!profile || value.replace(/^[#@]/, '').length < 2 || searchIntent(value) === 'people') {
+      setPostResults([]);
+      setPostBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setPostBusy(true);
+    const timer = window.setTimeout(() => {
+      void searchPublicPosts(value)
+        .then((list) => {
+          if (!cancelled) setPostResults(list);
+        })
+        .catch(() => {
+          if (!cancelled) setPostResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setPostBusy(false);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, profile?.firebaseUid]);
+
+  useEffect(() => {
+    tabPickedRef.current = false;
+  }, [query]);
+
+  useEffect(() => {
+    if (tabPickedRef.current || busy || postBusy) return;
+    const value = query.trim();
+    const intent = searchIntent(value);
+    if (intent !== 'auto') {
+      setResultTab(intent);
+      return;
+    }
+    const strongPerson = results.some((user) => scoreUserMatch(value, user) >= 45);
+    if (strongPerson) setResultTab('people');
+    else if (postResults.length > 0) setResultTab('posts');
+    else setResultTab('people');
+  }, [query, results, postResults, busy, postBusy]);
 
   const primaryCats = LIVE_CATEGORIES.filter((c) =>
     ['musica', 'gaming', 'charla', 'deportes', 'arte', 'educacion'].includes(c.id),
@@ -556,10 +678,12 @@ export function SearchView() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por @usuario, nombre o bio..."
+            placeholder="Busca personas, carros, arriendos, #temas…"
+            enterKeyHint="search"
+            type="search"
             className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
           />
-          {busy ? <span className="text-[10px] text-zinc-600">…</span> : null}
+          {busy || postBusy ? <span className="text-[10px] text-zinc-600">…</span> : null}
         </label>
         <button
           type="button"
@@ -648,9 +772,58 @@ export function SearchView() {
       {/* Search results when typing */}
       {searching ? (
         <section className="rounded-2xl border border-white/[0.06] bg-[#14151c] p-4">
-          <h2 className="text-sm font-bold text-white">{t('search.results')}</h2>
-          {busy ? <p className="mt-2 text-xs text-zinc-500">Buscando…</p> : null}
-          {!busy && results.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-white">{t('search.results')}</h2>
+            <div className="flex gap-1.5" role="tablist" aria-label="Tipo de resultado">
+              {(
+                [
+                  ['posts', 'Publicaciones', postResults.length, postBusy],
+                  ['people', 'Personas', results.length, busy],
+                ] as const
+              ).map(([id, label, count, loading]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={resultTab === id}
+                  onClick={() => {
+                    tabPickedRef.current = true;
+                    setResultTab(id);
+                  }}
+                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold transition ${
+                    resultTab === id
+                      ? 'bg-violet-600/20 text-violet-200 ring-1 ring-violet-400/60'
+                      : 'text-zinc-400 ring-1 ring-white/10 hover:text-white'
+                  }`}
+                >
+                  {id === 'posts' ? <FileText size={13} /> : <Users size={13} />}
+                  {label}
+                  <span className="tabular-nums text-[10px] opacity-80">{loading ? '…' : count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {resultTab === 'posts' ? (
+            postBusy ? (
+              <p className="mt-3 text-xs text-zinc-500">Buscando publicaciones…</p>
+            ) : postResults.length === 0 ? (
+              <p className="mt-3 text-xs text-zinc-500">
+                {query.trim().replace(/^[#@]/, '').length < 2
+                  ? 'Escribe al menos 2 letras para buscar publicaciones.'
+                  : searchIntent(query) === 'people'
+                    ? 'Buscando solo personas (empieza con @). Quita la @ para buscar publicaciones.'
+                    : 'No hay publicaciones públicas con esas palabras. Prueba otra palabra clave.'}
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {postResults.map((post) => (
+                  <PostResultRow key={post.id} post={post} />
+                ))}
+              </ul>
+            )
+          ) : null}
+          {resultTab === 'people' && busy ? <p className="mt-2 text-xs text-zinc-500">Buscando…</p> : null}
+          {resultTab !== 'people' ? null : !busy && results.length === 0 ? (
             <p className="mt-2 text-xs text-zinc-500">
               Sin resultados. Prueba con @usuario o cambia de categoría.
             </p>
