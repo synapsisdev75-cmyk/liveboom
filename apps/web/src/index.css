@@ -475,6 +475,11 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   height: var(--lb-action-size);
 }
 
+/* Explorar: avatar un poco más arriba para que respire frente al Boom. */
+.lb-explore-view .lb-action-rail--fit .lb-action-rail__avatar-wrap {
+  translate: 0 calc(-1 * clamp(0.35rem, 1.2dvh, 0.6rem));
+}
+
 .lb-action-rail--fit .lb-action-rail__avatar-wrap > * {
   width: 100% !important;
   height: 100% !important;
