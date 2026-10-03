@@ -611,10 +611,6 @@ html[data-lb-theme] [class*='bg-black'] .text-white {
   gap: 0.1rem;
   border-radius: 999px;
   padding: 0.12rem 0.28rem;
-  background: rgb(0 0 0 / 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 1px 8px rgb(0 0 0 / 0.28);
 }
 
 html[data-lb-theme] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
