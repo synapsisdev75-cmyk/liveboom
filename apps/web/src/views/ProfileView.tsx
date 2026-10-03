@@ -116,10 +116,10 @@ function formEqualsSnapshot(
 
 const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabWithdrawals' | 'settings.tabLanguage'; icon: typeof User }> = [
   { id: 'cuenta', labelKey: 'settings.tabAccount', icon: User },
-  { id: 'privacidad', labelKey: 'settings.tabPrivacy', icon: Shield },
-  { id: 'notificaciones', labelKey: 'settings.tabNotifications', icon: Bell },
   { id: 'preferencias', labelKey: 'settings.tabPreferences', icon: Eye },
   { id: 'idioma', labelKey: 'settings.tabLanguage', icon: Languages },
+  { id: 'notificaciones', labelKey: 'settings.tabNotifications', icon: Bell },
+  { id: 'privacidad', labelKey: 'settings.tabPrivacy', icon: Shield },
   { id: 'billetera', labelKey: 'settings.tabWallet', icon: Wallet },
   { id: 'retiros', labelKey: 'settings.tabWithdrawals', icon: Banknote },
 ];

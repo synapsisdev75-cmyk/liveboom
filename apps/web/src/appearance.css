@@ -3027,8 +3027,9 @@ html[data-lb-theme='light'] .lb-chat-composer-field input {
   display: inline-flex;
   min-height: 2.75rem;
   max-width: 100%;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
   border: 0;
   background: transparent;
