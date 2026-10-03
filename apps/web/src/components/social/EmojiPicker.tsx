@@ -45,7 +45,7 @@ function readViewportBox() {
   };
 }
 
-function fitPickerToViewport(
+export function fitPickerToViewport(
   trigger: DOMRect,
   panelW: number,
   panelH: number,

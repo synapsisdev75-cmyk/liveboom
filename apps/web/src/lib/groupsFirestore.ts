@@ -20,6 +20,7 @@ import { getFirestore } from 'firebase/firestore';
 import { firebaseApp } from './firebase';
 import { getLocale } from '../store/localeStore';
 import { fetchFirestoreProfile } from './profileFirestore';
+import { parsePostTextStyle, type PostTextStyle } from './postTextStyle';
 
 const db = getFirestore(firebaseApp);
 
@@ -61,6 +62,7 @@ export type GroupMessage = {
   mediaUrl?: string | null;
   mediaType?: 'image' | null;
   linkUrl?: string | null;
+  textStyle?: PostTextStyle | null;
 };
 
 function parseRole(value: unknown): GroupRole {
@@ -303,6 +305,7 @@ export function listenGroupMessages(
             mediaUrl: typeof data.mediaUrl === 'string' ? data.mediaUrl : null,
             mediaType: data.mediaType === 'image' ? 'image' : null,
             linkUrl: typeof data.linkUrl === 'string' ? data.linkUrl : null,
+            textStyle: parsePostTextStyle(data.textStyle),
           };
         }),
       );
@@ -325,6 +328,7 @@ export async function sendGroupMessage(
     mediaUrl?: string | null;
     mediaType?: 'image' | null;
     linkUrl?: string | null;
+    textStyle?: PostTextStyle | null;
   },
 ) {
   const text = input.text.trim().slice(0, 2000);
@@ -346,6 +350,8 @@ export async function sendGroupMessage(
     payload.mediaType = mediaType;
   }
   if (linkUrl) payload.linkUrl = linkUrl;
+  const textStyle = text ? parsePostTextStyle(input.textStyle) : null;
+  if (textStyle) payload.textStyle = textStyle;
 
   await addDoc(collection(db, 'groups', groupId, 'messages'), payload);
 }

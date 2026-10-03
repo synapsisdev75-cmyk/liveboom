@@ -26,6 +26,7 @@ import { db } from './firebase';
 import { getLocale } from '../store/localeStore';
 import { LIVE_BOOM_ROUND_GOAL } from './liveBoomRound';
 import { roomKey } from './roomKey';
+import { parsePostTextStyle, type PostTextStyle } from './postTextStyle';
 
 export type LiveGiftEvent = {
   id: string;
@@ -1091,6 +1092,7 @@ export type LiveChatMessage = {
   text: string;
   sourceLang?: string | null;
   gift?: { giftId: string; emoji: string; name: string; combo?: number } | null;
+  textStyle?: PostTextStyle | null;
   createdAtMs: number;
 };
 
@@ -1121,6 +1123,7 @@ export function listenLiveChat(
                   : {}),
               }
             : null,
+          textStyle: parsePostTextStyle(data.textStyle),
           createdAtMs: Number(data.createdAtMs || 0),
         };
       })
@@ -1155,8 +1158,10 @@ export async function publishLiveChatMessage(
     text: string;
     sourceLang?: string | null;
     gift?: { giftId: string; emoji: string; name: string; combo?: number } | null;
+    textStyle?: PostTextStyle | null;
   },
 ) {
+  const textStyle = message.gift ? null : parsePostTextStyle(message.textStyle);
   await addDoc(collection(db, 'liveRooms', roomKey(roomName), 'messages'), {
     clientId: message.clientId,
     authorUid: message.authorUid,
@@ -1164,6 +1169,7 @@ export async function publishLiveChatMessage(
     text: message.text.slice(0, 500),
     sourceLang: message.sourceLang || getLocale(),
     gift: message.gift || null,
+    ...(textStyle ? { textStyle } : {}),
     createdAt: serverTimestamp(),
     createdAtMs: Date.now(),
   });

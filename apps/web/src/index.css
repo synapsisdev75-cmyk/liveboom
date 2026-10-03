@@ -8292,6 +8292,126 @@ body {
   }
 }
 
+.lb-post-textstyle__panel--floating {
+  width: min(21rem, calc(100vw - 1.25rem));
+  margin-top: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow:
+    0 14px 40px rgb(0 0 0 / 0.32),
+    0 0 18px color-mix(in srgb, var(--accent-primary) 14%, transparent);
+}
+
+.lb-post-textstyle__flags {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.lb-post-textstyle__flag {
+  display: inline-flex;
+  min-width: 0;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.7rem;
+  border: 1px solid var(--border-default);
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.lb-post-textstyle__flag:hover {
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-default));
+  color: var(--text-primary);
+}
+
+.lb-post-textstyle__flag.is-active {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 16%, var(--surface-secondary));
+  color: var(--accent-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 40%, transparent);
+}
+
+@media (pointer: coarse) {
+  .lb-post-textstyle__flag {
+    height: 2.75rem;
+  }
+}
+
+/* Disparador "Aa" dentro de barras de chat y comentarios. */
+.lb-ts-trigger {
+  position: relative;
+}
+
+.lb-ts-trigger.is-active {
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+
+.lb-ts-trigger .lb-post-textstyle__glyph {
+  font-size: 0.95rem;
+}
+
+.lb-ts-trigger .lb-post-textstyle__dot {
+  bottom: 0.2rem;
+  width: 0.9rem;
+  height: 0.18rem;
+}
+
+/* Estilo de texto aplicado (Publicación, comentarios, chats). */
+.lb-ts.lb-ts-font :is(.lb-emoji-text, textarea, input) {
+  font-family: var(--lb-ts-font);
+}
+
+.lb-ts.lb-ts-colored .lb-emoji-text {
+  color: var(--lb-post-text-color);
+}
+
+.lb-ts.lb-ts-bold :is(.lb-emoji-text, textarea, input) {
+  font-weight: 700;
+}
+
+.lb-ts.lb-ts-italic :is(.lb-emoji-text, textarea, input) {
+  font-style: italic;
+}
+
+.lb-ts.lb-ts-upper :is(.lb-emoji-text, textarea, input) {
+  text-transform: uppercase;
+}
+
+.lb-ts.lb-ts-underline .lb-emoji-text {
+  text-decoration-line: underline;
+  text-underline-offset: 0.18em;
+}
+
+.lb-ts.lb-ts-strike .lb-emoji-text {
+  text-decoration-line: line-through;
+}
+
+.lb-ts.lb-ts-underline.lb-ts-strike .lb-emoji-text {
+  text-decoration-line: underline line-through;
+}
+
+.lb-ts.lb-ts-highlight .lb-emoji-text {
+  background-image: linear-gradient(
+    transparent 52%,
+    color-mix(in srgb, #facc15 55%, transparent) 52%,
+    color-mix(in srgb, #facc15 55%, transparent) 92%,
+    transparent 92%
+  );
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.lb-ts.lb-ts-neon .lb-emoji-text {
+  text-shadow:
+    0 0 6px color-mix(in srgb, currentColor 70%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent-secondary) 60%, transparent);
+}
+
 .lb-composer-gif {
   border: 1px solid color-mix(in srgb, var(--accent-primary) 45%, var(--border-default));
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--surface-secondary));

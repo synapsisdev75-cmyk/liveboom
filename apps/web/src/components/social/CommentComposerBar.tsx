@@ -4,6 +4,7 @@ import type { ComposerGif } from '../../lib/composerGifs';
 import type { ComposerSticker } from '../../lib/composerStickers';
 import { insertEmojiToken } from '../../lib/liveboomEmojis';
 import { mediaKindFromFile } from '../../lib/mediaFile';
+import { textStyleProps, type PostTextStyle } from '../../lib/postTextStyle';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CommentMediaThumb, type CommentMediaKind } from './CommentMediaThumb';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
@@ -11,6 +12,7 @@ import { EmojiPickerButton } from './EmojiPicker';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { GifPickerSheet } from './GifPickerSheet';
 import { StickerPickerSheet } from './StickerPickerSheet';
+import { TextStyleButton } from './TextStyleButton';
 import { useT } from '../../i18n';
 
 const COMMENT_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
@@ -49,6 +51,9 @@ type Props = {
   avatarUid?: string | null;
   username?: string | null;
   displayName?: string | null;
+  /** Si se pasa `onTextStyleChange`, la barra muestra el botón "Aa". */
+  textStyle?: PostTextStyle | null;
+  onTextStyleChange?: (style: PostTextStyle) => void;
 };
 
 export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function CommentComposerBar(
@@ -64,6 +69,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
     avatarUid,
     username,
     displayName,
+    textStyle,
+    onTextStyleChange,
   },
   ref,
 ) {
@@ -204,6 +211,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
 
   const canSend = !disabled && !busy && Boolean(value.trim() || attach);
   const showAvatar = Boolean(avatarUid || avatarSrc);
+  const styled = textStyleProps(onTextStyleChange ? textStyle : null);
 
   return (
     <form
@@ -246,6 +254,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           </div>
         ) : null}
 
+        <div className={`contents ${styled.className}`} style={styled.style}>
         <EmojiInput
           ref={ref}
           multiline
@@ -266,8 +275,18 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
             void publish();
           }}
         />
+        </div>
 
         <div className="lb-comment-bar__tools">
+          {onTextStyleChange ? (
+            <TextStyleButton
+              variant="toolbar"
+              value={textStyle}
+              onChange={onTextStyleChange}
+              disabled={disabled || busy}
+              buttonClassName={`lb-comment-bar__tool ${disabled || busy ? 'is-disabled' : ''}`}
+            />
+          ) : null}
           <EmojiPickerButton
             placement="above"
             className="lb-comment-bar__emoji"

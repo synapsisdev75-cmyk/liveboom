@@ -21,11 +21,11 @@ import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput } from './EmojiInput';
-import { PostTextStyleButton } from './PostTextStyleButton';
+import { TextStyleButton } from './TextStyleButton';
 import {
   DEFAULT_POST_TEXT_STYLE,
   parsePostTextStyle,
-  postTextStyleCss,
+  textStyleProps,
   type PostTextStyle,
 } from '../../lib/postTextStyle';
 import { VideoTrimEditor } from './VideoTrimEditor';
@@ -1495,6 +1495,7 @@ export function CreatePostModal({
       : 'Publicar';
   const composeRows = 1;
   const textStyleEnabled = composeTab === 'publication';
+  const composerTextStyle = textStyleProps(textStyleEnabled ? textStyle : null);
   const captionMax = isFlashBoom ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : undefined;
 
   const panelBody = showPanel ? (
@@ -1594,7 +1595,7 @@ export function CreatePostModal({
 
           <div className="mt-3 space-y-2">
             <div className="relative min-w-0">
-              <div className="min-w-0" style={textStyleEnabled ? postTextStyleCss(textStyle) : undefined}>
+              <div className={`min-w-0 ${composerTextStyle.className}`} style={composerTextStyle.style}>
                 <EmojiInput
                   multiline
                   rows={composeRows}
@@ -1622,7 +1623,7 @@ export function CreatePostModal({
                   placeholderClassName="publication-composer-placeholder"
                 />
               </div>
-              {textStyleEnabled ? <PostTextStyleButton value={textStyle} onChange={setTextStyle} /> : null}
+              {textStyleEnabled ? <TextStyleButton value={textStyle} onChange={setTextStyle} /> : null}
               {captionMax != null ? (
                 <span
                   className={`pointer-events-none absolute bottom-2 right-2 text-[10px] font-semibold tabular-nums ${

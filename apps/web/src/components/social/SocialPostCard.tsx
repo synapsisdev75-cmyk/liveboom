@@ -29,7 +29,7 @@ import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
-import { postTextFont, postTextStyleCss, usePostTextFonts, type PostTextStyle } from '../../lib/postTextStyle';
+import { textStyleProps, useTextStyleFonts, type PostTextStyle } from '../../lib/postTextStyle';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
@@ -498,7 +498,8 @@ export function TextNoteBody({
   const text = String(caption || '').trim();
   const [expanded, setExpanded] = useState(false);
   const long = text.length > 160 || text.split('\n').length > 4;
-  usePostTextFonts(postTextFont(textStyle?.font).family != null);
+  useTextStyleFonts(textStyle);
+  const styled = textStyleProps(textStyle);
 
   if (!text) {
     return (
@@ -513,8 +514,8 @@ export function TextNoteBody({
       <div
         className={`lb-text-note__body text-sm leading-relaxed sm:text-[15px] ${
           expanded || !long ? '' : 'line-clamp-5'
-        }`}
-        style={postTextStyleCss(textStyle)}
+        } ${styled.className}`}
+        style={styled.style}
       >
         <EmojiText text={text} size={POST_EMOJI_SIZE} />
       </div>

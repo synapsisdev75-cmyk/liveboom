@@ -49,6 +49,7 @@ import {
   exploreNavUnbindPlayer,
 } from '../../lib/exploreVideoPool';
 import { uploadUserMedia } from '../../lib/storage';
+import { textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../../lib/postTextStyle';
 import { type EmojiInputHandle } from './EmojiInput';
 import { EmojiText } from './EmojiText';
 import { CommentComposerBar, type CommentDraftAttachment } from './CommentComposerBar';
@@ -1314,6 +1315,7 @@ export function PostComments({
   const profile = useAuthStore((state) => state.profile);
   const [comments, setComments] = useState<PostComment[]>([]);
   const [text, setText] = useState('');
+  const [textStyle, setTextStyle] = useState<PostTextStyle | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(defaultOpen);
@@ -1324,6 +1326,7 @@ export function PostComments({
   const inputRef = useRef<EmojiInputHandle>(null);
 
   const threads = useMemo(() => buildCommentThreads(comments), [comments]);
+  useTextStyleFontsIn(comments);
 
   useEffect(() => {
     return listenPostComments(postId, (list) => {
@@ -1403,6 +1406,7 @@ export function PostComments({
             }
           : null,
         media,
+        textStyle,
       );
       setText('');
       setReplyTo(null);
@@ -1442,6 +1446,7 @@ export function PostComments({
       Boolean(profile) &&
       (profile!.firebaseUid === comment.authorUid ||
         (authorUid && profile!.firebaseUid === authorUid));
+    const styled = textStyleProps(comment.textStyle);
     return (
       <div className={`lb-comment-card min-w-0 max-w-full ${cardClass} ${isReply ? 'rounded-lg' : ''}`}>
         <div className="flex min-w-0 items-start justify-between gap-2">
@@ -1467,7 +1472,7 @@ export function PostComments({
           </p>
         ) : null}
         {commentPlainText(comment.text) ? (
-          <p className={`mt-0.5 min-w-0 break-words text-xs ${bodyClass}`}>
+          <p className={`mt-0.5 min-w-0 break-words text-xs ${bodyClass} ${styled.className}`} style={styled.style}>
             <EmojiText text={comment.text} size={COMMENT_EMOJI_SIZE} />
           </p>
         ) : null}
@@ -1569,7 +1574,12 @@ export function PostComments({
                   @{root.username}
                 </span>{' '}
                 {commentPlainText(root.text) ? (
-                  <EmojiText text={root.text} size={COMMENT_EMOJI_SIZE_COMPACT} className={overlay ? 'text-white/90' : 'text-zinc-300'} />
+                  <span
+                    className={`contents ${textStyleProps(root.textStyle).className}`}
+                    style={textStyleProps(root.textStyle).style}
+                  >
+                    <EmojiText text={root.text} size={COMMENT_EMOJI_SIZE_COMPACT} className={overlay ? 'text-white/90' : 'text-zinc-300'} />
+                  </span>
                 ) : null}
                 {root.mediaUrl && root.mediaType ? (
                   <CommentMediaThumb
@@ -1656,6 +1666,8 @@ export function PostComments({
               avatarUid={profile?.firebaseUid}
               username={profile?.handle}
               displayName={profile?.displayName}
+              textStyle={textStyle}
+              onTextStyleChange={setTextStyle}
             />
           </div>
         </div>

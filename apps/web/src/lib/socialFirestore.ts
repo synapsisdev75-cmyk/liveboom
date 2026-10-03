@@ -111,6 +111,7 @@ export type ChatMessage = {
   fileName?: string | null;
   fileSize?: number | null;
   giftId?: string | null;
+  textStyle?: PostTextStyle | null;
   /** Referencia al mensaje respondido (estilo WhatsApp). */
   replyTo?: ChatReplyTo | null;
   /** Reacciones emoji: emoji → uids. */
@@ -1343,6 +1344,7 @@ export function listenMessages(
         fileName: tombstone ? null : String(data.fileName || '').trim() || null,
         fileSize: tombstone ? null : Number(data.fileSize) || null,
         giftId: tombstone ? null : String(data.giftId || '').trim() || null,
+        textStyle: tombstone ? null : parsePostTextStyle(data.textStyle),
         replyTo: tombstone ? null : replyTo,
         emojiReactions: tombstone
           ? undefined
@@ -1853,6 +1855,7 @@ export async function sendChatMessage(
     storagePath?: string | null;
     giftId?: string | null;
     replyTo?: ChatReplyTo | null;
+    textStyle?: PostTextStyle | null;
   },
 ) {
   const body = text.trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
@@ -1880,6 +1883,8 @@ export async function sendChatMessage(
   if (extras?.mimeType) payload.mimeType = extras.mimeType;
   if (extras?.storagePath) payload.storagePath = extras.storagePath;
   if (giftId) payload.giftId = giftId;
+  const textStyle = body && !giftId ? parsePostTextStyle(extras?.textStyle) : null;
+  if (textStyle) payload.textStyle = textStyle;
   if (extras?.replyTo?.messageId) {
     payload.replyTo = {
       messageId: extras.replyTo.messageId,
@@ -3674,6 +3679,7 @@ export type PostComment = {
   mediaUrl?: string | null;
   mediaType?: PostCommentMediaType | null;
   mediaPreviewUrl?: string | null;
+  textStyle?: PostTextStyle | null;
 };
 
 export type PostCommentReply = {
@@ -3706,6 +3712,7 @@ function commentsFromSnap(snap: { docs: Array<{ id: string; data: () => Record<s
       mediaUrl,
       mediaType: asCommentMediaType(data.mediaType) || (mediaUrl ? inferCommentMediaType(mediaUrl) : null),
       mediaPreviewUrl: String(data.mediaPreviewUrl || '').trim() || null,
+      textStyle: parsePostTextStyle(data.textStyle),
     };
   });
 }
@@ -3748,6 +3755,7 @@ export async function addPostComment(
   text: string,
   reply?: PostCommentReply | null,
   media?: PostCommentMedia | null,
+  textStyle?: PostTextStyle | null,
 ) {
   const body = text.trim().slice(0, 500);
   const mediaUrl = String(media?.mediaUrl || '').trim();
@@ -3776,6 +3784,8 @@ export async function addPostComment(
       .trim()
       .toLowerCase() || null;
   }
+  const style = body ? parsePostTextStyle(textStyle) : null;
+  if (style) payload.textStyle = style;
   await addDoc(collection(db, 'posts', postId, 'comments'), payload);
 }
 

@@ -45,6 +45,8 @@ import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { useAuthStore } from '../store/authStore';
 import { EmojiPickerButton } from '../components/social/EmojiPicker';
 import { EmojiInput } from '../components/social/EmojiInput';
+import { TextStyleButton } from '../components/social/TextStyleButton';
+import { textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../lib/postTextStyle';
 import { TranslatedText } from '../components/i18n/TranslatedText';
 import { useT } from '../i18n';
 
@@ -198,6 +200,8 @@ export function GroupsView() {
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [draft, setDraft] = useState('');
+  const [draftStyle, setDraftStyle] = useState<PostTextStyle | null>(null);
+  useTextStyleFontsIn(messages);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [query, setQuery] = useState('');
@@ -516,6 +520,7 @@ export function GroupsView() {
         fromUid: profile.firebaseUid,
         username: profile.handle,
         text,
+        textStyle: draftStyle,
         ...extras,
       });
     } catch (err) {
@@ -1167,7 +1172,10 @@ export function GroupsView() {
                                 </a>
                               ) : null}
                               {msg.text && msg.text !== '📷 Foto' && msg.text !== '🔗 Enlace' ? (
-                                <p className="whitespace-pre-wrap break-words">
+                                <p
+                                  className={`whitespace-pre-wrap break-words ${textStyleProps(msg.textStyle).className}`}
+                                  style={textStyleProps(msg.textStyle).style}
+                                >
                                   <TranslatedText
                                     text={msg.text}
                                     sourceLang={msg.sourceLang}
@@ -1220,6 +1228,10 @@ export function GroupsView() {
                       >
                         <Link2 size={18} />
                       </button>
+                      <div
+                        className={`contents ${textStyleProps(draftStyle).className}`}
+                        style={textStyleProps(draftStyle).style}
+                      >
                       <EmojiInput
                         value={draft}
                         onChange={setDraft}
@@ -1227,6 +1239,13 @@ export function GroupsView() {
                         emojiSize={CHAT_EMOJI_SIZE}
                         fieldClassName="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 focus-within:border-cyan-500"
                         mirrorTextClassName="text-white"
+                      />
+                      </div>
+                      <TextStyleButton
+                        variant="toolbar"
+                        value={draftStyle}
+                        onChange={setDraftStyle}
+                        buttonClassName="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
                       />
                       <EmojiPickerButton
                         placement="above"

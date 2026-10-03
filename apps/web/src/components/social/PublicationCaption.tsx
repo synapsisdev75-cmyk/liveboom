@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
-import { postTextFont, postTextStyleCss, usePostTextFonts, type PostTextStyle } from '../../lib/postTextStyle';
+import { textStyleProps, useTextStyleFonts, type PostTextStyle } from '../../lib/postTextStyle';
 import { EmojiText } from './EmojiText';
 
 /**
@@ -22,7 +22,8 @@ export function PublicationCaption({
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const overlay = variant === 'overlay';
-  usePostTextFonts(postTextFont(textStyle?.font).family != null);
+  useTextStyleFonts(textStyle);
+  const styled = textStyleProps(textStyle);
 
   useLayoutEffect(() => {
     setExpanded(false);
@@ -68,8 +69,8 @@ export function PublicationCaption({
           ref={bodyRef}
           className={`publication-caption__body${overlay ? ' is-overlay' : ''}${
             expanded ? ' is-open' : ' is-clamped'
-          }`}
-          style={postTextStyleCss(textStyle)}
+          } ${styled.className}`}
+          style={styled.style}
         >
           <EmojiText text={text} size={POST_EMOJI_SIZE} />
           {expanded && overflows ? (

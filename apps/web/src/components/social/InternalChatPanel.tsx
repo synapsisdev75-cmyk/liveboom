@@ -42,6 +42,8 @@ import { VideoNoteBubble, VideoNoteCapture } from './ChatVideoNote';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import { ChatVoiceRecorderBar } from './ChatVoiceRecorderBar';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
+import { TextStyleButton } from './TextStyleButton';
+import { textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../../lib/postTextStyle';
 import { TranslatedText } from '../i18n/TranslatedText';
 import { useT } from '../../i18n';
 import { APP_LOCALES, LOCALE_META, type AppLocale } from '../../i18n/locales';
@@ -765,6 +767,8 @@ export function InternalChatPanel({
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [draftStyle, setDraftStyle] = useState<PostTextStyle | null>(null);
+  useTextStyleFontsIn(messages);
   const [replyTo, setReplyTo] = useState<ChatReplyTo | null>(null);
   const [peerTyping, setPeerTyping] = useState(false);
   const [typingTick, setTypingTick] = useState(0);
@@ -1529,6 +1533,7 @@ export function InternalChatPanel({
       storagePath?: string | null;
       giftId?: string | null;
       replyTo?: ChatReplyTo | null;
+      textStyle?: PostTextStyle | null;
     },
   ) {
     if (!profile || !activeFriend) return;
@@ -2827,11 +2832,13 @@ export function InternalChatPanel({
                               </div>
                             ) : plainText ? (
                               <p
-                                className="whitespace-pre-wrap"
+                                className={`whitespace-pre-wrap ${
+                                  isEmojiOnly ? '' : textStyleProps(message.textStyle).className
+                                }`}
                                 style={
                                   isEmojiOnly
                                     ? { fontSize: CHAT_EMOJI_SIZE, lineHeight: 1.2 }
-                                    : undefined
+                                    : textStyleProps(message.textStyle).style
                                 }
                               >
                                 <TranslatedText
@@ -3312,10 +3319,14 @@ export function InternalChatPanel({
                 onSubmit={(event) => {
                   event.preventDefault();
                   const link = detectLink(draft);
-                  void send(draft, link ? { linkUrl: link } : undefined);
+                  void send(draft, link ? { linkUrl: link, textStyle: draftStyle } : { textStyle: draftStyle });
                 }}
               >
                 <div className="lb-chat-composer-row">
+                  <div
+                    className={`contents ${textStyleProps(draftStyle).className}`}
+                    style={textStyleProps(draftStyle).style}
+                  >
                   <EmojiInput
                     ref={composerInputRef}
                     multiline
@@ -3326,7 +3337,7 @@ export function InternalChatPanel({
                     onChange={(next) => setDraft(next.slice(0, MAX_CHAT_MESSAGE_LENGTH))}
                     onEnterSubmit={() => {
                       const link = detectLink(draft);
-                      void send(draft, link ? { linkUrl: link } : undefined);
+                      void send(draft, link ? { linkUrl: link, textStyle: draftStyle } : { textStyle: draftStyle });
                     }}
                     placeholder="Escribe un mensaje..."
                     emojiSize={CHAT_EMOJI_SIZE}
@@ -3335,7 +3346,14 @@ export function InternalChatPanel({
                     padClassName="py-2.5 pr-1.5"
                     mirrorTextClassName="text-[color:var(--text-primary)]"
                   />
+                  </div>
                   <div className="lb-chat-composer-inline-tools">
+                    <TextStyleButton
+                      variant="toolbar"
+                      value={draftStyle}
+                      onChange={setDraftStyle}
+                      buttonClassName="lb-chat-composer-tool"
+                    />
                     <EmojiPickerButton
                       open={emojiPickerOpen}
                       onOpenChange={(next) => {

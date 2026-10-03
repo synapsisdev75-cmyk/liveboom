@@ -69,6 +69,8 @@ import { LiveNewCoinGoalModal } from '../components/live/LiveNewCoinGoalModal';
 import { LiveChatUserIdentity } from '../components/live/LiveChatUserIdentity';
 import { EmojiInput, type EmojiInputHandle } from '../components/social/EmojiInput';
 import { EmojiPickerButton } from '../components/social/EmojiPicker';
+import { TextStyleButton } from '../components/social/TextStyleButton';
+import { parsePostTextStyle, textStyleProps, useTextStyleFontsIn, type PostTextStyle } from '../lib/postTextStyle';
 import { StickerPickerSheet } from '../components/social/StickerPickerSheet';
 import type { ComposerSticker } from '../lib/composerStickers';
 import { isChatStickerUrl } from '../lib/chatAttachments';
@@ -437,6 +439,7 @@ type ChatMessage = {
   sourceLang?: string | null;
   gift?: { giftId: string; emoji: string; name: string; combo?: number };
   levelBadge?: string;
+  textStyle?: PostTextStyle | null;
 };
 
 /** Sticker en chat LIVE: viaja como texto para no cambiar el esquema de mensajes. */
@@ -472,6 +475,7 @@ function foldLiveGiftChatLines(
     text: string;
     sourceLang?: string | null;
     gift?: ChatMessage['gift'] | null;
+    textStyle?: PostTextStyle | null;
     createdAtMs?: number;
   }>,
 ): ChatMessage[] {
@@ -494,6 +498,7 @@ function foldLiveGiftChatLines(
       text: gift ? `envió ${gift.name}` : msg.text,
       sourceLang: msg.sourceLang || undefined,
       gift,
+      textStyle: gift ? null : msg.textStyle ?? null,
       createdAtMs: msg.createdAtMs,
     };
     const last = out[out.length - 1];
@@ -525,6 +530,7 @@ function foldLiveGiftChatLines(
     sourceLang: row.sourceLang,
     gift: row.gift,
     levelBadge: row.levelBadge,
+    textStyle: row.textStyle,
   }));
 }
 
@@ -555,7 +561,15 @@ type SuggestedLive = {
 };
 
 type RoomPayload =
-  | { type: 'chat'; id: string; author: string; authorUid?: string; text: string; sourceLang?: string | null }
+  | {
+      type: 'chat';
+      id: string;
+      author: string;
+      authorUid?: string;
+      text: string;
+      sourceLang?: string | null;
+      textStyle?: PostTextStyle | null;
+    }
   | {
       type: 'gift';
       id: string;
@@ -6896,6 +6910,8 @@ function ChatPanel({
   const setCoins = useAuthStore((state) => state.setCoins);
   const [messages, setMessages] = useState<ChatMessage[]>(() => liveChatCache.get(roomName) ?? []);
   const [text, setText] = useState('');
+  const [draftStyle, setDraftStyle] = useState<PostTextStyle | null>(null);
+  useTextStyleFontsIn(messages);
   const [openGifts, setOpenGifts] = useState(false);
   const [sideTab, setSideTab] = useState<'chat' | 'gifts'>('chat');
   const [pendingGiftId, setPendingGiftId] = useState<string | null>(null);
@@ -7066,6 +7082,7 @@ function ChatPanel({
           text: msg.text,
           sourceLang: msg.sourceLang || undefined,
           gift: msg.gift || undefined,
+          textStyle: msg.textStyle ?? null,
           createdAtMs: msg.createdAtMs,
         })),
       );
@@ -7134,6 +7151,7 @@ function ChatPanel({
           authorUid: data.authorUid,
           text: data.text,
           sourceLang: data.sourceLang,
+          textStyle: parsePostTextStyle(data.textStyle),
         });
         return;
       }
@@ -7257,12 +7275,14 @@ function ChatPanel({
     const value = (override ?? text).trim();
     if (!value || !profile) return;
     const author = profile.displayName || profile.handle || 'Liveboomer';
+    const textStyle = override === undefined ? parsePostTextStyle(draftStyle) : null;
     const message: ChatMessage = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       author,
       authorUid: profile.firebaseUid,
       text: value,
       sourceLang: getLocale(),
+      ...(textStyle ? { textStyle } : {}),
     };
     pushMessage(message);
     if (override === undefined) setText('');
@@ -7273,6 +7293,7 @@ function ChatPanel({
       author,
       text: value,
       sourceLang: message.sourceLang,
+      textStyle,
     }).catch((error) => console.error('[chat] firestore', error));
     try {
       await publishRoomData(room, { type: 'chat', ...message });
@@ -7688,7 +7709,10 @@ function ChatPanel({
                     />
                   ) : (
                   <span className="lb-live-chat-msg__text flex min-w-0 items-start">
-                    <span className="min-w-0 flex-1">
+                    <span
+                      className={`min-w-0 flex-1 ${textStyleProps(message.textStyle).className}`}
+                      style={textStyleProps(message.textStyle).style}
+                    >
                       <TranslatedText
                         text={message.text}
                         sourceLang={message.sourceLang}
@@ -7805,6 +7829,10 @@ function ChatPanel({
           </button>
           ) : null}
           <div className="lb-live-chat-input flex h-11 min-w-0 flex-1 items-center rounded-full pr-1 lg:rounded-xl">
+            <div
+              className={`contents ${textStyleProps(draftStyle).className}`}
+              style={textStyleProps(draftStyle).style}
+            >
             <EmojiInput
               ref={inputRef}
               value={text}
@@ -7818,6 +7846,13 @@ function ChatPanel({
               padClassName="pl-3.5 pr-1 py-[13px]"
               mirrorTextClassName=""
               placeholderClassName="lb-live-chat-input__placeholder truncate"
+            />
+            </div>
+            <TextStyleButton
+              variant="toolbar"
+              value={draftStyle}
+              onChange={setDraftStyle}
+              buttonClassName="lb-live-chat-tool grid h-10 w-10 shrink-0 place-items-center rounded-full transition"
             />
             <EmojiPickerButton
               placement="above"
