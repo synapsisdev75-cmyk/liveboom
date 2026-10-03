@@ -71,15 +71,20 @@ function absoluteHttp(url) {
   return value;
 }
 
+/** `circle` = Flash Boom publicado como "Público" (amigos y seguidores). */
+const SHAREABLE_VISIBILITY = new Set(['public', 'circle']);
+
 function previewFromPost(post) {
   const visibility = String(post?.visibility || 'public');
-  const shareable = visibility === 'public';
+  const shareable = SHAREABLE_VISIBILITY.has(visibility);
   const username = String(post?.username || '').replace(/^@/, '').trim() || 'liveboom';
   const caption = String(post?.caption || '').trim();
   const type = post?.type === 'video' || post?.type === 'photo' ? post.type : 'text';
   const mediaUrl = shareable ? absoluteHttp(post?.mediaUrl) : '';
   const thumbUrl = shareable ? absoluteHttp(post?.thumbUrl) : '';
-  const image = thumbUrl || (type === 'photo' ? mediaUrl : '') || DEFAULT_IMAGE;
+  const mediaImage = thumbUrl || (type === 'photo' ? mediaUrl : '');
+  const linkImage = shareable ? absoluteHttp(post?.linkPreview?.image) : '';
+  const image = mediaImage || linkImage || absoluteHttp(post?.authorAvatarUrl) || DEFAULT_IMAGE;
   const video = shareable && type === 'video' ? mediaUrl : '';
   return {
     username,
@@ -91,8 +96,8 @@ function previewFromPost(post) {
     imageType: imageMime(image),
     video,
     videoType: video ? videoMime(video) : '',
-    width: Number(post?.mediaWidth) || 0,
-    height: Number(post?.mediaHeight) || 0,
+    width: mediaImage ? Number(post?.mediaWidth) || 0 : 0,
+    height: mediaImage ? Number(post?.mediaHeight) || 0 : 0,
   };
 }
 
@@ -292,10 +297,23 @@ async function loadSharePost(db, postId) {
         caption: data.caption || source.caption,
         mediaWidth: source.mediaWidth || data.mediaWidth,
         mediaHeight: source.mediaHeight || data.mediaHeight,
+        linkPreview: source.linkPreview || data.linkPreview,
         visibility: source.visibility || data.visibility,
         username: data.username || source.username,
         authorUid: data.authorUid || source.authorUid,
       };
+    }
+  }
+  const draft = previewFromPost(data);
+  const authorUid = String(data.authorUid || '').trim();
+  if (draft.image === DEFAULT_IMAGE && authorUid && isSafePostId(authorUid)) {
+    try {
+      const user = await db.collection('users').doc(authorUid).get();
+      const profile = user.exists ? user.data() || {} : {};
+      const avatar = absoluteHttp(profile.avatarUrl) || absoluteHttp(profile.photoURL);
+      if (avatar) data = { ...data, authorAvatarUrl: avatar };
+    } catch {
+      /* sin foto de perfil: queda el logo */
     }
   }
   return data;

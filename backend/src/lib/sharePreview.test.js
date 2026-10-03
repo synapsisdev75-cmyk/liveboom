@@ -77,3 +77,53 @@ test('la vista previa usa el video público y no filtra uno privado', () => {
   assert.equal(webPostPath(pub, 'abc'), '/u/yemdups?post=abc&uid=uid1');
   assert.equal(sharePostIdFromPath('/s/abc'), 'abc');
 });
+
+test('Flash Boom (circle) muestra su foto o video al compartir', () => {
+  const flashPhoto = previewFromPost({
+    username: 'yemdups',
+    visibility: 'circle',
+    type: 'photo',
+    mediaUrl: 'https://cdn.example/flash.jpg',
+  });
+  assert.equal(flashPhoto.image, 'https://cdn.example/flash.jpg');
+  const flashVideo = previewFromPost({
+    username: 'yemdups',
+    visibility: 'circle',
+    type: 'video',
+    mediaUrl: 'https://cdn.example/flash.mp4',
+    thumbUrl: 'https://cdn.example/flash-thumb.jpg',
+  });
+  assert.equal(flashVideo.video, 'https://cdn.example/flash.mp4');
+  assert.equal(flashVideo.image, 'https://cdn.example/flash-thumb.jpg');
+  const friendsOnly = previewFromPost({
+    username: 'yemdups',
+    visibility: 'friends',
+    type: 'photo',
+    mediaUrl: 'https://cdn.example/friends.jpg',
+  });
+  assert.equal(friendsOnly.image.includes('friends.jpg'), false);
+});
+
+test('sin foto/miniatura usa la carátula del enlace, luego la foto de perfil', () => {
+  const withLink = previewFromPost({
+    username: 'yemdups',
+    visibility: 'public',
+    type: 'text',
+    caption: 'mira',
+    linkPreview: { image: 'https://cdn.example/link.jpg' },
+    authorAvatarUrl: 'https://cdn.example/avatar.jpg',
+  });
+  assert.equal(withLink.image, 'https://cdn.example/link.jpg');
+  const textOnly = previewFromPost({
+    username: 'yemdups',
+    visibility: 'public',
+    type: 'text',
+    caption: 'Ahora me encuentran en liveboom',
+    mediaWidth: 1080,
+    mediaHeight: 1920,
+    authorAvatarUrl: 'https://cdn.example/avatar.jpg',
+  });
+  assert.equal(textOnly.image, 'https://cdn.example/avatar.jpg');
+  assert.equal(textOnly.width, 0);
+  assert.match(previewFromPost({ username: 'x', type: 'text' }).image, /logo-clear\.png$/);
+});
