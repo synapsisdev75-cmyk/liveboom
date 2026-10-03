@@ -1,4 +1,4 @@
-import { Play, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
@@ -112,6 +112,7 @@ function BoomClipGroupThumb({
     <button
       type="button"
       onClick={onOpen}
+      aria-label={isOwn ? 'Tu Boom Clip' : `Boom Clip de @${group.username}`}
       className="lb-card group relative aspect-[9/16] w-[7.25rem] shrink-0 snap-start overflow-hidden rounded-2xl bg-zinc-950 text-left ring-1 ring-fuchsia-400/25 transition duration-300 hover:ring-fuchsia-300/50 sm:w-[8rem]"
     >
       {latest.thumbUrl ? (
@@ -131,10 +132,6 @@ function BoomClipGroupThumb({
       <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-black/25" />
 
       <ClipSegmentBar count={group.clips.length} />
-
-      <span className="absolute left-1/2 top-1/2 z-10 grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/55 text-white ring-1 ring-white/30 backdrop-blur-sm">
-        <Play size={16} fill="currentColor" className="ml-0.5" />
-      </span>
 
       {durationLabel ? (
         <span className="absolute right-1.5 top-1.5 z-10 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white ring-1 ring-white/15">
@@ -162,13 +159,6 @@ function BoomClipGroupThumb({
           />
         </span>
       </span>
-
-      <div className="absolute inset-x-0 bottom-0 p-2">
-        <p className="line-clamp-1 text-[10px] font-semibold text-white/95">{latest.caption}</p>
-        <p className="truncate text-[9px] text-fuchsia-200/90">
-          {isOwn ? 'Tu Boom Clip' : `@${group.username}`}
-        </p>
-      </div>
     </button>
   );
 }
