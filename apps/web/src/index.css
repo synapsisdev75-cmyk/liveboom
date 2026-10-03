@@ -335,6 +335,59 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   -webkit-backdrop-filter: blur(14px) saturate(1.35);
 }
 
+/* Explorar: botones sin círculo de fondo, todos del mismo tamaño e ícono proporcional. */
+.lb-explore-view .lb-action-rail--fit .lb-action-rail__btn,
+.lb-explore-view .lb-action-rail--fit .lb-action-rail__gift button.grid,
+.lb-explore-view .lb-action-rail--fit .lb-action-rail-share button,
+.lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
+  width: var(--lb-action-size) !important;
+  height: var(--lb-action-size) !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
+  --lb-action-size: clamp(30px, 3.6dvh, 38px);
+}
+
+@media (min-width: 1024px) {
+  .lb-explore-view .lb-immersive-media-box .lb-media-mute-fab {
+    --lb-action-size: clamp(38px, 5.2dvh, 52px);
+  }
+}
+
+.lb-explore-view .lb-action-rail--fit .lb-action-rail__btn svg,
+.lb-explore-view .lb-action-rail--fit .lb-action-rail__gift button.grid svg,
+.lb-explore-view .lb-action-rail--fit .lb-action-rail-share button svg,
+.lb-explore-view .lb-immersive-media-box .lb-media-mute-fab svg {
+  width: calc(var(--lb-action-size) * 0.7);
+  height: calc(var(--lb-action-size) * 0.7);
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+}
+
+.lb-explore-view .lb-action-rail--fit .lb-action-rail__btn,
+.lb-explore-view .lb-action-rail--fit .lb-action-rail-share button,
+.lb-explore-view .lb-action-rail--fit .lb-action-rail-share button svg,
+.lb-explore-view .lb-immersive-media-box .lb-media-mute-fab svg {
+  color: #fff !important;
+}
+
+.lb-explore-view .lb-action-rail--fit .lb-action-rail__btn.bg-cyan-500 {
+  color: #22d3ee !important;
+}
+
+.lb-explore-view .lb-action-rail--fit .lb-views-indicator--rail .lb-views-icon,
+.lb-explore-view .lb-action-rail--fit .lb-gift-history--rail .lb-gift-history__icon {
+  width: calc(var(--lb-action-size) * 0.7);
+  height: calc(var(--lb-action-size) * 0.7);
+}
+
 .lb-views-indicator {
   display: inline-flex;
   align-items: center;
