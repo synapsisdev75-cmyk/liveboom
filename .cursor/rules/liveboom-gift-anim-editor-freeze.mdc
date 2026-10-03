@@ -16,12 +16,19 @@ Estos archivos y contratos son **congelados**. Un deploy, bugfix o refactor en o
 - `backend/src/routes/gifts.js` (rutas `convert-alpha/*`)
 - Escala de burst: campo `animScale` en catálogo + uso en `FloatingGift` / `GiftVideoBurst`
 - Serialización `serializeEditableGift` / `normalizeGift` respecto a `animScale`, `video`, `image`, `face`
+- Composición LIVE 16:9 aprobada por el usuario:
+  - `apps/web/src/lib/giftContentBounds.ts` (ficha de diseño por regalo, ajustes de Botas, Moto, Yate, Dios de live)
+  - En `FloatingGift.tsx`: `auto169` / `cropping169`, `immersive` / `contentId`, resplandor `ambient`, variables `--lb-fade-*`
+  - CSS `.lb-gift-ambient*`, `.lb-gift-burst-video--immersive`, `.lb-gift-burst-video--soft`, `.lb-gift-burst-host`
+  - Tiempos y audio de cada animación (`durationMs`, `volume`, efecto de reproducción): nunca se tocan al ajustar composición
 
 ## Qué está protegido
 
 1. Editor Super Admin: previsualización móvil/tablet/escritorio, escala de animación (`animScale`), upload MOV→WebM, publicar catálogo.
 2. Conversión alpha (ProRes 4444 → WebM VP9 yuva).
 3. Reproducción del regalo enviado usando la escala publicada en Firestore `config/giftsCatalog`.
+4. Presentación en LIVE 16:9: cada regalo completo, apoyado en los bordes donde su animación sale cortada, difuminado donde queda dentro y con resplandor a pantalla completa.
+   Regalos nuevos: correr de nuevo el análisis cuadro a cuadro y agregar su ficha en `giftContentBounds.ts`; no cambiar las fichas existentes sin orden.
 
 ## Qué sí se puede hacer fuera de este freeze
 
@@ -31,4 +38,4 @@ Estos archivos y contratos son **congelados**. Un deploy, bugfix o refactor en o
 
 ## Si hace falta un cambio
 
-Parar y pedir confirmación explícita: “cambiar motor de regalos / animScale / GiftCatalogPreview”. Sin esa frase, **no editar**.
+Parar y pedir confirmación explícita: “cambiar motor de regalos / animScale / GiftCatalogPreview” o “cambiar composición de regalos 16:9”. Sin esa orden, **no editar**.
