@@ -1357,15 +1357,41 @@ html[data-lb-theme='light'] .gift-box-item video {
   opacity: 0.55;
 }
 
-/* El 9:16 sobresale del alto del stage (130 %): fundido largo en los cuatro lados visibles. */
+/* Ajuste por regalo: solo se difuminan los bordes donde el contenido toca el cuadro del video. */
 @container lb-gift-burst (min-aspect-ratio: 5/8) {
   .lb-gift-burst-video--immersive {
     -webkit-mask-image:
-      linear-gradient(to right, transparent 0%, #000 28%, #000 72%, transparent 100%),
-      linear-gradient(to bottom, transparent 8%, #000 28%, #000 72%, transparent 92%);
+      linear-gradient(
+        to right,
+        transparent 0%,
+        #000 var(--lb-fade-l, 14%),
+        #000 calc(100% - var(--lb-fade-r, 14%)),
+        transparent 100%
+      ),
+      linear-gradient(
+        to bottom,
+        transparent 0%,
+        #000 var(--lb-fade-t, 9%),
+        #000 calc(100% - var(--lb-fade-b, 9%)),
+        transparent 100%
+      );
+    -webkit-mask-composite: source-in;
     mask-image:
-      linear-gradient(to right, transparent 0%, #000 28%, #000 72%, transparent 100%),
-      linear-gradient(to bottom, transparent 8%, #000 28%, #000 72%, transparent 92%);
+      linear-gradient(
+        to right,
+        transparent 0%,
+        #000 var(--lb-fade-l, 14%),
+        #000 calc(100% - var(--lb-fade-r, 14%)),
+        transparent 100%
+      ),
+      linear-gradient(
+        to bottom,
+        transparent 0%,
+        #000 var(--lb-fade-t, 9%),
+        #000 calc(100% - var(--lb-fade-b, 9%)),
+        transparent 100%
+      );
+    mask-composite: intersect;
   }
 }
 

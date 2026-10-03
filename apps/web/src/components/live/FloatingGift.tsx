@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { playGiftAlert } from '../../lib/alertSound';
 import { giftMotionFor } from '../../lib/giftAnimations';
@@ -19,6 +19,7 @@ import {
 } from '../../lib/giftLayout';
 import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
+import { giftImmersiveFit } from '../../lib/giftContentBounds';
 import { giftPlaybackDurationMs, giftPlaybackSrc } from '../../lib/giftMedia';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import { GiftComboBadge } from './GiftComboBadge';
@@ -184,6 +185,7 @@ function GiftVideoBurst({
   mediaHeight,
   ambient = false,
   immersive = false,
+  contentId,
   onComplete,
 }: {
   src: string;
@@ -192,8 +194,10 @@ function GiftVideoBurst({
   animScale?: number;
   /** LIVE 16:9: resplandor con los colores del regalo a los lados de un 9:16. */
   ambient?: boolean;
-  /** LIVE 16:9 sin colocación propia: 9:16 agrandado sobre el alto del stage y resplandor a pantalla completa. */
+  /** LIVE 16:9 sin colocación propia: tamaño máximo según el contenido del regalo y resplandor a pantalla completa. */
   immersive?: boolean;
+  /** Id del regalo para buscar la caja de su contenido visible. */
+  contentId?: string;
   fillViewport?: boolean;
   /** Chat: llena el hilo, no toda la ventana. */
   fillParent?: boolean;
@@ -207,6 +211,8 @@ function GiftVideoBurst({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const ambientRef = useRef<HTMLCanvasElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [stageAspect, setStageAspect] = useState(16 / 9);
   const doneRef = useRef(false);
   const scale = clampGiftAnimScale(animScale);
   const catalogSize = resolveGiftMediaSize(mediaWidth, mediaHeight, frame916);
@@ -222,7 +228,8 @@ function GiftVideoBurst({
   const portrait = hasAspect ? mh >= mw : frame916;
   const aspectRatio = hasAspect ? `${mw} / ${mh}` : frame916 ? '9 / 16' : undefined;
 
-  const immersivePortrait = immersive && portrait;
+  const immersiveFit =
+    immersive && slot ? giftImmersiveFit(contentId, hasAspect ? mw / mh : 9 / 16, stageAspect) : null;
   // En LIVE 9:16 evitamos cover/global: el video queda en el marco vertical del stage.
   const stageSlot =
     frame916 && slot && (slot.displayArea === 'global' || slot.fullscreenMode === 'global')
@@ -232,8 +239,16 @@ function GiftVideoBurst({
           fullscreenMode: 'none' as const,
           fit: slot.fit === 'cover' ? ('contain' as const) : slot.fit,
         }
-      : immersivePortrait && slot
-        ? { ...slot, scale: 1.3 }
+      : immersiveFit && slot
+        ? {
+            ...slot,
+            fit: 'contain' as const,
+            scale: immersiveFit.scale,
+            x: 50,
+            y: 50,
+            anchorX: immersiveFit.anchorX,
+            anchorY: immersiveFit.anchorY,
+          }
         : slot;
 
   const bleed = stageSlot ? isGiftLayoutBleed(stageSlot) : fillViewport && !frame916;
@@ -263,7 +278,16 @@ function GiftVideoBurst({
             objectFit: 'contain' as const,
           }
         : { width: `${scale * 100}%`, height: `${scale * 100}%`, background: 'transparent' };
-  const showAmbient = ambient && portrait && !bleed;
+  const showAmbient = ambient && (portrait || Boolean(immersiveFit)) && !bleed;
+  const immersiveMedia = Boolean(immersiveFit) && !bleed;
+  const fadeVars = immersiveFit
+    ? ({
+        '--lb-fade-l': immersiveFit.fade.left ? '14%' : '0%',
+        '--lb-fade-r': immersiveFit.fade.right ? '14%' : '0%',
+        '--lb-fade-t': immersiveFit.fade.top ? '9%' : '0%',
+        '--lb-fade-b': immersiveFit.fade.bottom ? '9%' : '0%',
+      } as CSSProperties)
+    : undefined;
   const useFillClass = (fillViewport || frame916) && !stageSlot && !fillParent;
   const pinToViewport = Boolean(
     !frame916 &&
@@ -376,14 +400,28 @@ function GiftVideoBurst({
     return () => window.cancelAnimationFrame(raf);
   }, [showAmbient, src]);
 
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!immersive || !host || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const { width, height } = host.getBoundingClientRect();
+      if (width > 1 && height > 1) setStageAspect(width / height);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [immersive]);
+
   return (
     <motion.div
+      ref={hostRef}
       className={`lb-gift-burst-host pointer-events-none flex flex-col items-center justify-center ${
         pinToViewport
           ? 'fixed inset-0 z-[114]'
           : 'absolute inset-0 z-[60]'
       } ${bleed ? 'lb-gift-layout-stage--bleed' : ''} ${frame916 ? 'lb-gift-burst-frame916' : ''} ${
-        immersivePortrait ? 'overflow-hidden' : ''
+        immersiveFit ? 'overflow-hidden' : ''
       }`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -391,7 +429,7 @@ function GiftVideoBurst({
       transition={{ duration: 0.15 }}
     >
       {showAmbient ? (
-        <div className={`lb-gift-ambient${immersivePortrait ? ' lb-gift-ambient--full' : ''}`} aria-hidden>
+        <div className={`lb-gift-ambient${immersiveFit ? ' lb-gift-ambient--full' : ''}`} aria-hidden>
           <canvas ref={ambientRef} width={64} height={36} />
         </div>
       ) : null}
@@ -402,9 +440,9 @@ function GiftVideoBurst({
         className={`lb-gift-burst-video bg-transparent ${
           useFillClass ? 'lb-gift-burst-video--fill object-contain' : 'lb-gift-layout-media'
         } ${portrait && !bleed ? 'lb-gift-burst-video--soft' : ''} ${
-          immersivePortrait && !bleed ? 'lb-gift-burst-video--immersive' : ''
+          immersiveMedia ? 'lb-gift-burst-video--immersive' : ''
         }`}
-        style={mediaStyle}
+        style={fadeVars ? { ...mediaStyle, ...fadeVars } : mediaStyle}
         playsInline
         muted
         autoPlay
@@ -623,6 +661,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           slot={slot}
           ambient={live169}
           immersive={auto169}
+          contentId={gift.id}
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
           mediaWidth={gift.media?.width}
