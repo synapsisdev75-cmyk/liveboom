@@ -354,7 +354,7 @@ export function ShareModal({
       }}
     >
       <div
-        className="flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-zinc-950 shadow-[0_20px_80px_rgba(0,0,0,0.55)] sm:rounded-3xl"
+        className="lb-theme-sheet flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-zinc-950 shadow-[0_20px_80px_rgba(0,0,0,0.55)] sm:rounded-3xl"
         style={{
           maxHeight:
             'min(92dvh, calc(100dvh - var(--lb-safe-top, 0px) - var(--lb-safe-bottom, 0px) - 1rem))',

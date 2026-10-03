@@ -91,7 +91,7 @@ export function PostOptionsMenu({ variant = 'header', onOpenChange }: Props) {
               <div
                 role="menu"
                 aria-label={t('actions.moreOptions')}
-                className="w-full max-w-lg rounded-t-3xl bg-zinc-950 px-3 pt-3 shadow-2xl ring-1 ring-white/10"
+                className="lb-theme-sheet w-full max-w-lg rounded-t-3xl bg-zinc-950 px-3 pt-3 shadow-2xl ring-1 ring-white/10"
                 style={{ paddingBottom: 'max(0.85rem, var(--lb-safe-bottom))' }}
               >
                 <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
