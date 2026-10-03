@@ -159,6 +159,20 @@ export function listEmojiTokens(text: string): EmojiTokenSpan[] {
   return out;
 }
 
+/** Texto compuesto solo por emojis (Unicode y/o :tokens: LiveBoom), sin letras ni números. */
+export function isEmojiOnlyText(text: string): boolean {
+  if (!text.trim()) return false;
+  const withoutTokens = text.replace(new RegExp(EMOJI_SHORTCODE_RE.source, 'g'), (raw, id: string) =>
+    resolveEmoji(id) ? '' : raw,
+  );
+  return (
+    withoutTokens
+      .replace(/\s+/g, '')
+      .replace(/\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|[\u200d\ufe0f\u20e3]/gu, '') ===
+    ''
+  );
+}
+
 /** Caret dentro del shortcode (no en los extremos). */
 export function emojiTokenCovering(text: string, index: number): EmojiTokenSpan | null {
   return listEmojiTokens(text).find((token) => index > token.start && index < token.end) ?? null;

@@ -48,7 +48,7 @@ import { APP_LOCALES, LOCALE_META, type AppLocale } from '../../i18n/locales';
 import { useLocaleStore } from '../../store/localeStore';
 import { readChatTranslateTarget, writeChatTranslateTarget } from '../../lib/chatTranslatePref';
 import { GifPickerSheet } from './GifPickerSheet';
-import { CHAT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import { CHAT_EMOJI_SIZE, isEmojiOnlyText } from '../../lib/liveboomEmojis';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
 import { patchChatNotifyContext } from '../../lib/chatNotifyContext';
 import { api } from '../../lib/api';
@@ -2508,6 +2508,13 @@ export function InternalChatPanel({
                 !message.replyTo &&
                 !message.linkUrl &&
                 editingId !== message.id;
+              const isEmojiOnly =
+                Boolean(plainText) &&
+                !message.mediaUrl &&
+                !message.replyTo &&
+                !message.linkUrl &&
+                editingId !== message.id &&
+                isEmojiOnlyText(message.text || '');
               return (
                 <motion.div
                   key={message.id}
@@ -2623,6 +2630,8 @@ export function InternalChatPanel({
                         className={`break-words ${
                           isVideo || isSticker || isGift || isBarePhoto
                             ? 'bg-transparent p-0'
+                            : isEmojiOnly
+                              ? `lb-chat-emoji-only ${message.mine ? 'pl-7' : 'pr-7'}`
                             : `lb-chat-bubble rounded-2xl py-2.5 text-[13px] leading-relaxed ${
                                 message.mine
                                   ? 'is-out rounded-br-md pl-7 pr-3.5'
@@ -2807,7 +2816,14 @@ export function InternalChatPanel({
                                 </button>
                               </div>
                             ) : plainText ? (
-                              <p className="whitespace-pre-wrap">
+                              <p
+                                className="whitespace-pre-wrap"
+                                style={
+                                  isEmojiOnly
+                                    ? { fontSize: CHAT_EMOJI_SIZE, lineHeight: 1.2 }
+                                    : undefined
+                                }
+                              >
                                 <TranslatedText
                                   text={message.text || ''}
                                   sourceLang={message.sourceLang}
