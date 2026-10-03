@@ -2481,6 +2481,15 @@ export function InternalChatPanel({
                 !/^🎬\s*Nota de video$/i.test(message.text.trim()) &&
                 !/^GIF$/i.test(message.text.trim()) &&
                 !/^📎/.test(message.text.trim());
+              const isBarePhoto =
+                !gone &&
+                !isSticker &&
+                (message.mediaType === 'image' || isGif) &&
+                Boolean(message.mediaUrl) &&
+                !plainText &&
+                !message.replyTo &&
+                !message.linkUrl &&
+                editingId !== message.id;
               return (
                 <motion.div
                   key={message.id}
@@ -2594,7 +2603,7 @@ export function InternalChatPanel({
                       </button>
                       <div
                         className={`break-words ${
-                          isVideo || isSticker || isGift
+                          isVideo || isSticker || isGift || isBarePhoto
                             ? 'bg-transparent p-0'
                             : `lb-chat-bubble rounded-2xl py-2.5 text-[13px] leading-relaxed ${
                                 message.mine
@@ -2658,7 +2667,7 @@ export function InternalChatPanel({
                               message.mediaUrl ? (
                               <button
                                 type="button"
-                                className="mb-1 block max-w-full"
+                                className={`block max-w-full ${isBarePhoto ? '' : 'mb-1'}`}
                                 onClick={() =>
                                   setMediaViewer({ url: message.mediaUrl!, gif: isGif })
                                 }
@@ -2668,7 +2677,7 @@ export function InternalChatPanel({
                                   alt=""
                                   loading="lazy"
                                   decoding="async"
-                                  className={`max-h-48 rounded-lg ${
+                                  className={`max-h-48 ${isBarePhoto ? 'rounded-2xl' : 'rounded-lg'} ${
                                     isGif ? 'object-contain' : 'object-cover'
                                   }`}
                                 />
