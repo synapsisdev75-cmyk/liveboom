@@ -183,6 +183,7 @@ function GiftVideoBurst({
   mediaWidth,
   mediaHeight,
   ambient = false,
+  immersive = false,
   onComplete,
 }: {
   src: string;
@@ -191,6 +192,8 @@ function GiftVideoBurst({
   animScale?: number;
   /** LIVE 16:9: resplandor con los colores del regalo a los lados de un 9:16. */
   ambient?: boolean;
+  /** LIVE 16:9 sin colocación propia: 9:16 agrandado sobre el alto del stage y resplandor a pantalla completa. */
+  immersive?: boolean;
   fillViewport?: boolean;
   /** Chat: llena el hilo, no toda la ventana. */
   fillParent?: boolean;
@@ -219,6 +222,7 @@ function GiftVideoBurst({
   const portrait = hasAspect ? mh >= mw : frame916;
   const aspectRatio = hasAspect ? `${mw} / ${mh}` : frame916 ? '9 / 16' : undefined;
 
+  const immersivePortrait = immersive && portrait;
   // En LIVE 9:16 evitamos cover/global: el video queda en el marco vertical del stage.
   const stageSlot =
     frame916 && slot && (slot.displayArea === 'global' || slot.fullscreenMode === 'global')
@@ -228,7 +232,9 @@ function GiftVideoBurst({
           fullscreenMode: 'none' as const,
           fit: slot.fit === 'cover' ? ('contain' as const) : slot.fit,
         }
-      : slot;
+      : immersivePortrait && slot
+        ? { ...slot, scale: 1.3 }
+        : slot;
 
   const bleed = stageSlot ? isGiftLayoutBleed(stageSlot) : fillViewport && !frame916;
   const layoutStyle = stageSlot
@@ -376,14 +382,16 @@ function GiftVideoBurst({
         pinToViewport
           ? 'fixed inset-0 z-[114]'
           : 'absolute inset-0 z-[60]'
-      } ${bleed ? 'lb-gift-layout-stage--bleed' : ''} ${frame916 ? 'lb-gift-burst-frame916' : ''}`}
+      } ${bleed ? 'lb-gift-layout-stage--bleed' : ''} ${frame916 ? 'lb-gift-burst-frame916' : ''} ${
+        immersivePortrait ? 'overflow-hidden' : ''
+      }`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
     >
       {showAmbient ? (
-        <div className="lb-gift-ambient" aria-hidden>
+        <div className={`lb-gift-ambient${immersivePortrait ? ' lb-gift-ambient--full' : ''}`} aria-hidden>
           <canvas ref={ambientRef} width={64} height={36} />
         </div>
       ) : null}
@@ -393,7 +401,9 @@ function GiftVideoBurst({
         poster={TRANSPARENT_VIDEO_POSTER}
         className={`lb-gift-burst-video bg-transparent ${
           useFillClass ? 'lb-gift-burst-video--fill object-contain' : 'lb-gift-layout-media'
-        } ${portrait && !bleed ? 'lb-gift-burst-video--soft' : ''}`}
+        } ${portrait && !bleed ? 'lb-gift-burst-video--soft' : ''} ${
+          immersivePortrait && !bleed ? 'lb-gift-burst-video--immersive' : ''
+        }`}
         style={mediaStyle}
         playsInline
         muted
@@ -612,6 +622,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
           frame916={frame916}
           slot={slot}
           ambient={live169}
+          immersive={auto169}
           volume={gift.media?.volume ?? 1}
           durationMs={giftPlaybackDurationMs(gift.media)}
           mediaWidth={gift.media?.width}
