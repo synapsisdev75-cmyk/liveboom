@@ -3580,9 +3580,10 @@ html:has(.lb-legal-page) #root {
   color: #d8b4fe;
 }
 
-/* Publicaciones: Comentar / Compartir sin caja (ícono + texto); gana también al tema claro. */
+/* Publicaciones: Comentar / Compartir / Editar sin caja (ícono + texto); gana también al tema claro. */
 .lb-pub-card .lb-action-pill.lb-action-pill--comment,
-.lb-pub-card .lb-action-pill.lb-action-pill--share {
+.lb-pub-card .lb-action-pill.lb-action-pill--share,
+.lb-pub-card .lb-action-pill.lb-action-pill--edit {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
