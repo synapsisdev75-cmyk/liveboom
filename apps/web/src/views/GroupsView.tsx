@@ -41,7 +41,7 @@ import {
   type LiveGroup,
 } from '../lib/groupsFirestore';
 import { uploadGroupChatMedia, uploadGroupCover } from '../lib/storage';
-import { insertEmojiToken, CHAT_EMOJI_SIZE } from '../lib/liveboomEmojis';
+import { CHAT_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { useAuthStore } from '../store/authStore';
 import { EmojiPickerButton } from '../components/social/EmojiPicker';
 import { EmojiInput, type EmojiInputHandle } from '../components/social/EmojiInput';
@@ -1270,7 +1270,7 @@ export function GroupsView() {
                       />
                       <EmojiPickerButton
                         placement="above"
-                        onPick={(id) => setDraft((d) => insertEmojiToken(d, id))}
+                        onPick={(id) => draftInputRef.current?.insertToken(id)}
                       />
                       <button
                         type="submit"

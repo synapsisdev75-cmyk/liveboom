@@ -15,7 +15,7 @@ import {
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { readVideoDurationSec } from '../../lib/videoDuration';
 import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
-import { insertEmojiToken, POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/mediaFile';
 import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
@@ -1947,12 +1947,7 @@ export function CreatePostModal({
               <EmojiPickerButton
                 placement="above"
                 showUnicode
-                onPick={(id) =>
-                  setCaption((current) => {
-                    const next = insertEmojiToken(current, id);
-                    return captionMax != null && next.length > captionMax ? current : next;
-                  })
-                }
+                onPick={(id) => captionInputRef.current?.insertToken(id)}
               />
                         <button
                           type="button"

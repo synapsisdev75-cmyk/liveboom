@@ -9,6 +9,8 @@ import {
   type ChangeEvent,
   type ComponentPropsWithoutRef,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type TextareaHTMLAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -75,12 +77,126 @@ export type EmojiInputHandle = {
   focus: () => void;
   /** Inserta un emoji (LiveBoom o Unicode) en el cursor, sin borrar el texto. */
   insertToken: (id: string) => void;
+  /** Inserta texto libre (p. ej. sticker de texto) en el cursor. */
+  insertText?: (text: string) => void;
   /** Selección actual del campo (se conserva aunque haya perdido el foco). */
   getSelection: () => { start: number; end: number };
 };
 
+// La selección nativa se dibuja con la geometría del campo oculto (shortcodes largos);
+// la visible se pinta sobre el espejo (.lb-emoji-selection).
 const inputInner =
-  'relative z-[1] w-full min-w-0 border-0 bg-transparent text-sm text-transparent outline-none [-webkit-text-fill-color:transparent] selection:bg-cyan-500/25 disabled:opacity-60';
+  'relative z-[1] w-full min-w-0 border-0 bg-transparent text-sm text-transparent outline-none [-webkit-text-fill-color:transparent] selection:bg-transparent selection:text-transparent disabled:opacity-60';
+
+type FieldBox = { left: number; top: number; width: number; height: number };
+
+type MirrorPiece =
+  | { kind: 'text'; node: Text; start: number; len: number }
+  | { kind: 'img'; node: HTMLImageElement; start: number; len: number };
+
+function rawLenOf(img: HTMLImageElement) {
+  return Number(img.dataset.rawLen || (img.dataset.emojiId ? `:${img.dataset.emojiId}:`.length : 1));
+}
+
+/** Trozos visibles del espejo con su posición en el texto crudo (un emoji vale su shortcode). */
+function mirrorPieces(mirrorRoot: HTMLElement): MirrorPiece[] {
+  const span = mirrorRoot.firstElementChild;
+  if (!span || span.tagName !== 'SPAN') return [];
+  const out: MirrorPiece[] = [];
+  let acc = 0;
+  const walk = (parent: Node) => {
+    parent.childNodes.forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const len = node.textContent?.length ?? 0;
+        out.push({ kind: 'text', node: node as Text, start: acc, len });
+        acc += len;
+      } else if (node instanceof HTMLImageElement) {
+        const len = rawLenOf(node);
+        out.push({ kind: 'img', node, start: acc, len });
+        acc += len;
+      } else if (node instanceof HTMLElement) {
+        walk(node);
+      }
+    });
+  };
+  walk(span);
+  return out;
+}
+
+/** Índice del texto crudo más cercano a un punto de pantalla, medido sobre lo que se ve (espejo). */
+function caretIndexFromPoint(mirrorRoot: HTMLElement, x: number, y: number): number | null {
+  const pieces = mirrorPieces(mirrorRoot);
+  if (pieces.length === 0) return null;
+  let best: number | null = null;
+  let bestDy = Infinity;
+  let bestDx = Infinity;
+  const consider = (index: number, cx: number, rect: DOMRect) => {
+    if (rect.height <= 0) return;
+    const dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0;
+    const dx = Math.abs(x - cx);
+    if (dy < bestDy - 0.5 || (Math.abs(dy - bestDy) <= 0.5 && dx < bestDx)) {
+      best = index;
+      bestDy = dy;
+      bestDx = dx;
+    }
+  };
+  const range = document.createRange();
+  for (const piece of pieces) {
+    if (piece.kind === 'img') {
+      const rect = piece.node.getBoundingClientRect();
+      consider(piece.start, rect.left, rect);
+      consider(piece.start + piece.len, rect.right, rect);
+      continue;
+    }
+    const text = piece.node.data;
+    for (let i = 0; i < piece.len; ) {
+      const code = text.charCodeAt(i);
+      const step = code >= 0xd800 && code <= 0xdbff && i + 1 < piece.len ? 2 : 1;
+      range.setStart(piece.node, i);
+      range.setEnd(piece.node, i + step);
+      const rects = range.getClientRects();
+      const rect = rects[rects.length - 1] ?? range.getBoundingClientRect();
+      consider(piece.start + i, rect.left, rect);
+      if (text[i] !== '\n') consider(piece.start + i + step, rect.right, rect);
+      i += step;
+    }
+  }
+  return best;
+}
+
+/** Rectángulos visibles (sobre el espejo) del rango [start, end) del texto crudo. */
+function mirrorSelectionBoxes(
+  mirrorRoot: HTMLElement,
+  start: number,
+  end: number,
+  host: HTMLElement,
+): FieldBox[] {
+  const hostRect = host.getBoundingClientRect();
+  const out: FieldBox[] = [];
+  const push = (rect: DOMRect) => {
+    if (rect.width < 0.5 || rect.height <= 0) return;
+    out.push({
+      left: rect.left - hostRect.left,
+      top: rect.top - hostRect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+  };
+  const range = document.createRange();
+  for (const piece of mirrorPieces(mirrorRoot)) {
+    const from = Math.max(start, piece.start);
+    const to = Math.min(end, piece.start + piece.len);
+    if (from >= to) continue;
+    if (piece.kind === 'img') {
+      push(piece.node.getBoundingClientRect());
+      continue;
+    }
+    range.setStart(piece.node, from - piece.start);
+    range.setEnd(piece.node, to - piece.start);
+    Array.from(range.getClientRects()).forEach(push);
+  }
+  return out;
+}
 
 function publicationComposerMaxPx() {
   const viewH = window.visualViewport?.height ?? window.innerHeight;
@@ -220,6 +336,9 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     const [caretBox, setCaretBox] = useState<{ left: number; top: number; height: number } | null>(
       null,
     );
+    const [selectionBoxes, setSelectionBoxes] = useState<FieldBox[]>([]);
+    const pointerDownAt = useRef<{ x: number; y: number; touch: boolean } | null>(null);
+    const userScrollAt = useRef(0);
     const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
     const [mentionHits, setMentionHits] = useState<PublicFsUser[]>([]);
     const [mentionIndex, setMentionIndex] = useState(0);
@@ -235,23 +354,39 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
             Math.max(Math.min(emojiSize, 18) + 3, 20)
           : Math.max(emojiSize + 8, 28);
 
+    function insertionRange() {
+      const field = fieldRef.current;
+      const focusedField = Boolean(field && document.activeElement === field);
+      const start = focusedField
+        ? field!.selectionStart ?? value.length
+        : (savedCaret.current?.start ?? value.length);
+      const end = focusedField ? field!.selectionEnd ?? start : (savedCaret.current?.end ?? start);
+      return { start: Math.min(start, end, value.length), end: Math.min(Math.max(start, end), value.length) };
+    }
+
+    function insertAt(next: string, caret: number) {
+      if (maxLength != null && next.length > maxLength) return;
+      pendingCaret.current = caret;
+      savedCaret.current = { start: caret, end: caret };
+      onChange(next);
+    }
+
     useImperativeHandle(ref, () => ({
       focus: () => fieldRef.current?.focus(),
       insertToken: (id: string) => {
-        const field = fieldRef.current;
-        const start =
-          field && document.activeElement === field
-            ? field.selectionStart ?? value.length
-            : (savedCaret.current?.start ?? value.length);
-        const end =
-          field && document.activeElement === field
-            ? field.selectionEnd ?? start
-            : (savedCaret.current?.end ?? start);
+        const { start, end } = insertionRange();
         const { next, caret } = insertEmojiTokenAt(value, id, start, end);
-        if (maxLength != null && next.length > maxLength) return;
-        pendingCaret.current = caret;
-        savedCaret.current = { start: caret, end: caret };
-        onChange(next);
+        insertAt(next, caret);
+      },
+      insertText: (text: string) => {
+        if (!text) return;
+        const { start, end } = insertionRange();
+        const before = value.slice(0, start);
+        const after = value.slice(end);
+        const lead = before && !/\s$/.test(before) ? ' ' : '';
+        const trail = after && !/^\s/.test(after) ? ' ' : '';
+        const piece = `${lead}${text}${trail}`;
+        insertAt(`${before}${piece}${after}`, before.length + lead.length + text.length);
       },
       getSelection: () => {
         const field = fieldRef.current;
@@ -261,34 +396,87 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       },
     }));
 
-    const refreshCaret = useCallback(() => {
-      const field = fieldRef.current;
-      const mirror = mirrorRef.current;
-      const host = hostRef.current;
-      if (!field || !mirror || !host || document.activeElement !== field) {
-        setCaretBox(null);
-        return;
-      }
-      const start = field.selectionStart ?? 0;
-      const end = field.selectionEnd ?? 0;
-      if (start !== end) {
-        setCaretBox(null);
-        return;
-      }
-      if (!value) {
-        const cs = getComputedStyle(field);
-        const padL = Number.parseFloat(cs.paddingLeft) || 0;
-        const padT = Number.parseFloat(cs.paddingTop) || 0;
-        setCaretBox({
-          left: padL,
-          top: padT,
-          height: lineHeightPx,
-        });
-        return;
-      }
-      const box = visualCaretBox(mirror, value, start, host);
-      setCaretBox(box);
-    }, [value, lineHeightPx]);
+    const clearSelectionBoxes = useCallback(() => {
+      setSelectionBoxes((prev) => (prev.length === 0 ? prev : []));
+    }, []);
+
+    /** `follow`: desplazar el espejo para que el cursor quede a la vista. */
+    const refreshCaret = useCallback(
+      (follow = false) => {
+        const field = fieldRef.current;
+        const mirror = mirrorRef.current;
+        const host = hostRef.current;
+        if (!field || !mirror || !host || document.activeElement !== field) {
+          setCaretBox(null);
+          clearSelectionBoxes();
+          return;
+        }
+        const start = field.selectionStart ?? 0;
+        const end = field.selectionEnd ?? 0;
+        if (start !== end) {
+          setCaretBox(null);
+          setSelectionBoxes(
+            value ? mirrorSelectionBoxes(mirror, Math.min(start, end), Math.max(start, end), host) : [],
+          );
+          return;
+        }
+        clearSelectionBoxes();
+        if (!value) {
+          const hostRect = host.getBoundingClientRect();
+          const ph = mirror.firstElementChild?.getBoundingClientRect();
+          if (ph && ph.height > 0) {
+            setCaretBox({ left: ph.left - hostRect.left, top: ph.top - hostRect.top, height: ph.height });
+            return;
+          }
+          const cs = getComputedStyle(mirror);
+          const padL = Number.parseFloat(cs.paddingLeft) || 0;
+          const padT = Number.parseFloat(cs.paddingTop) || 0;
+          const padB = Number.parseFloat(cs.paddingBottom) || 0;
+          const inner = Math.max(0, mirror.clientHeight - padT - padB);
+          setCaretBox({
+            left: padL,
+            top: multiline ? padT : padT + Math.max(0, (inner - lineHeightPx) / 2),
+            height: lineHeightPx,
+          });
+          return;
+        }
+        let box = visualCaretBox(mirror, value, start, host);
+        if (box && follow) {
+          const cs = getComputedStyle(mirror);
+          if (multiline) {
+            if (mirror.scrollHeight - mirror.clientHeight > 1) {
+              const topLimit = Number.parseFloat(cs.paddingTop) || 0;
+              const bottomLimit = mirror.clientHeight - (Number.parseFloat(cs.paddingBottom) || 0);
+              const delta =
+                box.top < topLimit
+                  ? box.top - topLimit
+                  : box.top + box.height > bottomLimit
+                    ? box.top + box.height - bottomLimit
+                    : 0;
+              if (delta) {
+                mirror.scrollTop += delta;
+                box = visualCaretBox(mirror, value, start, host);
+              }
+            }
+          } else {
+            const leftLimit = Number.parseFloat(cs.paddingLeft) || 0;
+            const rightLimit = mirror.clientWidth - (Number.parseFloat(cs.paddingRight) || 0) - 2;
+            const delta =
+              box.left > rightLimit
+                ? box.left - rightLimit
+                : box.left < leftLimit && mirror.scrollLeft > 0
+                  ? box.left - leftLimit
+                  : 0;
+            if (delta) {
+              mirror.scrollLeft += delta;
+              box = visualCaretBox(mirror, value, start, host);
+            }
+          }
+        }
+        setCaretBox(box);
+      },
+      [value, lineHeightPx, multiline, clearSelectionBoxes],
+    );
 
     useLayoutEffect(() => {
       const field = fieldRef.current;
@@ -297,7 +485,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         pendingCaret.current = null;
         field.setSelectionRange(pos, pos);
       }
-      refreshCaret();
+      refreshCaret(true);
     }, [value, refreshCaret, focused]);
 
     useLayoutEffect(() => {
@@ -319,16 +507,21 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               ? commentComposerMinPx()
               : publicationComposerMinPx(lineHeightPx);
         field.style.height = 'auto';
-        const next = Math.min(Math.max(field.scrollHeight, minH), cap);
+        const mirror = mirrorRef.current;
+        // La altura sale del espejo (lo que se ve): en el campo oculto cada emoji ocupa
+        // su shortcode completo y forzaría líneas de más.
+        const contentH = value && mirror ? mirror.scrollHeight : field.scrollHeight;
+        const next = Math.min(Math.max(contentH, minH), cap);
         field.style.height = `${next}px`;
         field.style.maxHeight = `${cap}px`;
-        field.style.overflowY = field.scrollHeight > cap + 1 ? 'auto' : 'hidden';
+        field.style.overflowY = contentH > cap + 1 ? 'auto' : 'hidden';
         field.style.overflowX = 'hidden';
         const atEnd = field.selectionStart >= value.length;
-        if (atEnd) field.scrollTop = field.scrollHeight;
-        const mirror = mirrorRef.current;
-        if (mirror) mirror.scrollTop = field.scrollTop;
-        refreshCaret();
+        if (atEnd) {
+          field.scrollTop = field.scrollHeight;
+          if (mirror) mirror.scrollTop = mirror.scrollHeight;
+        }
+        refreshCaret(true);
       };
 
       applySize();
@@ -467,14 +660,14 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
           event.preventDefault();
           const next = token.start;
           field.setSelectionRange(next, next);
-          refreshCaret();
+          refreshCaret(true);
           return;
         }
         const grapheme = graphemeEndingAt(value, start);
         if (grapheme && grapheme.end - grapheme.start > 1) {
           event.preventDefault();
           field.setSelectionRange(grapheme.start, grapheme.start);
-          refreshCaret();
+          refreshCaret(true);
         }
         return;
       }
@@ -485,14 +678,14 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
           event.preventDefault();
           const next = token.end;
           field.setSelectionRange(next, next);
-          refreshCaret();
+          refreshCaret(true);
           return;
         }
         const grapheme = graphemeStartingAt(value, start);
         if (grapheme && grapheme.end - grapheme.start > 1) {
           event.preventDefault();
           field.setSelectionRange(grapheme.end, grapheme.end);
-          refreshCaret();
+          refreshCaret(true);
         }
         return;
       }
@@ -548,13 +741,70 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       savedCaret.current = { start, end };
       if (focused) setMentionQuery(mentionQueryAt(value, start));
       if (start !== end) {
-        refreshCaret();
+        refreshCaret(true);
         return;
       }
       const snapped = snapCaretOutOfEmojiToken(value, start, true);
       if (snapped !== start) field.setSelectionRange(snapped, snapped);
+      refreshCaret(true);
+    }
+
+    function onFieldPointerDown(event: ReactPointerEvent<HTMLInputElement | HTMLTextAreaElement>) {
+      pointerDownAt.current = {
+        x: event.clientX,
+        y: event.clientY,
+        touch: event.pointerType !== 'mouse',
+      };
+      if (event.pointerType !== 'mouse') userScrollAt.current = Date.now();
+    }
+
+    /**
+     * El navegador ubica el cursor según el campo oculto, donde cada emoji mide lo que su
+     * shortcode; aquí se recalcula sobre el espejo para que caiga justo donde se tocó.
+     */
+    function onFieldClick(event: ReactMouseEvent<HTMLInputElement | HTMLTextAreaElement>) {
+      const field = fieldRef.current;
+      const mirror = mirrorRef.current;
+      const down = pointerDownAt.current;
+      pointerDownAt.current = null;
+      if (field && mirror && value && event.detail > 0) {
+        const start = field.selectionStart ?? 0;
+        const end = field.selectionEnd ?? 0;
+        if (start === end) {
+          const index = caretIndexFromPoint(mirror, event.clientX, event.clientY);
+          if (index != null && index !== start) field.setSelectionRange(index, index);
+        } else if (
+          down &&
+          !down.touch &&
+          event.detail === 1 &&
+          Math.hypot(event.clientX - down.x, event.clientY - down.y) > 3
+        ) {
+          const from = caretIndexFromPoint(mirror, down.x, down.y);
+          const to = caretIndexFromPoint(mirror, event.clientX, event.clientY);
+          if (from != null && to != null && from !== to) {
+            field.setSelectionRange(Math.min(from, to), Math.max(from, to), to < from ? 'backward' : 'forward');
+          }
+        }
+      }
+      snapSelection();
+    }
+
+    function onFieldScroll(event: { currentTarget: HTMLInputElement | HTMLTextAreaElement }) {
+      const mirror = mirrorRef.current;
+      // Solo el desplazamiento del usuario mueve el espejo; el automático del campo oculto
+      // (que sigue a su propio cursor) se ignora porque sus líneas no coinciden.
+      if (mirror && Date.now() - userScrollAt.current < 600) {
+        const field = event.currentTarget;
+        const fieldRange = field.scrollHeight - field.clientHeight;
+        const mirrorRange = mirror.scrollHeight - mirror.clientHeight;
+        mirror.scrollTop = fieldRange > 0 && mirrorRange > 0 ? (field.scrollTop / fieldRange) * mirrorRange : 0;
+      }
       refreshCaret();
     }
+
+    const markUserScroll = () => {
+      userScrollAt.current = Date.now();
+    };
 
     const fieldStyle = { lineHeight: `${lineHeightPx}px` };
     // Cursor visual alineado al espejo (texto visible); nativo queda transparente.
@@ -638,7 +888,9 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
           className="lb-emoji-caret pointer-events-none absolute z-[2] w-px bg-white"
           style={{
             left: caretBox.left,
-            top: caretBox.top,
+            // Centrado en la línea visible (texto o emoji), no pegado al borde superior.
+            top: caretBox.top + (caretBox.height || lineHeightPx) / 2,
+            transform: 'translateY(-50%)',
             height: Math.min(
               Math.max(Math.min(emojiSize, 18), 14),
               Math.min(caretBox.height || lineHeightPx, lineHeightPx),
@@ -647,6 +899,18 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
           aria-hidden
         />
       ) : null;
+
+    const selectionEls =
+      focused && selectionBoxes.length > 0
+        ? selectionBoxes.map((box, index) => (
+            <span
+              key={index}
+              className="lb-emoji-selection pointer-events-none absolute z-0"
+              style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+              aria-hidden
+            />
+          ))
+        : null;
 
     if (multiline) {
       const { rows: rowsProp = 3, ...textareaRest } = rest as TextareaHTMLAttributes<HTMLTextAreaElement>;
@@ -680,19 +944,14 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               disabled={disabled}
               maxLength={maxLength}
               placeholder=""
-              onScroll={
-                resolvedGrow !== 'none'
-                  ? (event) => {
-                      const mirrorEl = mirrorRef.current;
-                      if (mirrorEl) mirrorEl.scrollTop = event.currentTarget.scrollTop;
-                      refreshCaret();
-                    }
-                  : undefined
-              }
+              onScroll={onFieldScroll}
+              onWheel={markUserScroll}
+              onTouchMove={markUserScroll}
               onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
               onKeyDown={onKeyDown}
               onKeyUp={snapSelection}
-              onClick={snapSelection}
+              onPointerDown={onFieldPointerDown}
+              onClick={onFieldClick}
               onSelect={snapSelection}
               onFocus={() => setFocused(true)}
               onBlur={() => {
@@ -706,7 +965,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                 setFocused(false);
                 setCaretBox(null);
               }}
-              spellCheck={resolvedGrow === 'comment' ? false : undefined}
+              // El subrayado ortográfico nativo se dibuja sobre el campo oculto, desfasado del texto visible.
+              spellCheck={textareaRest.spellCheck ?? false}
               className={`${inputInner} ${caretClass} resize-none whitespace-pre-wrap break-words ${padClassName} ${
                 resolvedGrow === 'publication'
                   ? 'publication-composer-input overflow-y-auto'
@@ -718,6 +978,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               }`}
               style={fieldStyle}
             />
+            {selectionEls}
             {caretEl}
           </div>
           {mentionMenu}
@@ -747,8 +1008,11 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
             placeholder=""
             onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
             onKeyDown={onKeyDown}
-            onClick={snapSelection}
+            onKeyUp={snapSelection}
+            onPointerDown={onFieldPointerDown}
+            onClick={onFieldClick}
             onSelect={snapSelection}
+            spellCheck={false}
             onFocus={() => setFocused(true)}
             onBlur={() => {
                 const field = fieldRef.current;
@@ -765,6 +1029,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
             style={fieldStyle}
             {...(rest as ComponentPropsWithoutRef<'input'>)}
           />
+          {selectionEls}
           {caretEl}
         </div>
         {mentionMenu}

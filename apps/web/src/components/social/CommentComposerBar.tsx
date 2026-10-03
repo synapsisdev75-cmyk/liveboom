@@ -1,5 +1,5 @@
 import { Camera, Image, Send, Sticker, Video } from 'lucide-react';
-import { forwardRef, useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { ComposerGif } from '../../lib/composerGifs';
 import type { ComposerSticker } from '../../lib/composerStickers';
 import { insertEmojiToken } from '../../lib/liveboomEmojis';
@@ -92,6 +92,18 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
   const menuRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const keyboardSettleRef = useRef<(() => void) | null>(null);
+  const inputRef = useRef<EmojiInputHandle>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => inputRef.current?.focus(),
+      insertToken: (id: string) => inputRef.current?.insertToken(id),
+      insertText: (text: string) => inputRef.current?.insertText?.(text),
+      getSelection: () => inputRef.current?.getSelection() ?? { start: value.length, end: value.length },
+    }),
+    [value.length],
+  );
 
   useEffect(() => () => keyboardSettleRef.current?.(), []);
 
@@ -194,6 +206,11 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
     if (sticker.kind === 'text') {
       const text = sticker.text?.trim();
       if (!text) return;
+      const input = inputRef.current;
+      if (input?.insertText) {
+        input.insertText(text);
+        return;
+      }
       const next = value && !/\s$/.test(value) ? `${value} ${text}` : `${value}${text}`;
       if (next.length <= 280) onChange(next);
       return;
@@ -263,7 +280,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
 
         <div className={`contents ${styled.className}`} style={styled.style}>
         <EmojiInput
-          ref={ref}
+          ref={inputRef}
           multiline
           rows={1}
           growMode="comment"
@@ -295,7 +312,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
               disabled={disabled || busy}
               buttonClassName={`lb-comment-bar__tool ${disabled || busy ? 'is-disabled' : ''}`}
               text={value}
-              getSelection={() => (typeof ref === 'object' ? ref?.current?.getSelection() : null)}
+              getSelection={() => inputRef.current?.getSelection()}
               ranges={textStyleRanges}
               onRangesChange={onTextStyleRangesChange}
             />
@@ -306,7 +323,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
             buttonClassName={`lb-comment-bar__tool ${disabled || busy ? 'is-disabled' : ''}`}
             disabled={disabled || busy}
             onPick={(id) => {
-              const handle = typeof ref === 'object' ? ref?.current : null;
+              const handle = inputRef.current;
               if (handle) handle.insertToken(id);
               else onChange(insertEmojiToken(value, id));
             }}

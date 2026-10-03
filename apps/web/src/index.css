@@ -8034,9 +8034,10 @@ body {
   height: auto;
 }
 
+/* La selección visible se dibuja sobre el espejo (.lb-emoji-selection). */
 .publication-composer-field textarea::selection,
 .publication-composer-field input::selection {
-  background: color-mix(in srgb, var(--accent-primary) 42%, var(--accent-secondary));
+  background: transparent;
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
@@ -9399,6 +9400,11 @@ a.lb-entity:active,
   border-radius: 1px;
   background: var(--text-primary, #fff);
   animation: lb-emoji-caret-blink 1.05s step-end infinite;
+}
+
+.lb-emoji-selection {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent-primary) 34%, transparent);
 }
 
 @keyframes lb-emoji-caret-blink {
