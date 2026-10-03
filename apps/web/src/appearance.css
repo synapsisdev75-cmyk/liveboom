@@ -2881,8 +2881,8 @@ html[data-lb-theme='dark'] .lb-payment-methods {
 }
 
 .lb-chat-bubble.is-out {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-  color: var(--text-on-accent);
+  background: transparent;
+  color: var(--text-primary);
 }
 
 html[data-lb-theme] .lb-chat-bubble.is-in {
@@ -2905,12 +2905,12 @@ html[data-lb-theme] .lb-chat-bubble.is-out .text-zinc-200,
 html[data-lb-theme] .lb-chat-bubble.is-out .text-cyan-200,
 html[data-lb-theme] .lb-chat-bubble.is-out .text-cyan-300,
 html[data-lb-theme] .lb-chat-bubble.is-out .text-cyan-400 {
-  color: var(--text-on-accent);
+  color: var(--text-primary);
 }
 
 html[data-lb-theme] .lb-chat-bubble.is-out,
 html[data-lb-theme] .lb-chat-bubble.is-out.text-white {
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  background: transparent;
 }
 
 html[data-lb-theme='light'] .lb-chat-pane {

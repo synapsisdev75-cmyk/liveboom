@@ -11385,9 +11385,9 @@ a.lb-entity:active,
   gap: 0.15rem;
   padding: 0.2rem;
   border-radius: 999px;
-  border: 1px solid var(--border-default);
-  background: var(--surface-secondary);
-  box-shadow: 0 0 12px var(--accent-soft);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .lb-call-header-btn {
@@ -11485,8 +11485,8 @@ a.lb-entity:active,
 .lb-phone-chat-window .lb-call-header-actions {
   padding: 0.12rem;
   border-radius: 0.85rem;
-  border: 1px solid color-mix(in srgb, var(--accent-primary, #f59e0b) 52%, transparent);
-  background: color-mix(in srgb, var(--accent-primary, #f59e0b) 12%, rgba(18, 18, 20, 0.72));
+  border: 0;
+  background: transparent;
   box-shadow: none;
   gap: 0.02rem;
 }
@@ -16678,20 +16678,6 @@ a.lb-entity:active,
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 14rem;
-}
-
-.lb-chat-bubble.is-out .lb-chat-bubble-reply {
-  background: color-mix(in srgb, var(--text-on-accent) 16%, transparent);
-  border-left-color: var(--text-on-accent);
-}
-
-.lb-chat-bubble.is-out .lb-chat-bubble-reply__author,
-.lb-chat-bubble.is-out .lb-chat-bubble-reply__snippet {
-  color: var(--text-on-accent);
-}
-
-.lb-chat-bubble.is-out .lb-chat-bubble-reply__snippet {
-  opacity: 0.82;
 }
 
 .lb-chat-composer {
