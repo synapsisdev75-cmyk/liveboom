@@ -556,21 +556,6 @@ export function MainLayout() {
         </div>
       </header>
 
-      {hideExploreHeader ? (
-        <button
-          type="button"
-          onClick={() => setFeedbackOpen(true)}
-          className="fixed z-40 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-black/75 px-3 text-xs font-bold text-white ring-1 ring-white/30 backdrop-blur-md"
-          style={{
-            top: 'max(0.45rem, var(--lb-safe-top))',
-            right: 'max(0.45rem, var(--lb-safe-right))',
-          }}
-        >
-          <Flag size={15} aria-hidden />
-          {t('actions.report')}
-        </button>
-      ) : null}
-
       <aside
         className={`lb-sidebar hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] shrink-0 flex-col overflow-x-clip overflow-y-visible border-r border-white/[0.06] py-3 md:flex ${
           sidebarRail
