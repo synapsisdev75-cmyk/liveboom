@@ -673,7 +673,7 @@ export function SearchView() {
 
       {/* Search + QR */}
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-        <label className="flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-2xl border border-white/[0.08] bg-[#14151c] px-3.5">
+        <label className="flex h-12 w-full min-w-0 shrink-0 items-center gap-2.5 rounded-2xl sm:w-auto sm:flex-1 border border-white/[0.08] bg-[#14151c] px-3.5">
           <Search size={18} className="shrink-0 text-violet-400" />
           <input
             value={query}
