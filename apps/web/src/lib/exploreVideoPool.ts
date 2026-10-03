@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { getExploreFeedMuted } from './exploreFeedMute';
+import { getExploreFeedMuted, playExploreVideo } from './exploreFeedMute';
 
 /**
  * Pool de <video> solo para Explorar: latest-wins + prefetch N-1 / N+1 / N+2.
@@ -242,7 +242,7 @@ export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: 
 
   // Arranque inmediato (muted) para evitar el botón play nativo del WebView Android.
   if (video.paused) {
-    void video.play().catch(() => undefined);
+    void playExploreVideo(video);
   }
 }
 

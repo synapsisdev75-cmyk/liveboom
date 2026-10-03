@@ -29,6 +29,7 @@ import {
 import { isStoryPost } from '../lib/storyLifecycle';
 import { listenExploreVideoPool, listenFollowing, type FsPost } from '../lib/socialFirestore';
 import { warmExploreActiveVideo } from '../lib/feedVideoWarmup';
+import { enterExploreWithSound } from '../lib/exploreFeedMute';
 import { useAuthStore } from '../store/authStore';
 import { useT } from '../i18n';
 
@@ -82,6 +83,9 @@ function parseTab(value: string | null): ExploreTab {
 
 export function ExploreView() {
   const t = useT();
+  // Antes de montar los players: cada entrada a Explorar arranca con sonido.
+  const [leaveExploreSound] = useState(enterExploreWithSound);
+  useEffect(() => leaveExploreSound, [leaveExploreSound]);
   const profile = useAuthStore((state) => state.profile);
   const ready = useAuthStore((state) => state.ready);
   const uid = profile?.firebaseUid || '';

@@ -30,6 +30,7 @@ import {
 } from '../../lib/videoPlayback';
 import {
   getExploreFeedMuted,
+  playExploreVideo,
   setExploreFeedMuted,
   subscribeExploreFeedMuted,
 } from '../../lib/exploreFeedMute';
@@ -489,7 +490,8 @@ export function PostVideoPlayer({
       video.defaultMuted = preferMuted;
       if (preferMuted) video.setAttribute('muted', '');
       else video.removeAttribute('muted');
-      void video.play().catch(() => undefined);
+      if (shareExploreMute) void playExploreVideo(video);
+      else void video.play().catch(() => undefined);
     };
     // Varios eventos: en WebView Android loadeddata a veces llega tarde o no basta.
     if (video.readyState >= 2) kick();
