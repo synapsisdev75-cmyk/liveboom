@@ -629,8 +629,14 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       );
     }
     const live169 = variant === 'live_16_9';
-    // Sin colocación 16:9 propia en el editor: el regalo usa todo el alto (o todo el escenario si es 16:9).
-    const auto169 = live169 && cell.source !== 'exact' && cell.source !== 'variant';
+    // Una colocación 16:9 del editor que recorta (cover / bleed / global) se sustituye por la del diseño del regalo.
+    const cropping169 =
+      cell.slot.fit === 'cover' ||
+      isGiftLayoutBleed(cell.slot) ||
+      cell.slot.displayArea === 'global' ||
+      cell.slot.fullscreenMode === 'global';
+    const auto169 =
+      live169 && ((cell.source !== 'exact' && cell.source !== 'variant') || cropping169);
     const slot: typeof cell.slot = auto169
       ? {
           ...cell.slot,

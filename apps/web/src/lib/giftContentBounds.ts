@@ -4,8 +4,13 @@
  * Bordes (t r b l): mayúscula = el contenido sale cortado del video por ahí,
  * `!` = corte sólido y constante, minúscula = solo llegan partículas/brillos.
  * Los regalos que no aparecen se tratan como cortados en los cuatro lados.
+ * Sexto valor opcional: alto del video en unidades del alto del stage, fijado a mano.
+ * Séptimo opcional: difuminado lateral (%) de los bordes cortados, fijado a mano.
  */
-const GIFT_DESIGN: Record<string, readonly [number, number, number, number, string]> = {
+const GIFT_DESIGN: Record<
+  string,
+  readonly [number, number, number, number, string, number?, number?]
+> = {
   chichen_itza: [0, 0, 1, 1, 'trbL!'], // Chichén Itzá
   coliseo: [0, 0, 1, 1, 'tR!bL!'], // Coliseo
   cristo_redentor: [0, 0, 1, 0.909, 'tRl'], // Cristo Redentor
@@ -26,14 +31,14 @@ const GIFT_DESIGN: Record<string, readonly [number, number, number, number, stri
   regalo_mubwbjrx: [0, 0.019, 1, 0.981, 'R!bL!'], // Fiesta latina
   regalo_mubwl10j: [0, 0, 0.85, 1, 'TBl'], // Jaguar bebe
   regalo_mubws6j6: [0, 0.011, 1, 0.989, 'trB!L!'], // Jaguar dorado
-  regalo_mubx7gm0: [0, 0.065, 1, 0.889, 'R!L!'], // Moto del caribe
+  regalo_mubx7gm0: [0, 0.065, 1, 0.889, 'R!L!', undefined, 24], // Moto del caribe
   regalo_mubxomc1: [0, 0, 1, 1, 'T!R!B!L!'], // parranda
   regalo_mubxy3fh: [0, 0.024, 1, 0.976, 'rbl'], // Sombrero llanero
   regalo_muby1ux2: [0, 0, 1, 1, 'tR!bL!'], // Tambores
   regalo_muc06hks: [0, 0, 1, 1, 'T!R!BL!'], // Dios de live
   regalo_muc0r8tg: [0, 0, 1, 1, 'tR!B!L!'], // Helicóptero
   regalo_muc0zned: [0, 0, 1, 1, 'T!R!B!L!'], // Reina del live
-  regalo_muc1b7jd: [0, 0, 1, 1, 'T!R!B!L!'], // Yate
+  regalo_muc1b7jd: [0, 0, 1, 1, 'T!R!B!L!', 1.4], // Yate: el cielo del primer segundo puede salir del stage
   regalo_muc1hmst: [0, 0.08, 1, 0.761, 'R!L!'], // Tucán
   regalo_muc1oyiz: [0, 0, 1, 1, 'T!R!B!L!'], // Sombrero vueltiao
   regalo_muc1rtap: [0, 0.109, 1, 0.754, 'rl'], // Piña tropical
@@ -63,7 +68,7 @@ const GIFT_DESIGN: Record<string, readonly [number, number, number, number, stri
   vallenato: [0, 0, 1, 1, 'T!R!B!L!'], // Vallenato
 };
 
-const UNKNOWN_DESIGN = [0, 0, 1, 1, 'T!R!B!L!'] as const;
+const UNKNOWN_DESIGN: (typeof GIFT_DESIGN)[string] = [0, 0, 1, 1, 'T!R!B!L!'];
 const MARGIN_X = 0.04;
 const MARGIN_Y = 0.03;
 const MAX_ZOOM = 1.8;
@@ -94,7 +99,7 @@ export function giftImmersiveFit(
   mediaAspect: number,
   stageAspect: number,
 ): GiftImmersiveFit {
-  const [bx, by, bw, bh, code] = (giftId && GIFT_DESIGN[giftId]) || UNKNOWN_DESIGN;
+  const [bx, by, bw, bh, code, zoom, sideFade] = (giftId && GIFT_DESIGN[giftId]) || UNKNOWN_DESIGN;
   const media = mediaAspect > 0 ? mediaAspect : 9 / 16;
   const stage = stageAspect > 0 ? stageAspect : 16 / 9;
   const cut = (e: Edge) => code.includes(e.toUpperCase());
@@ -117,7 +122,7 @@ export function giftImmersiveFit(
   const hFill = stage / (media * bw);
   const hLimit =
     hMode === 'both' ? hFill : hMode === 'center' ? (stage * (1 - 2 * MARGIN_X)) / (media * bw) : (stage * (1 - MARGIN_X)) / (media * bw);
-  let videoHeight = Math.min(MAX_ZOOM, vLimit, hLimit);
+  let videoHeight = zoom ?? Math.min(MAX_ZOOM, vLimit, hLimit);
 
   const vFlushBoth = vMode === 'both' && videoHeight >= vFill - 1e-6;
   const hFlushBoth = hMode === 'both' && videoHeight >= hFill - 1e-6;
@@ -138,7 +143,7 @@ export function giftImmersiveFit(
   const fadeFor = (e: Edge): number => {
     if (flush[e]) return 0;
     const axis = e === 'l' || e === 'r' ? 'x' : 'y';
-    if (cut(e)) return FADE_CUT[axis];
+    if (cut(e)) return axis === 'x' && sideFade ? sideFade : FADE_CUT[axis];
     if (soft(e)) return FADE_SOFT[axis];
     return 0;
   };
