@@ -1,5 +1,5 @@
 import { Share2 } from 'lucide-react';
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import type { ShareMediaType } from '../../lib/shareContent';
 import { ShareModal } from './ShareModal';
 import { useT } from '../../i18n';
@@ -19,6 +19,8 @@ type Props = {
   iconOnly?: boolean;
   overlay?: boolean;
   size?: 'sm' | 'md';
+  /** Hoja de compartir abierta (los visores pausan el video mientras tanto). */
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function ShareContentButton({
@@ -36,11 +38,18 @@ export function ShareContentButton({
   iconOnly = false,
   overlay = false,
   size = 'sm',
+  onOpenChange,
 }: Props) {
   const t = useT();
   const resolvedLabel = label ?? t('actions.share');
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !onOpenChange) return;
+    onOpenChange(true);
+    return () => onOpenChange(false);
+  }, [open, onOpenChange]);
   const iconSize = size === 'md' ? 18 : 15;
 
   function showNote(message: string) {

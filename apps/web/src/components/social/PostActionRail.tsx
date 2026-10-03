@@ -68,6 +68,7 @@ type Props = {
   showGifts?: boolean;
   onGiftsOpenChange?: (open: boolean) => void;
   onOptionsOpenChange?: (open: boolean) => void;
+  onShareOpenChange?: (open: boolean) => void;
   /** `media` = anclado al borde del video; `viewport` = borde de pantalla (legacy). */
   anchor?: 'media' | 'viewport';
   /** `aside` = columna al lado del media (PC, igual que Explorar). */
@@ -103,6 +104,7 @@ export function PostActionRail({
   showGifts = true,
   onGiftsOpenChange,
   onOptionsOpenChange,
+  onShareOpenChange,
   anchor = 'viewport',
   layout = 'default',
   giftLayoutContext = 'publicaciones',
@@ -217,6 +219,7 @@ export function PostActionRail({
           authorUsername={authorUsername}
           iconOnly
           className="lb-action-rail-share"
+          onOpenChange={onShareOpenChange}
         />
       ) : null}
 

@@ -278,6 +278,11 @@ export function PostVideoPlayer({
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const railSheetOpen = optionsOpen || shareOpen;
+  const railSheetOpenRef = useRef(railSheetOpen);
+  railSheetOpenRef.current = railSheetOpen;
+  const resumeAfterSheetRef = useRef(false);
 
   const closeExpandRef = useRef<() => void>(() => undefined);
   useBackLayer(expanded && !overlayOnly, () => closeExpandRef.current());
@@ -302,7 +307,7 @@ export function PostVideoPlayer({
     caption?.trim() ||
     (authorUsername ? `Mira este video de @${authorUsername} en LiveBoom` : 'Mira este video en LiveBoom');
   const videoAspect = useVideoAspect(skipRemoteAspectProbe ? null : src);
-  const storyHeld = commentsPanelOpen || giftsOpen || optionsOpen;
+  const storyHeld = commentsPanelOpen || giftsOpen || railSheetOpen;
 
   useEffect(() => {
     if (videoAspect.isReady) {
@@ -414,6 +419,21 @@ export function PostVideoPlayer({
     void video.play().catch(() => undefined);
   }, [storyHeld, storyMode, src, postId]);
 
+  // Compartir / Más en Boom Clip y Publicaciones: pausa mientras la hoja está abierta (Flash usa storyHeld).
+  useEffect(() => {
+    if (storyMode || fastNav) return;
+    const video = videoRef.current;
+    if (!video) return;
+    if (railSheetOpen) {
+      resumeAfterSheetRef.current = !video.paused;
+      video.pause();
+      return;
+    }
+    if (!resumeAfterSheetRef.current) return;
+    resumeAfterSheetRef.current = false;
+    void video.play().catch(() => undefined);
+  }, [railSheetOpen, storyMode, fastNav]);
+
   useEffect(() => {
     if (!expanded) return;
     return listenPostComments(postId, (list) => setCommentCount(list.length));
@@ -488,6 +508,7 @@ export function PostVideoPlayer({
     const kick = () => {
       if (cancelled) return;
       if (fastNav && !exploreNavIsCurrent(bindGen)) return;
+      if (railSheetOpenRef.current && !fastNav) return;
       // canplay/canplaythrough vuelven a llegar tras rebuffer: respetar el sonido elegido.
       const preferMuted = shareExploreMute ? getExploreFeedMuted() : mutedRef.current;
       video.muted = preferMuted;
@@ -1002,6 +1023,7 @@ export function PostVideoPlayer({
               commentsPanelOpen={commentsPanelOpen}
               onGiftsOpenChange={setGiftsOpen}
               onOptionsOpenChange={setOptionsOpen}
+              onShareOpenChange={setShareOpen}
               anchor="media"
               layout={expandedRailLayout}
               giftLayoutContext={storyMode ? 'flash_boom' : reelFeed ? 'boom_clip' : 'publicaciones'}
