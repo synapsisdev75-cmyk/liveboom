@@ -95,6 +95,7 @@ import {
   markMessagesRead,
   sendChatMessage,
   toggleChatMessageEmoji,
+  chatListPreview,
   CHAT_QUICK_EMOJIS,
   MAX_CHAT_MESSAGE_LENGTH,
   type ChatMessage,
@@ -137,6 +138,7 @@ type ListTab = 'todos' | 'unread' | 'grupos' | 'archivados';
 
 type PersonRow = FriendChip & {
   lastMessage: string | null;
+  lastFromUid?: string | null;
   lastAt: string | null;
   unread: number;
   chatId: string | null;
@@ -1085,6 +1087,7 @@ export function InternalChatPanel({
         return {
           ...person,
           lastMessage: chat?.lastMessage ?? null,
+          lastFromUid: chat?.lastFromUid ?? null,
           lastAt: chat?.lastAt ?? null,
           unread: chat?.unread ?? 0,
           chatId: chat?.chatId ?? null,
@@ -2255,7 +2258,10 @@ export function InternalChatPanel({
                             ? 'Llamando...'
                             : peerWriting
                               ? 'escribiendo…'
-                            : friend.lastMessage || `@${friend.username}`}
+                            : chatListPreview(friend.lastMessage, {
+                                fromMe: friend.lastFromUid === profile?.firebaseUid,
+                                name: friend.displayName || friend.username,
+                              }) || `@${friend.username}`}
                       </span>
                     </span>
                     <span className="flex shrink-0 flex-col items-end gap-1">

@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { countInboxUnread } from '../../lib/chatNotifyContext';
 import {
+  chatListPreview,
   listenConversations,
   type Conversation,
 } from '../../lib/socialFirestore';
@@ -266,7 +267,10 @@ export function MessagesChatListPanel({ embedded, onSelect, onExpandAll, onClose
                       chat.unread > 0 ? 'font-medium text-zinc-200' : 'text-zinc-500'
                     }`}
                   >
-                    {chat.lastMessage || 'Conversación'}
+                    {chatListPreview(chat.lastMessage, {
+                      fromMe: chat.lastFromUid === profile?.firebaseUid,
+                      name: chat.displayName || chat.username,
+                    }) || 'Conversación'}
                   </span>
                 </span>
                 {chat.unread > 0 ? (

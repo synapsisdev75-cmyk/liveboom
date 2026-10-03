@@ -1810,6 +1810,32 @@ export async function ensureChat(me: MeProfile, friend: FriendChip) {
   return id;
 }
 
+const CHAT_VIDEO_FILE = /^\S+\.(webm|mp4|mov|m4v|3gp|mkv)$/i;
+const CHAT_IMAGE_FILE = /^\S+\.(jpe?g|png|webp|heic|heif|avif)$/i;
+const CHAT_AUDIO_FILE = /^\S+\.(m4a|mp3|ogg|oga|opus|wav|aac)$/i;
+const CHAT_MEDIA_LABELS = ['🎥 Video', '📷 Foto', '🎤 Audio', 'GIF', '📎 Adjunto', 'Adjunto', '🎁 Regalo'];
+
+/** Vista previa en la lista de chats: adjuntos como "Ana: 🎥 Video" / "Tú: 📷 Foto", no el nombre del archivo. */
+export function chatListPreview(
+  lastMessage: string | null | undefined,
+  sender: { fromMe: boolean; name?: string | null },
+): string | null {
+  const text = lastMessage?.trim();
+  if (!text) return null;
+  const label = CHAT_VIDEO_FILE.test(text)
+    ? '🎥 Video'
+    : CHAT_IMAGE_FILE.test(text)
+      ? '📷 Foto'
+      : CHAT_AUDIO_FILE.test(text)
+        ? '🎤 Audio'
+        : CHAT_MEDIA_LABELS.includes(text)
+          ? text
+          : null;
+  if (!label) return text;
+  const who = sender.fromMe ? 'Tú' : sender.name?.trim();
+  return who ? `${who}: ${label}` : label;
+}
+
 export async function sendChatMessage(
   me: MeProfile,
   friend: FriendChip,
@@ -1868,9 +1894,15 @@ export async function sendChatMessage(
     ? '🎁 Regalo'
     : extras?.mediaType === 'gif'
       ? 'GIF'
-      : extras?.fileName
-        ? extras.fileName
-        : body || (mediaUrl ? 'Adjunto' : linkUrl) || '';
+      : mediaUrl && !body && extras?.mediaType === 'video'
+        ? '🎥 Video'
+        : mediaUrl && !body && extras?.mediaType === 'image'
+          ? '📷 Foto'
+          : mediaUrl && !body && extras?.mediaType === 'audio'
+            ? '🎤 Audio'
+            : extras?.fileName
+              ? extras.fileName
+              : body || (mediaUrl ? 'Adjunto' : linkUrl) || '';
   await updateDoc(doc(db, 'chats', id), {
     lastMessage: preview,
     lastAt: serverTimestamp(),
