@@ -640,40 +640,40 @@ html[data-lb-theme] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
   display: none;
 }
 
+/* Bomba de Explorar: arriba-derecha en su propio círculo, espejo del mute (arriba-izquierda). */
 .lb-explore-view .lb-immersive-media-box::after {
   content: '';
   position: absolute;
-  /* Misma altura que el mute; a su izquierda (no debajo/encima). */
   top: max(0.4rem, var(--lb-safe-top, env(safe-area-inset-top, 0px)));
-  /* mute ≈ 2.5–2.75rem + right 0.4rem + gap ≈ 3.55rem mínimo */
-  right: calc(max(0.4rem, var(--lb-safe-right, env(safe-area-inset-right, 0px))) + 3.55rem);
+  right: max(0.4rem, var(--lb-safe-right, env(safe-area-inset-right, 0px)));
   z-index: 36;
-  width: clamp(2.45rem, 8.5vw, 3.45rem);
-  height: clamp(2.45rem, 8.5vw, 3.45rem);
+  box-sizing: border-box;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--media-control-border, #22d3ee) 48%, transparent);
+  background:
+    url('/brand/explore-icon-cut.png') center / 76% no-repeat,
+    var(--media-control-bg, rgba(8, 8, 14, 0.72));
+  box-shadow:
+    var(--media-control-shadow, 0 0 0 transparent),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   pointer-events: none;
-  background: url('/brand/explore-icon-cut.png') center / contain no-repeat;
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.4));
+}
+
+@media (pointer: coarse) {
+  .lb-explore-view .lb-immersive-media-box::after {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 
 @media (min-width: 768px) {
-  .lb-explore-icon,
-  .lb-explore-view .lb-immersive-media-box::after {
+  .lb-explore-icon {
     width: clamp(2.7rem, 4.4vw, 3.55rem);
     height: clamp(2.7rem, 4.4vw, 3.55rem);
-  }
-
-  .lb-explore-view .lb-immersive-media-box::after {
-    top: max(0.4rem, var(--lb-safe-top, env(safe-area-inset-top, 0px)));
-    right: calc(max(0.45rem, var(--lb-safe-right, env(safe-area-inset-right, 0px))) + 3.75rem);
-  }
-}
-
-@media (min-width: 1280px) {
-  .lb-explore-view .lb-immersive-media-box::after {
-    top: max(0.4rem, var(--lb-safe-top, env(safe-area-inset-top, 0px)));
-    right: calc(max(0.5rem, var(--lb-safe-right, env(safe-area-inset-right, 0px))) + 3.9rem);
-    width: 3.55rem;
-    height: 3.55rem;
   }
 }
 
