@@ -614,6 +614,18 @@ export function PostVideoPlayer({
     else releaseUnmuted(playerId);
   }, [muted, playerId, shareExploreMute]);
 
+  // El ícono sigue al <video> real: pool, fallback de autoplay o restore pueden cambiar `muted` por fuera.
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const sync = () => {
+      setMuted(el.muted);
+      if (shareExploreMute) setExploreFeedMuted(el.muted);
+    };
+    el.addEventListener('volumechange', sync);
+    return () => el.removeEventListener('volumechange', sync);
+  }, [src, expanded, overlayOnly, shareExploreMute]);
+
   function toggleMute(event: MouseEvent) {
     event.stopPropagation();
     setMuted((value) => {
