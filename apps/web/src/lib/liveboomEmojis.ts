@@ -147,6 +147,36 @@ export function resolveEmoji(id: string) {
 
 export const EMOJI_SHORTCODE_RE = /:([a-z0-9_]+):/g;
 
+/** Equivalente Unicode para textos que salen de LiveBoom (WhatsApp, X, Telegram…). Mantener igual a backend/src/lib/sharePreview.js. */
+const UNICODE_BY_EMOJI_ID: Record<string, string> = {
+  grin: '😀', laugh: '😆', big_grin: '😃', teeth_grin: '😁', sweat_smile: '😅', joy_tears: '😂',
+  rofl: '🤣', blush: '😊', wink: '😉', smile: '🙂', peaceful: '😌', neutral: '😐',
+  tongue_wink: '😜', tongue_squint: '😝', kiss: '😗', kiss_smile: '😙', blow_kiss: '😘',
+  heart_eyes: '😍', yum: '😋', surprised: '😮', angel: '😇', sad: '🙁', worried: '😟',
+  grimace: '😬', expressionless: '😑', disappointed: '😞', cry: '😢', sad_cry: '😥', sob: '😭',
+  upset: '😣', silly: '🤪', scream: '😱', think: '🤔', shocked: '😲', stunned: '😳',
+  star_eyes: '🤩', sneeze: '🤧', angry_steam: '😤', nervous: '😰', sleep: '😴', cool: '😎',
+  frown: '☹️', angry: '😠', dizzy: '😵', sick: '🤢', drool: '🤤', yawn: '🥱', red_angry: '😡',
+  devil_happy: '😈', devil_angry: '👿',
+  boom_thumbs_up: '👍', boom_cool: '😎', boom_love: '😍', boom_wink_tongue: '😜',
+  boom_laugh_tears: '😂', boom_rock_on: '🤘', boom_angry: '😠', boom_crying: '😭', boom_kiss: '😘',
+  boom_shush: '🤫', boom_shocked: '😲', boom_nerd: '🤓', boom_smirk: '😏', boom_money: '🤑',
+  boom_sleep: '😴', boom_panic: '😱', boom_devil: '😈', boom_gambler: '🎲', boom_dizzy: '😵',
+  boom_think: '🤔', boom_party: '🥳', boom_dj: '🎧', boom_rage: '😡', boom_zen: '🧘',
+  boom_search: '🔍', boom_binoculars: '🔭', boom_map: '🗺️', boom_compass: '🧭', boom_star: '⭐',
+  boom_backpack: '🎒',
+};
+
+/** `:heart_eyes:` → 😍; emoticones animados sin equivalente se quitan. */
+export function emojiTokensToUnicode(text: string): string {
+  return text
+    .replace(new RegExp(EMOJI_SHORTCODE_RE.source, 'g'), (raw, id: string) =>
+      UNICODE_BY_EMOJI_ID[id] ?? (resolveEmoji(id) ? '' : raw),
+    )
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 export type EmojiTokenSpan = { start: number; end: number; id: string };
 
 export function listEmojiTokens(text: string): EmojiTokenSpan[] {

@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { listenMyGroups, sendGroupMessage, type LiveGroup } from '../../lib/groupsFirestore';
-import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import { POST_EMOJI_SIZE, emojiTokensToUnicode } from '../../lib/liveboomEmojis';
 import { profileHref } from '../../lib/profileFirestore';
 import { buildPostShareUrl, shareContent, type ShareMediaType } from '../../lib/shareContent';
 import { createRepost, getPostById } from '../../lib/socialFirestore';
@@ -161,6 +161,7 @@ export function ShareModal({
     postId: postId || null,
   });
   const captionInputRef = useRef<EmojiInputHandle>(null);
+  const externalText = text ? emojiTokensToUnicode(text) || undefined : undefined;
 
   useBodyScrollLock(open);
   useBackLayer(open, onClose);
@@ -266,7 +267,7 @@ export function ShareModal({
   }
 
   async function handleMore() {
-    const result = await shareContent({ url: shareUrl, title, text, mediaUrl, mediaType });
+    const result = await shareContent({ url: shareUrl, title, text: externalText, mediaUrl, mediaType });
     if (result === 'copied') {
       setCopied(true);
       onCopied?.();
@@ -299,7 +300,7 @@ export function ShareModal({
   function onDestination(id: ShareDestinationId) {
     setError(null);
     if (id === 'whatsapp') {
-      openExternal(`https://wa.me/?text=${encodeURIComponent(shareMessage(text, shareUrl))}`);
+      openExternal(`https://wa.me/?text=${encodeURIComponent(shareMessage(externalText, shareUrl))}`);
       return;
     }
     if (id === 'copy') {
@@ -313,14 +314,14 @@ export function ShareModal({
     if (id === 'x') {
       const params = new URLSearchParams();
       params.set('url', shareUrl);
-      if (text) params.set('text', text);
+      if (externalText) params.set('text', externalText);
       openExternal(`https://twitter.com/intent/tweet?${params.toString()}`);
       return;
     }
     if (id === 'telegram') {
       const params = new URLSearchParams();
       params.set('url', shareUrl);
-      params.set('text', text || 'Mira esto en LiveBoom');
+      params.set('text', externalText || 'Mira esto en LiveBoom');
       openExternal(`https://t.me/share/url?${params.toString()}`);
       return;
     }

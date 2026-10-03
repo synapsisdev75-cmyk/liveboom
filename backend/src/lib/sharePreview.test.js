@@ -127,3 +127,14 @@ test('sin foto/miniatura usa la carátula del enlace, luego la foto de perfil', 
   assert.equal(textOnly.width, 0);
   assert.match(previewFromPost({ username: 'x', type: 'text' }).image, /logo-clear\.png$/);
 });
+
+test('los emojis LiveBoom salen como emojis normales en la vista previa', () => {
+  const p = previewFromPost({
+    username: 'yemdups',
+    visibility: 'public',
+    type: 'text',
+    caption: ':heart_eyes: :heart_eyes: :angel: hola :emo_happy_dance_gif_2: a las 10:30:00',
+  });
+  assert.equal(p.title, '😍 😍 😇 hola a las 10:30:00');
+  assert.equal(p.description, p.title);
+});

@@ -71,6 +71,37 @@ function absoluteHttp(url) {
   return value;
 }
 
+/** Mantener igual a apps/web/src/lib/liveboomEmojis.ts (UNICODE_BY_EMOJI_ID). */
+const UNICODE_BY_EMOJI_ID = {
+  grin: '😀', laugh: '😆', big_grin: '😃', teeth_grin: '😁', sweat_smile: '😅', joy_tears: '😂',
+  rofl: '🤣', blush: '😊', wink: '😉', smile: '🙂', peaceful: '😌', neutral: '😐',
+  tongue_wink: '😜', tongue_squint: '😝', kiss: '😗', kiss_smile: '😙', blow_kiss: '😘',
+  heart_eyes: '😍', yum: '😋', surprised: '😮', angel: '😇', sad: '🙁', worried: '😟',
+  grimace: '😬', expressionless: '😑', disappointed: '😞', cry: '😢', sad_cry: '😥', sob: '😭',
+  upset: '😣', silly: '🤪', scream: '😱', think: '🤔', shocked: '😲', stunned: '😳',
+  star_eyes: '🤩', sneeze: '🤧', angry_steam: '😤', nervous: '😰', sleep: '😴', cool: '😎',
+  frown: '☹️', angry: '😠', dizzy: '😵', sick: '🤢', drool: '🤤', yawn: '🥱', red_angry: '😡',
+  devil_happy: '😈', devil_angry: '👿',
+  boom_thumbs_up: '👍', boom_cool: '😎', boom_love: '😍', boom_wink_tongue: '😜',
+  boom_laugh_tears: '😂', boom_rock_on: '🤘', boom_angry: '😠', boom_crying: '😭', boom_kiss: '😘',
+  boom_shush: '🤫', boom_shocked: '😲', boom_nerd: '🤓', boom_smirk: '😏', boom_money: '🤑',
+  boom_sleep: '😴', boom_panic: '😱', boom_devil: '😈', boom_gambler: '🎲', boom_dizzy: '😵',
+  boom_think: '🤔', boom_party: '🥳', boom_dj: '🎧', boom_rage: '😡', boom_zen: '🧘',
+  boom_search: '🔍', boom_binoculars: '🔭', boom_map: '🗺️', boom_compass: '🧭', boom_star: '⭐',
+  boom_backpack: '🎒',
+};
+
+/** `:heart_eyes:` → 😍; emoticones animados (`:emo_…:`) sin equivalente se quitan. */
+function emojiTokensToUnicode(text) {
+  return String(text || '')
+    .replace(/:([a-z0-9_]+):/g, (raw, id) => {
+      if (Object.prototype.hasOwnProperty.call(UNICODE_BY_EMOJI_ID, id)) return UNICODE_BY_EMOJI_ID[id];
+      return id.startsWith('emo_') ? '' : raw;
+    })
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 /** `circle` = Flash Boom publicado como "Público" (amigos y seguidores). */
 const SHAREABLE_VISIBILITY = new Set(['public', 'circle']);
 
@@ -78,7 +109,7 @@ function previewFromPost(post) {
   const visibility = String(post?.visibility || 'public');
   const shareable = SHAREABLE_VISIBILITY.has(visibility);
   const username = String(post?.username || '').replace(/^@/, '').trim() || 'liveboom';
-  const caption = String(post?.caption || '').trim();
+  const caption = emojiTokensToUnicode(post?.caption);
   const type = post?.type === 'video' || post?.type === 'photo' ? post.type : 'text';
   const mediaUrl = shareable ? absoluteHttp(post?.mediaUrl) : '';
   const thumbUrl = shareable ? absoluteHttp(post?.thumbUrl) : '';
@@ -90,8 +121,8 @@ function previewFromPost(post) {
     username,
     authorUid: String(post?.authorUid || '').trim(),
     caption,
-    title: caption ? caption.slice(0, 90) : `@${username} en LiveBoom`,
-    description: caption ? caption.slice(0, 200) : 'Mira esto en LiveBoom',
+    title: caption ? Array.from(caption).slice(0, 90).join('') : `@${username} en LiveBoom`,
+    description: caption ? Array.from(caption).slice(0, 200).join('') : 'Mira esto en LiveBoom',
     image,
     imageType: imageMime(image),
     video,
