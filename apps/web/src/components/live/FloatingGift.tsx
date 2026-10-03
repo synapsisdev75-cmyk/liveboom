@@ -244,8 +244,8 @@ function GiftVideoBurst({
             ...slot,
             fit: 'contain' as const,
             scale: immersiveFit.scale,
-            x: 50,
-            y: 50,
+            x: immersiveFit.x,
+            y: immersiveFit.y,
             anchorX: immersiveFit.anchorX,
             anchorY: immersiveFit.anchorY,
           }
@@ -282,10 +282,10 @@ function GiftVideoBurst({
   const immersiveMedia = Boolean(immersiveFit) && !bleed;
   const fadeVars = immersiveFit
     ? ({
-        '--lb-fade-l': immersiveFit.fade.left ? '14%' : '0%',
-        '--lb-fade-r': immersiveFit.fade.right ? '14%' : '0%',
-        '--lb-fade-t': immersiveFit.fade.top ? '9%' : '0%',
-        '--lb-fade-b': immersiveFit.fade.bottom ? '9%' : '0%',
+        '--lb-fade-l': `${immersiveFit.fade.l}%`,
+        '--lb-fade-r': `${immersiveFit.fade.r}%`,
+        '--lb-fade-t': `${immersiveFit.fade.t}%`,
+        '--lb-fade-b': `${immersiveFit.fade.b}%`,
       } as CSSProperties)
     : undefined;
   const useFillClass = (fillViewport || frame916) && !stageSlot && !fillParent;
