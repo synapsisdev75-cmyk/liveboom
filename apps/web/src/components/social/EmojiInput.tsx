@@ -510,7 +510,14 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         const mirror = mirrorRef.current;
         // La altura sale del espejo (lo que se ve): en el campo oculto cada emoji ocupa
         // su shortcode completo y forzaría líneas de más.
-        const contentH = value && mirror ? mirror.scrollHeight : field.scrollHeight;
+        // Si el texto visible cabe en una fila, la altura es la del campo en `auto` (una fila);
+        // si no, la del contenido real del espejo.
+        const contentH =
+          value && mirror
+            ? mirror.scrollHeight > mirror.clientHeight + 1
+              ? mirror.scrollHeight
+              : field.offsetHeight
+            : field.scrollHeight;
         const next = Math.min(Math.max(contentH, minH), cap);
         field.style.height = `${next}px`;
         field.style.maxHeight = `${cap}px`;
@@ -968,7 +975,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
               }}
               // El subrayado ortográfico nativo se dibuja sobre el campo oculto, desfasado del texto visible.
               spellCheck={textareaRest.spellCheck ?? false}
-              className={`${inputInner} ${caretClass} resize-none whitespace-pre-wrap break-words ${padClassName} ${
+              className={`${inputInner} ${caretClass} block resize-none whitespace-pre-wrap break-words ${padClassName} ${
                 resolvedGrow === 'publication'
                   ? 'publication-composer-input overflow-y-auto'
                   : resolvedGrow === 'comment'
