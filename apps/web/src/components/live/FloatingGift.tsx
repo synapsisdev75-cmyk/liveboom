@@ -629,8 +629,10 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       );
     }
     const live169 = variant === 'live_16_9';
-    // Una colocación 16:9 del editor que recorta (cover / bleed / global) se sustituye por la del diseño del regalo.
+    // Una colocación 16:9 del editor que recorta (cover / bleed / global / más grande que el stage)
+    // se sustituye por la del diseño del regalo.
     const cropping169 =
+      cell.slot.scale > 1 ||
       cell.slot.fit === 'cover' ||
       isGiftLayoutBleed(cell.slot) ||
       cell.slot.displayArea === 'global' ||

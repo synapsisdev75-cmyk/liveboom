@@ -4,12 +4,14 @@
  * Bordes (t r b l): mayúscula = el contenido sale cortado del video por ahí,
  * `!` = corte sólido y constante, minúscula = solo llegan partículas/brillos.
  * Los regalos que no aparecen se tratan como cortados en los cuatro lados.
- * Sexto valor opcional: alto del video en unidades del alto del stage, fijado a mano.
- * Séptimo opcional: difuminado lateral (%) de los bordes cortados, fijado a mano.
+ * Sexto valor opcional, ajustes a mano: `zoom` (alto del video en altos del stage),
+ * `sideFade` (% de difuminado en costados cortados), `floor` (línea del video que va al borde inferior).
  */
+type GiftDesignTweaks = { zoom?: number; sideFade?: number; floor?: number };
+
 const GIFT_DESIGN: Record<
   string,
-  readonly [number, number, number, number, string, number?, number?]
+  readonly [number, number, number, number, string, GiftDesignTweaks?]
 > = {
   chichen_itza: [0, 0, 1, 1, 'trbL!'], // Chichén Itzá
   coliseo: [0, 0, 1, 1, 'tR!bL!'], // Coliseo
@@ -31,14 +33,14 @@ const GIFT_DESIGN: Record<
   regalo_mubwbjrx: [0, 0.019, 1, 0.981, 'R!bL!'], // Fiesta latina
   regalo_mubwl10j: [0, 0, 0.85, 1, 'TBl'], // Jaguar bebe
   regalo_mubws6j6: [0, 0.011, 1, 0.989, 'trB!L!'], // Jaguar dorado
-  regalo_mubx7gm0: [0, 0.065, 1, 0.889, 'R!L!', undefined, 24], // Moto del caribe
+  regalo_mubx7gm0: [0, 0.065, 1, 0.889, 'R!L!', { sideFade: 24 }], // Moto del caribe
   regalo_mubxomc1: [0, 0, 1, 1, 'T!R!B!L!'], // parranda
   regalo_mubxy3fh: [0, 0.024, 1, 0.976, 'rbl'], // Sombrero llanero
   regalo_muby1ux2: [0, 0, 1, 1, 'tR!bL!'], // Tambores
   regalo_muc06hks: [0, 0, 1, 1, 'T!R!BL!'], // Dios de live
   regalo_muc0r8tg: [0, 0, 1, 1, 'tR!B!L!'], // Helicóptero
   regalo_muc0zned: [0, 0, 1, 1, 'T!R!B!L!'], // Reina del live
-  regalo_muc1b7jd: [0, 0, 1, 1, 'T!R!B!L!', 1.4], // Yate: el cielo del primer segundo puede salir del stage
+  regalo_muc1b7jd: [0, 0, 1, 1, 'T!R!B!L!', { zoom: 1.4, floor: 0.74 }], // Yate: el agua corta en el borde inferior
   regalo_muc1hmst: [0, 0.08, 1, 0.761, 'R!L!'], // Tucán
   regalo_muc1oyiz: [0, 0, 1, 1, 'T!R!B!L!'], // Sombrero vueltiao
   regalo_muc1rtap: [0, 0.109, 1, 0.754, 'rl'], // Piña tropical
@@ -99,7 +101,8 @@ export function giftImmersiveFit(
   mediaAspect: number,
   stageAspect: number,
 ): GiftImmersiveFit {
-  const [bx, by, bw, bh, code, zoom, sideFade] = (giftId && GIFT_DESIGN[giftId]) || UNKNOWN_DESIGN;
+  const [bx, by, bw, bh, code, tweaks] = (giftId && GIFT_DESIGN[giftId]) || UNKNOWN_DESIGN;
+  const { zoom, sideFade, floor } = tweaks ?? {};
   const media = mediaAspect > 0 ? mediaAspect : 9 / 16;
   const stage = stageAspect > 0 ? stageAspect : 16 / 9;
   const cut = (e: Edge) => code.includes(e.toUpperCase());
@@ -135,8 +138,14 @@ export function giftImmersiveFit(
     r: hFlushBoth || hMode === 'right',
   };
 
-  const y = vMode === 'top' ? 0 : vMode === 'bottom' ? 100 : 50;
-  const anchorY = vMode === 'top' ? by : vMode === 'bottom' ? by + bh : by + bh / 2;
+  let y = vMode === 'top' ? 0 : vMode === 'bottom' ? 100 : 50;
+  let anchorY = vMode === 'top' ? by : vMode === 'bottom' ? by + bh : by + bh / 2;
+  if (floor !== undefined) {
+    y = 100;
+    anchorY = floor;
+    flush.b = true;
+    flush.t = 1 - floor * videoHeight <= 0;
+  }
   const x = hMode === 'left' ? 0 : hMode === 'right' ? 100 : 50;
   const anchorX = hMode === 'left' ? bx : hMode === 'right' ? bx + bw : bx + bw / 2;
 
