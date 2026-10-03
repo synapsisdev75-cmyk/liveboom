@@ -121,6 +121,14 @@ html[data-lb-theme] ::selection {
   color: var(--text-primary);
 }
 
+/* Campo oculto de EmojiInput: su selección no debe pintar el texto (se vería doble sobre el espejo). */
+html[data-lb-theme] .lb-emoji-field::selection,
+.lb-emoji-field::selection {
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
 html[data-lb-theme] ::placeholder {
   color: var(--text-muted);
   opacity: 1;

@@ -86,7 +86,7 @@ export type EmojiInputHandle = {
 // La selección nativa se dibuja con la geometría del campo oculto (shortcodes largos);
 // la visible se pinta sobre el espejo (.lb-emoji-selection).
 const inputInner =
-  'relative z-[1] w-full min-w-0 border-0 bg-transparent text-sm text-transparent outline-none [-webkit-text-fill-color:transparent] selection:bg-transparent selection:text-transparent disabled:opacity-60';
+  'lb-emoji-field relative z-[1] w-full min-w-0 border-0 bg-transparent text-sm text-transparent outline-none [-webkit-text-fill-color:transparent] selection:bg-transparent selection:text-transparent disabled:opacity-60';
 
 type FieldBox = { left: number; top: number; width: number; height: number };
 
