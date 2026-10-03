@@ -224,9 +224,27 @@ function persistGiftAnimPlayedIds(uid: string, ids: Set<string>) {
   }
 }
 
+const CHAT_MEDIA_KIND_LABEL: Record<string, string> = {
+  image: 'Foto',
+  video: 'Video',
+  audio: 'Audio',
+  gif: 'GIF',
+};
+
+function chatAttachmentLabel(kind: string | null | undefined, fileName: string): string {
+  return (kind && CHAT_MEDIA_KIND_LABEL[kind]) || fileName;
+}
+
+function chatReplySnippet(reply: Pick<ChatReplyTo, 'mediaType' | 'fileName' | 'text'>): string {
+  const text = (reply.text || '').trim();
+  const media = reply.mediaType ? CHAT_MEDIA_KIND_LABEL[reply.mediaType] : undefined;
+  if (media) return !text || /^\S+\.[a-z0-9]{2,5}$/i.test(text) ? media : text;
+  return reply.fileName || text || 'Mensaje';
+}
+
 function replySnippetForMessage(message: ChatMessage): string {
   if (message.deleted || message.deletedForEveryone || message.hiddenForMe) return 'Mensaje eliminado';
-  if (message.fileName) return message.fileName;
+  if (message.fileName && message.mediaType === 'file') return message.fileName;
   if (message.mediaType === 'image') return isChatStickerUrl(message.mediaUrl) ? 'Sticker' : 'Foto';
   if (message.mediaType === 'video') return 'Video';
   if (message.mediaType === 'audio') return 'Audio';
@@ -249,7 +267,7 @@ function buildReplyTo(
     authorLabel: message.mine ? 'Tú' : peerLabel || 'Usuario',
     text: replySnippetForMessage(message),
     mediaType: message.mediaType || null,
-    fileName: message.fileName || null,
+    fileName: message.mediaType === 'file' ? message.fileName || null : null,
   };
 }
 
@@ -2628,7 +2646,7 @@ export function InternalChatPanel({
                                   {message.replyTo.authorLabel}
                                 </span>
                                 <span className="lb-chat-bubble-reply__snippet">
-                                  {message.replyTo.fileName || message.replyTo.text || 'Mensaje'}
+                                  {chatReplySnippet(message.replyTo)}
                                 </span>
                               </button>
                             ) : null}
@@ -3106,9 +3124,12 @@ export function InternalChatPanel({
                 <FileText size={18} className="shrink-0 text-cyan-300" />
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-white">{pendingFile.name}</p>
+                <p className="truncate text-xs font-semibold text-white">
+                  {chatAttachmentLabel(pendingFile.kind, pendingFile.name)}
+                </p>
                 <p className="text-[10px] text-zinc-500">
-                  {formatChatFileSize(pendingFile.size)} · {pendingFile.kind === 'file' ? 'Archivo' : pendingFile.kind}
+                  {formatChatFileSize(pendingFile.size)}
+                  {pendingFile.kind === 'file' ? ' · Archivo' : ''}
                 </p>
                 {fileUpload?.stage === 'preparing' ? (
                   <p className="text-[10px] text-violet-300">Preparando...</p>
@@ -3160,7 +3181,7 @@ export function InternalChatPanel({
             <div className="lb-chat-reply-bar__body">
               <span className="lb-chat-reply-bar__author">{replyTo.authorLabel}</span>
               <span className="lb-chat-reply-bar__snippet">
-                {replyTo.fileName || replyTo.text || 'Mensaje'}
+                {chatReplySnippet(replyTo)}
               </span>
             </div>
             <button
