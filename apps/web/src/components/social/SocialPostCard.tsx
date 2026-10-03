@@ -29,6 +29,7 @@ import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 import { PublicationCaption } from './PublicationCaption';
+import { postTextFont, postTextStyleCss, usePostTextFonts, type PostTextStyle } from '../../lib/postTextStyle';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { PostReactionButtons } from './PostReactionButtons';
 import { ReelGiftControls } from '../feed/ReelGiftControls';
@@ -481,19 +482,23 @@ export type SocialPost = {
     image: string;
     siteName: string;
   } | null;
+  textStyle?: PostTextStyle | null;
 };
 
 /** Nota de texto: solo texto (nunca player de video). Desplegable si es larga. */
 export function TextNoteBody({
   caption,
   className = '',
+  textStyle = null,
 }: {
   caption?: string | null;
   className?: string;
+  textStyle?: PostTextStyle | null;
 }) {
   const text = String(caption || '').trim();
   const [expanded, setExpanded] = useState(false);
   const long = text.length > 160 || text.split('\n').length > 4;
+  usePostTextFonts(postTextFont(textStyle?.font).family != null);
 
   if (!text) {
     return (
@@ -509,6 +514,7 @@ export function TextNoteBody({
         className={`lb-text-note__body text-sm leading-relaxed sm:text-[15px] ${
           expanded || !long ? '' : 'line-clamp-5'
         }`}
+        style={postTextStyleCss(textStyle)}
       >
         <EmojiText text={text} size={POST_EMOJI_SIZE} />
       </div>
@@ -806,7 +812,7 @@ function StandardPostCard({
       ) : null}
       {post.type === 'text' || isTextOnlyPost(post) ? (
         <>
-          <TextNoteBody caption={post.caption} />
+          <TextNoteBody caption={post.caption} textStyle={post.textStyle} />
           {post.linkPreview?.url ? (
             <div className="px-3 pb-2">
               <LinkPreviewCard preview={post.linkPreview} compact />
@@ -983,7 +989,9 @@ function StandardPostCard({
         </div>
       </div>
       {reactError ? <p className="px-3 pb-1 text-[11px] text-fuchsia-400">{reactError}</p> : null}
-      {showFeedCaption ? <PublicationCaption key={post.id} caption={post.caption || ''} /> : null}
+      {showFeedCaption ? (
+        <PublicationCaption key={post.id} caption={post.caption || ''} textStyle={post.textStyle} />
+      ) : null}
       {post.linkPreview?.url ? (
         <div className="px-3 pb-2">
           <LinkPreviewCard preview={post.linkPreview} compact />

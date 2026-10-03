@@ -21,6 +21,13 @@ import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
 import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput } from './EmojiInput';
+import { PostTextStyleButton } from './PostTextStyleButton';
+import {
+  DEFAULT_POST_TEXT_STYLE,
+  parsePostTextStyle,
+  postTextStyleCss,
+  type PostTextStyle,
+} from '../../lib/postTextStyle';
 import { VideoTrimEditor } from './VideoTrimEditor';
 import { MusicPickerModal } from './MusicPickerModal';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
@@ -133,6 +140,7 @@ export function CreatePostModal({
   const [visibility, setVisibility] = useState<Visibility>('public');
   const [notifyFriends, setNotifyFriends] = useState(false);
   const [caption, setCaption] = useState('');
+  const [textStyle, setTextStyle] = useState<PostTextStyle>(DEFAULT_POST_TEXT_STYLE);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
   const [linkPreviewBusy, setLinkPreviewBusy] = useState(false);
   const linkPreviewReqRef = useRef(0);
@@ -189,6 +197,7 @@ export function CreatePostModal({
   function snapshotDraft() {
     return JSON.stringify({
       caption,
+      textStyle,
       visibility,
       kind,
       notifyFriends,
@@ -289,6 +298,7 @@ export function CreatePostModal({
     let nextGif: string | null = null;
     setComposeTab('publication');
     setCaption(post.caption || '');
+    setTextStyle(post.textStyle ?? DEFAULT_POST_TEXT_STYLE);
     setVisibility(vis);
     setNotifyFriends(false);
     setOverlays(post.overlays || []);
@@ -330,6 +340,7 @@ export function CreatePostModal({
     }
     editBaselineRef.current = JSON.stringify({
       caption: post.caption || '',
+      textStyle: post.textStyle ?? DEFAULT_POST_TEXT_STYLE,
       visibility: vis,
       kind: nextKind,
       notifyFriends: false,
@@ -380,6 +391,7 @@ export function CreatePostModal({
     if (trimUrl && !trimShared) revokeLocalUrl(trimUrl);
     mediaPickGenRef.current += 1;
     setCaption('');
+    setTextStyle(DEFAULT_POST_TEXT_STYLE);
     setLinkPreview(null);
     setLinkPreviewBusy(false);
     linkPreviewReqRef.current += 1;
@@ -1383,6 +1395,7 @@ export function CreatePostModal({
           overlays,
           durationSec,
           notifyFriends: visibility !== 'private' && notifyFriends,
+          textStyle,
         });
         onUpdated?.({
           ...editPost,
@@ -1396,6 +1409,7 @@ export function CreatePostModal({
           visibility: saved.visibility,
           overlays,
           durationSec: saved.type === 'video' ? durationSec || editPost.durationSec : editPost.durationSec,
+          textStyle: parsePostTextStyle(textStyle),
           edited: true,
           updatedAt: new Date().toISOString(),
         });
@@ -1426,6 +1440,7 @@ export function CreatePostModal({
         overlays,
         reconstruction3d: reconstructionPayload,
         linkPreview,
+        textStyle: textStyleEnabled ? textStyle : null,
       });
 
       onCreated?.({
@@ -1447,6 +1462,7 @@ export function CreatePostModal({
         overlays,
         reconstruction3d: reconstructionPayload,
         linkPreview,
+        textStyle: textStyleEnabled ? parsePostTextStyle(textStyle) : null,
       });
       if (reconReady) clearReconstructionDraft();
       reset();
@@ -1478,6 +1494,7 @@ export function CreatePostModal({
       ? 'Subiendo…'
       : 'Publicar';
   const composeRows = 1;
+  const textStyleEnabled = composeTab === 'publication';
   const captionMax = isFlashBoom ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : undefined;
 
   const panelBody = showPanel ? (
@@ -1577,26 +1594,35 @@ export function CreatePostModal({
 
           <div className="mt-3 space-y-2">
             <div className="relative min-w-0">
-              <EmojiInput
-                multiline
-                rows={composeRows}
-                value={caption}
-                onChange={setCaption}
-                maxLength={captionMax}
-                placeholder={
-                  isFlashBoom
-                    ? `Descripción (opcional)`
-                    : composeTab === 'boomclip'
-                      ? `Descripción ${BOOM_CLIP_LABEL} (opcional)`
-                      : '¿Qué quieres compartir?'
-                }
-                emojiSize={POST_EMOJI_SIZE}
-                growToMaxScroll
-                fieldClassName="publication-composer-field w-full min-w-0 max-w-full rounded-xl"
-                padClassName={captionMax != null ? 'px-3 pb-7 pt-2' : 'px-3 py-2'}
-                mirrorTextClassName="publication-composer-text"
-                placeholderClassName="publication-composer-placeholder"
-              />
+              <div className="min-w-0" style={textStyleEnabled ? postTextStyleCss(textStyle) : undefined}>
+                <EmojiInput
+                  multiline
+                  rows={composeRows}
+                  value={caption}
+                  onChange={setCaption}
+                  maxLength={captionMax}
+                  placeholder={
+                    isFlashBoom
+                      ? `Descripción (opcional)`
+                      : composeTab === 'boomclip'
+                        ? `Descripción ${BOOM_CLIP_LABEL} (opcional)`
+                        : '¿Qué quieres compartir?'
+                  }
+                  emojiSize={POST_EMOJI_SIZE}
+                  growToMaxScroll
+                  fieldClassName="publication-composer-field w-full min-w-0 max-w-full rounded-xl"
+                  padClassName={
+                    captionMax != null
+                      ? 'px-3 pb-7 pt-2'
+                      : textStyleEnabled
+                        ? 'py-2 pl-3 pr-[3.75rem]'
+                        : 'px-3 py-2'
+                  }
+                  mirrorTextClassName="publication-composer-text"
+                  placeholderClassName="publication-composer-placeholder"
+                />
+              </div>
+              {textStyleEnabled ? <PostTextStyleButton value={textStyle} onChange={setTextStyle} /> : null}
               {captionMax != null ? (
                 <span
                   className={`pointer-events-none absolute bottom-2 right-2 text-[10px] font-semibold tabular-nums ${

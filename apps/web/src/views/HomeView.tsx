@@ -108,6 +108,7 @@ function toSocial(post: FsPost): SocialPost {
     updatedAt: post.updatedAt,
     reconstruction3d: post.reconstruction3d,
     linkPreview: post.linkPreview ?? null,
+    textStyle: post.textStyle ?? null,
   };
 }
 
@@ -254,7 +255,7 @@ function HomePublicationCard({
 
       {isTextOnlyPost(post) ? (
         <div className="mt-3">
-          <TextNoteBody caption={post.caption} />
+          <TextNoteBody caption={post.caption} textStyle={post.textStyle} />
         </div>
       ) : post.mediaUrl && post.type === 'video' ? (
         <div className="mt-3">
@@ -305,7 +306,7 @@ function HomePublicationCard({
         </div>
       ) : post.caption ? (
         <div className="mt-3">
-          <TextNoteBody caption={post.caption} />
+          <TextNoteBody caption={post.caption} textStyle={post.textStyle} />
         </div>
       ) : null}
 
@@ -389,7 +390,7 @@ function HomePublicationCard({
       {!isTextOnlyPost(post) &&
       (post.type === 'photo' || post.type === 'video') &&
       post.caption?.trim() ? (
-        <PublicationCaption key={post.id} caption={post.caption || ''} />
+        <PublicationCaption key={post.id} caption={post.caption || ''} textStyle={post.textStyle} />
       ) : null}
 
       {showComments ? (

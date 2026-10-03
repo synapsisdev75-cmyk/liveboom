@@ -2701,7 +2701,7 @@ html[data-lb-theme='dark'] .lb-mobile-drawer .lb-sidebar-wallet__withdraw {
 }
 
 .lb-text-note__body {
-  color: var(--text-primary);
+  color: var(--lb-post-text-color, var(--text-primary));
 }
 
 .lb-text-note__more {

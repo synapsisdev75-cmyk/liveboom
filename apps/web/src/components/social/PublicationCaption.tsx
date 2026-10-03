@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import { postTextFont, postTextStyleCss, usePostTextFonts, type PostTextStyle } from '../../lib/postTextStyle';
 import { EmojiText } from './EmojiText';
 
 /**
@@ -9,15 +10,19 @@ import { EmojiText } from './EmojiText';
 export function PublicationCaption({
   caption,
   variant = 'feed',
+  textStyle = null,
 }: {
   caption: string;
   variant?: 'feed' | 'overlay';
+  /** Tipo de letra y color elegidos al publicar (solo Publicación). */
+  textStyle?: PostTextStyle | null;
 }) {
   const text = String(caption || '').trim();
   const bodyRef = useRef<HTMLParagraphElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const overlay = variant === 'overlay';
+  usePostTextFonts(postTextFont(textStyle?.font).family != null);
 
   useLayoutEffect(() => {
     setExpanded(false);
@@ -64,6 +69,7 @@ export function PublicationCaption({
           className={`publication-caption__body${overlay ? ' is-overlay' : ''}${
             expanded ? ' is-open' : ' is-clamped'
           }`}
+          style={postTextStyleCss(textStyle)}
         >
           <EmojiText text={text} size={POST_EMOJI_SIZE} />
           {expanded && overflows ? (

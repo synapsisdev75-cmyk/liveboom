@@ -67,6 +67,7 @@ import {
   removeCommentBoom as removeCommentBoomService,
 } from './commentBoomService';
 import { parseReconstruction3d, type Reconstruction3DPayload } from './reconstruction3d/types';
+import { parsePostTextStyle, type PostTextStyle } from './postTextStyle';
 
 export type FriendshipStatus =
   | 'none'
@@ -234,6 +235,8 @@ export type FsPost = {
   updatedAt?: string;
   edited?: boolean;
   reconstruction3d?: Reconstruction3DPayload;
+  /** Tipo de letra y color del texto (solo Publicación). */
+  textStyle?: PostTextStyle | null;
 };
 
 type MeProfile = {
@@ -1968,6 +1971,7 @@ export async function toggleChatMessageEmoji(
 function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
   const overlays = parseMediaOverlays(data.overlays);
   const reconstruction3d = parseReconstruction3d(data.reconstruction3d);
+  const textStyle = parsePostTextStyle(data.textStyle);
   return {
     id,
     authorUid: String(data.authorUid || ''),
@@ -2006,6 +2010,7 @@ function postFromDoc(id: string, data: Record<string, unknown>): FsPost {
     updatedAt: data.updatedAt ? asIso(data.updatedAt) : undefined,
     edited: Boolean(data.edited) || Boolean(data.updatedAt),
     ...(reconstruction3d ? { reconstruction3d } : {}),
+    ...(textStyle ? { textStyle } : {}),
     ...(data.linkPreview && typeof data.linkPreview === 'object'
       ? {
           linkPreview: {
@@ -2994,6 +2999,7 @@ export async function createPost(input: {
     image: string;
     siteName: string;
   } | null;
+  textStyle?: PostTextStyle | null;
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -3115,6 +3121,7 @@ export async function createPost(input: {
   }
 
   const overlayPayload = serializeMediaOverlays(input.overlays || []);
+  const textStyle = isStory || isBoomClip ? null : parsePostTextStyle(input.textStyle);
   const createdAtMs = Date.now();
   const storyExpiresAtMs = isStory ? storyExpiresAtFromNow(createdAtMs) : undefined;
   const ref = await addDoc(collection(db, 'posts'), {
@@ -3159,6 +3166,7 @@ export async function createPost(input: {
       : {}),
     ...(overlayPayload.length ? { overlays: overlayPayload } : {}),
     ...(input.reconstruction3d ? { reconstruction3d: input.reconstruction3d } : {}),
+    ...(textStyle ? { textStyle } : {}),
     ...(input.linkPreview?.url
       ? {
           linkPreview: {
@@ -3349,6 +3357,7 @@ export async function updatePost(input: {
   notifyFriends?: boolean;
   authorDisplayName?: string;
   username?: string;
+  textStyle?: PostTextStyle | null;
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -3431,6 +3440,8 @@ export async function updatePost(input: {
   else patch.mediaUrls = deleteField();
   if (overlayPayload.length) patch.overlays = overlayPayload;
   else patch.overlays = deleteField();
+  const textStyle = parsePostTextStyle(input.textStyle);
+  patch.textStyle = textStyle ?? deleteField();
   if (input.type === 'video' && Number(input.durationSec) > 0) {
     patch.durationSec = Math.max(1, Math.floor(Number(input.durationSec)));
   }

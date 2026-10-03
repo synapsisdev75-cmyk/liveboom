@@ -399,6 +399,7 @@ export function UserProfileView() {
             updatedAt: item.updatedAt,
             reconstruction3d: item.reconstruction3d,
             linkPreview: item.linkPreview ?? null,
+            textStyle: item.textStyle ?? null,
           })),
         );
       },
