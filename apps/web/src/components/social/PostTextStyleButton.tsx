@@ -13,7 +13,8 @@ import {
 
 /**
  * Botón "Aa" del compositor de Publicación: elige tipo de letra y color del texto.
- * Se coloca dentro de un contenedor `position: relative` que envuelve el campo.
+ * Va justo después del campo, dentro de un contenedor `position: relative`;
+ * el panel se abre debajo del campo.
  */
 export function PostTextStyleButton({
   value,
@@ -29,6 +30,10 @@ export function PostTextStyleButton({
   const color = postTextColor(value.color);
   const styled = !isDefaultPostTextStyle(value);
   usePostTextFonts(open || font.family != null);
+
+  useEffect(() => {
+    if (open) panelRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
