@@ -367,9 +367,6 @@ export function MainLayout() {
   const immersiveMain = onMessages || onExplore;
   const breakpoint = useBreakpoint();
   const [deviceLandscape, setDeviceLandscape] = useState(false);
-  /** Explorar: solo oculta el header superior (la bottom nav no se toca). */
-  const [exploreHeaderVisible, setExploreHeaderVisible] = useState(false);
-  const exploreChromeTimer = useRef(0);
   const mainRef = useRef<HTMLElement>(null);
   const reloadApp = useAppReload();
   const pullToRefreshEnabled = breakpoint !== 'desktop' && !immersiveMain;
@@ -458,27 +455,6 @@ export function MainLayout() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!onExplore) {
-      setExploreHeaderVisible(true);
-      window.clearTimeout(exploreChromeTimer.current);
-      return;
-    }
-    setExploreHeaderVisible(false);
-    const onPulse = () => {
-      setExploreHeaderVisible(true);
-      window.clearTimeout(exploreChromeTimer.current);
-      exploreChromeTimer.current = window.setTimeout(() => {
-        setExploreHeaderVisible(false);
-      }, 3400);
-    };
-    window.addEventListener('liveboom:pulse-explore-chrome', onPulse);
-    return () => {
-      window.removeEventListener('liveboom:pulse-explore-chrome', onPulse);
-      window.clearTimeout(exploreChromeTimer.current);
-    };
-  }, [onExplore]);
-
   const [chatThreadOpen, setChatThreadOpen] = useState(
     () => typeof document !== 'undefined' && document.documentElement.dataset.lbChatThread === 'open',
   );
@@ -492,7 +468,8 @@ export function MainLayout() {
 
   /** Bottom nav visible en la lista de mensajes. Se oculta solo dentro de un chat. Explorar landscape: sin nav. */
   const hideBottomNav = (onMessages && chatThreadOpen) || (onExplore && deviceLandscape);
-  const hideExploreHeader = onExplore && (deviceLandscape || !exploreHeaderVisible);
+  /** Explorar: sin header superior (la bottom nav no se toca). */
+  const hideExploreHeader = onExplore;
 
   const isTablet = breakpoint === 'tablet';
   const isDesktop = breakpoint === 'desktop';
@@ -510,7 +487,7 @@ export function MainLayout() {
         className={`lb-shell-header lb-shell-header--status flex shrink-0 flex-nowrap items-center justify-between gap-1.5 overflow-visible border-b border-white/10 pb-1.5 pl-[max(0.65rem,var(--lb-safe-left))] pr-[max(0.65rem,var(--lb-safe-right))] pt-[var(--lb-safe-top)] sm:gap-2 md:hidden${
           onExplore ? ' lb-shell-header--explore-overlay' : ''
         }${hideExploreHeader ? ' is-chrome-hidden' : ''}${
-          onExplore && deviceLandscape ? ' is-chrome-gone' : ''
+          onExplore ? ' is-chrome-gone' : ''
         }`}
         aria-hidden={hideExploreHeader}
       >

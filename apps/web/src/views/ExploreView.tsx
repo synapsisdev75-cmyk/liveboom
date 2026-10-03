@@ -401,12 +401,6 @@ export function ExploreView() {
   return (
     <div
       className="lb-explore-view relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-black"
-      onPointerUp={(event) => {
-        if (event.pointerType === 'mouse' && event.button !== 0) return;
-        const target = event.target as HTMLElement | null;
-        if (target?.closest('a,button,input,textarea,[role="button"]')) return;
-        window.dispatchEvent(new CustomEvent('liveboom:pulse-explore-chrome'));
-      }}
     >      <img
         src="/brand/explore-icon-cut.png"
         alt=""
