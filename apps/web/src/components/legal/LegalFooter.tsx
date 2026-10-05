@@ -35,6 +35,14 @@ export function LegalFooter({ compact = false }: { compact?: boolean }) {
         <Link to="/legal/cookies" className="hover:text-boom-cyan">
           {t('legal.cookies')}
         </Link>
+        <span aria-hidden="true">·</span>
+        <Link to="/legal/publicidad" className="hover:text-boom-cyan">
+          {t('legal.advertising')}
+        </Link>
+        <span aria-hidden="true">·</span>
+        <Link to="/legal/referidos" className="hover:text-boom-cyan">
+          {t('legal.referrals')}
+        </Link>
       </div>
     </footer>
   );

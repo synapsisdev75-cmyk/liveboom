@@ -1328,6 +1328,26 @@ function SettingsRail() {
             </Link>
           </li>
           <li>
+            <Link
+              to="/legal/publicidad"
+              className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <Megaphone size={14} className="text-zinc-500" />
+              <span className="min-w-0 flex-1">{t('legal.advertising')}</span>
+              <ChevronRight size={14} className="text-zinc-600" />
+            </Link>
+          </li>
+          <li>
+            <Link
+              to="/legal/referidos"
+              className="flex items-center gap-2 rounded-lg px-1 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <Users size={14} className="text-zinc-500" />
+              <span className="min-w-0 flex-1">{t('legal.referrals')}</span>
+              <ChevronRight size={14} className="text-zinc-600" />
+            </Link>
+          </li>
+          <li>
             <button
               type="button"
               onClick={() => setFeedbackOpen(true)}

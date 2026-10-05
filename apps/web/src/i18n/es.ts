@@ -380,6 +380,8 @@ export const es = {
     childSafety: 'Seguridad infantil',
     community: 'Comunidad',
     monetization: 'Monetización',
+    advertising: 'Publicidad',
+    referrals: 'Referidos',
   },
   category: {
     musica: 'Música',

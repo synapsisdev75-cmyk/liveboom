@@ -380,6 +380,8 @@ export const zh: Catalog = {
     childSafety: '儿童安全',
     community: 'Community',
     monetization: 'Monetization',
+    advertising: '广告',
+    referrals: '推荐计划',
   },
   category: {
     musica: '音乐',

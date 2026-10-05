@@ -382,6 +382,8 @@ export const en: Catalog = {
     childSafety: 'Child safety',
     community: 'Community',
     monetization: 'Monetization',
+    advertising: 'Advertising',
+    referrals: 'Referrals',
   },
   category: {
     musica: 'Music',
