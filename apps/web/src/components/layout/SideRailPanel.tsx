@@ -21,7 +21,7 @@ import {
   Users,
   Wifi,
 } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import { Link, useLocation, useMatch } from 'react-router-dom';
 import { MyPromotionsModal } from '../ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../ads/PromoteAdsModal';
@@ -63,6 +63,8 @@ import { useMessagesMenuStore } from '../../store/messagesMenuStore';
 import { MessagesSideRail } from '../social/MessagesQuickMenu';
 import { SidebarWalletDock } from './SidebarWalletDock';
 import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
+
+const ZoneLiveMap = lazy(() => import('./ZoneLiveMap'));
 
 type SuggestedUser = {
   uid: string;
@@ -1522,10 +1524,17 @@ function DiscoveryRail() {
               <MapPin size={12} /> Tu zona
             </p>
             {location ? (
-              <p className="mt-1.5 text-xs font-semibold text-cyan-200">
-                {location.city ? `${location.city} · ` : ''}
-                {location.regionLabel}
-              </p>
+              <>
+                <p className="mt-1.5 text-xs font-semibold text-cyan-200">
+                  {location.city ? `${location.city} · ` : ''}
+                  {location.regionLabel}
+                </p>
+                <Suspense
+                  fallback={<div className="mt-2 h-[clamp(9rem,22vh,11rem)] animate-pulse rounded-xl bg-white/5" />}
+                >
+                  <ZoneLiveMap saved={{ lat: location.lat, lng: location.lng }} />
+                </Suspense>
+              </>
             ) : showPrompt ? (
               <button
                 type="button"
