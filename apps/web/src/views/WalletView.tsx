@@ -69,7 +69,7 @@ function VerificationWalletCard() {
     };
   }, []);
   return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-3">
+    <div className="mt-4 rounded-2xl border border-white/10 p-3">
       <p className="inline-flex items-center gap-2 text-sm font-bold text-cyan-200">
         <Shield size={15} /> Verificación para retiros
       </p>
@@ -408,7 +408,7 @@ export function WalletView() {
                 </span>
               </p>
               <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-3">
-                <div className="min-w-0 rounded-xl border border-white/10 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
+                <div className="min-w-0 rounded-xl border border-white/10 px-2.5 py-2 sm:px-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-400 sm:text-[11px]">
                     Comprados
                   </p>
@@ -417,7 +417,7 @@ export function WalletView() {
                   </p>
                   <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Recargas</p>
                 </div>
-                <div className="min-w-0 rounded-xl border border-emerald-400/25 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
+                <div className="min-w-0 rounded-xl border border-emerald-400/25 px-2.5 py-2 sm:px-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-300/90 sm:text-[11px]">
                     BLAST ganados
                   </p>
@@ -426,7 +426,7 @@ export function WalletView() {
                   </p>
                   <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">Regalos y llamadas</p>
                 </div>
-                <div className="min-w-0 rounded-xl border border-cyan-400/25 bg-black/35 px-2.5 py-2 backdrop-blur-sm sm:px-3">
+                <div className="min-w-0 rounded-xl border border-cyan-400/25 px-2.5 py-2 sm:px-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-cyan-300/90 sm:text-[11px]">
                     Total
                   </p>
