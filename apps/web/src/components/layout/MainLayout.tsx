@@ -2,6 +2,7 @@ import {
   ChevronRight,
   Clock,
   Flag,
+  Gift,
   Home,
   Menu,
   MessageCircle,
@@ -45,6 +46,7 @@ import { bcp47For, useT } from '../../i18n';
 import { useLocaleStore } from '../../store/localeStore';
 import { prefetchRoute } from '../../lib/routePrefetch';
 import { useMessagesInboxVisible } from '../../hooks/useMessagesInboxVisible';
+import { AdRewardsHost } from '../rewards/AdRewardsHost';
 
 function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
@@ -72,6 +74,7 @@ function useSideNavItems() {
       { id: 'explore', label: t('nav.explore'), icon: Compass, to: '/explorar' as const },
       { id: 'groups', label: t('nav.groups'), icon: Users, to: '/grupos' as const },
       { id: 'wallet', label: t('nav.wallet'), icon: Wallet, to: '/billetera' as const },
+      { id: 'rewards', label: 'Gana Puntos', icon: Gift, to: '/recompensas' as const },
       { id: 'messages', label: t('nav.messages'), icon: MessageCircle, to: '/mensajes' as const },
       { id: 'activity', label: t('nav.activity'), icon: Clock, to: '/actividad' as const },
       { id: 'profile', label: t('nav.profile'), icon: UserRound, to: '/perfil' as const },
@@ -677,6 +680,8 @@ export function MainLayout() {
       <InAppFeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {profile ? <MessagesFloatingHost /> : null}
+
+      {profile ? <AdRewardsHost /> : null}
 
       {toast ? (
         <div

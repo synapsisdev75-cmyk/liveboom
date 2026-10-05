@@ -5,6 +5,7 @@ import { AdminUsersPanel } from '../components/admin/AdminUsersPanel';
 import { AdminMessagesPanel } from '../components/admin/AdminMessagesPanel';
 import { AdminCatalogPanel } from '../components/admin/AdminCatalogPanel';
 import { AdminAdsPanel } from '../components/admin/AdminAdsPanel';
+import { AdminAdRewardsPanel } from '../components/admin/AdminAdRewardsPanel';
 import { AdminVaultSecurityPanel } from '../components/admin/AdminVaultSecurityPanel';
 import { AdminWithdrawalsPanel } from '../components/admin/AdminWithdrawalsPanel';
 import { AdminVerificationPanel } from '../components/admin/AdminVerificationPanel';
@@ -41,6 +42,7 @@ type AdminTab =
   | 'gifts'
   | 'blast'
   | 'ads'
+  | 'adRewards'
   | 'requests'
   | 'withdrawals'
   | 'verifications'
@@ -51,6 +53,7 @@ const TAB_CAPABILITY: Partial<Record<AdminTab, SuperAdminCapability>> = {
   gifts: 'gifts',
   blast: 'blast',
   ads: 'ads',
+  adRewards: 'ads',
   levels: 'levels',
   community: 'community',
   requests: 'requests',
@@ -65,6 +68,7 @@ const ALL_TABS: AdminTab[] = [
   'gifts',
   'blast',
   'ads',
+  'adRewards',
   'levels',
   'community',
   'requests',
@@ -342,6 +346,7 @@ export function SuperAdminView() {
             ...(can('gifts') ? [{ id: 'gifts' as const, label: 'Regalos' }] : []),
             ...(can('blast') ? [{ id: 'blast' as const, label: 'Blast' }] : []),
             ...(can('ads') ? [{ id: 'ads' as const, label: 'Publicidad' }] : []),
+            ...(can('ads') ? [{ id: 'adRewards' as const, label: 'Publicidad y recompensas' }] : []),
             ...(can('levels') ? [{ id: 'levels' as const, label: 'Niveles / Marcos' }] : []),
             ...(can('community') ? [{ id: 'community' as const, label: 'Comunidad' }] : []),
             ...(can('requests') ? [{ id: 'requests' as const, label: 'Solicitudes' }] : []),
@@ -377,6 +382,7 @@ export function SuperAdminView() {
       {tab === 'gifts' && can('gifts') ? <AdminCatalogPanel modules={['gifts']} /> : null}
       {tab === 'blast' && can('blast') ? <AdminCatalogPanel modules={['coins']} /> : null}
       {tab === 'ads' && can('ads') ? <AdminAdsPanel /> : null}
+      {tab === 'adRewards' && can('ads') ? <AdminAdRewardsPanel /> : null}
       {tab === 'community' && can('community') ? <CommunityHeaderEditor /> : null}
       {tab === 'requests' && can('requests') ? <AdminChangeRequestsPanel /> : null}
       {tab === 'withdrawals' && can('withdrawals') ? <AdminWithdrawalsPanel /> : null}

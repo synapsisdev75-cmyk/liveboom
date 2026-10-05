@@ -487,6 +487,22 @@ export function WalletView() {
             </div>
           </section>
 
+          <Link
+            to="/recompensas"
+            className="flex min-h-14 items-center gap-3 rounded-2xl border border-fuchsia-400/30 bg-gradient-to-r from-fuchsia-500/10 to-cyan-500/10 px-4 py-3 transition hover:border-fuchsia-400/50"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-fuchsia-500 to-cyan-500 text-white">
+              <Gift size={18} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-white">Gana Puntos</span>
+              <span className="block text-[12px] text-zinc-400">
+                Mira publicidad, gana puntos y conviértelos en BLAST ganados.
+              </span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-zinc-500" />
+          </Link>
+
           {showHistory ? (
             <section
               ref={historyRef}

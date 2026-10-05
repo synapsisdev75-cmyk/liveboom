@@ -235,6 +235,8 @@ export function ledgerLabel(row: WalletLedgerRow) {
       return 'LIVE privado';
     case 'EARNING_SUBSCRIPTION':
       return 'Suscripción';
+    case 'EARNING_AD_REWARD':
+      return 'Recompensa publicitaria';
     case 'SPEND': {
       const reason = String(row.referenceType || '').toLowerCase();
       if (reason.includes('gift')) return 'Regalo enviado';

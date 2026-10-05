@@ -112,6 +112,7 @@ mount('/api/wallet', () => require('./src/routes/wallet'));
 mount('/api/verification', () => require('./src/routes/verification'));
 mount('/api/super-admin', () => require('./src/routes/superAdmin'));
 mount('/api/link-preview', () => require('./src/routes/linkPreview'));
+mount('/api/rewards', () => require('./src/routes/rewards'));
 
 app.use((error, _req, res, _next) => {
   console.error('[liveboom] error no controlado', error);
@@ -261,6 +262,19 @@ try {
       const { expireDueCampaigns } = require('./src/lib/promoCampaigns');
       const stats = await expireDueCampaigns();
       if (stats?.expired) console.log('[liveboom] ads expire', stats);
+    },
+  );
+  module.exports.processAdRewards = onSchedule(
+    {
+      region: 'us-central1',
+      schedule: 'every 15 minutes',
+      memory: '256MiB',
+      timeoutSeconds: 120,
+    },
+    async () => {
+      const { runScheduled } = require('./src/lib/adRewardsService');
+      const stats = await runScheduled();
+      console.log('[liveboom] gana puntos', stats);
     },
   );
 } catch (error) {

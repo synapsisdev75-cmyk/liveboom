@@ -72,6 +72,9 @@ const TrendsView = lazy(() =>
 const GroupsView = lazy(() =>
   import('./views/GroupsView').then((m) => ({ default: m.GroupsView })),
 );
+const RewardsView = lazy(() =>
+  import('./views/RewardsView').then((m) => ({ default: m.RewardsView })),
+);
 const SuperAdminView = lazy(() =>
   import('./views/SuperAdminView').then((m) => ({ default: m.SuperAdminView })),
 );
@@ -196,6 +199,7 @@ export default function App() {
             <Route path="espacio-gaming" element={<GamingSpaceView />} />
             <Route path="u/:username" element={<UserProfileView />} />
             <Route path="billetera" element={<WalletView />} />
+            <Route path="recompensas" element={<RewardsView />} />
             <Route path="wallet/withdraw/verification" element={<WithdrawalVerificationView />} />
             <Route path="billetera/retiro/verificacion" element={<WithdrawalVerificationView />} />
             <Route path="perfil" element={<ProfileRedirectView />} />

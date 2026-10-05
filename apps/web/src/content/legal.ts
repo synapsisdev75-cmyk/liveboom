@@ -845,6 +845,10 @@ export const LEGAL_DOCS: LegalDoc[] = [
         "body": "La Compañía podrá modificar esta Política y la lista de categorías del numeral 6, con aviso previo de quince (15) días calendario mediante la Aplicación o el correo registrado, salvo que el cambio sea necesario para cumplir la ley o una política de una tienda de aplicaciones, caso en el cual será inmediato.\n\nEsta Política se rige por las leyes de la República de Colombia. Las diferencias se resolverán conforme a lo previsto en los Términos y Condiciones.\n\nPara consultas, denuncias o solicitudes de aprobación de publicidad: correo.soporte@gmail.com"
       },
       {
+        "heading": "16. Publicidad con recompensas (Gana Puntos)",
+        "body": "Los Anunciantes podrán contratar campañas en las que los Usuarios reciben Puntos Publicitarios por ver la publicidad o completar acciones reales, como visitar un perfil, seguir una cuenta, comentar, registrarse, descargar, diligenciar un formulario o comprar. Estas piezas se identifican siempre como «Patrocinado» o «Publicidad», se muestran dentro del feed con una frecuencia razonable y nunca sobre transmisiones en vivo, pagos, retiros, llamadas ni mientras el Usuario escribe un mensaje.\n\nEl Anunciante financia las recompensas con el presupuesto de su campaña. La campaña se detiene automáticamente cuando el presupuesto o el cupo de acciones se agota. El Anunciante no podrá exigir acciones engañosas, ni recibir datos personales de los Usuarios, salvo autorización expresa del titular en su propio formulario.\n\nLas condiciones para los Usuarios se rigen por la Política del Programa Gana Puntos."
+      },
+      {
         "heading": "Anexo A. Leyendas de identificación sugeridas",
         "body": "Publicidad · Pauta · Contenido patrocinado · Alianza con marca · Recibo una comisión si te registras con mi código en LiveBoom · Solo para mayores de 18 años."
       },
@@ -923,6 +927,66 @@ export const LEGAL_DOCS: LegalDoc[] = [
       {
         "heading": "15. Aceptación y contacto",
         "body": "La aceptación de esta Política se hace por medios electrónicos, mediante clic, registro en el Programa o uso del Código de Referido, y tiene plenos efectos conforme a la Ley 527 de 1999.\n\nPara consultas, reclamaciones o solicitudes sobre el Programa, el Referente podrá escribir a correosoporte@xxx.com o por el canal de ayuda de la Aplicación."
+      }
+    ]
+  },
+  {
+    "slug": "gana-puntos",
+    "title": "Política del Programa Gana Puntos",
+    "updated": "5 de octubre de 2026",
+    "version": "Beta 0.1",
+    "sections": [
+      {
+        "heading": "Introducción",
+        "body": "La presente Política regula el programa de recompensas publicitarias de LiveBoom denominado «Gana Puntos» (el «Programa»), operado por MACRO REAL S.A.S. (la «Compañía»). Mediante el Programa, los Usuarios pueden recibir Puntos Publicitarios por ver publicidad y completar acciones reales contratadas por Anunciantes. Hace parte de los Términos y Condiciones, la Política de Privacidad, las Condiciones de Monetización y la Política de Publicidad y Contenido Promocional de LiveBoom."
+      },
+      {
+        "heading": "1. Definiciones",
+        "body": "Puntos Publicitarios o Puntos: unidades de recompensa del Programa, registradas en la cuenta del Usuario, que solo pueden convertirse en BLAST Ganados.\n\nBLAST Ganados: los BLAST que el Usuario obtiene por su actividad en la Aplicación y que pueden retirarse conforme a las Condiciones de Monetización.\n\nBLAST Comprados: los BLAST adquiridos con dinero. No se retiran ni se mezclan con los Puntos.\n\nCampaña: la publicidad contratada por un Anunciante, con su presupuesto, vigencia, acción requerida y recompensa.\n\nAcción Válida: la acción que cumple todos los requisitos de la Campaña y supera las verificaciones de esta Política."
+      },
+      {
+        "heading": "2. Naturaleza de los puntos",
+        "body": "Los Puntos no son dinero, moneda, título valor ni instrumento de pago. No tienen valor de cambio fuera de la Aplicación, no generan intereses, no son transferibles entre cuentas y no se retiran directamente.\n\nLa única forma de usar los Puntos es convertirlos en BLAST Ganados, según la tabla de conversión vigente definida por la Compañía. La conversión se hace en unidades enteras de BLAST: los Puntos que no completen un BLAST permanecen disponibles en la cuenta.\n\nLa publicidad nunca entrega BLAST de forma directa. El esquema es: Puntos Publicitarios → BLAST Ganados → retiro conforme a las Condiciones de Monetización."
+      },
+      {
+        "heading": "3. Cómo se ganan los puntos",
+        "body": "Las Campañas pueden pedir, entre otras, las siguientes acciones: (a) ver una publicidad durante el tiempo mínimo indicado; (b) visitar el perfil o la página del Anunciante durante el tiempo indicado; (c) seguir o suscribirse a la cuenta del Anunciante; (d) ver la publicidad y seguir la cuenta; (e) publicar un comentario válido; (f) completar un registro confirmado; (g) realizar una descarga o diligenciar un formulario; y (h) realizar una compra o conversión confirmada.\n\nAntes de participar, la Aplicación muestra los Puntos que entrega la acción y el requisito para obtenerlos. El tiempo de visualización solo cuenta mientras la publicidad está visible en pantalla, la Aplicación está en primer plano y hay conexión. Si el Usuario abandona antes de completar el tiempo, no recibe Puntos.\n\nLa participación es voluntaria. Ver publicidad no es requisito para usar la Aplicación."
+      },
+      {
+        "heading": "4. Validación y estados",
+        "body": "Cada recompensa tiene uno de estos estados: VALIDADO (los Puntos están disponibles), PENDIENTE (en espera de confirmación), en revisión (la Compañía verifica la actividad antes de acreditarla) o RECHAZADO (la acción no cumplió los requisitos).\n\nSeguir o suscribirse: la recompensa queda pendiente durante setenta y dos (72) horas o el periodo que indique la Campaña. Si el Usuario deja de seguir la cuenta antes de terminar ese periodo, la recompensa se cancela.\n\nRegistros, descargas, formularios y compras: requieren la confirmación del Anunciante, por integración técnica o reporte, o la verificación de la Compañía.\n\nComentarios: no se aceptan comentarios vacíos, duplicados, repetidos de forma masiva, con exceso de emojis, con enlaces o generados de forma automatizada."
+      },
+      {
+        "heading": "5. Límites y disponibilidad",
+        "body": "La Compañía fija un número máximo de recompensas por Usuario y por día (actualmente hasta veinte (20)) y un máximo diario de recompensas por seguir cuentas (actualmente cinco (5)). Salvo que la Campaña indique otra cosa, cada Usuario puede recibir la recompensa de una Campaña una sola vez.\n\nLas recompensas dependen del presupuesto y del cupo de cada Campaña. Antes de acreditar, la Compañía verifica que la Campaña esté activa y tenga presupuesto, que la acción sea válida y que el Usuario cumpla los requisitos de la Campaña. Cuando el presupuesto o el cupo se agota, la Campaña se detiene automáticamente. La Compañía no garantiza que siempre existan Campañas disponibles."
+      },
+      {
+        "heading": "6. Conversión a BLAST",
+        "body": "Desde «Mis recompensas», el Usuario puede convertir sus Puntos disponibles con el botón «Convertir a BLAST». Antes de confirmar, la Aplicación muestra los Puntos disponibles, los BLAST que recibirá y los Puntos que le quedarán.\n\nAl confirmar, los Puntos se descuentan, los BLAST se suman a los BLAST Ganados y se crea un registro histórico con la fecha, el Usuario y el origen «Recompensa publicitaria». La conversión es definitiva y no puede revertirse. Los Puntos pendientes o en revisión no pueden convertirse hasta quedar validados."
+      },
+      {
+        "heading": "7. Publicidad patrocinada en el feed",
+        "body": "Las Campañas aparecen como publicaciones identificadas como «Patrocinado» o «Publicidad» en Inicio, Explorar (Para ti, Virales y Recientes), Boom Clips y Flash Boom, aproximadamente cada diez (10) minutos de uso activo, o con la frecuencia que fije la Compañía. Se insertan en el siguiente punto seguro de navegación y nunca se muestran sobre transmisiones en vivo, formularios, pagos, compras, retiros, llamadas, mientras el Usuario escribe un mensaje ni durante una reproducción que no deba interrumpirse. El Usuario puede cerrarlas en cualquier momento.\n\nLa Compañía avisará en la Aplicación cuando haya nuevas recompensas disponibles, sin enviar notificaciones repetitivas."
+      },
+      {
+        "heading": "8. Prevención de fraude",
+        "body": "Está prohibido: (a) usar bots, scripts, herramientas de automatización o emuladores; (b) crear o usar varias cuentas, o compartir un mismo dispositivo para multiplicar recompensas; (c) acelerar o adelantar la reproducción, o manipular el reloj del dispositivo; (d) usar VPN u otros medios para simular otra ubicación o evadir límites; (e) abrir varias sesiones simultáneas para acumular tiempo; (f) dar clics o realizar acciones de forma masiva; (g) publicar comentarios copiados, repetidos o automatizados; y (h) realizar registros falsos o compras fraudulentas, desconocidas o revertidas.\n\nLa Compañía analiza señales técnicas de la actividad. Ninguna señal aislada produce, por sí sola, un bloqueo irreversible: las recompensas con señales de riesgo quedan en revisión para auditoría. Confirmado el incumplimiento, la Compañía podrá, de forma gradual y proporcional, rechazar recompensas, descontar Puntos obtenidos de forma irregular, revertir conversiones realizadas con esos Puntos, suspender la participación en el Programa o aplicar las demás medidas de los Términos y Condiciones.\n\nAntes de suspender la participación, la Compañía comunicará los hechos al Usuario y le concederá cinco (5) días hábiles para presentar explicaciones, salvo fraude evidente o riesgo para la seguridad, caso en el cual la comunicación será posterior."
+      },
+      {
+        "heading": "9. Datos personales",
+        "body": "Para validar las acciones y prevenir el fraude, la Compañía trata datos técnicos como un identificador del dispositivo, la dirección IP, los tiempos de visualización y la actividad dentro del Programa, conforme a la Ley 1581 de 2012 y la Política de Privacidad.\n\nLa segmentación de Campañas puede usar país, ciudad, edad, género e intereses cuando el Usuario los haya suministrado, nunca datos sensibles. Los Anunciantes no reciben datos personales de los Usuarios: solo estadísticas agregadas. En las acciones externas, el enlace incluye un código de referencia que no identifica al Usuario ante el Anunciante; cualquier dato que el Usuario entregue en el sitio del Anunciante se rige por la política de este."
+      },
+      {
+        "heading": "10. Modificación y terminación",
+        "body": "La Compañía podrá modificar las acciones disponibles, los Puntos por acción, los límites y la tabla de conversión, o suspender o terminar el Programa, con aviso previo de quince (15) días calendario mediante la Aplicación. Los Puntos validados antes de una terminación podrán convertirse durante ese plazo. Los cambios no afectan las conversiones ya realizadas."
+      },
+      {
+        "heading": "11. Impuestos y retiros",
+        "body": "Los BLAST Ganados obtenidos por conversión de Puntos se retiran conforme a las Condiciones de Monetización, incluidos sus mínimos, verificaciones de identidad y retenciones tributarias aplicables."
+      },
+      {
+        "heading": "12. Ley aplicable y contacto",
+        "body": "Esta Política se rige por las leyes de la República de Colombia. Para consultas o reclamaciones sobre el Programa: macroreal2026@gmail.com o el canal de ayuda de la Aplicación.\n\nMACRO REAL S.A.S. · LIVEBOOM"
       }
     ]
   }

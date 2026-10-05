@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGroup } from 'framer-motion';
+import { SponsoredFeedSlot } from '../components/rewards/SponsoredFeedSlot';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Gift,
@@ -77,6 +78,9 @@ import { useAuthStore } from '../store/authStore';
 import { useT } from '../i18n';
 
 type FeedTab = 'para_ti' | 'siguiendo' | 'cerca';
+
+/** Puntos seguros del feed donde puede entrar una publicación patrocinada. */
+const SPONSORED_EVERY = 4;
 
 function toSocial(post: FsPost): SocialPost {
   return {
@@ -884,17 +888,21 @@ export function HomeView() {
       {/* Más posts del feed */}
       {profile && visiblePosts.length > 0 ? (
         <section className="space-y-3">
-          {visiblePosts.slice(1).map((post) => {
+          {visiblePosts.slice(1).map((post, index) => {
             const live = streams.find(
               (s) => s.username.toLowerCase() === post.authorUsername.toLowerCase(),
             );
             return (
-              <FeaturedFeedCard
-                key={post.id}
-                post={post}
-                live={live ?? null}
-                onEdit={setEditingPost}
-              />
+              <Fragment key={post.id}>
+                <FeaturedFeedCard
+                  post={post}
+                  live={live ?? null}
+                  onEdit={setEditingPost}
+                />
+                {index % SPONSORED_EVERY === SPONSORED_EVERY - 1 ? (
+                  <SponsoredFeedSlot surface="inicio" />
+                ) : null}
+              </Fragment>
             );
           })}
           <div ref={loadMoreRef} className="h-4" />
