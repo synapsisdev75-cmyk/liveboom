@@ -41,6 +41,9 @@ const UserProfileView = lazy(() =>
 const SearchView = lazy(() =>
   import('./views/SearchView').then((m) => ({ default: m.SearchView })),
 );
+const CreatorsView = lazy(() =>
+  import('./views/CreatorsView').then((m) => ({ default: m.CreatorsView })),
+);
 const LegalView = lazy(() =>
   import('./views/LegalView').then((m) => ({ default: m.LegalView })),
 );
@@ -189,6 +192,7 @@ export default function App() {
             <Route path="perfil" element={<ProfileRedirectView />} />
             <Route path="perfil/editar" element={<ProfileView />} />
             <Route path="buscar" element={<SearchView />} />
+            <Route path="creadores" element={<CreatorsView />} />
             <Route path="mensajes" element={<MessagesView />} />
             <Route path="actividad" element={<ActivityView />} />
             <Route path="transmitir" element={<TransmitView />} />

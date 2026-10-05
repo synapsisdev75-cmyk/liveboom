@@ -5,6 +5,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  documentId,
   getDoc,
   getDocs,
   increment,
@@ -14,6 +15,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
@@ -1233,6 +1235,39 @@ export async function browseSuggestedCreators(
 
   const resultLimit = Math.max(1, options?.limit ?? 8);
   return candidates.slice(0, resultLimit);
+}
+
+export type CreatorsPage = { creators: FriendChip[]; nextCursor: string | null };
+
+/** Todos los creadores, paginados por id (página «Ver todos»). */
+export async function listCreatorsPage(
+  viewerUid?: string | null,
+  cursor?: string | null,
+  pageSize = 30,
+): Promise<CreatorsPage> {
+  const users = collection(db, 'users');
+  const snap = await getDocs(
+    cursor
+      ? query(users, orderBy(documentId()), startAfter(cursor), limit(pageSize))
+      : query(users, orderBy(documentId()), limit(pageSize)),
+  );
+  const creators: FriendChip[] = [];
+  for (const item of snap.docs) {
+    const data = item.data() as Record<string, unknown>;
+    const username = String(data.username || '')
+      .trim()
+      .toLowerCase();
+    if (!username || item.id === viewerUid) continue;
+    const avatar = typeof data.avatarUrl === 'string' && data.avatarUrl.trim() ? data.avatarUrl.trim() : null;
+    creators.push({
+      uid: item.id,
+      username,
+      displayName: String(data.displayName || data.username || username),
+      avatarUrl: avatar,
+    });
+  }
+  const last = snap.docs[snap.docs.length - 1];
+  return { creators, nextCursor: snap.docs.length === pageSize && last ? last.id : null };
 }
 
 export function listenFollowers(uid: string, onChange: (users: FriendChip[]) => void): Unsubscribe {

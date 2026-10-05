@@ -476,7 +476,7 @@ function SearchFriendsRail() {
       <section className="shrink-0 rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-sm font-bold text-white">Creadores destacados</p>
-          <Link to="/explorar" className="text-[11px] font-semibold text-violet-400 hover:underline">
+          <Link to="/creadores" className="text-[11px] font-semibold text-violet-400 hover:underline">
             Ver todos
           </Link>
         </div>

@@ -19,6 +19,7 @@ const loaders: Record<string, Loader> = {
   '/perfil': () => import('../views/ProfileRedirectView'),
   '/perfil/editar': () => import('../views/ProfileView'),
   '/buscar': () => import('../views/SearchView'),
+  '/creadores': () => import('../views/CreatorsView'),
   '/mensajes': () => import('../views/MessagesView'),
   '/actividad': () => import('../views/ActivityView'),
   '/transmitir': () => import('../views/TransmitView'),
