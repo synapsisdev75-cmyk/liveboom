@@ -293,11 +293,11 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           aria-label="Plaza de este video"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-sm font-bold text-white">Plaza</p>
+            <p className="lb-explore-plaza__title text-sm font-bold text-white">Plaza</p>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-100"
+                className="lb-explore-plaza__flag inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-100"
                 aria-label="Reportar plaza"
                 onClick={() =>
                   openReport(`Plaza del video ${postId}. Autor @${authorUsername} (${authorUid}).`)
@@ -307,7 +307,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
               </button>
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center rounded-full px-3 text-xs font-semibold text-white/80"
+                className="lb-explore-plaza__close inline-flex min-h-11 items-center rounded-full px-3 text-xs font-semibold text-white/80"
                 onClick={() => setThreadOpen(false)}
               >
                 Cerrar
@@ -315,8 +315,8 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
             </div>
           </div>
           {isAuthor ? (
-            <div className="mb-2 rounded-xl border border-white/10 bg-white/[0.04] p-2">
-              <p className="mb-1.5 text-[11px] text-white/70">Responde a tu plaza</p>
+            <div className="lb-explore-plaza__author mb-2 rounded-xl border border-white/10 bg-white/[0.04] p-2">
+              <p className="lb-explore-plaza__muted mb-1.5 text-[11px] text-white/70">Responde a tu plaza</p>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
@@ -327,7 +327,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                   <Radio size={14} aria-hidden />
                   Responder en LIVE
                 </button>
-                <p className="flex min-h-11 flex-1 items-center justify-center text-center text-[11px] text-white/60">
+                <p className="lb-explore-plaza__muted flex min-h-11 flex-1 items-center justify-center text-center text-[11px] text-white/60">
                   o escribe abajo en el chat
                 </p>
               </div>
@@ -335,16 +335,16 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           ) : null}
           <div ref={logRef} className="lb-explore-plaza__log min-h-0 flex-1 space-y-2 overflow-y-auto">
             {messages.length === 0 ? (
-              <p className="text-xs text-white/70">Nadie ha escrito en este video todavía.</p>
+              <p className="lb-explore-plaza__muted text-xs text-white/70">Nadie ha escrito en este video todavía.</p>
             ) : (
               messages.map((message) =>
                 isLiveReply(message) ? (
                 <div key={message.id} className="rounded-xl border border-rose-400/40 bg-rose-500/15 p-2">
-                  <p className="flex items-center gap-1 text-[11px] font-bold text-rose-200">
+                  <p className="lb-explore-plaza__live-label flex items-center gap-1 text-[11px] font-bold text-rose-200">
                     <Radio size={12} aria-hidden />
                     {message.displayName || message.username} responde en LIVE
                   </p>
-                  <p className="mt-0.5 text-sm leading-snug text-white">{message.text}</p>
+                  <p className="lb-explore-plaza__text mt-0.5 text-sm leading-snug text-white">{message.text}</p>
                   {liveOpen && authorUsername ? (
                     <Link
                       to={`/stream/${encodeURIComponent(authorUsername)}`}
@@ -355,7 +355,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                       Ver LIVE
                     </Link>
                   ) : (
-                    <p className="mt-1 text-[11px] text-white/60">Preparando el LIVE…</p>
+                    <p className="lb-explore-plaza__muted mt-1 text-[11px] text-white/60">Preparando el LIVE…</p>
                   )}
                 </div>
                 ) : (
@@ -382,14 +382,14 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                     />
                   </button>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11px] font-semibold text-white/80">
+                    <p className="lb-explore-plaza__name truncate text-[11px] font-semibold text-white/80">
                       {message.displayName || message.username}
                     </p>
-                    <p className="text-sm leading-snug text-white">{message.text}</p>
+                    <p className="lb-explore-plaza__text text-sm leading-snug text-white">{message.text}</p>
                   </div>
                   <button
                     type="button"
-                    className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-amber-100"
+                    className="lb-explore-plaza__flag inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-amber-100"
                     aria-label="Reportar mensaje"
                     onClick={() =>
                       openReport(
@@ -411,12 +411,12 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                 onChange={(event) => setDraft(event.target.value.slice(0, 280))}
                 placeholder="Escribe en la plaza"
                 maxLength={280}
-                className="min-h-11 min-w-0 flex-1 rounded-full border border-white/15 bg-black/40 px-3 text-sm text-white outline-none"
+                className="lb-explore-plaza__input min-h-11 min-w-0 flex-1 rounded-full border border-white/15 bg-black/40 px-3 text-sm text-white outline-none"
               />
               <button
                 type="submit"
                 disabled={sending || !draft.trim()}
-                className="inline-flex min-h-11 items-center rounded-full bg-white px-3 text-xs font-bold text-black disabled:opacity-40"
+                className="lb-explore-plaza__send inline-flex min-h-11 items-center rounded-full bg-white px-3 text-xs font-bold text-black disabled:opacity-40"
               >
                 Enviar
               </button>
@@ -424,7 +424,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           ) : (
             <Link
               to="/login"
-              className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-cyan-200"
+              className="lb-explore-plaza__login mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-cyan-200"
             >
               Inicia sesión para hablar
             </Link>
