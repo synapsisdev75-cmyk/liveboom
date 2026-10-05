@@ -48,6 +48,8 @@ import {
   listenIncomingRequests,
   type FriendRequest,
 } from '../../lib/socialFirestore';
+import { markCreatorFollowed, type RecommendationContext } from '../../lib/creatorRecommendations';
+import { syncPublicGeo } from '../../lib/publicGeo';
 import { levelFromXp, xpNeededForNext, xpToNextLevel } from '../../lib/userLevels';
 import {
   dismissLocationPrompt,
@@ -73,12 +75,13 @@ type SuggestedUser = {
   displayName: string;
   avatarUrl: string | null;
   isFollowing?: boolean;
+  reason?: string;
 };
 
 const JOIN_BTN =
   'bg-[linear-gradient(to_right,#06B6D4,#8B5CF6)] text-white shadow-[0_4px_16px_rgba(6,182,212,0.25)]';
 
-function useSuggestedCreators(limit: number) {
+function useSuggestedCreators(limit: number, context: RecommendationContext) {
   const profile = useAuthStore((state) => state.profile);
   const [suggested, setSuggested] = useState<SuggestedUser[]>([]);
 
@@ -87,6 +90,7 @@ function useSuggestedCreators(limit: number) {
       void browseSuggestedCreators(profile?.firebaseUid, profile?.handle, {
         limit: 1,
         excludeUids,
+        context,
       }).then((replacements) => {
         const replacement = replacements[0];
         if (!replacement) return;
@@ -96,7 +100,7 @@ function useSuggestedCreators(limit: number) {
         });
       });
     },
-    [profile?.firebaseUid, profile?.handle, limit],
+    [profile?.firebaseUid, profile?.handle, limit, context],
   );
 
   useEffect(() => {
@@ -104,6 +108,7 @@ function useSuggestedCreators(limit: number) {
     void browseSuggestedCreators(profile?.firebaseUid, profile?.handle, {
       limit,
       excludeUids: readIgnoredSuggestionUids(profile?.firebaseUid),
+      context,
     })
       .then((users) => {
         if (!cancelled) setSuggested(users);
@@ -114,18 +119,19 @@ function useSuggestedCreators(limit: number) {
     return () => {
       cancelled = true;
     };
-  }, [profile?.handle, profile?.firebaseUid, limit]);
+  }, [profile?.handle, profile?.firebaseUid, limit, context]);
 
   const onSuggestedFollow = useCallback(
     (followedUid: string, following: boolean) => {
       if (!following) return;
+      markCreatorFollowed(profile?.firebaseUid, followedUid);
       setSuggested((current) => {
         const next = current.filter((user) => user.uid !== followedUid);
         pullReplacement([...next.map((user) => user.uid), followedUid]);
         return next;
       });
     },
-    [pullReplacement],
+    [pullReplacement, profile?.firebaseUid],
   );
 
   const onSuggestedIgnore = useCallback(
@@ -283,7 +289,7 @@ function formatLiveWhen(iso: string) {
 /** Rail exclusivo de /buscar (mockup): invita, contactos, destacados, actividad. */
 function SearchFriendsRail() {
   const profile = useAuthStore((state) => state.profile);
-  const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5);
+  const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5, 'featured');
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [alerts, setAlerts] = useState<Array<{ id: string; text: string; href: string; at: number }>>(
     [],
@@ -512,6 +518,9 @@ function SearchFriendsRail() {
                       ) : null}
                     </span>
                     <span className="block truncate text-[11px] text-zinc-500">@{user.username}</span>
+                    {user.reason ? (
+                      <span className="block truncate text-[10px] text-cyan-300/80">{user.reason}</span>
+                    ) : null}
                   </span>
                 </Link>
                 <SuggestedCreatorActions
@@ -590,7 +599,7 @@ function SearchFriendsRail() {
 function ActivityRail() {
   const profile = useAuthStore((state) => state.profile);
   const [lives, setLives] = useState<LiveActivityEntry[]>([]);
-  const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(4);
+  const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(4, 'social');
   const [publicGroups, setPublicGroups] = useState<LiveGroup[]>([]);
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [joinBusy, setJoinBusy] = useState(false);
@@ -781,7 +790,9 @@ function ActivityRail() {
                       {user.displayName || user.username}
                     </span>
                     <span className="block truncate text-[11px] text-zinc-500">@{user.username}</span>
-                    <span className="block text-[10px] text-zinc-600">Sugerido para ti</span>
+                    <span className="block truncate text-[10px] text-cyan-300/80">
+                      {user.reason || 'Sugerido para ti'}
+                    </span>
                   </span>
                 </Link>
                 <SuggestedCreatorActions
@@ -951,7 +962,7 @@ function formatRelative(ms: number) {
 /** Conservado para reutilizar el rail de sugerencias de Mensajes si se vuelve a montar. */
 export function MessagesRail() {
   const profile = useAuthStore((state) => state.profile);
-  const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5);
+  const { suggested, onSuggestedFollow, onSuggestedIgnore } = useSuggestedCreators(5, 'social');
   const [publicGroups, setPublicGroups] = useState<LiveGroup[]>([]);
   const [myGroups, setMyGroups] = useState<LiveGroup[]>([]);
   const [joinBusy, setJoinBusy] = useState(false);
@@ -1074,7 +1085,9 @@ export function MessagesRail() {
                       {user.displayName || user.username}
                     </span>
                     <span className="block truncate text-[11px] text-zinc-500">@{user.username}</span>
-                    <span className="block text-[10px] text-zinc-600">Sugerido para ti</span>
+                    <span className="block truncate text-[10px] text-cyan-300/80">
+                      {user.reason || 'Sugerido para ti'}
+                    </span>
                   </span>
                 </Link>
                 <SuggestedCreatorActions
@@ -1459,6 +1472,7 @@ function DiscoveryRail() {
       const saved = await savePrivateLocation(profile.firebaseUid, coords);
       setLocation(saved);
       setShowPrompt(false);
+      void syncPublicGeo(profile.firebaseUid, { force: true });
     } catch {
       // ignore
     } finally {

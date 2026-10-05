@@ -35,6 +35,7 @@ import {
 } from './reelLifecycle';
 import { isBoomClipPost, isPublicationPost, MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from './contentType';
 import { scorePostMatch } from './searchMatch';
+import { getCreatorRecommendations, type RecommendationContext } from './creatorRecommendations';
 import {
   isStoryActive,
   isStoryPost,
@@ -1181,10 +1182,27 @@ export async function isFollowing(viewerUid: string, targetUsername: string, tar
   return isFollowingUid(viewerUid, target.firebaseUid);
 }
 
-export type SuggestedCreator = FriendChip & { isFollowing: boolean };
+export type SuggestedCreator = FriendChip & { isFollowing: boolean; reason?: string };
 
-/** Creadores sugeridos desde Firestore (misma fuente que Seguir). */
+/**
+ * Creadores sugeridos: ranking por amigos, seguidos en común y zona
+ * (`creatorRecommendations`); si falla, muestra aleatorio como antes.
+ */
 export async function browseSuggestedCreators(
+  viewerUid?: string,
+  excludeUsername?: string,
+  options?: { limit?: number; excludeUids?: Iterable<string>; context?: RecommendationContext },
+): Promise<SuggestedCreator[]> {
+  try {
+    const ranked = await getCreatorRecommendations(viewerUid, excludeUsername, options);
+    if (ranked.length) return ranked;
+  } catch {
+    // fallback aleatorio
+  }
+  return browseRandomCreators(viewerUid, excludeUsername, options);
+}
+
+async function browseRandomCreators(
   viewerUid?: string,
   excludeUsername?: string,
   options?: { limit?: number; excludeUids?: Iterable<string> },

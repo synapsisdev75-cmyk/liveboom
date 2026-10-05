@@ -10,6 +10,7 @@ import {
   ignoreSuggestedCreator,
   readIgnoredSuggestionUids,
 } from '../../lib/ignoredSuggestions';
+import { markCreatorFollowed } from '../../lib/creatorRecommendations';
 import { useAuthStore } from '../../store/authStore';
 
 type SuggestedUser = {
@@ -17,6 +18,7 @@ type SuggestedUser = {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  reason?: string;
 };
 
 type Props = {
@@ -34,6 +36,7 @@ function useSuggestedCreators(limit: number) {
       void browseSuggestedCreators(profile?.firebaseUid, profile?.handle, {
         limit: 1,
         excludeUids,
+        context: 'sidebar',
       }).then((replacements) => {
         const replacement = replacements[0];
         if (!replacement) return;
@@ -51,6 +54,7 @@ function useSuggestedCreators(limit: number) {
     void browseSuggestedCreators(profile?.firebaseUid, profile?.handle, {
       limit,
       excludeUids: readIgnoredSuggestionUids(profile?.firebaseUid),
+      context: 'sidebar',
     })
       .then((users) => {
         if (!cancelled) setSuggested(users);
@@ -66,13 +70,14 @@ function useSuggestedCreators(limit: number) {
   const onSuggestedFollow = useCallback(
     (followedUid: string, following: boolean) => {
       if (!following) return;
+      markCreatorFollowed(profile?.firebaseUid, followedUid);
       setSuggested((current) => {
         const next = current.filter((user) => user.uid !== followedUid);
         pullReplacement([...next.map((user) => user.uid), followedUid]);
         return next;
       });
     },
-    [pullReplacement],
+    [pullReplacement, profile?.firebaseUid],
   );
 
   const onSuggestedIgnore = useCallback(
@@ -147,6 +152,9 @@ export function SidebarSuggestedCreatorsCard({
                     {user.displayName || user.username}
                   </span>
                   <span className="block truncate text-[10px] text-zinc-500">@{user.username}</span>
+                  {user.reason ? (
+                    <span className="block truncate text-[10px] text-cyan-300/80">{user.reason}</span>
+                  ) : null}
                 </span>
               </Link>
               {profile ? (

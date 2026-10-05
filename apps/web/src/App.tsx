@@ -13,6 +13,7 @@ import { useAppearanceStore } from './store/appearanceStore';
 import { ThemeProvider } from './components/appearance/ThemeProvider';
 import { useLocaleStore } from './store/localeStore';
 import { idlePrefetchRoutes } from './lib/routePrefetch';
+import { syncPublicGeo } from './lib/publicGeo';
 import { prepareNativeLiveWebView, ensureNativeEssentialPermissions } from './lib/nativeLiveMedia';
 import { registerPushNotifications } from './lib/pushNotifications';
 import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
@@ -135,6 +136,14 @@ function AuthHydrator() {
     void flushPendingShare();
     // Reintentar share nativo por si el intent llegó tras el primer paint.
     installShareIncomingListener();
+  }, [ready, uid]);
+
+  useEffect(() => {
+    if (!ready || !uid) return;
+    const timer = window.setTimeout(() => {
+      void syncPublicGeo(uid);
+    }, 6000);
+    return () => window.clearTimeout(timer);
   }, [ready, uid]);
 
   return null;

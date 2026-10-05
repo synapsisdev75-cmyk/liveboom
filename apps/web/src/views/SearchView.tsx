@@ -1041,7 +1041,7 @@ export function SearchView() {
                 Sugerencias basadas en tus intereses, grupos y actividad.
               </p>
             </div>
-            <Link to="/explorar" className="shrink-0 text-[11px] font-semibold text-violet-400 hover:underline">
+            <Link to="/creadores" className="shrink-0 text-[11px] font-semibold text-violet-400 hover:underline">
               Ver todas
             </Link>
           </div>
