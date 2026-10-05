@@ -105,8 +105,9 @@ function chatBox() {
 }
 
 function composerReserve(hasChat: boolean) {
-  if (!hasChat) return window.matchMedia('(max-width: 767px)').matches ? 72 : 24;
-  return window.matchMedia('(max-width: 767px)').matches ? 92 : 80;
+  const phone = window.matchMedia('(max-width: 767px), (orientation: portrait) and (pointer: coarse)').matches;
+  if (!hasChat) return phone ? 72 : 24;
+  return phone ? 92 : 80;
 }
 
 function defaultPos(width: number, height: number, compact: boolean): Pos {

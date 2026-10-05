@@ -27,7 +27,7 @@ import { sweepAuthorReelLifecycle } from '../../lib/socialFirestore';
 import { isMessagesPath, patchChatNotifyContext } from '../../lib/chatNotifyContext';
 import { useUiStore } from '../../store/uiStore';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { VP_LG } from '../../responsive/viewport';
+import { isPhoneLandscapeViewport } from '../../responsive/viewport';
 import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { GO_HOME_EVENT, requestGoHome } from '../../lib/goHome';
 import { CoinModal } from '../wallet/CoinModal';
@@ -455,7 +455,7 @@ export function MainLayout() {
 
   useEffect(() => {
     const mq = window.matchMedia('(orientation: landscape)');
-    const sync = () => setDeviceLandscape(mq.matches && window.innerWidth < VP_LG);
+    const sync = () => setDeviceLandscape(isPhoneLandscapeViewport());
     sync();
     mq.addEventListener('change', sync);
     window.addEventListener('resize', sync);

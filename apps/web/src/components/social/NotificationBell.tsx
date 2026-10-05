@@ -36,6 +36,7 @@ import { listenLiveAlerts, deleteLiveAlert, clearLiveAlerts, removeLiveGuestInvi
 import { declineBattle } from '../../lib/battleFirestore';
 import { announcePlazaLiveReply, plazaHref } from '../../lib/explorePresence';
 import { profileHref } from '../../lib/profileFirestore';
+import { readLayoutSurface } from '../../responsive/viewport';
 import { useAuthStore } from '../../store/authStore';
 
 type NotiItem = {
@@ -294,7 +295,7 @@ export function NotificationBell() {
     }
     function update() {
       const rect = btnRef.current!.getBoundingClientRect();
-      const mobile = window.innerWidth < 1024;
+      const mobile = readLayoutSurface() !== 'desktop';
       setSheetMobile(mobile);
       const width = Math.min(window.innerWidth - 24, 384);
       // Desde el sidebar izquierdo: abrir hacia la derecha (área principal).

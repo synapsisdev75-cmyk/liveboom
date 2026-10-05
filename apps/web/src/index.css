@@ -1,6 +1,37 @@
 @import 'tailwindcss';
 @config '../tailwind.config.js';
 
+/*
+ * Tablets táctiles en vertical (9:16) usan el diseño de celular; en horizontal o con mouse, el de
+ * escritorio. md/lg/xl/2xl excluyen "táctil + vertical"; max-lg lo incluye. Mismo criterio en
+ * responsive/viewport.ts (JS) y en las @media de este archivo.
+ */
+@custom-variant md {
+  @media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
+    @slot;
+  }
+}
+@custom-variant lg {
+  @media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
+    @slot;
+  }
+}
+@custom-variant xl {
+  @media (min-width: 1280px) and (orientation: landscape), (min-width: 1280px) and (pointer: fine), (min-width: 1280px) and (pointer: none) {
+    @slot;
+  }
+}
+@custom-variant 2xl {
+  @media (min-width: 1536px) and (orientation: landscape), (min-width: 1536px) and (pointer: fine), (min-width: 1536px) and (pointer: none) {
+    @slot;
+  }
+}
+@custom-variant max-lg {
+  @media (max-width: 1023.98px), (orientation: portrait) and (pointer: coarse) {
+    @slot;
+  }
+}
+
 /* Clases dinámicas de levelFrameConfig.ts — evita que el avatar pierda tamaño/posición. */
 @source inline("top-[19%] left-[19%] h-[61%] w-[63%]");
 @source inline("top-[8.5%] left-[18%] h-[64%] w-[64%]");
@@ -128,7 +159,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   max-height: 100%;
 }
 
-@media (max-width: 1023.98px) {
+@media (max-width: 1023.98px), (orientation: portrait) and (pointer: coarse) {
   .lb-immersive-stage[data-fill='contain'] .lb-immersive-media-box {
     max-width: 100%;
     max-height: 100%;
@@ -159,7 +190,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
 }
 
 /* PC Explorar: pegar el rail al borde del video (caja media), estable con sidebar. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-immersive-media-box .lb-action-rail--corner,
   .lb-action-rail--media.lb-action-rail--corner {
     left: 0.45rem;
@@ -245,7 +276,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
 }
 
 /* Móvil: rail más compacto pegado al borde izquierdo. */
-@media (max-width: 1023px) {
+@media (max-width: 1023px), (orientation: portrait) and (pointer: coarse) {
   .lb-action-rail--fit {
     --lb-action-size: clamp(30px, 3.6dvh, 38px);
     --lb-action-gap: clamp(2px, 0.55dvh, 7px);
@@ -357,7 +388,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   --lb-action-size: clamp(30px, 3.6dvh, 38px);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   :is(.lb-immersive-media-box, .lb-media-stage--publication) .lb-media-mute-fab {
     --lb-action-size: clamp(38px, 5.2dvh, 52px);
   }
@@ -583,7 +614,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-immersive-media-box .lb-action-rail--media:not(.lb-action-rail--corner) {
     left: -4.25rem;
     right: auto;
@@ -641,7 +672,7 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   object-position: center;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-post-media {
     padding-left: 2rem;
     padding-right: 2rem;
@@ -753,7 +784,7 @@ html[data-lb-theme='light'] .lb-liquid-nav__label--active {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-liquid-nav {
     display: none !important;
   }
@@ -821,7 +852,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1023px), (orientation: portrait) and (pointer: coarse) {
   body {
     overscroll-behavior-y: none;
   }
@@ -957,7 +988,7 @@ aside.chat-scroll::-webkit-scrollbar {
   object-fit: contain;
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1023px), (orientation: portrait) and (pointer: coarse) {
   .lb-live-chat-float {
     position: absolute;
     inset: auto 0 0 0;
@@ -1128,7 +1159,7 @@ aside.chat-scroll::-webkit-scrollbar {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape), (min-width: 768px) and (max-width: 1023px) and (pointer: fine), (min-width: 768px) and (max-width: 1023px) and (pointer: none) {
   .lb-live-chat-float__list {
     width: min(64%, 24rem);
     max-height: min(34dvh, 16rem);
@@ -1146,7 +1177,7 @@ aside.chat-scroll::-webkit-scrollbar {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-live-chat-float {
     background: color-mix(in srgb, var(--lb-surface, #09090b) 96%, transparent);
     border-color: var(--lb-line, rgba(255, 255, 255, 0.12));
@@ -1243,7 +1274,7 @@ aside.chat-scroll::-webkit-scrollbar {
   scrollbar-width: none;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .gift-box-row {
     mask-image: none;
     -webkit-mask-image: none;
@@ -1531,7 +1562,7 @@ html[data-lb-theme='light'] .lb-gift-combo-badge__img {
   animation: lb-gift-combo-pop 0.95s cubic-bezier(0.22, 1.35, 0.36, 1) both;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-gift-combo-badge--live-chat {
     width: clamp(1.45rem, 5.5vw, 1.85rem);
     height: clamp(1.45rem, 5.5vw, 1.85rem);
@@ -1701,7 +1732,7 @@ html[data-lb-theme='light'] .lb-chat-gift-card__coins {
 }
 
 /* PC: despliegue tipo hoja (menor → mayor) del rail derecho y ventanas de chat */
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   @keyframes lb-side-rail-sheet-in {
     0% {
       opacity: 0;
@@ -1804,7 +1835,7 @@ html[data-lb-theme='light'] .lb-chat-gift-card__coins {
   }
 }
 
-@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) and (orientation: landscape), (min-width: 1024px) and (prefers-reduced-motion: reduce) and (pointer: fine), (min-width: 1024px) and (prefers-reduced-motion: reduce) and (pointer: none) {
   .lb-side-rail--sheet,
   .lb-side-rail--sheet > *,
   .lb-phone-chat-window--sheet {
@@ -1836,7 +1867,7 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
 }
 
 /* PC/escritorio: ventanas y pastillas al borde inferior */
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-msg-quick-popup {
     right: max(0px, env(safe-area-inset-right, 0px));
     bottom: 0;
@@ -1860,7 +1891,7 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
   }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1023px), (orientation: portrait) and (pointer: coarse) {
   .lb-msg-quick-popup {
     right: max(0.5rem, env(safe-area-inset-right, 0px));
     left: max(0.5rem, env(safe-area-inset-left, 0px));
@@ -1984,14 +2015,14 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
   box-shadow: none;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-global-boom-overlay__anim {
     width: clamp(13.75rem, 38vw, 24rem);
     max-width: min(45vw, 26.25rem);
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-global-boom-overlay__anim {
     width: clamp(17.5rem, 22vw, 26.25rem);
     max-width: 26.25rem;
@@ -3234,7 +3265,7 @@ html:has(.lb-legal-page) #root {
 }
 
 /* Sidebar escritorio/tablet: iconos por defecto; al pasar/tocar se expande (desktop). */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-sidebar-mode-toggle {
     display: grid;
     place-items: center;
@@ -3405,7 +3436,7 @@ html:has(.lb-legal-page) #root {
   }
 }
 
-@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) and (orientation: landscape), (min-width: 1024px) and (prefers-reduced-motion: reduce) and (pointer: fine), (min-width: 1024px) and (prefers-reduced-motion: reduce) and (pointer: none) {
   .lb-sidebar,
   .lb-shell--messages main,
   .lb-sidebar .lb-nav-item__label,
@@ -3417,7 +3448,7 @@ html:has(.lb-legal-page) #root {
 }
 
 /* Tablet: menú izquierdo fijo (no drawer a la derecha). */
-@media (min-width: 768px) and (max-width: 1023.98px) {
+@media (min-width: 768px) and (max-width: 1023.98px) and (orientation: landscape), (min-width: 768px) and (max-width: 1023.98px) and (pointer: fine), (min-width: 768px) and (max-width: 1023.98px) and (pointer: none) {
   .lb-sidebar--tablet.lb-sidebar--expanded {
     width: min(34%, 15.5rem);
     min-width: 12.5rem;
@@ -3432,7 +3463,7 @@ html:has(.lb-legal-page) #root {
 }
 
 /* Pantallas más bajas / estrechas: iconos aún más compactos */
-@media (min-width: 1024px) and (max-height: 820px) {
+@media (min-width: 1024px) and (max-height: 820px) and (orientation: landscape), (min-width: 1024px) and (max-height: 820px) and (pointer: fine), (min-width: 1024px) and (max-height: 820px) and (pointer: none) {
   .lb-sidebar--rail,
   .lb-shell--messages .lb-sidebar--messages-rail.lb-sidebar--rail {
     width: 3.35rem;
@@ -3461,7 +3492,7 @@ html:has(.lb-legal-page) #root {
   }
 }
 
-@media (min-width: 1024px) and (max-width: 1280px) {
+@media (min-width: 1024px) and (max-width: 1280px) and (orientation: landscape), (min-width: 1024px) and (max-width: 1280px) and (pointer: fine), (min-width: 1024px) and (max-width: 1280px) and (pointer: none) {
   .lb-sidebar--rail,
   .lb-shell--messages .lb-sidebar--messages-rail.lb-sidebar--rail {
     width: 3.35rem;
@@ -3477,7 +3508,7 @@ html:has(.lb-legal-page) #root {
   }
 }
 
-@media (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+@media (min-width: 1024px) and (prefers-reduced-motion: reduce) and (orientation: landscape), (min-width: 1024px) and (prefers-reduced-motion: reduce) and (pointer: fine), (min-width: 1024px) and (prefers-reduced-motion: reduce) and (pointer: none) {
   .lb-sidebar,
   .lb-shell--messages main {
     transition: none;
@@ -3774,7 +3805,7 @@ html:has(.lb-legal-page) #root {
 }
 
 /* PC: la X de salir vive arriba-izquierda; el mute de un video ancho no se mete debajo. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-explore-view .lb-immersive-media-box[data-fill='contain'] .lb-media-mute-fab {
     left: max(0.4rem, calc(3.75rem - var(--lb-media-box-gap-left, 0px)));
   }
@@ -5166,7 +5197,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
 }
 
 /* LIVE stage: formato de transmisión fijo + adaptación por orientación (móvil/tablet) */
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-live-stage--16x9 .lb-live-stage-inner {
     width: 100%;
     max-width: 100%;
@@ -5184,7 +5215,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1023px), (orientation: portrait) and (pointer: coarse) {
   .lb-live-stage-section {
     flex: 1 1 auto;
     min-height: 0;
@@ -5231,7 +5262,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
 
 /* Teléfono: LIVE de borde a borde. El video llena la pantalla.
    Solo la cabecera (nombre, cerrar) usa el inset del reloj. */
-@media (max-width: 767.98px) {
+@media (max-width: 767.98px), (orientation: portrait) and (pointer: coarse) {
   .lb-live-room {
     height: 100%;
     max-height: 100%;
@@ -5264,7 +5295,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape), (min-width: 768px) and (max-width: 1023px) and (pointer: fine), (min-width: 768px) and (max-width: 1023px) and (pointer: none) {
   .lb-live-surface-tablet.lb-live-orient-portrait.lb-live-stage--16x9 .lb-live-stage-inner {
     max-width: min(100%, 48rem);
   }
@@ -5275,7 +5306,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
 }
 
 /* Tablet ≥1024px (p. ej. iPad landscape): no usar el fill de escritorio; encajar 16:9 / 9:16 */
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-live-surface-tablet.lb-live-orient-landscape.lb-live-stage--16x9 .lb-live-stage-inner {
     width: auto;
     height: 100%;
@@ -6250,7 +6281,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-live-privacy-sheet,
   .lb-live-privacy-setup {
     align-items: center;
@@ -7067,7 +7098,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-live-viewer-overlay {
     padding-bottom: 0.85rem;
   }
@@ -7088,7 +7119,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape), (min-width: 768px) and (max-width: 1023px) and (pointer: fine), (min-width: 768px) and (max-width: 1023px) and (pointer: none) {
   .lb-live-viewer-goal-col {
     width: min(52%, 17rem);
   }
@@ -7098,7 +7129,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-live-viewer-overlay {
     padding: max(0.5rem, env(safe-area-inset-top)) 0.85rem 1.6rem 0.85rem;
   }
@@ -7436,7 +7467,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   /* 9:16 y 16:9: el mismo menú + flotante (tamaño y disposición del recuadro). */
   .lb-live-vtools-host.lb-live-stage-outer {
     display: flex;
@@ -7524,7 +7555,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-live-vtools-panel {
     width: min(15.5rem, calc(100vw - 1.25rem));
     max-width: min(15.5rem, calc(100vw - 1.25rem));
@@ -7541,7 +7572,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   min-height: min(72dvh, 720px);
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1023px), (orientation: portrait) and (pointer: coarse) {
   .lb-live-studio-left,
   .lb-live-studio-right {
     display: grid;
@@ -7700,13 +7731,13 @@ html[data-lb-theme='dark'] .lb-media-fab {
   transform: translateX(-50%);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-live-frame-editor__toggle {
     bottom: max(5.25rem, calc(env(safe-area-inset-bottom) + 4.5rem));
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-live-frame-editor__toggle {
     bottom: max(1rem, env(safe-area-inset-bottom));
   }
@@ -7788,7 +7819,7 @@ html[data-lb-theme='dark'] .lb-media-fab {
   transform: scaleX(-1);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-live-prep-frame--9x16 {
     width: min(100%, 18rem, calc(56dvh * 9 / 16));
     max-height: min(56dvh, 38rem);
@@ -7821,7 +7852,7 @@ body {
 }
 
 /* Tablet: columna central más ancha sin rail derecho */
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape), (min-width: 768px) and (max-width: 1023px) and (pointer: fine), (min-width: 768px) and (max-width: 1023px) and (pointer: none) {
   .lb-home-center {
     max-width: min(100%, 48rem);
   }
@@ -7921,7 +7952,7 @@ body {
   padding-top: clamp(1.5rem, 8vh, 3rem);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .publication-caption-overlay {
     padding-left: max(0.75rem, var(--lb-safe-left));
   }
@@ -9945,7 +9976,7 @@ a.lb-entity:active,
   letter-spacing: 0.06em;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-comment-thumb--thread {
     max-width: 100%;
   }
@@ -10359,7 +10390,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-chat-thread-head__row {
     gap: 0.5rem;
     padding: 0.75rem;
@@ -10683,7 +10714,7 @@ a.lb-entity:active,
   max-height: min(28rem, 100%);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   #lb-global-call-root {
     left: min(17rem, 26vw);
     right: min(16rem, 22vw);
@@ -11406,7 +11437,7 @@ a.lb-entity:active,
   margin-top: 0.55rem;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-call-fallback {
     left: min(17rem, 26vw);
     right: min(16rem, 22vw);
@@ -13716,7 +13747,7 @@ a.lb-entity:active,
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-voice-out-screen,
   .lb-voice-in-screen,
   .lb-voice-connected-screen {
@@ -13820,7 +13851,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-voice-out-screen,
   .lb-voice-in-screen,
   .lb-voice-connected-screen {
@@ -14344,7 +14375,7 @@ a.lb-entity:active,
   align-items: flex-start;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-call-active.is-voice {
     height: auto;
     max-height: none;
@@ -14827,7 +14858,7 @@ a.lb-entity:active,
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-video-ctrl--gift em {
     display: none;
   }
@@ -15279,7 +15310,7 @@ a.lb-entity:active,
   align-self: flex-start;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-video-sheet-backdrop {
     place-items: center;
   }
@@ -15330,7 +15361,7 @@ a.lb-entity:active,
   box-shadow: 0 0 14px rgba(239, 68, 68, 0.4);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-call-float,
   .lb-call-float.is-video {
     max-width: min(100%, calc(100vw - 0.75rem));
@@ -15461,7 +15492,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) and (orientation: portrait) {
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: portrait) and (pointer: fine) {
   .lb-call-float.is-video:not(.is-compact):not(.is-maximized):has(.lb-video-connected-screen),
   .lb-call-float.is-video:not(.is-compact):not(.is-maximized):has(.lb-video-ring-screen) {
     width: min(28rem, calc(100vw - 1.5rem));
@@ -15469,7 +15500,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape), (min-width: 768px) and (max-width: 1023px) and (pointer: fine), (min-width: 768px) and (max-width: 1023px) and (pointer: none) {
   .lb-call-float.is-compact,
   .lb-call-float.is-video.is-compact {
     max-width: min(18.5rem, calc(100vw - 1.5rem));
@@ -15507,7 +15538,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-call-float.is-video:not(.is-compact):not(.is-maximized) {
     width: min(26rem, calc(100vw - 2rem));
     height: auto;
@@ -15568,7 +15599,7 @@ a.lb-entity:active,
   }
 }
 
-@media (pointer: coarse) and (max-width: 1023px) {
+@media (pointer: coarse) and (max-width: 1023px), (orientation: portrait) and (pointer: coarse) {
   .lb-chat-thread-head .lb-call-header-btn:not(.lb-call-header-btn--request) {
     width: clamp(2.2rem, 8.6vw, 2.75rem);
     height: clamp(2.2rem, 8.6vw, 2.75rem);
@@ -15579,7 +15610,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-chat-thread-head .lb-call-header-btn:not(.lb-call-header-btn--request) {
     width: 2.35rem;
     height: 2.35rem;
@@ -15819,7 +15850,7 @@ a.lb-entity:active,
   color: var(--status-offline, #71717a);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-presence-dot {
     width: 10px;
     height: 10px;
@@ -15977,7 +16008,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-chat-manage-backdrop {
     place-items: center;
     padding: 1rem;
@@ -16188,7 +16219,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-chat-report-backdrop {
     place-items: center;
     padding: 1rem;
@@ -17083,7 +17114,7 @@ a.lb-entity:active,
   display: none;
 }
 
-  @media (max-width: 767px) {
+  @media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-chat-composer {
     gap: 0.35rem;
     padding-top: 0.3rem;
@@ -18191,7 +18222,7 @@ a.lb-entity:active,
   background: rgba(255, 255, 255, 0.06);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-recon-consent--bar {
     display: none;
   }
@@ -18209,7 +18240,7 @@ a.lb-entity:active,
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-recon-studio.is-person,
   .lb-recon-studio.is-object {
     grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.85fr) minmax(12rem, 0.7fr);
@@ -18236,7 +18267,7 @@ a.lb-entity:active,
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-recon-tabs__item em {
     display: none;
   }
@@ -18570,7 +18601,7 @@ a.lb-entity:active,
   }
 }
 
-@media (pointer: coarse) and (max-width: 767px) {
+@media (pointer: coarse) and (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-battle-skin__video {
     opacity: 0.42;
   }
@@ -19488,7 +19519,7 @@ a.lb-entity:active,
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-battle-neon-hud {
     padding: 0.22rem 0.28rem;
   }
@@ -19602,7 +19633,7 @@ html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__login {
   color: #0e7490;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-explore-plaza__bar {
     margin-bottom: max(1.25rem, var(--lb-safe-bottom));
   }

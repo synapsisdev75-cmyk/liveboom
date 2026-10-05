@@ -67,12 +67,15 @@ function timeAgo(iso: string | null) {
   return `${days} d`;
 }
 
+const DESKTOP_RAIL_QUERY =
+  '(min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none)';
+
 function useDesktopRail() {
   const [desktop, setDesktop] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false,
+    typeof window !== 'undefined' ? window.matchMedia(DESKTOP_RAIL_QUERY).matches : false,
   );
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)');
+    const mq = window.matchMedia(DESKTOP_RAIL_QUERY);
     const sync = () => setDesktop(mq.matches);
     sync();
     mq.addEventListener('change', sync);

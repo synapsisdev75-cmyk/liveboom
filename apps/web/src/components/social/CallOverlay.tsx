@@ -977,7 +977,8 @@ export function useCoarseCallLayout() {
     const sync = () => {
       const narrow = window.matchMedia('(max-width: 767px)').matches;
       const touch = window.matchMedia('(pointer: coarse)').matches;
-      setCoarse(narrow || (touch && window.innerWidth < 1024));
+      const portrait = window.matchMedia('(orientation: portrait)').matches;
+      setCoarse(narrow || (touch && (window.innerWidth < 1024 || portrait)));
     };
     sync();
     window.addEventListener('resize', sync);

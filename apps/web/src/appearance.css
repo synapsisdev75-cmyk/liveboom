@@ -669,14 +669,14 @@ html[data-lb-theme] .lb-explore-view .lb-explore-tabs .lb-explore-tab {
   );
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   .lb-explore-view .lb-immersive-media-box::after {
     width: clamp(38px, 5.2dvh, 52px);
     height: clamp(38px, 5.2dvh, 52px);
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 768px) and (orientation: landscape), (min-width: 768px) and (pointer: fine), (min-width: 768px) and (pointer: none) {
   .lb-explore-icon {
     width: clamp(2.7rem, 4.4vw, 3.55rem);
     height: clamp(2.7rem, 4.4vw, 3.55rem);
@@ -882,7 +882,7 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
 }
 
 /* Teléfono: la cabecera ocupa su alto real, debajo de la hora. Sin margen ciego en el main. */
-@media (max-width: 767.98px), (orientation: landscape) and (max-height: 520px) {
+@media (max-width: 767.98px), (orientation: landscape) and (max-height: 520px), (orientation: portrait) and (pointer: coarse) {
   html.lb-android-native {
     --lb-safe-top: max(env(safe-area-inset-top, 24px), 48px);
   }
@@ -965,7 +965,7 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
 }
 
 /* Explorar móvil: header fuera del flujo (fixed) — el video usa 100% altura edge-to-edge. */
-@media (max-width: 767.98px) {
+@media (max-width: 767.98px), (orientation: portrait) and (pointer: coarse) {
   .lb-shell-header--explore-overlay {
     position: fixed;
     left: 0;
@@ -1273,7 +1273,7 @@ html[data-lb-theme='light'] .lb-live-stage .lb-live-chat-input::placeholder {
 }
 
 /* LIVE escritorio: panel de chat/regalos sigue el tema. En móvil el chat sigue transparente sobre el video. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
   html[data-lb-theme='light'] .lb-live-chat-float {
     background: var(--lb-surface);
     border-color: var(--lb-line);

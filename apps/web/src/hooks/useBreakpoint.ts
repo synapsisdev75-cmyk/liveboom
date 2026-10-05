@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { VP_LG, VP_MD, classifyLayoutSurface } from '../responsive/viewport';
+import { TOUCH_PORTRAIT_QUERY, VP_LG, VP_MD, readLayoutSurface } from '../responsive/viewport';
 
-/** Breakpoints alineados con Tailwind: md=768, lg=1024 */
+/** Breakpoints alineados con Tailwind: md=768, lg=1024 (táctil vertical = phone) */
 export type Breakpoint = 'phone' | 'tablet' | 'desktop';
 
 function readBreakpoint(): Breakpoint {
-  if (typeof window === 'undefined') return 'desktop';
-  return classifyLayoutSurface(window.innerWidth);
+  return readLayoutSurface();
 }
 
 /** Hook compartido para layout responsive (sidebar lg, rails lg, touch lg). */
@@ -14,14 +13,13 @@ export function useBreakpoint(): Breakpoint {
   const [breakpoint, setBreakpoint] = useState<Breakpoint>(readBreakpoint);
 
   useEffect(() => {
-    const tabletMq = window.matchMedia(`(min-width: ${VP_MD}px)`);
-    const desktopMq = window.matchMedia(`(min-width: ${VP_LG}px)`);
+    const queries = [`(min-width: ${VP_MD}px)`, `(min-width: ${VP_LG}px)`, TOUCH_PORTRAIT_QUERY].map((q) =>
+      window.matchMedia(q),
+    );
     const onChange = () => setBreakpoint(readBreakpoint());
-    tabletMq.addEventListener('change', onChange);
-    desktopMq.addEventListener('change', onChange);
+    queries.forEach((mq) => mq.addEventListener('change', onChange));
     return () => {
-      tabletMq.removeEventListener('change', onChange);
-      desktopMq.removeEventListener('change', onChange);
+      queries.forEach((mq) => mq.removeEventListener('change', onChange));
     };
   }, []);
 

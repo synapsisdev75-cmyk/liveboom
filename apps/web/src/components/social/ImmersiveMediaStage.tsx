@@ -8,6 +8,7 @@ import {
   type ImmersiveLayoutInsets,
 } from '../../lib/immersiveMediaLayout';
 import { exploreLandscape } from '../../responsive/mobile-tablet';
+import { isTouchPortraitViewport } from '../../responsive/viewport';
 import { classifyVideoOrientation } from '../../lib/videoAspect';
 import { GESTURE_AXIS_LOCK_PX, HORIZONTAL_SEEK_THRESHOLD_PX } from '../../lib/storyAuthorNav';
 
@@ -95,7 +96,7 @@ export function ImmersiveMediaStage({
   const [fillCover, setFillCover] = useState(false);
   const [deviceLandscape, setDeviceLandscape] = useState(false);
   const [isDesktopStage, setIsDesktopStage] = useState(
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 : false,
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 && !isTouchPortraitViewport() : false,
   );
   const [box, setBox] = useState(() =>
     computeImmersiveMediaBox(
@@ -104,7 +105,7 @@ export function ImmersiveMediaStage({
       typeof window !== 'undefined' ? window.innerWidth : 390,
       typeof window !== 'undefined' ? window.innerHeight : 844,
       insets,
-      typeof window !== 'undefined' ? window.innerWidth >= 1024 : false,
+      typeof window !== 'undefined' ? window.innerWidth >= 1024 && !isTouchPortraitViewport() : false,
       false,
       false,
       false,
@@ -134,7 +135,7 @@ export function ImmersiveMediaStage({
 
     const update = () => {
       const rect = host.getBoundingClientRect();
-      const desktop = rect.width >= 1024;
+      const desktop = rect.width >= 1024 && !isTouchPortraitViewport();
       const devicePortrait =
         portraitMq?.matches ?? rect.height >= rect.width;
       const nextDeviceLandscape = !desktop && !devicePortrait;

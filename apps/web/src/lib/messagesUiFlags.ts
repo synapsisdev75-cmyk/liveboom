@@ -9,7 +9,7 @@
  *
  * Para mostrar también la página /mensajes en laptop/PC: «Habilitar caja de mensajes».
  */
-import { VP_LG, VP_MD } from '../responsive/viewport';
+import { VP_LG, VP_MD, isTouchPortraitViewport } from '../responsive/viewport';
 
 export const MESSAGES_INBOX_ENABLED = true;
 
@@ -29,6 +29,7 @@ export const MESSAGE_BOXES_ENABLED = true;
 export function isMessagesInboxHiddenByLayout(): boolean {
   if (MESSAGES_INBOX_WIDE_ENABLED) return false;
   if (typeof window === 'undefined') return false;
+  if (isTouchPortraitViewport()) return false;
   const width = window.innerWidth;
   if (width >= VP_LG) return true;
   const landscape =

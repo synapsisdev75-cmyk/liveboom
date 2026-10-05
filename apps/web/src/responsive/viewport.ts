@@ -67,8 +67,36 @@ export function classifyOrientation(width: number, height: number): ViewportOrie
 }
 
 /** Superficie de layout (misma regla que useBreakpoint). */
-export function classifyLayoutSurface(width: number): 'phone' | 'tablet' | 'desktop' {
+export function classifyLayoutSurface(
+  width: number,
+  touchPortrait = false,
+): 'phone' | 'tablet' | 'desktop' {
+  if (touchPortrait) return 'phone';
   if (width >= VP_LG) return 'desktop';
   if (width >= VP_MD) return 'tablet';
   return 'phone';
+}
+
+/**
+ * Pantalla táctil en vertical (celular o tablet 9:16): siempre diseño de celular.
+ * Debe coincidir con las variantes md/lg/xl de index.css.
+ */
+export const TOUCH_PORTRAIT_QUERY = '(orientation: portrait) and (pointer: coarse)';
+
+export function isTouchPortraitViewport(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia(TOUCH_PORTRAIT_QUERY).matches;
+}
+
+/** Superficie de layout actual del navegador (ancho + táctil vertical). */
+export function readLayoutSurface(): 'phone' | 'tablet' | 'desktop' {
+  if (typeof window === 'undefined') return 'desktop';
+  return classifyLayoutSurface(window.innerWidth, isTouchPortraitViewport());
+}
+
+/** Teléfono en horizontal (no tablet: las tablets táctiles en horizontal usan escritorio). */
+export function isPhoneLandscapeViewport(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  if (!window.matchMedia('(orientation: landscape)').matches || window.innerWidth >= VP_LG) return false;
+  return !(window.matchMedia('(pointer: coarse)').matches && window.innerHeight >= 600);
 }
