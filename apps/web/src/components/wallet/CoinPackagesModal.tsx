@@ -270,7 +270,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] grid place-items-end overflow-hidden bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
+      className="fixed inset-0 z-[200] grid place-items-end overflow-hidden bg-[rgba(0,0,0,0.7)] p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -317,7 +317,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
                   } ${isSelected && highlight ? 'ring-2 ring-cyan-300/70' : ''}`}
                 >
                   {(pack.popular || pack.bestValue) && (
-                    <span className="absolute left-2 top-2 rounded bg-gradient-to-r from-fuchsia-500 to-violet-500 px-1 py-0.5 text-[7px] font-black uppercase text-white">
+                    <span className="absolute left-2 top-2 rounded bg-gradient-to-r from-fuchsia-500 to-violet-500 px-1 py-0.5 text-[7px] font-black uppercase text-[#fff]">
                       {pack.popular ? 'Popular' : 'Mejor valor'}
                     </span>
                   )}
