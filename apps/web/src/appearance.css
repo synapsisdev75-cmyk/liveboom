@@ -2859,6 +2859,35 @@ html[data-lb-theme='dark'] .lb-payment-methods {
   background: var(--bg-elevated);
 }
 
+.lb-payment-marquee {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.lb-payment-marquee__track {
+  animation: lb-payment-marquee 22s linear infinite;
+  will-change: transform;
+}
+
+.lb-payment-marquee:hover .lb-payment-marquee__track {
+  animation-play-state: paused;
+}
+
+@keyframes lb-payment-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-payment-marquee__track {
+    animation: none;
+  }
+}
+
 .lb-chat-search {
   background: var(--surface-secondary);
   border: 1px solid var(--border-default);
