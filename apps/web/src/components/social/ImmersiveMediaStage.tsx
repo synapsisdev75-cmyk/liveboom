@@ -212,10 +212,14 @@ export function ImmersiveMediaStage({
     const stage = stageRef.current;
     const media = mediaBoxRef.current;
     if (!stage || !media) return;
-    const gap = Math.max(0, Math.round(media.getBoundingClientRect().top - stage.getBoundingClientRect().top));
-    const next = `${gap}px`;
-    if (media.style.getPropertyValue('--lb-media-box-gap-top') !== next) {
-      media.style.setProperty('--lb-media-box-gap-top', next);
+    const mediaRect = media.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const gaps = {
+      '--lb-media-box-gap-top': `${Math.max(0, Math.round(mediaRect.top - stageRect.top))}px`,
+      '--lb-media-box-gap-left': `${Math.max(0, Math.round(mediaRect.left - stageRect.left))}px`,
+    };
+    for (const [name, value] of Object.entries(gaps)) {
+      if (media.style.getPropertyValue(name) !== value) media.style.setProperty(name, value);
     }
   });
 

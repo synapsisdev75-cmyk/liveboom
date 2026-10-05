@@ -3758,6 +3758,13 @@ html:has(.lb-legal-page) #root {
   );
 }
 
+/* PC: la X de salir vive arriba-izquierda; el mute de un video ancho no se mete debajo. */
+@media (min-width: 1024px) {
+  .lb-explore-view .lb-immersive-media-box[data-fill='contain'] .lb-media-mute-fab {
+    left: max(0.4rem, calc(3.75rem - var(--lb-media-box-gap-left, 0px)));
+  }
+}
+
 .lb-explore-exit {
   place-items: center;
   place-content: center;
