@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { useAuthStore } from './store/authStore';
 import { LoginView } from './views/LoginView';
@@ -176,6 +176,21 @@ function ShareIncomingRouter() {
   return null;
 }
 
+function PendingEmailVerificationRedirect() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const pending = useAuthStore((state) => Boolean(state.pendingVerifyUser));
+
+  useEffect(() => {
+    if (!pending) return;
+    const path = location.pathname;
+    if (path === '/login' || path === '/registro' || path.startsWith('/legal/')) return;
+    navigate('/login', { replace: true });
+  }, [pending, location.pathname, navigate]);
+
+  return null;
+}
+
 /** Frontend + Firebase Auth sincronizado con PostgreSQL. */
 export default function App() {
   return (
@@ -183,6 +198,7 @@ export default function App() {
     <BrowserRouter>
       <AuthHydrator />
       <ShareIncomingRouter />
+      <PendingEmailVerificationRedirect />
       <BootSplash />
       <Suspense fallback={<RouteFallback />}>
         <Routes>

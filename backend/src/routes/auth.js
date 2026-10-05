@@ -93,6 +93,38 @@ router.post('/sync', requireAuth, async (req, res) => {
   }
 });
 
+const checkEmailHits = new Map();
+const CHECK_EMAIL_WINDOW_MS = 10 * 60 * 1000;
+const CHECK_EMAIL_MAX = 40;
+
+function clientIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.ip || 'unknown';
+}
+
+router.post('/check-email', async (req, res) => {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const hit = checkEmailHits.get(ip);
+  if (hit && now - hit.start < CHECK_EMAIL_WINDOW_MS) {
+    hit.count += 1;
+    if (hit.count > CHECK_EMAIL_MAX) {
+      res.status(429).json({ ok: false, reason: 'rate_limited' });
+      return;
+    }
+  } else {
+    checkEmailHits.set(ip, { start: now, count: 1 });
+    if (checkEmailHits.size > 5000) checkEmailHits.clear();
+  }
+  try {
+    const { checkEmailDeliverable } = require('../lib/emailDeliverability');
+    res.json(await checkEmailDeliverable(req.body?.email));
+  } catch (error) {
+    console.warn('[auth/check-email]', error.message);
+    res.json({ ok: true, unchecked: true });
+  }
+});
+
 router.patch('/profile', requireAuth, async (req, res) => {
   const bio = typeof req.body?.bio === 'string' ? req.body.bio.trim().slice(0, 280) : null;
   res.json({

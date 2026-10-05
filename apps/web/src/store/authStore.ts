@@ -4,6 +4,7 @@ import {
   deleteUser,
   GoogleAuthProvider,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -23,6 +24,7 @@ import {
 import { processGiftInbox } from '../lib/giftsFirestore';
 import { readPendingBirthDate, storePendingBirthYear } from '../lib/birthDate';
 import { disconnectSocket } from '../lib/socket';
+import { checkSignupEmail, emailCheckMessage } from '../lib/emailCheck';
 import { t } from '../i18n';
 
 type NativeGoogleAuthPlugin = {
@@ -37,6 +39,8 @@ type AuthState = {
   ready: boolean;
   firebaseUser: FirebaseUser | null;
   profile: SessionUser | null;
+  /** Cuenta de correo nueva con sesión en Firebase pero sin verificar: no entra a la app. */
+  pendingVerifyUser: FirebaseUser | null;
   error: string | null;
   busy: boolean;
   /** Reloj local del último guardado de perfil (evita snapshots viejos). */
@@ -53,13 +57,52 @@ type AuthState = {
   signInEmail: (email: string, password: string) => Promise<void>;
   signUpEmail: (name: string, email: string, password: string, birthYear: number) => Promise<void>;
   signInGoogle: (birthYear?: number) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
+  /** Recarga el usuario; si ya verificó, abre la sesión y devuelve true. */
+  refreshEmailVerification: () => Promise<boolean>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>;
 };
 
+/** Las cuentas con correo creadas antes de esta fecha siguen entrando sin verificar. */
+const EMAIL_VERIFY_REQUIRED_SINCE = Date.parse('2026-10-05T23:00:00Z');
+
+function needsEmailVerification(user: FirebaseUser): boolean {
+  if (user.emailVerified) return false;
+  if (!user.providerData.some((p) => p.providerId === 'password')) return false;
+  const created = Date.parse(user.metadata.creationTime || '');
+  return Number.isFinite(created) && created >= EMAIL_VERIFY_REQUIRED_SINCE;
+}
+
+async function sendVerification(user: FirebaseUser) {
+  const continueUrl =
+    typeof window !== 'undefined' && /^https:/.test(window.location.origin) && !Capacitor.isNativePlatform()
+      ? `${window.location.origin}/login`
+      : null;
+  try {
+    auth.useDeviceLanguage();
+  } catch {
+    /* ignore */
+  }
+  if (continueUrl) {
+    try {
+      await sendEmailVerification(user, { url: continueUrl });
+      return;
+    } catch (error) {
+      const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+      if (!/continue-uri|unauthorized/i.test(code)) throw error;
+    }
+  }
+  await sendEmailVerification(user);
+}
+
+let activateSession: ((user: FirebaseUser) => void) | null = null;
+
 function mapAuthError(error: unknown): string {
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
   if (code.includes('email-already-in-use')) return t('auth.emailInUse');
+  if (code.includes('invalid-email')) return emailCheckMessage('invalid_format');
+  if (code.includes('too-many-requests')) return emailCheckMessage('too_many_requests');
   if (code.includes('invalid-credential') || code.includes('wrong-password')) {
     return t('auth.badCredentials');
   }
@@ -256,6 +299,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   ready: false,
   firebaseUser: null,
   profile: null,
+  pendingVerifyUser: null,
   error: null,
   busy: false,
   profileWriteAt: 0,
@@ -263,14 +307,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   hydrate: () => {
     let unsubDoc: (() => void) | null = null;
     let cancelled = false;
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const activate = (user: FirebaseUser) => {
       unsubDoc?.();
       unsubDoc = null;
       void (async () => {
-        if (!user) {
-          set({ firebaseUser: null, profile: null, ready: true, profileWriteAt: 0 });
-          return;
-        }
         const sameUser =
           get().firebaseUser?.uid === user.uid && get().profile?.firebaseUid === user.uid;
         if (!sameUser) {
@@ -291,9 +331,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           set({ profile: applyRemoteProfile(current, incoming, get().profileWriteAt) });
         });
       })();
+    };
+    activateSession = activate;
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      unsubDoc?.();
+      unsubDoc = null;
+      if (!user) {
+        set({ firebaseUser: null, profile: null, pendingVerifyUser: null, ready: true, profileWriteAt: 0 });
+        return;
+      }
+      if (needsEmailVerification(user)) {
+        set({ firebaseUser: null, profile: null, pendingVerifyUser: user, ready: true });
+        return;
+      }
+      set({ pendingVerifyUser: null });
+      activate(user);
     });
     return () => {
       cancelled = true;
+      if (activateSession === activate) activateSession = null;
       unsubDoc?.();
       unsubAuth();
     };
@@ -353,6 +409,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ busy: true, error: null });
     try {
       const cred = await signInWithEmailAndPassword(auth, email, password);
+      if (needsEmailVerification(cred.user)) {
+        set({ firebaseUser: null, profile: null, pendingVerifyUser: cred.user });
+        return;
+      }
       const profile = await syncWithBackend(cred.user);
       set({ firebaseUser: cred.user, profile });
     } catch (error) {
@@ -366,17 +426,60 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signUpEmail: async (name, email, password, birthYear) => {
     set({ busy: true, error: null });
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const check = await checkSignupEmail(email);
+      if (!check.ok) {
+        const message = emailCheckMessage(check.reason, check.suggestion);
+        set({ error: message });
+        throw new Error(message);
+      }
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
       await updateProfile(cred.user, { displayName: name });
       storePendingBirthYear(cred.user.uid, birthYear);
-      const profile = await syncWithBackend(cred.user);
-      set({ firebaseUser: cred.user, profile });
+      set({ firebaseUser: null, profile: null, pendingVerifyUser: cred.user });
+      await sendVerification(cred.user).catch((error) => {
+        console.warn('[auth] verification email', error);
+      });
+    } catch (error) {
+      if (!get().error) set({ error: mapAuthError(error) });
+      throw error;
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  resendVerificationEmail: async () => {
+    const user = get().pendingVerifyUser ?? auth.currentUser;
+    if (!user) return;
+    set({ busy: true, error: null });
+    try {
+      await sendVerification(user);
     } catch (error) {
       set({ error: mapAuthError(error) });
       throw error;
     } finally {
       set({ busy: false });
     }
+  },
+
+  refreshEmailVerification: async () => {
+    const user = get().pendingVerifyUser ?? auth.currentUser;
+    if (!user) return false;
+    try {
+      await user.reload();
+    } catch {
+      return false;
+    }
+    const fresh = auth.currentUser ?? user;
+    if (!fresh.emailVerified) return false;
+    await fresh.getIdToken(true).catch(() => undefined);
+    set({ pendingVerifyUser: null, error: null });
+    if (activateSession) {
+      activateSession(fresh);
+    } else {
+      const profile = await syncWithBackend(fresh);
+      set({ firebaseUser: fresh, profile, ready: true });
+    }
+    return true;
   },
 
   signInGoogle: async (birthYear) => {
@@ -429,7 +532,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
     await signOut(auth);
-    set({ firebaseUser: null, profile: null });
+    set({ firebaseUser: null, profile: null, pendingVerifyUser: null });
   },
 
   deleteAccount: async () => {
