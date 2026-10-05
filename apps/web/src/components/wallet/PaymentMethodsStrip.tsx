@@ -34,7 +34,13 @@ export function PaymentMethodsStrip({ className = '', compact = false }: Props) 
                 alt=""
                 title={method.label}
                 className={`w-auto shrink-0 object-contain object-center ${
-                  compact ? 'h-7 max-w-[4.75rem]' : 'h-8 max-w-[5.75rem]'
+                  method.round
+                    ? compact
+                      ? '-my-1 h-9'
+                      : '-my-1.5 h-11'
+                    : compact
+                      ? 'h-7 max-w-[4.75rem]'
+                      : 'h-8 max-w-[5.75rem]'
                 }`}
                 loading="lazy"
                 decoding="async"
