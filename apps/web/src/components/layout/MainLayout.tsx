@@ -245,7 +245,11 @@ function SidebarBody({
         })}
       </nav>
 
-      <div className="lb-sidebar-footer mt-auto flex shrink-0 flex-col gap-3 overflow-visible pt-2">
+      <div
+        className={`lb-sidebar-footer flex flex-col gap-3 overflow-visible pt-2 ${
+          rail || scrollable ? 'mt-auto shrink-0' : 'flex-1'
+        }`}
+      >
         {rail ? (
           <>
             <Link
@@ -301,7 +305,11 @@ function SidebarBody({
               </NavLink>
             ) : null}
 
-            <SidebarSuggestedCreatorsCard onNavigate={onNavigate} limit={2} />
+            {scrollable ? (
+              <SidebarSuggestedCreatorsCard onNavigate={onNavigate} limit={2} />
+            ) : (
+              <SidebarSuggestedCreatorsCard onNavigate={onNavigate} limit={8} fill />
+            )}
 
             {profile ? (
               <Link

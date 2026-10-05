@@ -25,6 +25,8 @@ type Props = {
   onNavigate?: () => void;
   className?: string;
   limit?: number;
+  /** Ocupa todo el alto libre del sidebar; la lista hace scroll interno. */
+  fill?: boolean;
 };
 
 function useSuggestedCreators(limit: number) {
@@ -101,14 +103,19 @@ export function SidebarSuggestedCreatorsCard({
   onNavigate,
   className = '',
   limit = 2,
+  fill = false,
 }: Props) {
   const t = useT();
   const { suggested, onSuggestedFollow, onSuggestedIgnore, profile } =
     useSuggestedCreators(limit);
 
   return (
-    <section className={`lb-panel rounded-2xl p-3${className ? ` ${className}` : ''}`}>
-      <div className="flex items-center justify-between gap-2">
+    <section
+      className={`lb-panel rounded-2xl p-3${
+        fill ? ' flex min-h-[11.25rem] flex-1 basis-0 flex-col' : ''
+      }${className ? ` ${className}` : ''}`}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <p className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
           <UserPlus size={12} className="shrink-0 text-cyan-300" /> Creadores sugeridos
         </p>
@@ -128,7 +135,13 @@ export function SidebarSuggestedCreatorsCard({
           para descubrir creadores.
         </p>
       ) : (
-        <ul className="mt-2 space-y-2.5">
+        <ul
+          className={`mt-2 space-y-2.5${
+            fill
+              ? ' min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+              : ''
+          }`}
+        >
           {suggested.map((user) => (
             <li key={user.uid || user.username} className="flex items-center gap-2">
               <Link
