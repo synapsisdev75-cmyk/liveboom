@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Radio, SquarePen } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Clock, Radio, SquarePen, X } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { PROMO_REVIEW_WINDOW } from '../lib/promoRegions';
 import { MyPromotionsModal } from '../components/ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../components/ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../components/ads/PublicidadSidebarCard';
@@ -27,6 +28,18 @@ export function CreateView() {
   const [regionId, setRegionId] = useState('nacional');
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [myPromotionsOpen, setMyPromotionsOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [adPaymentReturn, setAdPaymentReturn] = useState(false);
+
+  /** Wompi devuelve a /crear?id=<transacción> tras pagar publicidad. */
+  useEffect(() => {
+    if (!searchParams.get('id')) return;
+    setAdPaymentReturn(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('id');
+    next.delete('env');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -90,6 +103,37 @@ export function CreateView() {
         <h1 className="lb-create-page__title text-xl font-bold sm:text-2xl">{t('create.title')}</h1>
         <p className="lb-create-page__muted mt-1 text-sm">{t('create.subtitle')}</p>
       </div>
+
+      {adPaymentReturn ? (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-2xl border border-cyan-400/40 bg-cyan-500/10 p-3.5"
+        >
+          <Clock size={18} className="mt-0.5 shrink-0 text-cyan-400" />
+          <div className="min-w-0 flex-1 text-sm">
+            <p className="font-semibold text-white">Recibimos tu pago de publicidad</p>
+            <p className="lb-create-page__muted mt-1 text-xs">
+              Cuando Wompi lo confirme, tu publicidad pasa a revisión del equipo LiveBoom. Recibirás respuesta en{' '}
+              {PROMO_REVIEW_WINDOW}. La factura queda en Billetera → Historial de transacciones → Facturas.
+            </p>
+            <button
+              type="button"
+              onClick={() => setMyPromotionsOpen(true)}
+              className="mt-2 inline-flex min-h-11 items-center rounded-xl border border-cyan-400/40 px-3 text-xs font-semibold text-cyan-300"
+            >
+              Ver mis promociones
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdPaymentReturn(false)}
+            aria-label="Cerrar aviso"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-zinc-500 hover:text-white"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : null}
 
       <button
         type="button"

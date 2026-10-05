@@ -20,14 +20,17 @@ import { confirmBlastPurchase } from '../lib/blastPurchaseClient';
 import { isNativeApp } from '../lib/wompiCheckout';
 import { normalizeBlastBalances } from '../lib/blastBalances';
 import {
+  fetchWalletPurchases,
   fetchWalletSummary,
   fetchWalletTransactions,
   quotedCop,
   ledgerLabel,
   signedAmount,
   type WalletLedgerRow,
+  type WalletPurchases,
   type WalletSummary,
 } from '../lib/walletApi';
+import { openPurchaseInvoice } from '../lib/purchaseInvoice';
 import { processGiftInbox } from '../lib/giftsFirestore';
 import { CoinPackagesModal } from '../components/wallet/CoinPackagesModal';
 import { PaymentMethodsStrip } from '../components/wallet/PaymentMethodsStrip';
@@ -124,8 +127,11 @@ export function WalletView() {
   const [initialPack, setInitialPack] = useState<string | undefined>();
   const [openWithdraw, setOpenWithdraw] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'recharge' | 'earning' | 'spend' | 'withdrawal'>('all');
+  const [historyFilter, setHistoryFilter] = useState<
+    'all' | 'recharge' | 'earning' | 'spend' | 'withdrawal' | 'invoices'
+  >('all');
   const [ledger, setLedger] = useState<WalletLedgerRow[]>([]);
+  const [purchases, setPurchases] = useState<WalletPurchases | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
@@ -154,8 +160,11 @@ export function WalletView() {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const rows = await fetchWalletTransactions(filter);
-      setLedger(rows);
+      if (filter === 'invoices') {
+        setPurchases(await fetchWalletPurchases());
+      } else {
+        setLedger(await fetchWalletTransactions(filter));
+      }
     } catch (err) {
       setHistoryError(err instanceof Error ? err.message : 'No se pudo cargar el historial');
     } finally {
@@ -502,6 +511,7 @@ export function WalletView() {
                     ['earning', 'Ganancias'],
                     ['spend', 'Gastos'],
                     ['withdrawal', 'Retiros'],
+                    ['invoices', 'Facturas'],
                   ] as const
                 ).map(([id, label]) => (
                   <button
@@ -521,7 +531,45 @@ export function WalletView() {
               {historyError ? (
                 <p className="mt-3 text-sm text-fuchsia-300">{historyError}</p>
               ) : null}
-              {historyLoading && ledger.length === 0 ? (
+              {historyFilter === 'invoices' ? (
+                historyLoading && !purchases ? (
+                  <p className="mt-3 flex items-center gap-2 text-sm text-zinc-400">
+                    <Loader2 size={16} className="animate-spin" />
+                    Cargando compras…
+                  </p>
+                ) : !purchases?.purchases.length ? (
+                  <p className="mt-3 text-sm text-zinc-500">
+                    Aún no tienes compras pagadas de BLAST o publicidad.
+                  </p>
+                ) : (
+                  <ul className="mt-3 max-h-[min(28rem,60dvh)] space-y-2 overflow-y-auto">
+                    {purchases.purchases.map((row) => (
+                      <li
+                        key={row.id}
+                        className="flex min-h-11 flex-wrap items-center justify-between gap-3 rounded-xl bg-black/30 px-3 py-2.5 text-sm"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                            {row.kind === 'ads' ? 'PUBLICIDAD' : 'BLAST'} · {row.invoiceNumber}
+                          </p>
+                          <p className="font-medium text-white">{row.description}</p>
+                          <p className="text-xs text-zinc-500">
+                            {row.paidAtMs ? new Date(row.paidAtMs).toLocaleString('es-CO') : ''}
+                            {' · '}${Math.round(row.amountCop).toLocaleString('es-CO')} COP
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openPurchaseInvoice(row, purchases.seller, purchases.buyer)}
+                          className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-cyan-400/40 px-3 text-xs font-semibold text-cyan-300"
+                        >
+                          Descargar factura
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : historyLoading && ledger.length === 0 ? (
                 <p className="mt-3 flex items-center gap-2 text-sm text-zinc-400">
                   <Loader2 size={16} className="animate-spin" />
                   Cargando movimientos…

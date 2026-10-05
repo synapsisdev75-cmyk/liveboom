@@ -122,6 +122,41 @@ export async function fetchWalletTransactions(filter = 'all') {
   return data.transactions || [];
 }
 
+export type PurchaseInvoiceRow = {
+  id: string;
+  kind: 'blast' | 'ads';
+  invoiceNumber: string;
+  reference: string;
+  wompiTransactionId: string | null;
+  description: string;
+  detail: string | null;
+  quantity: number;
+  amountCop: number;
+  currency: string;
+  paidAtMs: number;
+};
+
+export type InvoiceParty = {
+  name: string;
+  brand?: string;
+  nit?: string;
+  address?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  username?: string;
+};
+
+export type WalletPurchases = {
+  seller: InvoiceParty;
+  buyer: InvoiceParty;
+  purchases: PurchaseInvoiceRow[];
+};
+
+export async function fetchWalletPurchases() {
+  return api<WalletPurchases>('/api/wallet/purchases');
+}
+
 export async function fetchWalletWithdrawals() {
   const data = await api<{ withdrawals: PublicWithdrawal[] }>('/api/wallet/withdrawals');
   return data.withdrawals || [];

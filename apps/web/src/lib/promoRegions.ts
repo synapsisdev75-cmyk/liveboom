@@ -48,6 +48,10 @@ const PROMO_DAY_PACKAGES = PROMO_PACKAGES.filter((p) => p.days >= 1);
 
 export const PROMO_ANIMATED_MONTHLY_REF = 499_900;
 
+/** Plazo de respuesta de Super Admin para publicidad pagada. */
+export const PROMO_REVIEW_WINDOW = '2 a 24 horas';
+export const PROMO_REVIEW_DEADLINE_MS = 24 * 60 * 60 * 1000;
+
 export type PromoBannerFormat = 'static' | 'animated';
 
 /** Banner publicitario 3:1 — referencia obligatoria para imagen y video. */

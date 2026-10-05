@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import { formatPromoCop, PROMO_ANIMATED_MONTHLY_REF } from '../../lib/promoRegions';
+import {
+  formatPromoCop,
+  PROMO_ANIMATED_MONTHLY_REF,
+  PROMO_KINDS,
+  PROMO_REVIEW_DEADLINE_MS,
+  promoDurationLabel,
+} from '../../lib/promoRegions';
 import { PromotionBanner } from '../ads/PromotionBanner';
 import type { PromotionAd } from '../../lib/promotionsFirestore';
 
@@ -9,7 +15,25 @@ type Campaign = PromotionAd & {
   reviewStatus?: string | null;
   publishStatus?: string | null;
   amountPaidCop?: number;
+  hours?: number;
+  createdAtMs?: number;
+  orderReference?: string | null;
 };
+
+function reviewDeadlineLabel(createdAtMs?: number) {
+  if (!createdAtMs) return null;
+  const left = createdAtMs + PROMO_REVIEW_DEADLINE_MS - Date.now();
+  if (left <= 0) return { text: 'Plazo de 24 h vencido: responder ya', late: true };
+  const hours = Math.floor(left / 3_600_000);
+  const minutes = Math.floor((left % 3_600_000) / 60_000);
+  return { text: `Responder en ${hours} h ${minutes} min`, late: false };
+}
+
+function campaignDuration(hours?: number) {
+  const h = Math.max(0, Math.floor(Number(hours) || 0));
+  if (!h) return '—';
+  return promoDurationLabel(h >= 24 ? Math.round(h / 24) : 0, h);
+}
 
 type ProjectionRow = {
   mau: number;
@@ -51,8 +75,14 @@ export function AdminAdsPanel() {
 
   async function loadCampaigns() {
     const res = await api<{ campaigns: Campaign[] }>('/api/ads/admin/campaigns');
-    setCampaigns(res.campaigns || []);
+    const rows = res.campaigns || [];
+    const pending = rows
+      .filter((c) => c.reviewStatus === 'pending')
+      .sort((a, b) => Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0));
+    setCampaigns([...pending, ...rows.filter((c) => c.reviewStatus !== 'pending')]);
   }
+
+  const pendingCount = campaigns.filter((c) => c.reviewStatus === 'pending').length;
 
   async function loadProjection(mau?: number) {
     const q = mau ? `?mau=${encodeURIComponent(String(mau))}` : '';
@@ -137,7 +167,7 @@ export function AdminAdsPanel() {
             sub === 'campaigns' ? 'bg-fuchsia-500/20 text-fuchsia-100 ring-1 ring-fuchsia-400/40' : 'bg-zinc-800/60 text-zinc-400'
           }`}
         >
-          Campañas
+          Campañas{pendingCount ? ` · ${pendingCount} por revisar` : ''}
         </button>
         <button
           type="button"
@@ -156,15 +186,82 @@ export function AdminAdsPanel() {
       {sub === 'campaigns' ? (
         <div className="space-y-3">
           <p className="text-xs text-zinc-400">
-            Pago, revisión y publicación van por separado. El tiempo contratado empieza al aprobar, no mientras espera revisión.
+            Cada publicidad pagada llega aquí para revisión. Al comprador se le promete respuesta en 2 a 24 horas.
+            El tiempo contratado empieza al aprobar, no mientras espera revisión.
           </p>
           {loading ? <p className="text-sm text-zinc-500">Cargando campañas…</p> : null}
           {!loading && campaigns.length === 0 ? (
             <p className="text-sm text-zinc-500">No hay campañas pendientes ni activas.</p>
           ) : (
-            campaigns.map((ad) => (
-              <div key={ad.id} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+            campaigns.map((ad) => {
+              const deadline = ad.reviewStatus === 'pending' ? reviewDeadlineLabel(ad.createdAtMs) : null;
+              const kindLabel = PROMO_KINDS.find((k) => k.id === ad.kind)?.label || ad.kind;
+              return (
+              <div
+                key={ad.id}
+                className={`rounded-2xl border p-3 ${
+                  ad.reviewStatus === 'pending' ? 'border-amber-400/40 bg-amber-500/5' : 'border-white/10 bg-zinc-900/80'
+                }`}
+              >
+                {deadline ? (
+                  <p
+                    className={`mb-2 text-xs font-bold ${deadline.late ? 'text-rose-400' : 'text-amber-300'}`}
+                  >
+                    Por revisar · {deadline.text}
+                  </p>
+                ) : null}
                 <PromotionBanner ad={ad} compact preview />
+                <dl className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <dt className="inline text-zinc-500">Comprador: </dt>
+                    <dd className="inline font-semibold text-white">
+                      {ad.ownerDisplayName || ad.ownerUsername || '—'}
+                      {ad.ownerUsername ? ` (@${ad.ownerUsername})` : ''}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="inline text-zinc-500">Paquete: </dt>
+                    <dd className="inline text-white">
+                      {campaignDuration(ad.hours)} · {ad.format === 'animated' ? 'animado / video' : 'estático'}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="inline text-zinc-500">Tipo: </dt>
+                    <dd className="inline text-white">{kindLabel}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="inline text-zinc-500">Región: </dt>
+                    <dd className="inline text-white">{ad.regionLabel || ad.regionId}</dd>
+                  </div>
+                  {ad.createdAtMs ? (
+                    <div className="min-w-0">
+                      <dt className="inline text-zinc-500">Pagado: </dt>
+                      <dd className="inline text-white">{new Date(ad.createdAtMs).toLocaleString('es-CO')}</dd>
+                    </div>
+                  ) : null}
+                  {ad.orderReference ? (
+                    <div className="min-w-0">
+                      <dt className="inline text-zinc-500">Referencia: </dt>
+                      <dd className="inline break-all text-zinc-300">{ad.orderReference}</dd>
+                    </div>
+                  ) : null}
+                  {ad.linkUrl ? (
+                    <div className="min-w-0 sm:col-span-2">
+                      <dt className="inline text-zinc-500">Enlace: </dt>
+                      <dd className="inline break-all text-cyan-300">{ad.linkUrl}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                {ad.mediaUrl ? (
+                  <a
+                    href={ad.mediaUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex min-h-11 items-center rounded-xl border border-white/10 px-3 text-xs font-semibold text-cyan-300"
+                  >
+                    Ver archivo subido
+                  </a>
+                ) : null}
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-400">
                   <span>Pago: {ad.paymentStatus || 'histórico'}</span>
                   <span>Revisión: {ad.reviewStatus || 'histórico'}</span>
@@ -208,7 +305,8 @@ export function AdminAdsPanel() {
                   </div>
                 ) : null}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       ) : null}

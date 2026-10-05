@@ -6,6 +6,7 @@ import {
   PROMO_BANNER_SIZE_LABEL,
   PROMO_BANNER_WIDTH,
   PROMO_KINDS,
+  PROMO_REVIEW_WINDOW,
   formatPromoCop,
   regionLabel,
   type PromoKind,
@@ -167,7 +168,13 @@ export function MyPromotionsModal({ ads, onClose }: Props) {
                   }`}
                 >
                   <span className="block max-w-[9rem] truncate font-semibold">{ad.title}</span>
-                  <span className="block text-[10px] text-zinc-500">{formatExpiry(ad.expiresAtMs)}</span>
+                  <span className="block text-[10px] text-zinc-500">
+                    {ad.reviewStatus === 'pending'
+                      ? 'En revisión'
+                      : ad.reviewStatus === 'rejected'
+                        ? 'Rechazada'
+                        : formatExpiry(ad.expiresAtMs)}
+                  </span>
                 </button>
               ))}
             </div>
@@ -175,11 +182,24 @@ export function MyPromotionsModal({ ads, onClose }: Props) {
             {editing ? (
               <div className="mt-4 grid gap-3">
                 <p className="text-[11px] text-zinc-500">
-                  {regionLabel(editing.regionId)} · {formatExpiry(editing.expiresAtMs)}
-                  {editing.paymentStatus ? ` · pago ${editing.paymentStatus}` : ''}
-                  {editing.reviewStatus ? ` · revisión ${editing.reviewStatus}` : ''}
+                  {regionLabel(editing.regionId)}
+                  {editing.reviewStatus === 'pending' || editing.reviewStatus === 'rejected'
+                    ? ''
+                    : ` · ${formatExpiry(editing.expiresAtMs)}`}
+                  {editing.paymentStatus === 'paid' ? ' · Pagada' : ''}
                   {` · ${formatPromoCop(editing.coinsPaid)}`}
                 </p>
+                {editing.reviewStatus === 'pending' ? (
+                  <p className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs text-zinc-300">
+                    En revisión por el equipo LiveBoom. Recibirás respuesta en{' '}
+                    <strong className="text-white">{PROMO_REVIEW_WINDOW}</strong>. El tiempo contratado empieza
+                    cuando se apruebe.
+                  </p>
+                ) : editing.reviewStatus === 'rejected' ? (
+                  <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+                    Esta publicidad fue rechazada en la revisión.
+                  </p>
+                ) : null}
                 <label className="grid gap-1 text-sm">
                   <span className="text-zinc-400">Título</span>
                   <input

@@ -1,4 +1,4 @@
-import { MapPin, Megaphone, Upload, X } from 'lucide-react';
+import { Clock, MapPin, Megaphone, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../../lib/api';
@@ -8,6 +8,7 @@ import {
   PROMO_MAX_ANIMATED_SEC,
   PROMO_PACKAGES,
   PROMO_KINDS,
+  PROMO_REVIEW_WINDOW,
   formatPromoCop,
   formatPromoUnitPrice,
   promoDurationLabel,
@@ -268,7 +269,9 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
             .then((paid) => {
               const paymentStatus = String((paid as { paymentStatus?: string }).paymentStatus || '');
               if (paymentStatus === 'paid') {
-                setNote('Pago confirmado. Tu banner queda en revisión antes de publicarse. El tiempo contratado no corre todavía.');
+                setNote(
+                  `Pago confirmado. Tu publicidad pasó a revisión del equipo LiveBoom; recibirás respuesta en ${PROMO_REVIEW_WINDOW}. El tiempo contratado empieza cuando se apruebe.`,
+                );
                 onDone?.();
                 return;
               }
@@ -469,6 +472,14 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
           >
             {busy ? 'Abriendo Wompi…' : 'Pagar'}
           </button>
+          <p className="flex items-start gap-1.5 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs text-zinc-300">
+            <Clock size={14} className="mt-0.5 shrink-0 text-cyan-400" />
+            <span>
+              Al pagar, tu publicidad llega a revisión del equipo LiveBoom. Recibirás respuesta en{' '}
+              <strong className="text-white">{PROMO_REVIEW_WINDOW}</strong>. El tiempo contratado empieza
+              cuando se apruebe.
+            </span>
+          </p>
           <p className="flex items-start gap-1.5 text-[11px] text-zinc-500">
             <MapPin size={12} className="mt-0.5 shrink-0" />
             El recargo animado se aplica una sola vez. Una pantalla de Wompi no publica el anuncio: espera confirmación y revisión.

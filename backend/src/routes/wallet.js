@@ -74,6 +74,22 @@ router.get('/transactions', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/purchases', requireAuth, async (req, res) => {
+  try {
+    const invoices = require('../lib/purchaseInvoices');
+    const uid = req.user?.uid;
+    const [purchases, buyer] = await Promise.all([
+      invoices.listUserPurchases(uid),
+      invoices.readBuyer(uid, req.user?.email),
+    ]);
+    res.json({ seller: invoices.SELLER, buyer, purchases });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'No se pudieron leer tus compras',
+    });
+  }
+});
+
 router.get('/withdrawals', requireAuth, async (req, res) => {
   try {
     const uid = req.user?.uid;
