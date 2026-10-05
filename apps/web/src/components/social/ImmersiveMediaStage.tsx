@@ -206,6 +206,19 @@ export function ImmersiveMediaStage({
     );
   }, [railInLetterbox, box.width, box.height, deviceLandscape, mediaCover]);
 
+  // Distancia del borde superior del escenario al cuadro del media (16:9 centrado).
+  // Solo la usan los estilos que quieren anclar controles arriba del escenario.
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const media = mediaBoxRef.current;
+    if (!stage || !media) return;
+    const gap = Math.max(0, Math.round(media.getBoundingClientRect().top - stage.getBoundingClientRect().top));
+    const next = `${gap}px`;
+    if (media.style.getPropertyValue('--lb-media-box-gap-top') !== next) {
+      media.style.setProperty('--lb-media-box-gap-top', next);
+    }
+  });
+
   const pointerRef = useRef<{
     id: number;
     x: number;
