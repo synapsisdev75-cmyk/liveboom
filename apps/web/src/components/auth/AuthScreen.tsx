@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { BrandBackground } from './BrandBackground';
 import { BrandVideo } from './BrandVideo';
 import { LegalFooter } from '../legal/LegalFooter';
@@ -27,6 +28,27 @@ export function AuthScreen() {
   const signInEmail = useAuthStore((s) => s.signInEmail);
   const signUpEmail = useAuthStore((s) => s.signUpEmail);
   const signInGoogle = useAuthStore((s) => s.signInGoogle);
+  const signInMicrosoft = useAuthStore((s) => s.signInMicrosoft);
+  const showMicrosoft = !Capacitor.isNativePlatform();
+
+  /** En registro valida términos y edad; devuelve el año o null si no pasa. En login devuelve undefined. */
+  function socialBirthYear(): number | undefined | null {
+    if (mode !== 'register') return undefined;
+    if (!acceptedTerms) {
+      setLocalError(t('auth.mustAccept'));
+      return null;
+    }
+    const year = Number(birthYear);
+    if (!Number.isFinite(year) || year < minBirthYear || year > maxBirthYear) {
+      setLocalError(t('auth.invalidBirthYear'));
+      return null;
+    }
+    if (ageFromBirthYear(year) < 18) {
+      setLocalError(t('auth.mustBe18'));
+      return null;
+    }
+    return year;
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -207,6 +229,23 @@ export function AuthScreen() {
             {t('auth.google')}
           </button>
 
+          {showMicrosoft ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setLocalError(null);
+                const year = socialBirthYear();
+                if (year === null) return;
+                void signInMicrosoft(year).catch(() => undefined);
+              }}
+              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900 disabled:opacity-60"
+            >
+              <MicrosoftIcon />
+              {t.locale === 'es' ? 'Continuar con Microsoft' : 'Continue with Microsoft'}
+            </button>
+          ) : null}
+
           {mode === 'register' ? (
             <p className="mt-2 text-center text-[11px] text-zinc-500">
               {t('auth.googleBirthHint')}
@@ -228,6 +267,17 @@ export function AuthScreen() {
         </div>
       </div>
     </div>
+  );
+}
+
+function MicrosoftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path fill="#F25022" d="M1 1h10.5v10.5H1z" />
+      <path fill="#7FBA00" d="M12.5 1H23v10.5H12.5z" />
+      <path fill="#00A4EF" d="M1 12.5h10.5V23H1z" />
+      <path fill="#FFB900" d="M12.5 12.5H23V23H12.5z" />
+    </svg>
   );
 }
 

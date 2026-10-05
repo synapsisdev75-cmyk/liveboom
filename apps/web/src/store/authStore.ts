@@ -13,7 +13,7 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, googleProvider, microsoftProvider } from '../lib/firebase';
 import { api, getApiBase, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
 import {
   ensureFirestoreProfile,
@@ -57,6 +57,7 @@ type AuthState = {
   signInEmail: (email: string, password: string) => Promise<void>;
   signUpEmail: (name: string, email: string, password: string, birthYear: number) => Promise<void>;
   signInGoogle: (birthYear?: number) => Promise<void>;
+  signInMicrosoft: (birthYear?: number) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   /** Recarga el usuario; si ya verificó, abre la sesión y devuelve true. */
   refreshEmailVerification: () => Promise<boolean>;
@@ -107,6 +108,15 @@ function mapAuthError(error: unknown): string {
     return t('auth.badCredentials');
   }
   if (code.includes('weak-password')) return t('auth.weakPassword');
+  if (code.includes('account-exists-with-different-credential')) {
+    return 'Ese correo ya tiene una cuenta con otro método (Google o correo y contraseña). Entra con ese método.';
+  }
+  if (code.includes('operation-not-allowed')) {
+    return 'Este método de inicio de sesión aún no está habilitado. Usa Google o correo.';
+  }
+  if (code.includes('popup-blocked')) {
+    return 'El navegador bloqueó la ventana de inicio de sesión. Permite ventanas emergentes e inténtalo de nuevo.';
+  }
   if (code.includes('popup-closed')) return t('auth.googleClosed');
   if (code.includes('cancelled') || /cancel/i.test(String((error as Error)?.message || ''))) {
     return t('auth.googleCancelled');
@@ -441,6 +451,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
     } catch (error) {
       if (!get().error) set({ error: mapAuthError(error) });
+      throw error;
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  signInMicrosoft: async (birthYear) => {
+    set({ busy: true, error: null });
+    try {
+      const cred = await signInWithPopup(auth, microsoftProvider);
+      const user = cred.user;
+      if (birthYear && Number.isFinite(birthYear)) {
+        storePendingBirthYear(user.uid, birthYear);
+      }
+      const profile = await syncWithBackend(user);
+      set({ firebaseUser: user, profile });
+    } catch (error) {
+      const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+      set({
+        error: code.includes('popup-closed') || code.includes('cancelled-popup')
+          ? 'Se cerró la ventana de Microsoft.'
+          : mapAuthError(error),
+      });
       throw error;
     } finally {
       set({ busy: false });
