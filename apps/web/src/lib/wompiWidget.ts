@@ -1,4 +1,4 @@
-import { getWompiRedirectUrl } from './wompiCheckout';
+import { assertWompiMerchantKey, getWompiRedirectUrl } from './wompiCheckout';
 
 export type WompiOrder = {
   reference: string;
@@ -39,6 +39,7 @@ export async function openWompiWidget(
   order: WompiOrder,
   onResult?: (result: WompiWidgetResult) => void,
 ) {
+  await assertWompiMerchantKey(order.publicKey);
   await loadWompiWidget();
   if (typeof window.WidgetCheckout !== 'function') {
     throw new Error('El Widget de Wompi no está cargado. Recarga la página.');

@@ -22,7 +22,7 @@ import {
   markPendingBlastRecharge,
   watchPendingBlastRecharge,
 } from '../../lib/pendingBlastRecharge';
-import { isNativeApp, openWompiCheckoutUrl } from '../../lib/wompiCheckout';
+import { assertWompiMerchantKey, isNativeApp, openWompiCheckoutUrl } from '../../lib/wompiCheckout';
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { PaymentMethodsStrip } from './PaymentMethodsStrip';
@@ -155,6 +155,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   }
 
   async function openHostedCheckout(order: WompiOrder) {
+    await assertWompiMerchantKey(order.publicKey);
     beginPendingWatch(order.reference);
     setNote({
       kind: 'error',
