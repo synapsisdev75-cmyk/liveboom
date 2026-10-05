@@ -5,6 +5,12 @@
  */
 
 let cachedNeed: boolean | null = null;
+let broken = false;
+
+/** Si la versión stacked no carga (red / CORS), los siguientes regalos vuelven al WebM. */
+export function markStackedAlphaBroken() {
+  broken = true;
+}
 
 function isWebKitWithoutWebmAlpha(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -28,6 +34,7 @@ function webglAvailable(): boolean {
 
 /** true en iPhone / iPad / Safari: usar la versión stacked alpha si el regalo la tiene. */
 export function needsStackedAlphaVideo(): boolean {
+  if (broken) return false;
   if (cachedNeed != null) return cachedNeed;
   cachedNeed = typeof document !== 'undefined' && isWebKitWithoutWebmAlpha() && webglAvailable();
   return cachedNeed;
@@ -114,7 +121,8 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
       gl.viewport(0, 0, w, h);
       try {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-      } catch {
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'SecurityError') markStackedAlphaBroken();
         return false;
       }
       gl.uniform1f(uHalfTexel, 0.5 / vh);

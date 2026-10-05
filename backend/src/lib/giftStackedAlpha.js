@@ -31,6 +31,39 @@ function bucketRef() {
   return getStorage().bucket(STORAGE_BUCKET);
 }
 
+/** WebGL solo acepta el video si Storage responde con CORS para los orígenes de la app. */
+const CORS_ORIGINS = [
+  'https://liveboomapp.com',
+  'https://www.liveboomapp.com',
+  'https://liveboom-app.web.app',
+  'https://liveboom-app.firebaseapp.com',
+  'capacitor://localhost',
+  'ionic://localhost',
+  'https://localhost',
+  'http://localhost',
+];
+const CORS_HEADERS = ['Content-Type', 'Content-Length', 'Content-Range', 'Accept-Ranges', 'Range'];
+let corsEnsured = false;
+
+async function ensureBucketCors(bucket) {
+  if (corsEnsured) return;
+  const [meta] = await bucket.getMetadata();
+  const current = Array.isArray(meta.cors) ? meta.cors : [];
+  const covered = current.some(
+    (rule) =>
+      (rule.method || []).includes('GET') &&
+      CORS_ORIGINS.every((origin) => (rule.origin || []).includes(origin) || (rule.origin || []).includes('*')),
+  );
+  if (!covered) {
+    await bucket.setCorsConfiguration([
+      ...current,
+      { origin: CORS_ORIGINS, method: ['GET', 'HEAD'], responseHeader: CORS_HEADERS, maxAgeSeconds: 3600 },
+    ]);
+    console.log('[gift-ios] CORS de Storage configurado para', CORS_ORIGINS.join(', '));
+  }
+  corsEnsured = true;
+}
+
 function downloadUrlFor(bucketName, objectPath, token) {
   return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(objectPath)}?alt=media&token=${token}`;
 }
@@ -222,6 +255,11 @@ async function processStackedAlphaQueue({ deadlineMs = Date.now() + 240_000, lim
   if (!ffmpegPath) return { skipped: true, reason: 'no-ffmpeg' };
   const db = getAdminDb();
   const bucket = bucketRef();
+  try {
+    await ensureBucketCors(bucket);
+  } catch (error) {
+    console.warn('[gift-ios] CORS', error instanceof Error ? error.message : error);
+  }
   const snap = await db.doc(CATALOG_PATH).get();
   const gifts = Array.isArray(snap.data()?.gifts) ? snap.data().gifts : [];
   const results = [];

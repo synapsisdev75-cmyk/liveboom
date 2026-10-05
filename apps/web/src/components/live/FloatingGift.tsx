@@ -21,7 +21,11 @@ import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 import { giftImmersiveFit } from '../../lib/giftContentBounds';
 import { giftPlaybackDurationMs, giftPlaybackSrc, giftStackedAlphaSrc } from '../../lib/giftMedia';
-import { createStackedAlphaRenderer, needsStackedAlphaVideo } from '../../lib/stackedAlphaVideo';
+import {
+  createStackedAlphaRenderer,
+  markStackedAlphaBroken,
+  needsStackedAlphaVideo,
+} from '../../lib/stackedAlphaVideo';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import { GiftComboBadge } from './GiftComboBadge';
 
@@ -380,6 +384,7 @@ function GiftVideoBurst({
     const onLoadedMeta = () => syncSize();
     const onError = () => {
       console.warn('[gift-video] load failed', playSrc);
+      if (stacked) markStackedAlphaBroken();
       finish();
     };
 
@@ -504,6 +509,7 @@ function GiftVideoBurst({
       <video
         ref={videoRef}
         src={playSrc}
+        crossOrigin={stacked ? 'anonymous' : undefined}
         poster={TRANSPARENT_VIDEO_POSTER}
         className={stacked ? 'lb-gift-stacked-source' : burstMediaClass}
         style={stacked ? STACKED_SOURCE_STYLE : burstMediaStyle}
