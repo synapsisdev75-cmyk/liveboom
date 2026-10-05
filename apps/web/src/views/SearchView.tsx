@@ -43,6 +43,7 @@ import { POST_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { EmojiText } from '../components/social/EmojiText';
 import { profileHref } from '../lib/profileFirestore';
 import { ignoreSuggestedCreator, readIgnoredSuggestionUids } from '../lib/ignoredSuggestions';
+import { prefetchRoute } from '../lib/routePrefetch';
 import { useAuthStore } from '../store/authStore';
 import { useAppearanceStore } from '../store/appearanceStore';
 import { useCommunityHeaderStore } from '../store/communityHeaderStore';
@@ -1134,7 +1135,10 @@ export function SearchView() {
         </div>
         <Link
           to="/grupos"
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(90deg,#06B6D4,#8B5CF6)] px-4 text-xs font-bold text-white"
+          onPointerEnter={() => prefetchRoute('/grupos')}
+          onPointerDown={() => prefetchRoute('/grupos')}
+          onFocus={() => prefetchRoute('/grupos')}
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(90deg,#06B6D4,#8B5CF6)] px-4 text-xs font-bold text-white"
         >
           Explorar comunidades
         </Link>
