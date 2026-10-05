@@ -29,7 +29,8 @@ export function AuthScreen() {
   const signUpEmail = useAuthStore((s) => s.signUpEmail);
   const signInGoogle = useAuthStore((s) => s.signInGoogle);
   const signInMicrosoft = useAuthStore((s) => s.signInMicrosoft);
-  const showMicrosoft = !Capacitor.isNativePlatform();
+  /** Oculto hasta habilitar el proveedor Microsoft en Firebase Authentication. */
+  const showMicrosoft = false && !Capacitor.isNativePlatform();
 
   /** En registro valida términos y edad; devuelve el año o null si no pasa. En login devuelve undefined. */
   function socialBirthYear(): number | undefined | null {
@@ -89,7 +90,7 @@ export function AuthScreen() {
       <div className="lb-auth-main">
         <div className="w-full max-w-md">
         <div className="lb-auth-card rounded-3xl border border-white/10 bg-boom-panel/88 p-6 shadow-glow backdrop-blur-xl sm:p-8">
-          <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-black/35 p-1">
+          <div className="lb-auth-tabs grid grid-cols-2 gap-1 rounded-2xl bg-black/35 p-1">
             <Link
               to="/login"
               className={`rounded-xl py-2 text-center text-sm font-bold ${
@@ -110,33 +111,35 @@ export function AuthScreen() {
           <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
             {mode === 'login' ? t('auth.enterTitle') : t('auth.createTitle')}
           </h1>
-          <p className="mt-2 text-center text-sm text-zinc-400">
+          <p className="lb-auth-tagline mt-2 text-center text-sm text-zinc-400">
             {t('auth.tagline')}
           </p>
 
           <form className="mt-8 space-y-3" onSubmit={(event) => void onSubmit(event)}>
             {mode === 'register' ? (
-              <input
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t('auth.name')}
-                className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-              />
-            ) : null}
-            {mode === 'register' ? (
-              <label className="block text-left text-xs text-zinc-400">
-                {t('auth.birthYear')}
+              <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] items-end gap-2">
                 <input
                   required
-                  type="number"
-                  min={minBirthYear}
-                  max={maxBirthYear}
-                  value={birthYear}
-                  onChange={(e) => setBirthYear(e.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={t('auth.name')}
+                  aria-label={t('auth.name')}
+                  className="h-11 w-full min-w-0 rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
                 />
-              </label>
+                <label className="block min-w-0 text-left text-xs text-zinc-400">
+                  <span className="block truncate">{t('auth.birthYear')}</span>
+                  <input
+                    required
+                    type="number"
+                    inputMode="numeric"
+                    min={minBirthYear}
+                    max={maxBirthYear}
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+                  />
+                </label>
+              </div>
             ) : null}
             <input
               required
@@ -191,7 +194,7 @@ export function AuthScreen() {
             </button>
           </form>
 
-          <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+          <div className="lb-auth-divider flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
             <span className="h-px flex-1 bg-white/10" />
             {t('auth.or')}
             <span className="h-px flex-1 bg-white/10" />
@@ -253,11 +256,11 @@ export function AuthScreen() {
           ) : null}
 
           {mode === 'login' ? (
-            <Link to="/registro" className="mt-6 block w-full text-center text-sm text-zinc-400 hover:text-white">
+            <Link to="/registro" className="lb-auth-switch block w-full text-center text-sm text-zinc-400 hover:text-white">
               {t('auth.noAccount')}
             </Link>
           ) : (
-            <Link to="/login" className="mt-6 block w-full text-center text-sm text-zinc-400 hover:text-white">
+            <Link to="/login" className="lb-auth-switch block w-full text-center text-sm text-zinc-400 hover:text-white">
               {t('auth.hasAccount')}
             </Link>
           )}

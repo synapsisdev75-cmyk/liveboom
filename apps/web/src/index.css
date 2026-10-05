@@ -2698,14 +2698,14 @@ html:has(.lb-legal-page) #root {
 }
 
 .lb-auth-top__logo img {
-  height: clamp(7.5rem, 22vh, 14rem) !important;
+  height: clamp(5rem, 16vh, 10rem) !important;
   width: auto !important;
   max-width: min(94vw, 28rem) !important;
 }
 
 @media (max-height: 700px) and (orientation: landscape) {
   .lb-auth-top__logo img {
-    height: clamp(4.5rem, 28vh, 7rem) !important;
+    height: clamp(3.5rem, 18vh, 5rem) !important;
   }
 }
 
@@ -2715,18 +2715,63 @@ html:has(.lb-legal-page) #root {
   display: flex;
   min-height: 0;
   flex: 1;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   padding: 0 1rem max(0.55rem, var(--lb-safe-bottom, 0.55rem));
 }
 
-.lb-auth-card {
-  max-height: 100%;
+.lb-auth-main::-webkit-scrollbar {
+  display: none;
+}
+
+/* Centrado que no recorta arriba cuando la tarjeta es más alta que el espacio (scroll). */
+.lb-auth-main > * {
+  margin-block: auto;
 }
 
 .lb-auth-card form {
   margin-top: clamp(0.7rem, 1.8vh, 2rem);
+}
+
+.lb-auth-tabs {
+  margin-bottom: clamp(0.6rem, 1.6vh, 1.25rem);
+}
+
+.lb-auth-divider {
+  margin-block: clamp(0.6rem, 1.6vh, 1.25rem);
+}
+
+.lb-auth-switch {
+  margin-top: clamp(0.6rem, 1.8vh, 1.5rem);
+}
+
+.lb-auth-card {
+  padding: clamp(1rem, 2.4vh, 1.75rem) clamp(1.1rem, 4vw, 1.75rem);
+}
+
+.lb-auth-card > footer {
+  margin-top: clamp(0.5rem, 1.4vh, 1rem);
+}
+
+@media (max-height: 900px) {
+  .lb-auth-top__logo img {
+    height: clamp(4.5rem, 13vh, 7.5rem) !important;
+  }
+}
+
+@media (max-height: 780px) {
+  .lb-auth-top__logo img {
+    height: clamp(3.5rem, 11vh, 5.5rem) !important;
+  }
+
+  .lb-auth-tagline {
+    display: none;
+  }
 }
 
 .lb-auth-lang {
