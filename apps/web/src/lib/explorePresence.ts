@@ -24,7 +24,17 @@ const LIVE_HEARTBEAT_TTL_MS = 90_000;
 const LIVE_START_GRACE_MS = 90_000;
 const HEARTBEAT_MS = 8_000;
 const WAITING_ALERT_GAP_MS = 30 * 60 * 1000;
+const PLAZA_ALERT_GAP_MS = 10 * 60 * 1000;
+/** Las reglas solo dejan leer 20 min contados con el reloj del servidor. */
+const PLAZA_QUERY_MARGINS_MS = [3 * 60_000, 10 * 60_000, 17 * 60_000];
 export const CREATOR_CLOSING_TTL_MS = 6 * 60 * 60 * 1000;
+export const PLAZA_LIVE_REPLY_TEXT = 'Voy a responderles en LIVE. Entren para verme.';
+
+export type PlazaMessageKind = 'text' | 'live_reply';
+
+export function plazaHref(postId: string): string {
+  return `/explorar?v=${encodeURIComponent(postId)}&plaza=1`;
+}
 
 export type PlazaViewer = {
   uid: string;
@@ -40,6 +50,7 @@ export type PlazaMessage = {
   displayName: string;
   avatarUrl: string | null;
   text: string;
+  kind: PlazaMessageKind;
   createdAtMs: number;
 };
 
@@ -152,10 +163,12 @@ export function listenPlazaMessages(
 ): () => void {
   let unsub: () => void = () => undefined;
   let stopped = false;
+  let marginStep = 0;
 
   function attach() {
     unsub();
-    const cutoff = Timestamp.fromMillis(Date.now() - EXPLORE_PLAZA_TTL_MS);
+    const margin = PLAZA_QUERY_MARGINS_MS[marginStep] ?? 0;
+    const cutoff = Timestamp.fromMillis(Date.now() - EXPLORE_PLAZA_TTL_MS + margin);
     const messagesQuery = query(
       collection(db, 'explorePlaza', postId, 'messages'),
       where('createdAt', '>', cutoff),
@@ -168,7 +181,7 @@ export function listenPlazaMessages(
         const now = Date.now();
         const messages: PlazaMessage[] = [];
         for (const item of snap.docs) {
-          const data = item.data();
+          const data = item.data({ serverTimestamps: 'estimate' });
           const createdAtMs = millisOf(data.createdAt);
           if (createdAtMs <= 0 || now - createdAtMs > EXPLORE_PLAZA_TTL_MS) continue;
           const text = String(data.text || '').trim();
@@ -180,12 +193,21 @@ export function listenPlazaMessages(
             displayName: String(data.displayName || data.username || ''),
             avatarUrl: typeof data.avatarUrl === 'string' ? data.avatarUrl : null,
             text,
+            kind: data.kind === 'live_reply' ? 'live_reply' : 'text',
             createdAtMs,
           });
         }
         onChange(messages);
       },
-      () => onChange([]),
+      () => {
+        // Reloj del teléfono atrasado: ampliar el margen antes de rendirse.
+        if (!stopped && marginStep < PLAZA_QUERY_MARGINS_MS.length - 1) {
+          marginStep += 1;
+          attach();
+          return;
+        }
+        onChange([]);
+      },
     );
   }
 
@@ -200,7 +222,12 @@ export function listenPlazaMessages(
   };
 }
 
-export async function sendPlazaMessage(postId: string, profile: PlazaProfile, text: string): Promise<void> {
+export async function sendPlazaMessage(
+  postId: string,
+  profile: PlazaProfile,
+  text: string,
+  kind: PlazaMessageKind = 'text',
+): Promise<void> {
   const clean = text.trim().slice(0, 280);
   if (!clean) return;
   const ref = doc(collection(db, 'explorePlaza', postId, 'messages'));
@@ -210,8 +237,88 @@ export async function sendPlazaMessage(postId: string, profile: PlazaProfile, te
     displayName: (profile.displayName || profile.username).slice(0, 80),
     avatarUrl: profile.avatarUrl || null,
     text: clean,
+    ...(kind === 'live_reply' ? { kind } : {}),
     createdAt: serverTimestamp(),
   });
+}
+
+/** El creador avisa en la plaza que va a responder en LIVE. */
+export function announcePlazaLiveReply(postId: string, profile: PlazaProfile): Promise<void> {
+  return sendPlazaMessage(postId, profile, PLAZA_LIVE_REPLY_TEXT, 'live_reply');
+}
+
+/** Reserva el aviso al creador (uno por ventana) en el doc de presencia del video. */
+async function claimPlazaAlert(postId: string, field: 'waitingAlertAt' | 'plazaAlertAt', gapMs: number, count?: number) {
+  const presenceRef = doc(db, 'explorePresence', postId);
+  try {
+    return await runTransaction(db, async (tx) => {
+      const snap = await tx.get(presenceRef);
+      const data = snap.data();
+      const last = Number(data?.[field] || 0);
+      if (last > 0 && Date.now() - last < gapMs) return false;
+      const safeCount = Math.max(0, Math.min(40, Math.round(count ?? (Number(data?.count) || 0))));
+      tx.set(
+        presenceRef,
+        { count: safeCount, [field]: Date.now(), updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function releasePlazaAlert(postId: string, field: 'waitingAlertAt' | 'plazaAlertAt', count: number) {
+  await setDoc(
+    doc(db, 'explorePresence', postId),
+    { [field]: 0, count: Math.max(0, Math.min(40, Math.round(count))), updatedAt: serverTimestamp() },
+    { merge: true },
+  ).catch(() => undefined);
+}
+
+async function pushPlazaAlert(authorUid: string, title: string, body: string, href: string) {
+  try {
+    const { enqueuePushNotify } = await import('./pushNotifications');
+    enqueuePushNotify({ recipientUids: [authorUid], title, body, channel: 'live', type: 'plaza', href });
+  } catch {
+    /* push opcional */
+  }
+}
+
+/** Aviso al autor cuando alguien escribe en la plaza de su video. */
+export async function notifyCreatorPlazaMessage(input: {
+  postId: string;
+  authorUid: string;
+  fromUid: string;
+  fromName: string;
+  text: string;
+  count: number;
+}): Promise<void> {
+  const authorUid = String(input.authorUid || '').trim();
+  const postId = String(input.postId || '').trim();
+  if (!authorUid || !postId || authorUid === input.fromUid) return;
+  const claimed = await claimPlazaAlert(postId, 'plazaAlertAt', PLAZA_ALERT_GAP_MS, input.count);
+  if (!claimed) return;
+
+  const name = String(input.fromName || '').trim().slice(0, 40) || 'Alguien';
+  const preview = String(input.text || '').trim().slice(0, 80);
+  const title = `${name} escribió en la plaza de tu video`;
+  const href = plazaHref(postId);
+  try {
+    await addDoc(collection(db, 'users', authorUid, 'liveAlerts'), {
+      kind: 'plaza',
+      title: preview ? `${title}: “${preview}”` : title,
+      href,
+      postId,
+      createdAt: serverTimestamp(),
+      createdAtMs: Date.now(),
+    });
+  } catch {
+    await releasePlazaAlert(postId, 'plazaAlertAt', input.count);
+    return;
+  }
+  void pushPlazaAlert(authorUid, title, preview || 'Responde en LIVE o en el chat.', href);
 }
 
 export function liveRoomIsOpen(data: Record<string, unknown> | undefined, now = Date.now()): boolean {
@@ -252,45 +359,25 @@ export async function notifyCreatorPeopleWaiting(input: {
   const count = Math.max(0, Math.min(40, Math.round(input.count)));
   if (!authorUid || !postId || count < 2) return;
 
-  const presenceRef = doc(db, 'explorePresence', postId);
-  let claimed = false;
-  try {
-    claimed = await runTransaction(db, async (tx) => {
-      const snap = await tx.get(presenceRef);
-      const last = Number(snap.data()?.waitingAlertAt || 0);
-      if (last > 0 && Date.now() - last < WAITING_ALERT_GAP_MS) return false;
-      tx.set(
-        presenceRef,
-        {
-          count,
-          waitingAlertAt: Date.now(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-      return true;
-    });
-  } catch {
-    return;
-  }
+  const claimed = await claimPlazaAlert(postId, 'waitingAlertAt', WAITING_ALERT_GAP_MS, count);
   if (!claimed) return;
 
+  const title = 'Hay gente en tu video';
+  const href = plazaHref(postId);
   try {
     await addDoc(collection(db, 'users', authorUid, 'liveAlerts'), {
-      kind: 'live',
-      title: 'Hay gente en tu video',
-      href: '/transmitir',
+      kind: 'plaza',
+      title,
+      href,
       postId,
       createdAt: serverTimestamp(),
       createdAtMs: Date.now(),
     });
   } catch {
-    await setDoc(
-      presenceRef,
-      { waitingAlertAt: 0, count, updatedAt: serverTimestamp() },
-      { merge: true },
-    ).catch(() => undefined);
+    await releasePlazaAlert(postId, 'waitingAlertAt', count);
+    return;
   }
+  void pushPlazaAlert(authorUid, title, `${count} personas están viendo tu video ahora.`, href);
 }
 
 export function creatorClosingNote(data: Record<string, unknown> | undefined, now = Date.now()): string {

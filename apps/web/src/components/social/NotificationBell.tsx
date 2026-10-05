@@ -1,6 +1,7 @@
 import {
   Bell,
   Check,
+  MessageCircle,
   Radio,
   Swords,
   X,
@@ -33,18 +34,20 @@ import {
 } from '../../lib/socialFirestore';
 import { listenLiveAlerts, deleteLiveAlert, clearLiveAlerts, removeLiveGuestInvites } from '../../lib/liveGiftsFirestore';
 import { declineBattle } from '../../lib/battleFirestore';
+import { announcePlazaLiveReply, plazaHref } from '../../lib/explorePresence';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
 
 type NotiItem = {
   id: string;
-  kind: 'request' | 'live' | 'live_invite' | 'live_battle' | 'post' | 'message';
+  kind: 'request' | 'live' | 'live_invite' | 'live_battle' | 'live_plaza' | 'post' | 'message';
   text: string;
   href: string;
   at: number;
   alertMeta?: PostAlertItem;
   hostUsername?: string;
   battleId?: string;
+  postId?: string;
 };
 
 type ActiveStream = {
@@ -249,12 +252,15 @@ export function NotificationBell() {
             ? 'live_invite'
             : alert.kind === 'battle'
               ? 'live_battle'
-              : 'live') as NotiItem['kind'],
+              : alert.kind === 'plaza'
+                ? 'live_plaza'
+                : 'live') as NotiItem['kind'],
           text: alert.text,
           href: alert.href,
           at: alert.at,
           hostUsername: alert.hostUsername,
           battleId: alert.battleId,
+          postId: alert.postId,
         }));
         const fresh = notes[0];
         if (fresh && Date.now() - fresh.at < 90_000) {
@@ -330,8 +336,13 @@ export function NotificationBell() {
   const count = requests.length + items.filter((i) => i.kind !== 'request').length;
   const inviteItems = items.filter((i) => i.kind === 'live_invite');
   const battleItems = items.filter((i) => i.kind === 'live_battle');
+  const plazaItems = items.filter((i) => i.kind === 'live_plaza' && i.postId);
   const otherItems = items.filter(
-    (i) => i.kind !== 'request' && i.kind !== 'live_invite' && i.kind !== 'live_battle',
+    (i) =>
+      i.kind !== 'request' &&
+      i.kind !== 'live_invite' &&
+      i.kind !== 'live_battle' &&
+      !(i.kind === 'live_plaza' && i.postId),
   );
 
   async function dismissItem(item: NotiItem) {
@@ -425,6 +436,31 @@ export function NotificationBell() {
     }
   }
 
+  async function replyPlazaLive(item: NotiItem) {
+    if (!profile || !item.postId) return;
+    setBusy(item.id);
+    try {
+      await announcePlazaLiveReply(item.postId, {
+        uid: profile.firebaseUid,
+        username: profile.handle,
+        displayName: profile.displayName || profile.handle,
+        avatarUrl: profile.avatarUrl,
+      }).catch(() => undefined);
+      setOpen(false);
+      navigate('/transmitir');
+      await dismissItem(item);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function replyPlazaChat(item: NotiItem) {
+    if (!item.postId) return;
+    setOpen(false);
+    navigate(plazaHref(item.postId));
+    void dismissItem(item);
+  }
+
   async function declineBattleInvite(item: NotiItem) {
     if (!profile) return;
     setBusy(item.id);
@@ -510,7 +546,7 @@ export function NotificationBell() {
               <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
                 <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">Notificaciones</p>
                 <div className="flex items-center gap-2">
-                  {otherItems.length > 0 ? (
+                  {otherItems.length > 0 || plazaItems.length > 0 ? (
                     <button
                       type="button"
                       onClick={() => void clearAllNotifications()}
@@ -601,6 +637,48 @@ export function NotificationBell() {
                 </div>
               ) : null}
 
+              {plazaItems.length > 0 ? (
+                <div className="border-b border-white/10 px-3 py-2">
+                  <p className="mb-2 text-[10px] font-semibold uppercase text-cyan-300">Tu plaza</p>
+                  <ul className="max-h-52 space-y-2 overflow-y-auto">
+                    {plazaItems.map((item) => (
+                      <li key={item.id} className="rounded-xl bg-cyan-500/10 px-2 py-2">
+                        <div className="flex items-start gap-1">
+                          <p className="min-w-0 flex-1 break-words text-xs font-semibold text-white">{item.text}</p>
+                          <button
+                            type="button"
+                            onClick={() => void dismissItem(item)}
+                            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-zinc-500 hover:bg-white/10 hover:text-rose-300"
+                            aria-label="Eliminar notificación"
+                            title="Eliminar"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <div className="mt-1.5 flex gap-1">
+                          <button
+                            type="button"
+                            disabled={busy === item.id}
+                            onClick={() => void replyPlazaLive(item)}
+                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg bg-rose-500 px-2 text-[11px] font-bold text-white disabled:opacity-50"
+                          >
+                            <Radio size={13} /> Transmitir LIVE
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy === item.id}
+                            onClick={() => replyPlazaChat(item)}
+                            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg bg-white/10 px-2 text-[11px] font-bold text-white disabled:opacity-50"
+                          >
+                            <MessageCircle size={13} /> Responder en chat
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
               {inviteItems.length > 0 ? (
                 <div className="border-b border-white/10 px-3 py-2">
                   <p className="mb-2 text-[10px] font-semibold uppercase text-fuchsia-300">
@@ -641,7 +719,8 @@ export function NotificationBell() {
                 {otherItems.length === 0 &&
                 requests.length === 0 &&
                 inviteItems.length === 0 &&
-                battleItems.length === 0 ? (
+                battleItems.length === 0 &&
+                plazaItems.length === 0 ? (
                   <li className="px-2 py-6 text-center text-xs text-zinc-500">Sin notificaciones nuevas.</li>
                 ) : (
                   otherItems.map((item) => (

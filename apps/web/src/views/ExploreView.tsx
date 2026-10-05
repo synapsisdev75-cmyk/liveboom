@@ -97,6 +97,7 @@ export function ExploreView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = parseTab(searchParams.get('tab'));
   const videoParam = searchParams.get('v');
+  const plazaParam = searchParams.get('plaza') === '1';
   const tipoParam = searchParams.get('tipo');
   const boomClipOnly = tipoParam === 'boom_clip';
 
@@ -363,6 +364,7 @@ export function ExploreView() {
         sessionSeenRef.current = nextSeen;
         setSessionSeen(nextSeen);
         const next = new URLSearchParams(searchParams);
+        if (next.get('v') !== latestId) next.delete('plaza');
         next.set('tab', currentTab);
         next.set('v', latestId);
         setSearchParams(next, { replace: true });
@@ -381,6 +383,7 @@ export function ExploreView() {
     setIndices((state) => ({ ...state, [next]: nextIndex }));
     const nextId = queuesRef.current[next][nextIndex];
     const params = new URLSearchParams(searchParams);
+    params.delete('plaza');
     params.set('tab', next);
     if (nextId) params.set('v', nextId);
     else params.delete('v');
@@ -489,6 +492,7 @@ export function ExploreView() {
                 postId={activeId}
                 authorUid={postsById.get(activeId)?.authorUid || ''}
                 authorUsername={postsById.get(activeId)?.username || ''}
+                autoOpenThread={plazaParam && activeId === videoParam}
               />
             ) : null
           }

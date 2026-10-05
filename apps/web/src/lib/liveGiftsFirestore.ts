@@ -1368,9 +1368,10 @@ export function listenLiveAlerts(
       text: string;
       href: string;
       at: number;
-      kind: 'live' | 'invite' | 'battle';
+      kind: 'live' | 'invite' | 'battle' | 'plaza';
       hostUsername?: string;
       battleId?: string;
+      postId?: string;
     }>,
   ) => void,
 ): Unsubscribe {
@@ -1382,8 +1383,15 @@ export function listenLiveAlerts(
       onChange(
         snap.docs.map((item) => {
           const data = item.data();
+          const postId = data.postId ? String(data.postId) : '';
           const kind =
-            data.kind === 'invite' ? 'invite' : data.kind === 'battle' ? 'battle' : 'live';
+            data.kind === 'invite'
+              ? 'invite'
+              : data.kind === 'battle'
+                ? 'battle'
+                : postId && (data.kind === 'plaza' || data.href === '/transmitir')
+                  ? 'plaza'
+                  : 'live';
           return {
             id: item.id,
             text: String(
@@ -1399,6 +1407,7 @@ export function listenLiveAlerts(
             kind,
             hostUsername: data.hostUsername ? String(data.hostUsername) : undefined,
             battleId: data.battleId ? String(data.battleId) : undefined,
+            postId: postId || undefined,
           };
         }),
       );
