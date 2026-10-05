@@ -1133,7 +1133,7 @@ export function PostVideoPlayer({
           >
             <div className="pointer-events-auto space-y-2">
             {contentBadge ? (
-              <span className="inline-flex rounded-md bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-200 ring-1 ring-white/15">
+              <span className="lb-post-overlay__badge inline-flex rounded-md bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-200 ring-1 ring-white/15">
                 {contentBadge}
               </span>
             ) : null}
@@ -1145,14 +1145,14 @@ export function PostVideoPlayer({
             {originalUsername ? (
               <Link
                 to={originalHref || profileHref(originalUsername)}
-                className="inline-block text-sm font-bold text-white drop-shadow hover:text-cyan-300"
+                className="lb-post-overlay__author inline-block text-sm font-bold text-white drop-shadow hover:text-cyan-300"
               >
                 @{originalUsername}
               </Link>
             ) : authorUsername ? (
               <Link
                 to={profileHref(authorUsername, authorUid)}
-                className="inline-block text-sm font-bold text-white drop-shadow hover:text-cyan-300"
+                className="lb-post-overlay__author inline-block text-sm font-bold text-white drop-shadow hover:text-cyan-300"
               >
                 @{authorUsername}
               </Link>

@@ -3758,6 +3758,12 @@ html:has(.lb-legal-page) #root {
   );
 }
 
+/* Explorar: sin etiqueta de tipo ni @autor sobre el video (el avatar del rail lleva al perfil). */
+.lb-explore-view .lb-post-overlay__badge,
+.lb-explore-view .lb-post-overlay__author {
+  display: none;
+}
+
 /* PC: la X de salir vive arriba-izquierda; el mute de un video ancho no se mete debajo. */
 @media (min-width: 1024px) {
   .lb-explore-view .lb-immersive-media-box[data-fill='contain'] .lb-media-mute-fab {
