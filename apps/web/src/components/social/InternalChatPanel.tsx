@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronLeft,
   Languages,
+  MapPin,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -56,6 +57,9 @@ import { APP_LOCALES, LOCALE_META, type AppLocale } from '../../i18n/locales';
 import { useLocaleStore } from '../../store/localeStore';
 import { readChatTranslateTarget, writeChatTranslateTarget } from '../../lib/chatTranslatePref';
 import { GifPickerSheet } from './GifPickerSheet';
+import { LocationShareCard } from '../location/LocationShareCard';
+import { LocationShareModal } from '../location/LocationShareModal';
+import { buildLocationUrl, LOCATION_MESSAGE_TEXT, parseLocationUrl } from '../../lib/locationShare';
 import { CHAT_EMOJI_SIZE, CHAT_LIST_EMOJI_SIZE, isEmojiOnlyText } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
@@ -260,6 +264,7 @@ function replySnippetForMessage(message: ChatMessage): string {
   if (message.mediaType === 'gif') return 'GIF';
   if (message.mediaType === 'file') return 'Archivo';
   if (message.giftId) return 'Regalo';
+  if (parseLocationUrl(message.linkUrl)) return LOCATION_MESSAGE_TEXT;
   if (message.linkUrl) return message.linkUrl;
   const text = (message.text || '').trim();
   if (!text) return 'Mensaje';
@@ -473,6 +478,7 @@ function ChatAttachMenu({
   onVideoNote,
   onFile,
   onGif,
+  onLocation,
 }: {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
@@ -483,6 +489,7 @@ function ChatAttachMenu({
   onVideoNote: () => void;
   onFile: () => void;
   onGif: () => void;
+  onLocation: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, ready: false });
@@ -612,6 +619,12 @@ function ChatAttachMenu({
             GIF
           </span>
           GIF
+        </button>
+        <button type="button" role="menuitem" className="lb-chat-attach-cell" onClick={() => pick(onLocation)}>
+          <span className="lb-chat-attach-ico is-location">
+            <MapPin size={18} />
+          </span>
+          Ubicación
         </button>
       </div>
       <button type="button" role="menuitem" className="lb-chat-attach-note" onClick={() => pick(onVideoNote)}>
@@ -791,6 +804,7 @@ export function InternalChatPanel({
   const [onlineByUid, setOnlineByUid] = useState<Record<string, boolean>>({});
   const [pendingImage, setPendingImage] = useState<{ file: File; url: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [videoNoteOpen, setVideoNoteOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -2524,7 +2538,8 @@ export function InternalChatPanel({
                 !/^📷\s*Foto$/i.test(message.text.trim()) &&
                 !/^🎬\s*Nota de video$/i.test(message.text.trim()) &&
                 !/^GIF$/i.test(message.text.trim()) &&
-                !/^📎/.test(message.text.trim());
+                !/^📎/.test(message.text.trim()) &&
+                !(message.text.trim() === LOCATION_MESSAGE_TEXT && parseLocationUrl(message.linkUrl));
               const isBarePhoto =
                 !gone &&
                 !isSticker &&
@@ -2806,7 +2821,13 @@ export function InternalChatPanel({
                             {isAudio && message.mediaUrl ? (
                               <VoiceNotePlayer src={message.mediaUrl} mine={message.mine} />
                             ) : null}
-                            {message.linkUrl ? (
+                            {message.linkUrl && parseLocationUrl(message.linkUrl) ? (
+                              <LocationShareCard
+                                location={parseLocationUrl(message.linkUrl)!}
+                                compact
+                                className="mb-1 w-[min(16rem,68vw)]"
+                              />
+                            ) : message.linkUrl ? (
                               <a
                                 href={message.linkUrl}
                                 target="_blank"
@@ -3326,6 +3347,14 @@ export function InternalChatPanel({
                     setEmojiPickerOpen(false);
                     setStickerOpen(false);
                   }}
+                  onLocation={() => setLocationOpen(true)}
+                />
+                <LocationShareModal
+                  open={locationOpen}
+                  onClose={() => setLocationOpen(false)}
+                  mode="pick"
+                  pickLabel="Enviar ubicación"
+                  onPick={(loc) => send(LOCATION_MESSAGE_TEXT, { linkUrl: buildLocationUrl(loc) })}
                 />
               </div>
               <form

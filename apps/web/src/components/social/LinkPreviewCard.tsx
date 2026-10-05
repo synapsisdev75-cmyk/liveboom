@@ -1,4 +1,6 @@
 import type { LinkPreviewData } from '../../lib/linkPreview';
+import { parseLocationUrl } from '../../lib/locationShare';
+import { LocationShareCard } from '../location/LocationShareCard';
 
 type Props = {
   preview: LinkPreviewData;
@@ -7,6 +9,9 @@ type Props = {
 };
 
 export function LinkPreviewCard({ preview, onDismiss, compact = false }: Props) {
+  const location = parseLocationUrl(preview.url);
+  if (location) return <LocationShareCard location={location} onDismiss={onDismiss} compact={compact} />;
+
   const host =
     preview.siteName ||
     (() => {

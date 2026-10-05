@@ -63,6 +63,8 @@ import { useMessagesMenuStore } from '../../store/messagesMenuStore';
 import { MessagesSideRail } from '../social/MessagesQuickMenu';
 import { SidebarWalletDock } from './SidebarWalletDock';
 import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
+import { LocationShareModal } from '../location/LocationShareModal';
+import type { SharedLocation } from '../../lib/locationShare';
 
 const ZoneLiveMap = lazy(() => import('./ZoneLiveMap'));
 
@@ -1417,6 +1419,7 @@ function DiscoveryRail() {
   const [myPromotionsOpen, setMyPromotionsOpen] = useState(false);
   const [locBusy, setLocBusy] = useState(false);
   const [showPrompt, setShowPrompt] = useState(() => !locationPromptDismissed());
+  const [shareLoc, setShareLoc] = useState<SharedLocation | null>(null);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
@@ -1532,8 +1535,24 @@ function DiscoveryRail() {
                 <Suspense
                   fallback={<div className="mt-2 h-[clamp(9rem,22vh,11rem)] animate-pulse rounded-xl bg-white/5" />}
                 >
-                  <ZoneLiveMap saved={{ lat: location.lat, lng: location.lng }} />
+                  <ZoneLiveMap
+                    saved={{ lat: location.lat, lng: location.lng }}
+                    onShare={(pos) =>
+                      setShareLoc({
+                        lat: pos.lat,
+                        lng: pos.lng,
+                        accuracy: pos.accuracy,
+                        label: [location.city, location.regionLabel].filter(Boolean).join(' · '),
+                      })
+                    }
+                  />
                 </Suspense>
+                <LocationShareModal
+                  open={Boolean(shareLoc)}
+                  onClose={() => setShareLoc(null)}
+                  mode="share"
+                  initial={shareLoc}
+                />
               </>
             ) : showPrompt ? (
               <button

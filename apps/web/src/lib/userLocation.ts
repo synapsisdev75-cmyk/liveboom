@@ -51,7 +51,7 @@ export async function fetchPrivateLocation(uid: string): Promise<PrivateUserLoca
   };
 }
 
-async function reverseGeocode(lat: number, lng: number) {
+export async function reverseGeocode(lat: number, lng: number) {
   const url = new URL('https://nominatim.openstreetmap.org/reverse');
   url.searchParams.set('lat', String(lat));
   url.searchParams.set('lon', String(lng));

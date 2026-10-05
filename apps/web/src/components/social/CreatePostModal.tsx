@@ -1,5 +1,5 @@
 import { useBackLayer } from '../../lib/backLayer';
-import { Bell, Camera, ChevronLeft, ChevronRight, Globe, Image, LayoutGrid, Lock, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
+import { Bell, Camera, ChevronLeft, ChevronRight, Globe, Image, LayoutGrid, Lock, MapPin, Music2, Paperclip, PenLine, Plus, Redo2, Smile, Trash2, Undo2, Users, Video, Wand2, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
@@ -13,6 +13,8 @@ import {
   type LinkPreviewData,
 } from '../../lib/linkPreview';
 import { LinkPreviewCard } from './LinkPreviewCard';
+import { LocationShareModal } from '../location/LocationShareModal';
+import { locationLinkPreview, parseLocationUrl } from '../../lib/locationShare';
 import { readVideoDurationSec } from '../../lib/videoDuration';
 import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
@@ -147,6 +149,7 @@ export function CreatePostModal({
   const captionInputRef = useRef<EmojiInputHandle>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
   const [linkPreviewBusy, setLinkPreviewBusy] = useState(false);
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const linkPreviewReqRef = useRef(0);
   const seedAppliedRef = useRef(false);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -678,6 +681,7 @@ export function CreatePostModal({
 
   useEffect(() => {
     if (!open) return;
+    if (linkPreview && parseLocationUrl(linkPreview.url)) return;
     const url = extractFirstHttpUrl(caption);
     if (!url) {
       setLinkPreview(null);
@@ -1991,6 +1995,27 @@ export function CreatePostModal({
                         </span>
                       </span>
                     </button>
+                    {composeTab === 'publication' ? (
+                      <>
+                        <div className="lb-composer-attach-menu__rule mx-3 h-px" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMediaMenuOpen(false);
+                            setLocationPickerOpen(true);
+                          }}
+                          className="flex min-h-14 w-full items-center gap-3 px-3.5 py-2.5 text-left transition hover:bg-white/5 active:bg-white/10"
+                        >
+                          <MapPin size={18} className="shrink-0 text-cyan-300" />
+                          <span className="min-w-0">
+                            <span className="lb-composer-attach-menu__title block text-sm font-bold">Ubicación</span>
+                            <span className="lb-composer-attach-menu__sub block text-[11px] leading-snug">
+                              Comparte un mapa con tu ubicación
+                            </span>
+                          </span>
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
                 ) : null}
@@ -2292,6 +2317,17 @@ export function CreatePostModal({
         />
       ) : null}
       <GifPickerSheet open={gifPickerOpen} onClose={() => setGifPickerOpen(false)} onPick={pickGif} />
+      <LocationShareModal
+        open={locationPickerOpen}
+        onClose={() => setLocationPickerOpen(false)}
+        mode="pick"
+        pickLabel="Adjuntar a la publicación"
+        onPick={(loc) => {
+          linkPreviewReqRef.current += 1;
+          setLinkPreviewBusy(false);
+          setLinkPreview(locationLinkPreview(loc));
+        }}
+      />
       <StickerPickerSheet
         open={stickerPickerOpen}
         onClose={() => setStickerPickerOpen(false)}

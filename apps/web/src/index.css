@@ -15773,6 +15773,11 @@ a.lb-entity:active,
   color: var(--accent-primary);
 }
 
+.lb-chat-attach-ico.is-location {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+
 @media (pointer: coarse) {
   .lb-chat-attach-item {
     min-height: 2.85rem;

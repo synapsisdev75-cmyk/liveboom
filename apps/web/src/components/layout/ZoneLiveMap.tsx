@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { LocateFixed } from 'lucide-react';
+import { LocateFixed, Share2 } from 'lucide-react';
 
 type Coords = { lat: number; lng: number; accuracy?: number };
 
@@ -15,7 +15,13 @@ function validCoords(c: { lat: number; lng: number } | null | undefined): c is C
  * Mapa de "Tu zona": muestra la última ubicación guardada y, con permiso del navegador,
  * sigue la posición en tiempo real solo en este dispositivo (no se guarda cada movimiento).
  */
-export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: number } | null }) {
+export default function ZoneLiveMap({
+  saved,
+  onShare,
+}: {
+  saved: { lat: number; lng: number } | null;
+  onShare?: (pos: Coords) => void;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
@@ -179,15 +185,27 @@ export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: numb
           <LocateFixed size={16} />
         </button>
       </div>
-      {!watching ? (
-        <button
-          type="button"
-          onClick={startLive}
-          className="mt-2 min-h-9 w-full rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-300"
-        >
-          Ver en tiempo real
-        </button>
-      ) : null}
+      <div className={`mt-2 grid gap-2 ${!watching && onShare ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {!watching ? (
+          <button
+            type="button"
+            onClick={startLive}
+            className="min-h-9 w-full rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-300"
+          >
+            Ver en tiempo real
+          </button>
+        ) : null}
+        {onShare ? (
+          <button
+            type="button"
+            onClick={() => onShare(pos)}
+            className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] text-[11px] font-bold text-[#0b0f19]"
+          >
+            <Share2 size={13} style={{ color: '#0b0f19' }} />
+            Compartir
+          </button>
+        ) : null}
+      </div>
       {error ? <p className="mt-1 text-[10px] text-rose-400">{error}</p> : null}
     </div>
   );
