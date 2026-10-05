@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { isPromotionVideoUrl } from '../../lib/promotionLinks';
 import {
   formatPromoCop,
   PROMO_ANIMATED_MONTHLY_REF,
@@ -72,6 +75,16 @@ export function AdminAdsPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [expanded, setExpanded] = useState<Campaign | null>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpanded(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [expanded]);
 
   async function loadCampaigns() {
     const res = await api<{ campaigns: Campaign[] }>('/api/ads/admin/campaigns');
@@ -133,6 +146,7 @@ export function AdminAdsPanel() {
       await loadCampaigns();
       setNote(action === 'approve' ? 'Campaña aprobada. El plazo empieza ahora.' : 'Campaña rechazada.');
       setRejectReason('');
+      setExpanded(null);
     } catch (err) {
       setNote(err instanceof Error ? err.message : 'No se pudo actualizar');
     } finally {
@@ -210,7 +224,7 @@ export function AdminAdsPanel() {
                     Por revisar · {deadline.text}
                   </p>
                 ) : null}
-                <PromotionBanner ad={ad} compact preview />
+                <PromotionBanner ad={ad} compact preview onOpen={() => setExpanded(ad)} />
                 <dl className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
                   <div className="min-w-0">
                     <dt className="inline text-zinc-500">Comprador: </dt>
@@ -252,16 +266,25 @@ export function AdminAdsPanel() {
                     </div>
                   ) : null}
                 </dl>
-                {ad.mediaUrl ? (
-                  <a
-                    href={ad.mediaUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex min-h-11 items-center rounded-xl border border-white/10 px-3 text-xs font-semibold text-cyan-300"
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(ad)}
+                    className="inline-flex min-h-11 items-center rounded-xl bg-fuchsia-500/15 px-3 text-xs font-semibold text-fuchsia-200 ring-1 ring-fuchsia-400/40"
                   >
-                    Ver archivo subido
-                  </a>
-                ) : null}
+                    Ver banner desplegado
+                  </button>
+                  {ad.mediaUrl ? (
+                    <a
+                      href={ad.mediaUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-h-11 items-center rounded-xl border border-white/10 px-3 text-xs font-semibold text-cyan-300"
+                    >
+                      Ver archivo subido
+                    </a>
+                  ) : null}
+                </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-400">
                   <span>Pago: {ad.paymentStatus || 'histórico'}</span>
                   <span>Revisión: {ad.reviewStatus || 'histórico'}</span>
@@ -405,6 +428,144 @@ export function AdminAdsPanel() {
           </div>
         </div>
       ) : null}
+
+      {expanded ? (
+        <ExpandedBannerModal
+          ad={expanded}
+          busy={busy}
+          rejectReason={rejectReason}
+          onRejectReasonChange={setRejectReason}
+          onClose={() => setExpanded(null)}
+          onDecide={(action) => void decide(expanded.id, action)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function ExpandedBannerModal({
+  ad,
+  busy,
+  rejectReason,
+  onRejectReasonChange,
+  onClose,
+  onDecide,
+}: {
+  ad: Campaign;
+  busy: boolean;
+  rejectReason: string;
+  onRejectReasonChange: (value: string) => void;
+  onClose: () => void;
+  onDecide: (action: 'approve' | 'reject') => void;
+}) {
+  const isVideo = ad.mediaUrl ? isPromotionVideoUrl(ad.mediaUrl) : false;
+  const pending = ad.reviewStatus === 'pending';
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] grid place-items-end overflow-hidden bg-[rgba(0,0,0,0.7)] p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Banner de ${ad.title}`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="lb-safe-sheet flex max-h-[94dvh] w-full min-w-0 max-w-4xl flex-col rounded-t-3xl border border-white/10 bg-zinc-950 sm:max-h-[min(94dvh,calc(100dvh-2rem))] sm:rounded-3xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0">
+            <p className="truncate text-base font-bold text-white">{ad.title}</p>
+            <p className="truncate text-xs text-zinc-400">
+              {ad.ownerDisplayName || ad.ownerUsername}
+              {ad.ownerUsername ? ` · @${ad.ownerUsername}` : ''} · {campaignDuration(ad.hours)} ·{' '}
+              {ad.regionLabel || ad.regionId}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 text-zinc-300 hover:text-white"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+          <section>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Archivo completo</p>
+            <div className="grid place-items-center overflow-hidden rounded-2xl border border-white/10 bg-[#000]">
+              {ad.mediaUrl ? (
+                isVideo ? (
+                  <video
+                    src={ad.mediaUrl}
+                    className="max-h-[55dvh] w-full object-contain"
+                    controls
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                  />
+                ) : (
+                  <img src={ad.mediaUrl} alt={ad.title} className="max-h-[55dvh] w-full object-contain" />
+                )
+              ) : (
+                <p className="p-8 text-sm text-zinc-400">Esta campaña no tiene archivo; se muestra solo el título.</p>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+              Así se verá en la app
+            </p>
+            <div className="w-full max-w-[20rem] rounded-2xl border border-white/10 bg-zinc-900/80 p-3">
+              <PromotionBanner ad={ad} preview />
+            </div>
+          </section>
+
+          {ad.linkUrl ? (
+            <section className="text-sm">
+              <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Enlace al tocar</p>
+              <a href={ad.linkUrl} target="_blank" rel="noreferrer" className="break-all text-cyan-300 underline">
+                {ad.linkUrl}
+              </a>
+            </section>
+          ) : null}
+        </div>
+
+        {pending ? (
+          <div className="shrink-0 space-y-2 border-t border-white/10 p-4">
+            <label className="block text-xs text-zinc-400">
+              Motivo si rechazas
+              <input
+                value={rejectReason}
+                onChange={(e) => onRejectReasonChange(e.target.value)}
+                className="mt-1 min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm text-white"
+              />
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDecide('approve')}
+                className="min-h-11 flex-1 rounded-xl bg-emerald-500/20 px-3 text-sm font-semibold text-emerald-100"
+              >
+                Aprobar y publicar
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDecide('reject')}
+                className="min-h-11 flex-1 rounded-xl bg-rose-500/15 px-3 text-sm font-semibold text-rose-200"
+              >
+                Rechazar
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
   );
 }
