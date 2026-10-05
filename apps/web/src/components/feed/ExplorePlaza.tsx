@@ -204,14 +204,14 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
 
   return (
     <>
-      <div className="lb-explore-plaza pointer-events-none absolute inset-x-0 bottom-0 z-[34] flex flex-col items-start gap-1.5 px-[max(0.65rem,var(--lb-safe-left))]">
+      <div className="lb-explore-plaza pointer-events-none absolute inset-x-0 bottom-0 z-[34] flex flex-col items-end gap-1.5 pl-[max(0.65rem,var(--lb-safe-left))] pr-[max(0.65rem,var(--lb-safe-right))]">
         {closingNote ? (
           <p className="lb-explore-plaza__closing pointer-events-none max-w-[min(100%,20rem)] rounded-2xl bg-black/55 px-3 py-1.5 text-xs font-medium leading-snug text-white backdrop-blur-md">
             {closingNote}
           </p>
         ) : null}
         {previews.length > 0 ? (
-          <div className="lb-explore-plaza__previews flex max-w-[min(100%,17rem)] flex-col items-start gap-1" aria-live="polite">
+          <div className="lb-explore-plaza__previews flex max-w-[min(100%,17rem)] flex-col items-end gap-1" aria-live="polite">
             {previews.map((message) => (
               <button
                 key={message.id}
@@ -239,7 +239,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
             ))}
           </div>
         ) : null}
-        <div className="lb-explore-plaza__bar pointer-events-auto flex max-w-[min(100%,18rem)] flex-wrap items-center gap-1.5">
+        <div className="lb-explore-plaza__bar pointer-events-auto flex max-w-[min(100%,18rem)] flex-wrap items-center justify-end gap-1.5">
           {shown.map((viewer) => (
             <button
               key={viewer.uid}
