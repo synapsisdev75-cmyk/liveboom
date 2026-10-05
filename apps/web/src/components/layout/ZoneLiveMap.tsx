@@ -44,7 +44,7 @@ export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: numb
     const finePointer = window.matchMedia('(pointer: fine)').matches;
     const map = L.map(host, {
       center: [start.lat, start.lng],
-      zoom: 14,
+      zoom: 13,
       zoomControl: false,
       scrollWheelZoom: false,
       dragging: finePointer,
@@ -160,7 +160,7 @@ export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: numb
 
   function recenter() {
     followRef.current = true;
-    if (pos) mapRef.current?.setView([pos.lat, pos.lng], Math.max(mapRef.current.getZoom(), 14));
+    if (pos) mapRef.current?.setView([pos.lat, pos.lng], Math.max(mapRef.current.getZoom(), 13));
     if (!watching) startLive();
   }
 
