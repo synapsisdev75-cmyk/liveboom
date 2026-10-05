@@ -13,6 +13,7 @@ import {
   type SocialPost,
 } from '../components/social/SocialPostCard';
 import { ageFromIsoDate } from '../lib/birthDate';
+import { listenCreatorClosing } from '../lib/explorePresence';
 import { LevelAvatarFrame } from '../components/profile/LevelAvatarFrame';
 import { LevelInsignia } from '../components/profile/LevelInsignia';
 import { ProfileLevelTrophies } from '../components/profile/ProfileLevelTrophies';
@@ -117,6 +118,7 @@ export function UserProfileView() {
   const setProfile = useAuthStore((state) => state.setProfile);
   const ready = useAuthStore((state) => state.ready);
   const [publicProfile, setPublicProfile] = useState<PublicProfile | null>(null);
+  const [closingNote, setClosingNote] = useState('');
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [followers, setFollowers] = useState<UserChip[]>([]);
   const [following, setFollowing] = useState<UserChip[]>([]);
@@ -210,6 +212,8 @@ export function UserProfileView() {
   useEffect(() => {
     if (autoOpenCreate) setCreateOpen(true);
   }, [autoOpenCreate]);
+
+  useEffect(() => listenCreatorClosing(username, setClosingNote), [username]);
 
   function openCreatePost() {
     setEditingPost(null);
@@ -672,6 +676,9 @@ export function UserProfileView() {
           </div>
           {publicProfile.displayName !== publicProfile.username ? (
             <p className="text-base font-medium leading-snug text-zinc-400">@{publicProfile.username}</p>
+          ) : null}
+          {closingNote ? (
+            <p className="max-w-prose text-sm font-medium leading-snug text-white/90">{closingNote}</p>
           ) : null}
           {publicProfile.isOwnProfile && profile?.birthDate && ageFromIsoDate(profile.birthDate) != null ? (
             <p className="text-xs leading-snug text-cyan-400">

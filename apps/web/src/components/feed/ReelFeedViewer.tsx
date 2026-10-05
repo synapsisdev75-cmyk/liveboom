@@ -1,6 +1,6 @@
 import { useBackLayer } from '../../lib/backLayer';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   listenPostReactions,
@@ -69,6 +69,8 @@ type Props = {
   activeId?: string | null;
   /** Explorar: latest-wins, pool de prefetch y sin remount del reproductor. */
   exploreFastNav?: boolean;
+  /** Solo Explorar: plaza (presencia, hilo, puerta al LIVE). Apagada en el resto. */
+  plaza?: ReactNode;
 };
 
 export function ReelFeedViewer({
@@ -82,6 +84,7 @@ export function ReelFeedViewer({
   onIndexChange,
   activeId,
   exploreFastNav = false,
+  plaza = null,
 }: Props) {
   useBodyScrollLock(!embedded);
   useBackLayer(!embedded, onClose);
@@ -446,7 +449,12 @@ export function ReelFeedViewer({
   );
 
   if (embedded) {
-    return <div className="relative h-full w-full overflow-hidden bg-black">{player}</div>;
+    return (
+      <div className="relative h-full w-full overflow-hidden bg-black">
+        {player}
+        {plaza}
+      </div>
+    );
   }
 
   if (typeof document === 'undefined') return player;

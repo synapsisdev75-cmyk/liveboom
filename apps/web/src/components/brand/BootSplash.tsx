@@ -41,7 +41,7 @@ export function BootSplash() {
   const [timedOut, setTimedOut] = useState(false);
   const [warmPhase, setWarmPhase] = useState<'idle' | 'running' | 'settled'>('idle');
   const [warmTimedOut, setWarmTimedOut] = useState(false);
-  const onHome = pathname === '/';
+  const onHome = pathname === '/inicio';
 
   useEffect(() => {
     const onFeed = () => setFeedReady(true);

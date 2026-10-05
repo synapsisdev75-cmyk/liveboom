@@ -30,6 +30,8 @@ import { isStoryPost } from '../lib/storyLifecycle';
 import { listenExploreVideoPool, listenFollowing, type FsPost } from '../lib/socialFirestore';
 import { warmExploreActiveVideo } from '../lib/feedVideoWarmup';
 import { enterExploreWithSound } from '../lib/exploreFeedMute';
+import { listenExploreHeat } from '../lib/explorePresence';
+import { ExplorePlaza } from '../components/feed/ExplorePlaza';
 import { useAuthStore } from '../store/authStore';
 import { useT } from '../i18n';
 
@@ -90,6 +92,7 @@ export function ExploreView() {
   useEffect(() => leaveExploreSound, [leaveExploreSound]);
   const profile = useAuthStore((state) => state.profile);
   const ready = useAuthStore((state) => state.ready);
+  const [heat, setHeat] = useState<Map<string, number>>(() => new Map());
   const uid = profile?.firebaseUid || '';
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = parseTab(searchParams.get('tab'));
@@ -121,6 +124,8 @@ export function ExploreView() {
     virales: false,
     recientes: false,
   });
+
+  useEffect(() => listenExploreHeat(setHeat), []);
 
   queuesRef.current = queues;
   historyRef.current = history;
@@ -196,7 +201,7 @@ export function ExploreView() {
     const viewer = { uid, followingUids };
     const salt = saltRef.current;
     const forYou = preferUnseenFirst(
-      rankExploreForYou(eligible, viewer, history, salt),
+      rankExploreForYou(eligible, viewer, history, salt, Date.now(), heat),
       sessionSeen,
     ).map((post) => post.id);
     const viral = preferUnseenFirst(rankExploreViral(eligible), sessionSeen).map((post) => post.id);
@@ -210,7 +215,7 @@ export function ExploreView() {
       virales: viral.length ? viral : fallback,
       recientes: recent.length ? recent : fallback,
     };
-  }, [eligible, uid, followingUids, history, sessionSeen]);
+  }, [eligible, uid, followingUids, history, sessionSeen, heat]);
 
   useEffect(() => {
     const prevQueues = queuesRef.current;
@@ -418,7 +423,7 @@ export function ExploreView() {
       />
       {/* Salir: PC a la izquierda; móvil landscape en círculo arriba-derecha. */}
       <Link
-        to="/"
+        to="/inicio"
         className={`lb-explore-exit pointer-events-auto absolute z-[35] h-11 w-11 min-h-11 min-w-11 rounded-full border border-white/25 bg-black/70 text-white shadow-[0_6px_16px_rgba(0,0,0,0.35)] backdrop-blur-md transition hover:bg-black/85 hover:border-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/80 ${
           deviceLandscape
             ? 'inline-grid right-[max(0.5rem,var(--lb-safe-right))] top-[max(0.45rem,var(--lb-safe-top))] lg:left-[max(0.5rem,var(--lb-safe-left))] lg:right-auto'
@@ -478,6 +483,15 @@ export function ExploreView() {
           immersiveLandscapeLayout
           exploreFastNav
           onIndexChange={onIndexChange}
+          plaza={
+            activeId && postsById.get(activeId) ? (
+              <ExplorePlaza
+                postId={activeId}
+                authorUid={postsById.get(activeId)?.authorUid || ''}
+                authorUsername={postsById.get(activeId)?.username || ''}
+              />
+            ) : null
+          }
         />
       )}
     </div>

@@ -8,7 +8,8 @@ import { Capacitor } from '@capacitor/core';
 type Loader = () => Promise<unknown>;
 
 const loaders: Record<string, Loader> = {
-  '/': () => import('../views/HomeView'),
+  '/': () => import('../views/ExploreView'),
+  '/inicio': () => import('../views/HomeView'),
   '/explorar': () => import('../views/ExploreView'),
   '/tendencias': () => import('../views/TrendsView'),
   '/grupos': () => import('../views/GroupsView'),
@@ -59,7 +60,7 @@ export function prefetchRoute(path: string): void {
   cache.set(key, promise);
 }
 
-const IDLE_PATHS = ['/explorar', '/mensajes', '/transmitir', '/buscar', '/billetera', '/'] as const;
+const IDLE_PATHS = ['/explorar', '/inicio', '/mensajes', '/transmitir', '/buscar', '/billetera'] as const;
 
 /** Precarga rutas frecuentes en idle (tras auth / shell listo). */
 export function idlePrefetchRoutes(paths?: readonly string[]): void {

@@ -175,7 +175,8 @@ export default function App() {
           <Route path="/legal/:slug" element={<LegalView />} />
           <Route path="/stream/:username" element={<LiveRoom />} />
           <Route element={<MainLayout />}>
-            <Route index element={<HomeView />} />
+            <Route index element={<Navigate to="/explorar" replace />} />
+            <Route path="inicio" element={<HomeView />} />
             <Route path="explorar" element={<ExploreView />} />
             <Route path="tendencias" element={<TrendsView />} />
             <Route path="grupos" element={<GroupsView />} />

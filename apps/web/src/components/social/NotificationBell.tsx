@@ -259,7 +259,7 @@ export function NotificationBell() {
         const fresh = notes[0];
         if (fresh && Date.now() - fresh.at < 90_000) {
           playLiveAlert();
-          if (fresh.kind === 'live') {
+          if (fresh.kind === 'live' && fresh.href.startsWith('/stream/')) {
             void notifyFriendLiveSystem({
               name: fresh.text.replace(/\s+está en LIVE$/i, '') || 'Amigo',
               username: fresh.hostUsername,

@@ -254,6 +254,7 @@ function forYouScore(
   salt: number,
   now: number,
   momentumByCreator: Map<string, number>,
+  heat = 0,
 ): number {
   const likes = Math.max(0, Number(post.likes) || 0);
   const uid = authorId(post);
@@ -293,8 +294,9 @@ function forYouScore(
     !taste.hasSignals,
   );
   const noise = unitNoise(viewer.uid, `${post.id}:fy`, salt) * 4;
-  if (hist && hist.watchCount >= 2 && hist.watchPct < 0.4) return score * 0.3 + noise;
-  return score + noise;
+  const plaza = Math.min(Math.max(0, heat), 30) * 22;
+  if (hist && hist.watchCount >= 2 && hist.watchPct < 0.4) return score * 0.3 + noise + plaza;
+  return score + noise + plaza;
 }
 
 export function rankExploreForYou<T extends ExploreRankPost>(
@@ -303,6 +305,7 @@ export function rankExploreForYou<T extends ExploreRankPost>(
   history: ExploreHistory,
   salt: number,
   now = Date.now(),
+  heatByPostId?: ReadonlyMap<string, number>,
 ): T[] {
   const unique = dedupePosts(posts);
   if (unique.length === 0) return [];
@@ -321,8 +324,8 @@ export function rankExploreForYou<T extends ExploreRankPost>(
   }
   const scored = [...unique].sort((a, b) => {
     const diff =
-      forYouScore(b, viewer, history, taste, salt, now, momentumByCreator) -
-      forYouScore(a, viewer, history, taste, salt, now, momentumByCreator);
+      forYouScore(b, viewer, history, taste, salt, now, momentumByCreator, heatByPostId?.get(b.id) || 0) -
+      forYouScore(a, viewer, history, taste, salt, now, momentumByCreator, heatByPostId?.get(a.id) || 0);
     if (Math.abs(diff) > 1e-9) return diff;
     return createdMs(b) - createdMs(a);
   });

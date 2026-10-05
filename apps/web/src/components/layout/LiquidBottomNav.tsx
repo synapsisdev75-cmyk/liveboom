@@ -38,7 +38,7 @@ function profilePathHandle(pathname: string): string | null {
 
 /** `/perfil` redirige a `/u/:handle` — hay que tratar ambos como Perfil activo. */
 function isItemActive(pathname: string, to: string, ownHandle?: string | null) {
-  if (to === '/') return pathname === '/';
+  if (to === '/inicio') return pathname === '/inicio';
   if (to === '/perfil') {
     if (pathname.startsWith('/perfil/editar')) return false;
     if (pathname === '/perfil' || pathname.startsWith('/perfil/')) return true;
@@ -145,9 +145,9 @@ export function LiquidBottomNav({ items }: Props) {
                 <li key={item.id} className="min-w-0">
                   <NavLink
                     to={item.to}
-                    end={item.to === '/'}
+                    end={item.id === 'home'}
                     onClick={() => {
-                      if (item.to === '/') requestGoHome();
+                      if (item.id === 'home') requestGoHome();
                     }}
                     onPointerEnter={() => prefetchRoute(item.to)}
                     onFocus={() => prefetchRoute(item.to)}

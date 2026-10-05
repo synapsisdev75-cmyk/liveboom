@@ -3938,7 +3938,7 @@ function CreatorStage({
     };
   }, []);
 
-  async function confirmLeave(dest: '/' | '/transmitir' = '/') {
+  async function confirmLeave(dest: '/' | '/transmitir' = '/', closingLine = '') {
     if (leaving) return;
     setLeaving(true);
     setEndLiveError(null);
@@ -3965,6 +3965,7 @@ function CreatorStage({
           giftsCount,
           likes: liveBoomCount,
           goalCoins: liveStats?.goalCoins || goalCoins || 0,
+          closingLine: closingLine.trim().slice(0, 140),
         };
         if (!onLeaveLive) {
           hostSessionEndedRef.current = false;
@@ -6202,7 +6203,7 @@ function CreatorStage({
             setEndLiveError(null);
             setLeaveOpen(false);
           }}
-          onConfirm={() => void confirmLeave()}
+          onConfirm={(closingLine) => void confirmLeave('/', closingLine)}
         />
       ) : null}
       {leaveOpen && !isHost ? (

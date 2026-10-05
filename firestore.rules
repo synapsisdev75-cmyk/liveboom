@@ -924,6 +924,65 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
+    match /explorePresence/{postId} {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && request.resource.data.count is int
+        && request.resource.data.count >= 0
+        && request.resource.data.count <= 40
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+
+      match /viewers/{uid} {
+        allow read: if true;
+        allow create, update: if isSelf(uid)
+          && request.resource.data.uid == uid
+          && request.resource.data.username is string
+          && request.resource.data.username.size() > 0
+          && request.resource.data.username.size() <= 24
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.heartbeatAt == request.time
+          && (
+            request.resource.data.avatarUrl == null
+            || (
+              request.resource.data.avatarUrl is string
+              && request.resource.data.avatarUrl.size() <= 800
+            )
+          );
+        allow delete: if isSelf(uid);
+      }
+    }
+
+    match /explorePlaza/{postId} {
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && resource.data.createdAt > request.time - duration.value(20, 'm');
+        allow create: if signedIn()
+          && request.resource.data.fromUid == request.auth.uid
+          && request.resource.data.username is string
+          && request.resource.data.username.size() > 0
+          && request.resource.data.username.size() <= 24
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 280
+          && request.resource.data.createdAt == request.time
+          && (
+            request.resource.data.avatarUrl == null
+            || (
+              request.resource.data.avatarUrl is string
+              && request.resource.data.avatarUrl.size() <= 800
+            )
+          );
+        allow update, delete: if false;
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

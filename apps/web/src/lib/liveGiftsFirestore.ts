@@ -4,6 +4,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -253,6 +254,8 @@ export async function markLiveRoomActive(
       startedAtMs,
       heartbeatAtMs: Date.now(),
       endedAtMs: null,
+      closingNote: deleteField(),
+      closingAtMs: deleteField(),
       coinsEarned: 0,
       liveBoomCount: 0,
       boomRoundCount: 0,
@@ -287,6 +290,8 @@ export type LiveEndStats = {
   giftsCount?: number;
   likes?: number;
   goalCoins?: number;
+  /** Frase pública opcional al cerrar. Vacía = el vivo termina como siempre. */
+  closingLine?: string;
 };
 
 /** Marca la sala como cerrada cuando el anfitrión deja de transmitir. Idempotente. */
@@ -327,6 +332,10 @@ export async function markLiveRoomEnded(roomName: string, stats?: LiveEndStats) 
             ...(typeof stats?.goalCoins === 'number'
               ? { goalCoins: Math.max(0, Math.floor(stats.goalCoins)) }
               : {}),
+            ...(() => {
+              const line = String(stats?.closingLine || '').trim().slice(0, 140);
+              return line ? { closingNote: line, closingAtMs: now } : {};
+            })(),
           }),
       updatedAt: serverTimestamp(),
     },

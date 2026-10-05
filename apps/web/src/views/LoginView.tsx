@@ -10,7 +10,7 @@ export function LoginView() {
   if (!ready) return null;
 
   if (firebaseUser && profile) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/explorar" replace />;
   }
 
   return <AuthScreen />;

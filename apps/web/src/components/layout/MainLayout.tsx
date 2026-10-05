@@ -68,7 +68,7 @@ function useSideNavItems() {
   const messagesVisible = useMessagesInboxVisible();
   return useMemo(() => {
     const items = [
-      { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
+      { id: 'home', label: t('nav.home'), icon: Home, to: '/inicio' as const },
       { id: 'explore', label: t('nav.explore'), icon: Compass, to: '/explorar' as const },
       { id: 'groups', label: t('nav.groups'), icon: Users, to: '/grupos' as const },
       { id: 'wallet', label: t('nav.wallet'), icon: Wallet, to: '/billetera' as const },
@@ -87,7 +87,7 @@ function useMobileNavItems() {
   const messagesVisible = useMessagesInboxVisible();
   return useMemo(() => {
     const items = [
-      { id: 'home', label: t('nav.home'), icon: Home, to: '/' as const },
+      { id: 'home', label: t('nav.home'), icon: Home, to: '/inicio' as const },
       { id: 'explore', label: t('nav.explore'), icon: Compass, to: '/explorar' as const },
       { id: 'create', label: t('nav.create'), icon: Plus, to: '/crear' as const, accent: true },
       { id: 'messages', label: t('nav.messages'), icon: MessageCircle, to: '/mensajes' as const },
@@ -154,10 +154,9 @@ function SidebarBody({
         }`}
       >
         <Link
-          to="/"
+          to="/explorar"
           onClick={() => {
             onNavigate?.();
-            requestGoHome();
           }}
           className={`min-w-0 transition hover:opacity-90 ${rail ? 'grid place-items-center px-0' : 'flex-1 px-0.5'}`}
           title="LiveBoom"
@@ -207,10 +206,10 @@ function SidebarBody({
             <NavLink
               key={item.id}
               to={item.to}
-              end={item.to === '/'}
+              end={item.id === 'home'}
               onClick={() => {
                 onNavigate?.();
-                if (item.to === '/') requestGoHome();
+                if (item.id === 'home') requestGoHome();
               }}
               onPointerEnter={() => prefetchRoute(item.to)}
               onFocus={() => prefetchRoute(item.to)}
@@ -227,7 +226,7 @@ function SidebarBody({
                       size={18}
                       strokeWidth={isActive ? 2.35 : 1.75}
                       className={isActive ? 'lb-nav-icon shrink-0' : 'lb-nav-icon lb-nav-icon--idle shrink-0'}
-                      fill={isActive && item.to === '/' ? 'currentColor' : 'none'}
+                      fill={isActive && item.id === 'home' ? 'currentColor' : 'none'}
                     />
                     {item.to === '/mensajes' ? (
                       <SidebarUnreadHint
@@ -424,7 +423,7 @@ export function MainLayout() {
     };
     const onGoHome = () => {
       setMenuOpen(false);
-      if (location.pathname !== '/') navigate('/');
+      if (location.pathname !== '/inicio') navigate('/inicio');
       jump();
       requestAnimationFrame(jump);
       window.setTimeout(jump, 60);
@@ -493,10 +492,9 @@ export function MainLayout() {
       >
         <div className="lb-shell-header__brand flex min-w-0 items-center gap-1">
           <Link
-            to="/"
+            to="/explorar"
             className="min-w-0 shrink"
-            aria-label="Inicio"
-            onClick={() => requestGoHome()}
+            aria-label="Explorar"
           >
             <Logo compact className="[&_img]:!h-[2.65rem] [&_img]:!w-[4.6rem] [&_img]:!max-h-[2.65rem] [&_img]:!max-w-[4.6rem] [&_img]:!object-cover [&_img]:!object-[center_56%]" />
           </Link>

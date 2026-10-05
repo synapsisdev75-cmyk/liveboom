@@ -19,13 +19,15 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onToast?: (message: string) => void;
+  /** Contexto interno (video, mensaje) que viaja con el reporte. */
+  context?: string | null;
 };
 
 /**
  * Mecanismo de envío de comentarios / denuncias dentro de la app (sin salir),
  * requerido por la política de estándares de seguridad infantil de Google Play.
  */
-export function InAppFeedbackModal({ open, onClose, onToast }: Props) {
+export function InAppFeedbackModal({ open, onClose, onToast, context }: Props) {
   const signedIn = useAuthStore((state) => Boolean(state.firebaseUser || state.profile));
   const [category, setCategory] = useState<FeedbackCategory>('child_safety');
   const [message, setMessage] = useState('');
@@ -49,7 +51,9 @@ export function InAppFeedbackModal({ open, onClose, onToast }: Props) {
     setSending(true);
     setError(null);
     try {
-      await submitInAppFeedback({ category, message: text });
+      const note = (context || '').trim();
+      const payload = (note ? `${note}\n${text}` : text).slice(0, MESSAGE_MAX);
+      await submitInAppFeedback({ category, message: payload });
       onToast?.('Mensaje enviado. Gracias por ayudarnos a mantener LiveBoom segura.');
       setMessage('');
       setCategory('child_safety');
