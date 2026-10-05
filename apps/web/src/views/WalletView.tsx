@@ -380,7 +380,10 @@ export function WalletView() {
 
       {profile ? (
         <>
-          <section className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#12131a] p-4 sm:rounded-3xl sm:p-7">
+          <section
+            data-lb-surface="dark"
+            className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#12131a] p-4 sm:rounded-3xl sm:p-7"
+          >
             <video
               className="pointer-events-none absolute inset-0 h-full w-full object-cover"
               src="/wallet/balance-loop.mp4"
