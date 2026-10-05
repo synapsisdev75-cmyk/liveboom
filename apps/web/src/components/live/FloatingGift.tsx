@@ -20,9 +20,19 @@ import {
 import type { LiveAspectRatio } from '../../lib/liveAspectRatio';
 import { GiftLayoutMedia } from '../gifts/GiftLayoutMedia';
 import { giftImmersiveFit } from '../../lib/giftContentBounds';
-import { giftPlaybackDurationMs, giftPlaybackSrc } from '../../lib/giftMedia';
+import { giftPlaybackDurationMs, giftPlaybackSrc, giftStackedAlphaSrc } from '../../lib/giftMedia';
+import { createStackedAlphaRenderer, needsStackedAlphaVideo } from '../../lib/stackedAlphaVideo';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import { GiftComboBadge } from './GiftComboBadge';
+
+/** El video stacked solo alimenta al canvas WebGL; no se muestra. */
+const STACKED_SOURCE_STYLE: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  opacity: 0,
+  pointerEvents: 'none',
+};
 
 /** Fallback cuando el catálogo no trae width/height: todas las animaciones de regalo son 9:16. */
 const GIFT_ANIM_FALLBACK_W = 720;
@@ -186,9 +196,12 @@ function GiftVideoBurst({
   ambient = false,
   immersive = false,
   contentId,
+  stackedSrc = '',
   onComplete,
 }: {
   src: string;
+  /** iPhone / Safari: MP4 color + máscara, compuesto en WebGL en lugar del WebM. */
+  stackedSrc?: string;
   senderName?: string;
   combo?: number;
   animScale?: number;
@@ -210,6 +223,9 @@ function GiftVideoBurst({
   onComplete?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stackedCanvasRef = useRef<HTMLCanvasElement>(null);
+  const stacked = Boolean(stackedSrc);
+  const playSrc = stacked ? stackedSrc : src;
   const ambientRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const [stageAspect, setStageAspect] = useState(16 / 9);
@@ -289,6 +305,12 @@ function GiftVideoBurst({
       } as CSSProperties)
     : undefined;
   const useFillClass = (fillViewport || frame916) && !stageSlot && !fillParent;
+  const burstMediaClass = `lb-gift-burst-video bg-transparent ${
+    useFillClass ? 'lb-gift-burst-video--fill object-contain' : 'lb-gift-layout-media'
+  } ${portrait && !bleed ? 'lb-gift-burst-video--soft' : ''} ${
+    immersiveMedia ? 'lb-gift-burst-video--immersive' : ''
+  }`;
+  const burstMediaStyle: CSSProperties = fadeVars ? { ...mediaStyle, ...fadeVars } : mediaStyle;
   const pinToViewport = Boolean(
     !frame916 &&
       (fillViewport ||
@@ -312,7 +334,7 @@ function GiftVideoBurst({
 
     const syncSize = () => {
       const vw = video.videoWidth;
-      const vh = video.videoHeight;
+      const vh = stacked ? Math.floor(video.videoHeight / 2) : video.videoHeight;
       if (vw > 1 && vh > 1) {
         setPlaybackSize({ width: vw, height: vh, fromFallback: false });
       }
@@ -357,7 +379,7 @@ function GiftVideoBurst({
     };
     const onLoadedMeta = () => syncSize();
     const onError = () => {
-      console.warn('[gift-video] load failed', src);
+      console.warn('[gift-video] load failed', playSrc);
       finish();
     };
 
@@ -378,7 +400,41 @@ function GiftVideoBurst({
       window.clearTimeout(durationTimer);
       finish();
     };
-  }, [src, volume, durationMs]);
+  }, [playSrc, stacked, volume, durationMs]);
+
+  useEffect(() => {
+    if (!stacked) return;
+    const video = videoRef.current;
+    const canvas = stackedCanvasRef.current;
+    if (!video || !canvas) return;
+    const renderer = createStackedAlphaRenderer(canvas);
+    if (!renderer) return;
+    let stopped = false;
+    let raf = 0;
+    type FrameVideo = HTMLVideoElement & {
+      requestVideoFrameCallback?: (cb: () => void) => number;
+      cancelVideoFrameCallback?: (id: number) => void;
+    };
+    const frameVideo = video as FrameVideo;
+    let frameId = 0;
+    const useFrameCallback = typeof frameVideo.requestVideoFrameCallback === 'function';
+    const tick = () => {
+      if (stopped) return;
+      renderer.draw(video);
+      if (useFrameCallback) frameId = frameVideo.requestVideoFrameCallback!(tick);
+      else raf = window.requestAnimationFrame(tick);
+    };
+    const onData = () => renderer.draw(video);
+    video.addEventListener('loadeddata', onData);
+    tick();
+    return () => {
+      stopped = true;
+      video.removeEventListener('loadeddata', onData);
+      window.cancelAnimationFrame(raf);
+      if (useFrameCallback) frameVideo.cancelVideoFrameCallback?.(frameId);
+      renderer.dispose();
+    };
+  }, [stacked, playSrc]);
 
   // Un solo decode: se copia el cuadro actual a un canvas diminuto que el CSS agranda y desenfoca.
   useEffect(() => {
@@ -394,11 +450,15 @@ function GiftVideoBurst({
       if (tick % 2 || video.readyState < 2 || !video.videoWidth) return;
       const { width, height } = ctx.canvas;
       ctx.clearRect(0, 0, width, height);
-      ctx.drawImage(video, 0, 0, width, height);
+      if (stacked) {
+        ctx.drawImage(video, 0, 0, video.videoWidth, Math.floor(video.videoHeight / 2), 0, 0, width, height);
+      } else {
+        ctx.drawImage(video, 0, 0, width, height);
+      }
     };
     raf = window.requestAnimationFrame(draw);
     return () => window.cancelAnimationFrame(raf);
-  }, [showAmbient, src]);
+  }, [showAmbient, playSrc, stacked]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -433,16 +493,20 @@ function GiftVideoBurst({
           <canvas ref={ambientRef} width={64} height={36} />
         </div>
       ) : null}
+      {stacked ? (
+        <canvas
+          ref={stackedCanvasRef}
+          className={burstMediaClass}
+          style={burstMediaStyle}
+          aria-hidden
+        />
+      ) : null}
       <video
         ref={videoRef}
-        src={src}
+        src={playSrc}
         poster={TRANSPARENT_VIDEO_POSTER}
-        className={`lb-gift-burst-video bg-transparent ${
-          useFillClass ? 'lb-gift-burst-video--fill object-contain' : 'lb-gift-layout-media'
-        } ${portrait && !bleed ? 'lb-gift-burst-video--soft' : ''} ${
-          immersiveMedia ? 'lb-gift-burst-video--immersive' : ''
-        }`}
-        style={fadeVars ? { ...mediaStyle, ...fadeVars } : mediaStyle}
+        className={stacked ? 'lb-gift-stacked-source' : burstMediaClass}
+        style={stacked ? STACKED_SOURCE_STYLE : burstMediaStyle}
         playsInline
         muted
         autoPlay
@@ -588,6 +652,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
   if (globalAnim) return null;
 
   const videoSrc = giftPlaybackSrc(gift?.media, gift?.video);
+  const stackedSrc = needsStackedAlphaVideo() ? giftStackedAlphaSrc(gift?.media, videoSrc) : '';
   const device = giftLayoutDeviceFromViewport();
   const variant =
     layoutContext && isGiftLayoutVariantId(layoutContext)
@@ -614,6 +679,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
         <AnimatePresence>
           <GiftVideoBurst
             src={videoSrc}
+            stackedSrc={stackedSrc}
             senderName={senderName}
             combo={combo}
             animScale={clampGiftAnimScale(gift.animScale, level)}
@@ -660,6 +726,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       <AnimatePresence>
         <GiftVideoBurst
           src={videoSrc}
+          stackedSrc={stackedSrc}
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}
@@ -706,6 +773,7 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
       <AnimatePresence>
         <GiftVideoBurst
           src={videoSrc}
+          stackedSrc={stackedSrc}
           senderName={senderName}
           combo={combo}
           animScale={clampGiftAnimScale(gift.animScale, level)}

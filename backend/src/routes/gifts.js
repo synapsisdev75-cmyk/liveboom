@@ -389,6 +389,29 @@ router.post('/restore-audio', requireAuth, requireGiftsAdmin, async (req, res) =
   }
 });
 
+router.get('/stacked-alpha/status', requireAuth, requireGiftsAdmin, async (_req, res) => {
+  try {
+    const { stackedAlphaStatus } = require('../lib/giftStackedAlpha');
+    res.json({ ok: true, ...(await stackedAlphaStatus()) });
+  } catch (error) {
+    console.error('[gifts/stacked-alpha/status]', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'No se pudo leer el estado' });
+  }
+});
+
+/** Reintenta errores y genera ahora una tanda corta; el resto lo termina la tarea programada. */
+router.post('/stacked-alpha/run', requireAuth, requireGiftsAdmin, async (_req, res) => {
+  try {
+    const { processStackedAlphaQueue, resetStackedAlphaErrors, stackedAlphaStatus } = require('../lib/giftStackedAlpha');
+    await resetStackedAlphaErrors();
+    const run = await processStackedAlphaQueue({ deadlineMs: Date.now() + 60_000, limit: 1 });
+    res.json({ ok: true, run, ...(await stackedAlphaStatus()) });
+  } catch (error) {
+    console.error('[gifts/stacked-alpha/run]', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'No se pudo generar la versión iPhone' });
+  }
+});
+
 router.post('/send', requireAuth, requireDbUser, async (req, res) => {
   const giftId = req.body?.giftId;
   const roomName = lookupRoomName(

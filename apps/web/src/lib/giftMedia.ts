@@ -22,6 +22,10 @@ export type GiftMediaInfo = {
   needsReview?: boolean;
   ingestReason?: string | null;
   ingestMessage?: string | null;
+  /** MP4 color arriba + máscara abajo para WebKit (iPhone / Safari), que ignora el alfa de WebM. */
+  stackedAlphaAsset?: string | null;
+  /** Video del que salió `stackedAlphaAsset`; si el regalo cambia de video, deja de usarse. */
+  stackedAlphaSource?: string | null;
 };
 
 export function clampGiftVolume(value: unknown, fallback = 1): number {
@@ -49,6 +53,8 @@ export function defaultGiftMedia(): GiftMediaInfo {
     needsReview: false,
     ingestReason: null,
     ingestMessage: null,
+    stackedAlphaAsset: null,
+    stackedAlphaSource: null,
   };
 }
 
@@ -79,6 +85,8 @@ export function normalizeGiftMedia(raw: unknown): GiftMediaInfo {
     needsReview: Boolean(row.needsReview),
     ingestReason: row.ingestReason ? String(row.ingestReason) : null,
     ingestMessage: row.ingestMessage ? String(row.ingestMessage) : null,
+    stackedAlphaAsset: row.stackedAlphaAsset ? String(row.stackedAlphaAsset) : null,
+    stackedAlphaSource: row.stackedAlphaSource ? String(row.stackedAlphaSource) : null,
   };
 }
 
@@ -91,6 +99,12 @@ export function giftPlaybackSrc(media: GiftMediaInfo | undefined, video?: string
   if (prefer === 'processed') return media?.processedAsset || video || '';
   if (media?.processedAsset) return media.processedAsset;
   return video || media?.originalAsset || '';
+}
+
+/** Versión stacked alpha vigente para `playbackSrc`, o '' si falta o quedó vieja. */
+export function giftStackedAlphaSrc(media: GiftMediaInfo | undefined, playbackSrc: string): string {
+  if (!media?.stackedAlphaAsset || !playbackSrc) return '';
+  return media.stackedAlphaSource === playbackSrc ? media.stackedAlphaAsset : '';
 }
 
 export function giftPlaybackDurationMs(media: GiftMediaInfo | undefined, fallbackSec = 9): number {

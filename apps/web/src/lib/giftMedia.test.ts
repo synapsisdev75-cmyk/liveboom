@@ -2,7 +2,7 @@
  * Fuente de reproducción de animaciones de regalo.
  * Ejecutar: npx tsx apps/web/src/lib/giftMedia.test.ts
  */
-import { defaultGiftMedia, giftPlaybackSrc, normalizeGiftMedia } from './giftMedia';
+import { defaultGiftMedia, giftPlaybackSrc, giftStackedAlphaSrc, normalizeGiftMedia } from './giftMedia';
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -54,5 +54,12 @@ const normalized = normalizeGiftMedia({
 assert(normalized.needsReview === true, 'needsReview persiste');
 assert(normalized.ingestReason === 'opaque-or-complex', 'ingestReason persiste');
 assert(giftPlaybackSrc(normalized, catalog) === processed, 'si hay procesado se reutiliza');
+
+const stackedUrl = 'https://example.com/gift-ios.mp4';
+const withStacked = normalizeGiftMedia({ processedAsset: processed, stackedAlphaAsset: stackedUrl, stackedAlphaSource: processed });
+assert(withStacked.stackedAlphaAsset === stackedUrl, 'stackedAlphaAsset persiste al normalizar');
+assert(giftStackedAlphaSrc(withStacked, processed) === stackedUrl, 'versión iPhone vigente');
+assert(giftStackedAlphaSrc(withStacked, catalog) === '', 'versión iPhone de otro video no se usa');
+assert(giftStackedAlphaSrc(defaultGiftMedia(), processed) === '', 'sin versión iPhone usa el WebM');
 
 console.log('giftMedia.test.ts ok');

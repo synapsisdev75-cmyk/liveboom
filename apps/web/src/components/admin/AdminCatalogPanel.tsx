@@ -41,6 +41,7 @@ import {
   startGiftBackgroundRemove,
 } from '../../lib/giftMediaApi';
 import { defaultGiftMedia, type GiftMediaInfo } from '../../lib/giftMedia';
+import { GiftStackedAlphaPanel } from './GiftStackedAlphaPanel';
 
 const PLACEMENT_LABELS: Record<GiftPlacement, string> = {
   live: 'LIVE',
@@ -864,6 +865,8 @@ export function AdminCatalogPanel({
           {message}
         </p>
       ) : null}
+
+      {sub === 'gifts' ? <GiftStackedAlphaPanel /> : null}
 
       {sub === 'gifts' ? (
         <div className="grid gap-4 lg:grid-cols-[240px_1fr]">

@@ -93,6 +93,22 @@ export async function inspectGiftStorageMedia(storagePath: string): Promise<Gift
   });
 }
 
+export type GiftStackedAlphaStatus = {
+  total: number;
+  ready: number;
+  pending: number;
+  failed: { giftId: string; name: string; error: string; attempts: number }[];
+};
+
+/** Versión iPhone / Safari (MP4 color + máscara) de cada regalo. */
+export async function fetchGiftStackedAlphaStatus(): Promise<GiftStackedAlphaStatus> {
+  return authFetch<GiftStackedAlphaStatus>('/api/gifts/stacked-alpha/status', { method: 'GET' }, 30_000);
+}
+
+export async function runGiftStackedAlpha(): Promise<GiftStackedAlphaStatus> {
+  return authFetch<GiftStackedAlphaStatus>('/api/gifts/stacked-alpha/run', { method: 'POST', body: '{}' }, 170_000);
+}
+
 export async function uploadGiftSource(
   giftId: string,
   file: File,

@@ -1364,18 +1364,28 @@ async function processGiftAlphaQueue() {
       convert = { processed: 1, jobId, error: error.message };
     }
   }
+  let result;
   try {
     const restored = await restoreSilentGiftAudio({ limit: ids.length ? 2 : 4, force: false });
-    return { ok: !convert?.error, processed: convert?.processed || 0, jobId: convert?.jobId || null, ...restored };
+    result = { ok: !convert?.error, processed: convert?.processed || 0, jobId: convert?.jobId || null, ...restored };
   } catch (error) {
     console.warn('[gift-alpha] audio restore queue', error.message);
-    return {
+    result = {
       ok: !convert?.error,
       processed: convert?.processed || 0,
       jobId: convert?.jobId || null,
       restoreError: error.message,
     };
   }
+  if (!ids.length && Date.now() - now < 240_000) {
+    try {
+      const { processStackedAlphaQueue } = require('./giftStackedAlpha');
+      result.stackedAlpha = await processStackedAlphaQueue({ deadlineMs: now + 420_000, limit: 12 });
+    } catch (error) {
+      console.warn('[gift-alpha] stacked alpha queue', error.message);
+    }
+  }
+  return result;
 }
 
 async function retryGiftAlphaJob(jobId) {
