@@ -260,6 +260,32 @@ async function getWompiTransaction(transactionId) {
   }
 }
 
+/**
+ * Web Checkout firmado (GET checkout.wompi.co/p/). Lo abre el navegador del usuario,
+ * así que no depende de que el servidor alcance la API de Wompi.
+ * `integritySignature` debe incluir `expirationTime` si se envía.
+ */
+function buildWebCheckoutUrl({
+  publicKey,
+  currency = 'COP',
+  amountInCents,
+  reference,
+  integritySignature,
+  redirectUrl,
+  expirationTime,
+}) {
+  const params = new URLSearchParams({
+    'public-key': cleanWompiSecret(publicKey),
+    currency: String(currency),
+    'amount-in-cents': String(amountInCents),
+    reference: String(reference),
+    'signature:integrity': String(integritySignature),
+  });
+  if (redirectUrl) params.set('redirect-url', String(redirectUrl));
+  if (expirationTime) params.set('expiration-time', String(expirationTime));
+  return `https://checkout.wompi.co/p/?${params.toString()}`;
+}
+
 async function createPaymentLink(input) {
   const privateKey = cleanWompiSecret(process.env.WOMPI_PRIVATE_KEY);
   if (!privateKey) {
@@ -308,6 +334,7 @@ module.exports = {
   createBlastPurchaseReference,
   cleanWompiSecret,
   assertIntegrityPair,
+  buildWebCheckoutUrl,
   createPaymentLink,
   getWompiTransaction,
   getWompiMerchant,

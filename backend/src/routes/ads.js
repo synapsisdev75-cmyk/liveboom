@@ -4,12 +4,14 @@ const { asFn } = require('../lib/asFn');
 const { prisma, hasDatabase } = require('../lib/prisma');
 const {
   assertIntegrityPair,
+  buildWebCheckoutUrl,
   cleanWompiSecret,
   createPaymentLink,
   createWidgetIntegritySignature,
   createWompiReference,
   getWompiTransaction,
   isWompiMerchantActive,
+  wompiRedirectUrl,
 } = require('../lib/wompi');
 const { rememberOrder } = require('../lib/walletMemory');
 const { publicCatalog, packageLabel } = require('../lib/promoPackages');
@@ -29,6 +31,15 @@ function simulatePromoAllowed() {
     .toLowerCase();
   if (flag === '0' || flag === 'false' || flag === 'off' || flag === 'no') return false;
   return true;
+}
+
+/** Al volver de Wompi no se cae en Billetera (allí `?id=` se confirma como recarga de Blast). */
+function adsReturnUrl() {
+  try {
+    return new URL('/crear', wompiRedirectUrl()).toString();
+  } catch {
+    return 'https://liveboomapp.com/crear';
+  }
 }
 
 function wompiConfigured() {
@@ -274,6 +285,7 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
         description: `Banner LiveBoom · ${quote.format === 'animated' ? 'animado' : 'estático'} · ${packageLabel(quote.days, quote.hours)}`,
         amountInCents: amount,
         reference,
+        redirectUrl: adsReturnUrl(),
       });
       checkoutUrl = link.url;
       paymentLinkId = link.id;
@@ -281,6 +293,15 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
     } catch (linkError) {
       checkoutError = linkError instanceof Error ? linkError.message : String(linkError);
       console.warn('[ads/create-order] payment link:', checkoutError);
+      checkoutUrl = buildWebCheckoutUrl({
+        publicKey,
+        currency,
+        amountInCents: amount,
+        reference,
+        integritySignature,
+        redirectUrl: adsReturnUrl(),
+        expirationTime,
+      });
     }
 
     if (hasDatabase && prisma) {
