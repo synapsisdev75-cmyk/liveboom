@@ -19527,7 +19527,7 @@ a.lb-entity:active,
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet {
-  background: rgba(255, 255, 255, 0.97);
+  background: #fff;
   border-color: rgba(15, 23, 42, 0.12);
   box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.18);
   color: #0f172a;
