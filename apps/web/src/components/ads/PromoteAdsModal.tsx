@@ -1,5 +1,6 @@
 import { MapPin, Megaphone, Upload, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../lib/api';
 import {
   CO_REGIONS,
@@ -294,9 +295,9 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
 
   const payLocked = busy || quoting || !quote || !profile;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[80] grid place-items-end bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
+      className="fixed inset-0 z-[80] grid place-items-end bg-[rgba(0,0,0,0.7)] p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -369,14 +370,14 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
             </select>
           </label>
 
-          <div className="rounded-xl border border-amber-400/25 bg-zinc-900/70 p-3">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-200">
+          <div className="rounded-xl border border-amber-400/25 bg-zinc-900/80 p-3">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-amber-300">
               Dimensiones maestras
             </p>
             <p className="mt-1 text-sm font-semibold text-white">
               {PROMO_BANNER_SIZE_LABEL} px <span className="text-zinc-400">(formato 3:1 · máx. {PROMO_MAX_ANIMATED_SEC} s)</span>
             </p>
-            <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 bg-zinc-950/60 px-3 py-3 text-sm text-zinc-300">
+            <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-zinc-950/70 px-3 py-3 text-sm text-zinc-300">
               <Upload size={16} />
               {mediaUrl ? 'Cambiar banner' : 'Subir PNG, JPG, WebP, GIF, MP4 o WebM'}
               <input
@@ -418,7 +419,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
                     className={`flex min-h-11 items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                       active
                         ? 'border-cyan-400/50 bg-cyan-500/10'
-                        : 'border-white/10 bg-zinc-950/60 hover:border-white/20'
+                        : 'border-white/10 bg-zinc-950/70 hover:border-cyan-400/30'
                     }`}
                   >
                     <span>
@@ -472,6 +473,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
