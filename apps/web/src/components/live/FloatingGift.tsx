@@ -25,6 +25,7 @@ import {
   createStackedAlphaRenderer,
   markStackedAlphaBroken,
   needsStackedAlphaVideo,
+  stackedAlphaRequestUrl,
 } from '../../lib/stackedAlphaVideo';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import { GiftComboBadge } from './GiftComboBadge';
@@ -658,7 +659,9 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
   if (globalAnim) return null;
 
   const videoSrc = giftPlaybackSrc(gift?.media, gift?.video);
-  const stackedSrc = needsStackedAlphaVideo() ? giftStackedAlphaSrc(gift?.media, videoSrc) : '';
+  const stackedSrc = needsStackedAlphaVideo()
+    ? stackedAlphaRequestUrl(giftStackedAlphaSrc(gift?.media, videoSrc))
+    : '';
   const device = giftLayoutDeviceFromViewport();
   const variant =
     layoutContext && isGiftLayoutVariantId(layoutContext)

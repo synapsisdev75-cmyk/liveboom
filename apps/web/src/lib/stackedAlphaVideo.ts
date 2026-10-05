@@ -32,6 +32,15 @@ function webglAvailable(): boolean {
   }
 }
 
+/**
+ * Clave de caché propia para la petición CORS: los primeros MP4 se sirvieron sin CORS con
+ * caché inmutable de 1 año, y el navegador reutilizaría esa copia sin cabeceras CORS.
+ */
+export function stackedAlphaRequestUrl(url: string): string {
+  if (!url) return '';
+  return `${url}${url.includes('?') ? '&' : '?'}lbcors=1`;
+}
+
 /** true en iPhone / iPad / Safari: usar la versión stacked alpha si el regalo la tiene. */
 export function needsStackedAlphaVideo(): boolean {
   if (broken) return false;
