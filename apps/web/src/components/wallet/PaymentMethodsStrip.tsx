@@ -27,9 +27,6 @@ export function PaymentMethodsStrip({ className = '', compact = false }: Props) 
           decoding="async"
         />
       ))}
-      <span className={`font-medium text-zinc-500 ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
-        … y más
-      </span>
     </div>
   );
 }
