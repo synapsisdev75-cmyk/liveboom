@@ -1642,22 +1642,6 @@ function DiscoveryRail() {
           </>
         ) : null}
 
-        <section
-          className="lb-card lb-promo-banner rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/20 via-violet-600/15 to-fuchsia-500/10 p-3.5"
-          data-lb-surface="dark"
-        >
-          <p className="flex items-center gap-1.5 text-xs font-bold text-white">
-            <Sparkles size={14} className="text-cyan-300" /> Gana premios en cada LIVE
-          </p>
-          <p className="mt-1 text-[11px] text-zinc-400">Envía regalos y súbete al top de la sala.</p>
-          <Link
-            to="/explorar"
-            className="mt-3 inline-flex min-h-9 items-center rounded-lg bg-white/10 px-3 text-[11px] font-bold text-cyan-200"
-          >
-            Conoce más
-          </Link>
-        </section>
-
         <p className="px-1 pb-2 text-center text-[9px] text-zinc-600">
           © {new Date().getFullYear()} LiveBoom. Todos los derechos reservados.
         </p>
