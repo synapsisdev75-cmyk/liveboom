@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Lock, ShieldCheck } from 'lucide-react';
-import { reauthenticateSuperAdminWithGoogle } from '../../lib/superAdminGoogleReauth';
+import {
+  completeSuperAdminRedirectReauth,
+  googleReauthErrorMessage,
+  isGoogleReauthCancel,
+  reauthenticateSuperAdminWithGoogle,
+} from '../../lib/superAdminGoogleReauth';
 import {
   DEFAULT_SESSION_TTL_MIN,
   getVaultLockout,
@@ -115,6 +120,42 @@ export function SuperAdminVaultGate({ children }: Props) {
     return Math.max(0, Math.ceil((expiresAtMs - Date.now()) / 60_000));
   }, [expiresAtMs, continuePromptOpen, answerLeftSec]);
 
+  async function recordUnlockError(err: unknown) {
+    if (!isGoogleReauthCancel(err)) {
+      try {
+        const result = await registerVaultFailure(uid, email, maxFailures, lockoutMinutes);
+        setFailures(result.failures);
+        setLockedUntilMs(result.lockedUntilMs);
+      } catch {
+        /* ignore */
+      }
+    }
+    setError(googleReauthErrorMessage(err));
+  }
+
+  useEffect(() => {
+    if (!uid || !email) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const done = await completeSuperAdminRedirectReauth({ expectedUid: uid, expectedEmail: email });
+        if (!done || cancelled) return;
+        setBusy(true);
+        await unlock({ uid, email, ttlMin: DEFAULT_SESSION_TTL_MIN });
+        setFailures(0);
+        setLockedUntilMs(0);
+      } catch (err) {
+        if (!cancelled) await recordUnlockError(err);
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, email]);
+
   async function handleGoogleUnlock() {
     if (!uid || !email) return;
     setBusy(true);
@@ -131,15 +172,7 @@ export function SuperAdminVaultGate({ children }: Props) {
       setFailures(0);
       setLockedUntilMs(0);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'No se pudo abrir con Google';
-      try {
-        const result = await registerVaultFailure(uid, email, maxFailures, lockoutMinutes);
-        setFailures(result.failures);
-        setLockedUntilMs(result.lockedUntilMs);
-      } catch {
-        /* ignore */
-      }
-      setError(msg);
+      await recordUnlockError(err);
     } finally {
       setBusy(false);
     }
