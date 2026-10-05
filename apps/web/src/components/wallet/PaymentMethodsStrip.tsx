@@ -9,7 +9,7 @@ type Props = {
 /** El grupo debe ser más ancho que la franja para que el bucle no deje huecos. */
 const LOGOS_PER_GROUP = [...ACCEPTED_PAYMENT_LOGOS, ...ACCEPTED_PAYMENT_LOGOS];
 
-/** Franja de logos de pago (Nequi, Visa, Daviplata, Mastercard) en banda animada. */
+/** Franja de logos de pago (Nequi, Visa, Daviplata, Mastercard, PSE) en banda animada. */
 export function PaymentMethodsStrip({ className = '', compact = false }: Props) {
   const label = ACCEPTED_PAYMENT_LOGOS.map((m) => m.label).join(', ');
   return (

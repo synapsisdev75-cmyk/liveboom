@@ -10,4 +10,5 @@ export const ACCEPTED_PAYMENT_LOGOS: PaymentMethodLogo[] = [
   { id: 'visa', label: 'Visa', src: '/payments/visa-clear.png' },
   { id: 'daviplata', label: 'Daviplata', src: '/payments/daviplata-clear.png' },
   { id: 'mastercard', label: 'Mastercard', src: '/payments/mastercard-clear.png' },
+  { id: 'pse', label: 'PSE', src: '/payments/pse-clear.png' },
 ];
