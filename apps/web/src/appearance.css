@@ -2477,12 +2477,14 @@ html[data-lb-theme='light'] .lb-side-rail .border-rose-500\/70 {
 
 html[data-lb-theme='light'] .lb-side-rail .border-cyan-400\/70,
 html[data-lb-theme='light'] .lb-side-rail .border-cyan-400\/50,
-html[data-lb-theme='light'] .lb-side-rail .border-cyan-400\/30 {
+html[data-lb-theme='light'] .lb-side-rail .border-cyan-400\/30,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-zone-card .border-cyan-400\/30 {
   border-color: color-mix(in srgb, var(--accent-cyan) 65%, transparent);
   color: var(--accent-cyan);
 }
 
-html[data-lb-theme='light'] .lb-side-rail .lb-zone-card svg {
+html[data-lb-theme='light'] .lb-side-rail .lb-zone-card svg,
+html[data-lb-theme='light'] .lb-mobile-drawer .lb-zone-card svg {
   color: var(--accent-gold);
 }
 

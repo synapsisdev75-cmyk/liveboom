@@ -8,7 +8,6 @@ import {
   HelpCircle,
   Laptop,
   Link2,
-  MapPin,
   Megaphone,
   MessageCircle,
   Plus,
@@ -21,7 +20,7 @@ import {
   Users,
   Wifi,
 } from 'lucide-react';
-import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link, useLocation, useMatch } from 'react-router-dom';
 import { MyPromotionsModal } from '../ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../ads/PromoteAdsModal';
@@ -44,16 +43,8 @@ import {
   type FriendRequest,
 } from '../../lib/socialFirestore';
 import { markCreatorFollowed, type RecommendationContext } from '../../lib/creatorRecommendations';
-import { syncPublicGeo } from '../../lib/publicGeo';
 import { levelFromXp, xpNeededForNext, xpToNextLevel } from '../../lib/userLevels';
-import {
-  dismissLocationPrompt,
-  fetchPrivateLocation,
-  locationPromptDismissed,
-  requestBrowserLocation,
-  savePrivateLocation,
-  type PrivateUserLocation,
-} from '../../lib/userLocation';
+import { fetchPrivateLocation, type PrivateUserLocation } from '../../lib/userLocation';
 import {
   ignoreSuggestedCreator,
   readIgnoredSuggestionUids,
@@ -63,10 +54,7 @@ import { useMessagesMenuStore } from '../../store/messagesMenuStore';
 import { MessagesSideRail } from '../social/MessagesQuickMenu';
 import { SidebarWalletDock } from './SidebarWalletDock';
 import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
-import { LocationShareModal } from '../location/LocationShareModal';
-import type { SharedLocation } from '../../lib/locationShare';
-
-const ZoneLiveMap = lazy(() => import('./ZoneLiveMap'));
+import { ZoneCard } from './ZoneCard';
 
 type SuggestedUser = {
   uid: string;
@@ -1405,7 +1393,6 @@ function SettingsRail() {
 }
 
 function DiscoveryRail() {
-  const t = useT();
   const profile = useAuthStore((state) => state.profile);
   const locationPath = useLocation().pathname;
   const onGroups = locationPath.startsWith('/grupos');
@@ -1417,17 +1404,11 @@ function DiscoveryRail() {
   const [joinBusy, setJoinBusy] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [myPromotionsOpen, setMyPromotionsOpen] = useState(false);
-  const [locBusy, setLocBusy] = useState(false);
-  const [showPrompt, setShowPrompt] = useState(() => !locationPromptDismissed());
-  const [shareLoc, setShareLoc] = useState<SharedLocation | null>(null);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;
     void fetchPrivateLocation(profile.firebaseUid)
-      .then((geo) => {
-        setLocation(geo);
-        if (geo) setShowPrompt(false);
-      })
+      .then(setLocation)
       .catch(() => undefined);
   }, [profile?.firebaseUid]);
 
@@ -1441,22 +1422,6 @@ function DiscoveryRail() {
     if (!onGroups || !profile?.firebaseUid) return;
     return listenMyGroups(profile.firebaseUid, setMyGroups);
   }, [onGroups, profile?.firebaseUid]);
-
-  async function shareLocation() {
-    if (!profile) return;
-    setLocBusy(true);
-    try {
-      const coords = await requestBrowserLocation();
-      const saved = await savePrivateLocation(profile.firebaseUid, coords);
-      setLocation(saved);
-      setShowPrompt(false);
-      void syncPublicGeo(profile.firebaseUid, { force: true });
-    } catch {
-      // ignore
-    } finally {
-      setLocBusy(false);
-    }
-  }
 
   async function onJoinGroup(groupId: string) {
     if (!profile) return;
@@ -1521,71 +1486,7 @@ function DiscoveryRail() {
           onManageMyPromotions={() => setMyPromotionsOpen(true)}
         />
 
-        {profile ? (
-          <section className="lb-panel lb-zone-card rounded-2xl p-3">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-              <MapPin size={12} /> Tu zona
-            </p>
-            {location ? (
-              <>
-                <p className="mt-1.5 text-xs font-semibold text-cyan-200">
-                  {location.city ? `${location.city} · ` : ''}
-                  {location.regionLabel}
-                </p>
-                <Suspense
-                  fallback={<div className="mt-2 h-[clamp(9rem,22vh,11rem)] animate-pulse rounded-xl bg-white/5" />}
-                >
-                  <ZoneLiveMap
-                    saved={{ lat: location.lat, lng: location.lng }}
-                    onShare={(pos) =>
-                      setShareLoc({
-                        lat: pos.lat,
-                        lng: pos.lng,
-                        accuracy: pos.accuracy,
-                        label: [location.city, location.regionLabel].filter(Boolean).join(' · '),
-                      })
-                    }
-                  />
-                </Suspense>
-                <LocationShareModal
-                  open={Boolean(shareLoc)}
-                  onClose={() => setShareLoc(null)}
-                  mode="share"
-                  initial={shareLoc}
-                />
-              </>
-            ) : showPrompt ? (
-              <button
-                type="button"
-                disabled={locBusy}
-                onClick={() => void shareLocation()}
-                className="mt-2 min-h-9 w-full rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-200"
-              >
-                {locBusy ? '…' : t('actions.shareLocation')}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowPrompt(true)}
-                className="mt-2 text-[11px] text-zinc-500 hover:text-zinc-300"
-              >
-                Activar ubicación
-              </button>
-            )}
-            {showPrompt && !location ? (
-              <button
-                type="button"
-                onClick={() => {
-                  dismissLocationPrompt();
-                  setShowPrompt(false);
-                }}
-                className="mt-1 text-[10px] text-zinc-600"
-              >
-                Ahora no
-              </button>
-            ) : null}
-          </section>
-        ) : null}
+        <ZoneCard location={location} onLocationChange={setLocation} />
 
         <SidebarWalletDock />
 

@@ -36,6 +36,7 @@ import { NotificationBell } from '../social/NotificationBell';
 import { MessagesFloatingHost } from '../social/MessagesQuickMenu';
 import { useUnreadMessageCount } from '../social/MessageInboxBadge';
 import { SideRailPanel } from './SideRailPanel';
+import { MobileZoneCard } from './ZoneCard';
 import { SidebarSuggestedCreatorsCard } from './SidebarSuggestedCreatorsCard';
 import { PullToRefreshIndicator } from './PullToRefreshIndicator';
 import { LiquidBottomNav } from './LiquidBottomNav';
@@ -646,6 +647,9 @@ export function MainLayout() {
                 showGoLive
                 scrollable
               />
+              <div className="mt-3">
+                <MobileZoneCard />
+              </div>
             </div>
             <button
               type="button"
