@@ -44,13 +44,14 @@ export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: numb
     const finePointer = window.matchMedia('(pointer: fine)').matches;
     const map = L.map(host, {
       center: [start.lat, start.lng],
-      zoom: 13,
+      zoom: 12,
       zoomControl: false,
       scrollWheelZoom: false,
       dragging: finePointer,
       keyboard: false,
     });
     map.attributionControl.setPrefix(false);
+    L.control.zoom({ position: 'topright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' }).addTo(map);
     const tiles = L.tileLayer(TILE_URL[currentTheme()], {
       subdomains: 'abcd',
       maxZoom: 19,
@@ -160,7 +161,7 @@ export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: numb
 
   function recenter() {
     followRef.current = true;
-    if (pos) mapRef.current?.setView([pos.lat, pos.lng], Math.max(mapRef.current.getZoom(), 13));
+    if (pos) mapRef.current?.setView([pos.lat, pos.lng], Math.max(mapRef.current.getZoom(), 15));
     if (!watching) startLive();
   }
 

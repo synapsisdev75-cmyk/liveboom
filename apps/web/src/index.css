@@ -19649,6 +19649,27 @@ html[data-lb-theme] .lb-side-rail .lb-zone-map button svg {
   color: #67e8f9;
 }
 
+.lb-zone-map .leaflet-bar {
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.lb-zone-map .leaflet-bar a,
+html[data-lb-theme] .lb-zone-map .leaflet-bar a {
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  background: rgba(11, 15, 25, 0.85);
+  color: #67e8f9;
+  border-bottom-color: rgba(34, 211, 238, 0.25);
+}
+
+.lb-zone-map .leaflet-bar a:hover {
+  background: #0b0f19;
+}
+
 .lb-zone-map-pin {
   position: relative;
 }
