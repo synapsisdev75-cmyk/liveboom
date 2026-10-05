@@ -19633,6 +19633,10 @@ html[data-lb-theme='light'] .lb-zone-map .leaflet-container {
   background: #e8eef3;
 }
 
+html:not([data-lb-theme='light']) .lb-zone-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.7);
+}
+
 .lb-zone-map .leaflet-control-attribution {
   padding: 0 4px;
   font-size: 8px;

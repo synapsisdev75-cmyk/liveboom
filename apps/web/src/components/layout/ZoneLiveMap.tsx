@@ -5,14 +5,7 @@ import { LocateFixed } from 'lucide-react';
 
 type Coords = { lat: number; lng: number; accuracy?: number };
 
-const TILE_URL = {
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-} as const;
-
-function currentTheme(): keyof typeof TILE_URL {
-  return document.documentElement.getAttribute('data-lb-theme') === 'light' ? 'light' : 'dark';
-}
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 function validCoords(c: { lat: number; lng: number } | null | undefined): c is Coords {
   return Boolean(c && Number.isFinite(c.lat) && Number.isFinite(c.lng) && (c.lat !== 0 || c.lng !== 0));
@@ -52,10 +45,9 @@ export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: numb
     });
     map.attributionControl.setPrefix(false);
     L.control.zoom({ position: 'topright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' }).addTo(map);
-    const tiles = L.tileLayer(TILE_URL[currentTheme()], {
-      subdomains: 'abcd',
+    L.tileLayer(TILE_URL, {
       maxZoom: 19,
-      attribution: '© OpenStreetMap · © CARTO',
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
     }).addTo(map);
     accuracyRef.current = L.circle([start.lat, start.lng], {
       radius: 0,
@@ -79,13 +71,10 @@ export default function ZoneLiveMap({ saved }: { saved: { lat: number; lng: numb
     });
     mapRef.current = map;
 
-    const themeObserver = new MutationObserver(() => tiles.setUrl(TILE_URL[currentTheme()]));
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-lb-theme'] });
     const resizeObserver = new ResizeObserver(() => map.invalidateSize());
     resizeObserver.observe(host);
 
     return () => {
-      themeObserver.disconnect();
       resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
