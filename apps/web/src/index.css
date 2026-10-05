@@ -2605,6 +2605,15 @@ html:has(.lb-auth-page) #root {
   overscroll-behavior: none;
 }
 
+/* Widget Wompi: inserta .waybox-modal en body con la altura de su contenido (más alto que la
+   pantalla); sin scroll de documento quedaban cortados los métodos de pago. Al cerrar, Wompi lo
+   deja en el DOM con [hidden], así que la regla solo aplica mientras está visible. */
+html:has(> body > .waybox-modal:not([hidden])) {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
 /* Documentos legales: #root sigue sin scroll de página; el panel .lb-legal-page sí. */
 html:has(.lb-legal-page),
 html:has(.lb-legal-page) body,

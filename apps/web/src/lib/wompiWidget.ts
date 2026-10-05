@@ -59,4 +59,32 @@ export async function openWompiWidget(
   });
 
   checkout.open(onResult);
+  resetScrollWhenWidgetCloses();
+}
+
+/**
+ * El widget desplaza el documento mientras está abierto; al cerrarse (Wompi pone [hidden] al modal)
+ * la app vuelve a scroll 0 para no quedar corrida bajo el overflow hidden del shell.
+ */
+function resetScrollWhenWidgetCloses() {
+  let seen = false;
+  const observer = new MutationObserver(() => {
+    const open = Boolean(document.querySelector('body > .waybox-modal:not([hidden])'));
+    if (open) {
+      seen = true;
+      return;
+    }
+    if (!seen) return;
+    observer.disconnect();
+    window.scrollTo(0, 0);
+  });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['hidden'],
+  });
+  window.setTimeout(() => {
+    if (!seen) observer.disconnect();
+  }, 15_000);
 }
