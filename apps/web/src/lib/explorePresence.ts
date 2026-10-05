@@ -15,7 +15,15 @@ import {
   type Timestamp as FsTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import {
+  parsePostTextStyle,
+  parseTextStyleRanges,
+  textStyleRangesForTrimmed,
+  type PostTextStyle,
+  type TextStyleRange,
+} from './postTextStyle';
 import { roomKey } from './roomKey';
+import type { PostCommentMedia, PostCommentMediaType } from './socialFirestore';
 
 export const EXPLORE_PRESENCE_TTL_MS = 20_000;
 export const EXPLORE_HEAT_TTL_MS = 25_000;
@@ -52,7 +60,35 @@ export type PlazaMessage = {
   text: string;
   kind: PlazaMessageKind;
   createdAtMs: number;
+  mediaUrl: string | null;
+  mediaType: PostCommentMediaType | null;
+  mediaPreviewUrl: string | null;
+  textStyle: PostTextStyle | null;
+  textStyleRanges: TextStyleRange[];
 };
+
+export type PlazaMessageExtras = {
+  media?: PostCommentMedia | null;
+  textStyle?: PostTextStyle | null;
+  textStyleRanges?: TextStyleRange[];
+};
+
+const PLAZA_MEDIA_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'gif', 'sticker']);
+
+function plainPlazaText(text: string): string {
+  return text.replace(/\u200b/g, '').trim();
+}
+
+function httpUrl(value: unknown): string | null {
+  return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : null;
+}
+
+export function plazaMediaLabel(type: PostCommentMediaType | null): string {
+  if (type === 'video') return 'Video';
+  if (type === 'gif') return 'GIF';
+  if (type === 'sticker') return 'Sticker';
+  return 'Foto';
+}
 
 export type PlazaProfile = {
   uid: string;
@@ -184,8 +220,14 @@ export function listenPlazaMessages(
           const data = item.data({ serverTimestamps: 'estimate' });
           const createdAtMs = millisOf(data.createdAt);
           if (createdAtMs <= 0 || now - createdAtMs > EXPLORE_PLAZA_TTL_MS) continue;
-          const text = String(data.text || '').trim();
-          if (!text) continue;
+          const rawText = String(data.text || '').trim();
+          const text = plainPlazaText(rawText) ? rawText : '';
+          const mediaUrl = httpUrl(data.mediaUrl);
+          const mediaType =
+            mediaUrl && PLAZA_MEDIA_TYPES.has(String(data.mediaType))
+              ? (String(data.mediaType) as PostCommentMediaType)
+              : null;
+          if (!text && !mediaType) continue;
           messages.push({
             id: item.id,
             fromUid: String(data.fromUid || ''),
@@ -195,6 +237,11 @@ export function listenPlazaMessages(
             text,
             kind: data.kind === 'live_reply' ? 'live_reply' : 'text',
             createdAtMs,
+            mediaUrl: mediaType ? mediaUrl : null,
+            mediaType,
+            mediaPreviewUrl: mediaType ? httpUrl(data.mediaPreviewUrl) : null,
+            textStyle: text ? parsePostTextStyle(data.textStyle) : null,
+            textStyleRanges: text ? parseTextStyleRanges(data.textStyleRanges, text.length) : [],
           });
         }
         onChange(messages);
@@ -227,17 +274,29 @@ export async function sendPlazaMessage(
   profile: PlazaProfile,
   text: string,
   kind: PlazaMessageKind = 'text',
+  extras?: PlazaMessageExtras,
 ): Promise<void> {
-  const clean = text.trim().slice(0, 280);
-  if (!clean) return;
+  const clean = plainPlazaText(text) ? text.trim().slice(0, 280) : '';
+  const mediaUrl = httpUrl(extras?.media?.mediaUrl);
+  const mediaType =
+    mediaUrl && extras?.media && PLAZA_MEDIA_TYPES.has(extras.media.mediaType) ? extras.media.mediaType : null;
+  if (!clean && !mediaType) return;
+  const textStyle = clean ? parsePostTextStyle(extras?.textStyle) : null;
+  const textStyleRanges = clean ? textStyleRangesForTrimmed(text, extras?.textStyleRanges, 280) : [];
+  const mediaPreviewUrl = mediaType ? httpUrl(extras?.media?.mediaPreviewUrl) : null;
   const ref = doc(collection(db, 'explorePlaza', postId, 'messages'));
   await setDoc(ref, {
     fromUid: profile.uid,
     username: profile.username.slice(0, 24),
     displayName: (profile.displayName || profile.username).slice(0, 80),
     avatarUrl: profile.avatarUrl || null,
-    text: clean,
+    // Las reglas exigen text.size() > 0; un adjunto solo usa un marcador invisible.
+    text: clean || '\u200b',
     ...(kind === 'live_reply' ? { kind } : {}),
+    ...(mediaType ? { mediaUrl, mediaType } : {}),
+    ...(mediaPreviewUrl ? { mediaPreviewUrl } : {}),
+    ...(textStyle ? { textStyle } : {}),
+    ...(textStyleRanges.length ? { textStyleRanges } : {}),
     createdAt: serverTimestamp(),
   });
 }

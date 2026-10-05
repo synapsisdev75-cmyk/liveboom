@@ -1,10 +1,24 @@
 import { Radio, Flag } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
 import { UserAvatar } from '../profile/UserAvatar';
+import { CommentComposerBar, type CommentDraftAttachment } from '../social/CommentComposerBar';
+import { CommentMediaThumb } from '../social/CommentMediaThumb';
+import { CommentMediaViewer, type CommentMediaViewerItem } from '../social/CommentMediaViewer';
+import { EmojiText } from '../social/EmojiText';
+import { StyledText } from '../social/StyledText';
 import { useBackLayer } from '../../lib/backLayer';
+import { COMMENT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
+import {
+  textStyleProps,
+  useTextStyleFontsIn,
+  useTextStyleRangesDraft,
+  type PostTextStyle,
+} from '../../lib/postTextStyle';
+import type { PostCommentMedia } from '../../lib/socialFirestore';
+import { uploadUserMedia } from '../../lib/storage';
 import {
   announcePlazaLiveReply,
   listenAuthorLive,
@@ -13,6 +27,7 @@ import {
   listenPlazaMessages,
   notifyCreatorPeopleWaiting,
   notifyCreatorPlazaMessage,
+  plazaMediaLabel,
   publishExploreHeat,
   sendPlazaMessage,
   startExploreHeartbeat,
@@ -41,7 +56,12 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
   const [threadOpen, setThreadOpen] = useState(autoOpenThread);
   const [messages, setMessages] = useState<PlazaMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [textStyle, setTextStyle] = useState<PostTextStyle | null>(null);
+  const [textStyleRanges, setTextStyleRanges] = useTextStyleRangesDraft(draft);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [mediaViewer, setMediaViewer] = useState<CommentMediaViewerItem | null>(null);
+  const closeMediaViewer = useCallback(() => setMediaViewer(null), []);
   const [goingLive, setGoingLive] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportContext, setReportContext] = useState<string | null>(null);
@@ -57,6 +77,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
   useEffect(() => {
     setThreadOpen(autoOpenRef.current);
     setDraft('');
+    setSendError(null);
     setViewers([]);
     setPresenceReady(false);
     setMessages([]);
@@ -135,6 +156,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
   const shown = [...others, ...viewers.filter((viewer) => viewer.uid === profile?.firebaseUid)].slice(0, 3);
   const countLabel = viewers.length === 1 ? '1 en este video' : `${viewers.length} en este video`;
   const isAuthor = Boolean(profile?.firebaseUid && authorUid && profile.firebaseUid === authorUid);
+  useTextStyleFontsIn(messages);
   const previews = threadOpen
     ? []
     : messages
@@ -175,28 +197,56 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
     setReportOpen(true);
   }
 
-  async function submitThread(event: FormEvent) {
-    event.preventDefault();
+  async function publishThread(attachment: CommentDraftAttachment | null) {
     if (!profile?.firebaseUid || !profile.handle || sending) return;
-    const text = draft.trim();
-    if (!text) return;
+    const text = draft;
+    if (!text.trim() && !attachment) return;
     setSending(true);
+    setSendError(null);
     try {
-      await sendPlazaMessage(postId, {
-        uid: profile.firebaseUid,
-        username: profile.handle,
-        displayName: profile.displayName || profile.handle,
-        avatarUrl: profile.avatarUrl,
-      }, text);
+      let media: PostCommentMedia | null = null;
+      if (attachment?.kind === 'gif' && attachment.gifUrl) {
+        media = {
+          mediaUrl: attachment.gifUrl,
+          mediaType: 'gif',
+          mediaPreviewUrl: attachment.gifPreviewUrl || attachment.previewUrl,
+        };
+      } else if (attachment?.kind === 'sticker' && attachment.stickerUrl) {
+        media = { mediaUrl: attachment.stickerUrl, mediaType: 'sticker' };
+      } else if (attachment?.file) {
+        const uploaded = await uploadUserMedia(
+          profile.firebaseUid,
+          attachment.file,
+          attachment.file.name,
+          'public',
+          'publication',
+        );
+        media = { mediaUrl: uploaded.url, mediaType: attachment.kind === 'video' ? 'video' : 'image' };
+      }
+      await sendPlazaMessage(
+        postId,
+        {
+          uid: profile.firebaseUid,
+          username: profile.handle,
+          displayName: profile.displayName || profile.handle,
+          avatarUrl: profile.avatarUrl,
+        },
+        text,
+        'text',
+        { media, textStyle, textStyleRanges },
+      );
       setDraft('');
       void notifyCreatorPlazaMessage({
         postId,
         authorUid,
         fromUid: profile.firebaseUid,
         fromName: profile.displayName || profile.handle,
-        text,
+        text: text.trim() || `[${plazaMediaLabel(media?.mediaType ?? null)}]`,
         count: viewers.length,
       });
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : 'No se pudo enviar a la plaza');
+      throw err;
     } finally {
       setSending(false);
     }
@@ -233,7 +283,13 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                 />
                 <span className="min-w-0 text-xs leading-snug text-white">
                   <span className="font-semibold">{message.displayName || message.username}</span>{' '}
-                  <span className="line-clamp-2 break-words text-white/90">{message.text}</span>
+                  <span className="line-clamp-2 break-words text-white/90">
+                    {message.text ? (
+                      <EmojiText text={message.text} size={16} />
+                    ) : (
+                      plazaMediaLabel(message.mediaType)
+                    )}
+                  </span>
                 </span>
               </button>
             ))}
@@ -385,7 +441,38 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                     <p className="lb-explore-plaza__name truncate text-[11px] font-semibold text-white/80">
                       {message.displayName || message.username}
                     </p>
-                    <p className="lb-explore-plaza__text text-sm leading-snug text-white">{message.text}</p>
+                    {message.text ? (
+                      <p
+                        className={`lb-explore-plaza__text break-words text-sm leading-snug text-white ${
+                          textStyleProps(message.textStyle, message.textStyleRanges).className
+                        }`}
+                        style={textStyleProps(message.textStyle, message.textStyleRanges).style}
+                      >
+                        <StyledText
+                          text={message.text}
+                          textStyle={message.textStyle}
+                          textStyleRanges={message.textStyleRanges}
+                          size={COMMENT_EMOJI_SIZE}
+                        />
+                      </p>
+                    ) : null}
+                    {message.mediaUrl && message.mediaType ? (
+                      <div className="mt-1.5 min-w-0 max-w-full">
+                        <CommentMediaThumb
+                          url={message.mediaUrl}
+                          previewUrl={message.mediaType === 'gif' ? null : message.mediaPreviewUrl}
+                          kind={message.mediaType}
+                          size="thread"
+                          onOpen={() =>
+                            setMediaViewer({
+                              url: message.mediaUrl!,
+                              kind: message.mediaType!,
+                              previewUrl: message.mediaPreviewUrl,
+                            })
+                          }
+                        />
+                      </div>
+                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -405,22 +492,20 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
             )}
           </div>
           {profile?.firebaseUid ? (
-            <form className="mt-2 flex items-center gap-2" onSubmit={(event) => void submitThread(event)}>
-              <input
+            <div className="lb-explore-plaza__composer mt-2 min-w-0">
+              {sendError ? <p className="lb-explore-plaza__error mb-1 text-[11px] text-rose-300">{sendError}</p> : null}
+              <CommentComposerBar
                 value={draft}
-                onChange={(event) => setDraft(event.target.value.slice(0, 280))}
+                onChange={setDraft}
+                onPublish={publishThread}
+                busy={sending}
                 placeholder="Escribe en la plaza"
-                maxLength={280}
-                className="lb-explore-plaza__input min-h-11 min-w-0 flex-1 rounded-full border border-white/15 bg-black/40 px-3 text-sm text-white outline-none"
+                textStyle={textStyle}
+                onTextStyleChange={setTextStyle}
+                textStyleRanges={textStyleRanges}
+                onTextStyleRangesChange={setTextStyleRanges}
               />
-              <button
-                type="submit"
-                disabled={sending || !draft.trim()}
-                className="lb-explore-plaza__send inline-flex min-h-11 items-center rounded-full bg-white px-3 text-xs font-bold text-black disabled:opacity-40"
-              >
-                Enviar
-              </button>
-            </form>
+            </div>
           ) : (
             <Link
               to="/login"
@@ -433,6 +518,8 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
             document.body,
           )
         : null}
+
+      <CommentMediaViewer item={mediaViewer} onClose={closeMediaViewer} />
 
       <InAppFeedbackModal
         open={reportOpen}
