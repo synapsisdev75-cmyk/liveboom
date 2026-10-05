@@ -9,9 +9,9 @@ import {
   PROMO_PACKAGES,
   PROMO_KINDS,
   formatPromoCop,
-  promoCopPerDay,
+  formatPromoUnitPrice,
+  promoDurationLabel,
   promoPackageByDays,
-  promoPriceCop,
   regionLabel,
   type PromoBannerFormat,
   type PromoKind,
@@ -26,6 +26,7 @@ import { useAuthStore } from '../../store/authStore';
 type ServerPackage = {
   id: string;
   days: number;
+  hours?: number;
   label: string;
   staticCop: number;
   animatedCop: number;
@@ -105,6 +106,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     PROMO_PACKAGES.map((p) => ({
       id: p.id,
       days: p.days,
+      hours: p.hours,
       label: p.label,
       staticCop: p.staticCop,
       animatedCop: p.animatedCop,
@@ -120,9 +122,11 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
     [packageId, packages],
   );
   const days = selectedPackage.days;
+  const hours = selectedPackage.hours ?? days * 24;
   const format: PromoBannerFormat = quote?.format || 'static';
-  const totalCop = quote?.totalCop ?? promoPriceCop(days, format);
-  const perDay = promoCopPerDay(days, format);
+  const totalCop =
+    quote?.totalCop ??
+    (format === 'animated' ? selectedPackage.animatedCop : selectedPackage.staticCop);
 
   useEffect(() => {
     void api<{ packages: ServerPackage[] }>('/api/ads/packages')
@@ -425,7 +429,7 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
                     <span>
                       <span className="block text-sm font-bold text-white">{pkg.label}</span>
                       <span className="block text-[10px] text-zinc-500">
-                        {formatPromoCop(price / pkg.days)} / día (informativo)
+                        {formatPromoUnitPrice(price, pkg.days, pkg.hours)} (informativo)
                       </span>
                     </span>
                     <span className="text-sm font-bold text-amber-300">{formatPromoCop(price)}</span>
@@ -436,12 +440,10 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
             <div className="mt-3 flex items-end justify-between gap-2 border-t border-white/5 pt-3">
               <div>
                 <p className="text-[11px] text-zinc-500">Duración contratada</p>
-                <p className="text-lg font-black text-white">
-                  {days} {days === 1 ? 'día' : 'días'} · {days * 24} h
-                </p>
+                <p className="text-lg font-black text-white">{promoDurationLabel(days, hours)}</p>
               </div>
               <div className="text-right">
-                <p className="text-[11px] text-zinc-500">{formatPromoCop(perDay)} / día</p>
+                <p className="text-[11px] text-zinc-500">{formatPromoUnitPrice(totalCop, days, hours)}</p>
                 <p className="text-lg font-bold text-amber-300">{quoting ? 'Cotizando…' : formatPromoCop(totalCop)}</p>
               </div>
             </div>

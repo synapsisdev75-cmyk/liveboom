@@ -3,7 +3,7 @@
  * El recargo animado (25 %) se aplica una sola vez sobre el total estático del paquete.
  */
 
-const PRICE_VERSION = 2;
+const PRICE_VERSION = 3;
 const CURRENCY = 'COP';
 const ANIMATED_MULTIPLIER = 1.25;
 const ANIMATED_30D_PROJECTION_REF = 499_900;
@@ -16,33 +16,58 @@ const STATIC_BY_DAYS = {
   30: 399_900,
 };
 
+/** Paquetes por horas (`days: 0`). Siempre presentes aunque el catálogo guardado no los traiga. */
+const STATIC_BY_HOURS = {
+  2: 1_600,
+};
+
+const DAY_OPTIONS = Object.keys(STATIC_BY_DAYS).map(Number);
+const HOUR_OPTIONS = Object.keys(STATIC_BY_HOURS).map(Number);
+
 function animatedFromStatic(staticCop) {
   return Math.round(Number(staticCop) * ANIMATED_MULTIPLIER);
 }
 
+function packageLabel(days, hours) {
+  const d = Math.floor(Number(days) || 0);
+  if (d >= 1) return d === 1 ? '1 día' : `${d} días`;
+  const h = Math.floor(Number(hours) || 0);
+  return h === 1 ? '1 hora' : `${h} horas`;
+}
+
+function buildPackage({ id, days, hours, staticCop, animatedCop, dayStatic }) {
+  const animated =
+    animatedCop != null ? Math.round(Number(animatedCop)) : animatedFromStatic(staticCop);
+  const dayAnimated = animatedFromStatic(dayStatic);
+  const dayFraction = hours / 24;
+  return {
+    id: String(id || (days >= 1 ? `${days}d` : `${hours}h`)),
+    days,
+    label: packageLabel(days, hours),
+    staticCop,
+    animatedCop: animated,
+    staticPerDayCop: staticCop / dayFraction,
+    animatedPerDayCop: animated / dayFraction,
+    savingsStaticPct: days <= 1 ? 0 : (1 - staticCop / (dayStatic * days)) * 100,
+    savingsAnimatedPct: days <= 1 ? 0 : (1 - animated / (dayAnimated * days)) * 100,
+    hours,
+  };
+}
+
+function defaultHourPackages(dayStatic = STATIC_BY_DAYS[1]) {
+  return HOUR_OPTIONS.map((hours) =>
+    buildPackage({ days: 0, hours, staticCop: STATIC_BY_HOURS[hours], dayStatic }),
+  );
+}
+
 function buildDefaultPackages() {
-  return [1, 3, 7, 15, 30].map((days) => {
-    const staticCop = STATIC_BY_DAYS[days];
-    const animatedCop = animatedFromStatic(staticCop);
-    const dayStatic = STATIC_BY_DAYS[1];
-    const dayAnimated = animatedFromStatic(dayStatic);
-    const savingsStatic =
-      days <= 1 ? 0 : (1 - staticCop / (dayStatic * days)) * 100;
-    const savingsAnimated =
-      days <= 1 ? 0 : (1 - animatedCop / (dayAnimated * days)) * 100;
-    return {
-      id: `${days}d`,
-      days,
-      label: days === 1 ? '1 día' : `${days} días`,
-      staticCop,
-      animatedCop,
-      staticPerDayCop: staticCop / days,
-      animatedPerDayCop: animatedCop / days,
-      savingsStaticPct: savingsStatic,
-      savingsAnimatedPct: savingsAnimated,
-      hours: days * 24,
-    };
-  });
+  const dayStatic = STATIC_BY_DAYS[1];
+  return [
+    ...defaultHourPackages(dayStatic),
+    ...DAY_OPTIONS.map((days) =>
+      buildPackage({ days, hours: days * 24, staticCop: STATIC_BY_DAYS[days], dayStatic }),
+    ),
+  ];
 }
 
 const DEFAULT_PACKAGES = buildDefaultPackages();
@@ -65,43 +90,47 @@ function normalizeCatalog(raw) {
   if (!raw || !Array.isArray(raw.packages) || !raw.packages.length) {
     return publicCatalog();
   }
+  const dayRow = raw.packages.find((p) => Number(p.days) === 1);
+  const dayStatic = Math.round(Number(dayRow?.staticCop || dayRow?.priceCop || STATIC_BY_DAYS[1]));
   const packages = raw.packages
     .map((row) => {
       const days = Math.floor(Number(row.days) || 0);
+      const hours = days >= 1 ? days * 24 : Math.floor(Number(row.hours) || 0);
       const staticCop = Math.round(Number(row.staticCop != null ? row.staticCop : row.priceCop) || 0);
-      if (![1, 3, 7, 15, 30].includes(days) || staticCop < 1) return null;
-      const animatedCop =
-        row.animatedCop != null ? Math.round(Number(row.animatedCop)) : animatedFromStatic(staticCop);
-      const dayRow = raw.packages.find((p) => Number(p.days) === 1);
-      const dayStatic = Math.round(Number(dayRow?.staticCop || dayRow?.priceCop || STATIC_BY_DAYS[1]));
-      const dayAnimated = animatedFromStatic(dayStatic);
-      return {
-        id: String(row.id || `${days}d`),
+      const validDuration = days >= 1 ? DAY_OPTIONS.includes(days) : HOUR_OPTIONS.includes(hours);
+      if (!validDuration || staticCop < 1) return null;
+      return buildPackage({
+        id: row.id,
         days,
-        label: days === 1 ? '1 día' : `${days} días`,
+        hours,
         staticCop,
-        animatedCop,
-        staticPerDayCop: staticCop / days,
-        animatedPerDayCop: animatedCop / days,
-        savingsStaticPct: days <= 1 ? 0 : (1 - staticCop / (dayStatic * days)) * 100,
-        savingsAnimatedPct: days <= 1 ? 0 : (1 - animatedCop / (dayAnimated * days)) * 100,
-        hours: days * 24,
-      };
+        animatedCop: row.animatedCop,
+        dayStatic,
+      });
     })
-    .filter(Boolean)
-    .sort((a, b) => a.days - b.days);
-  if (!packages.length) return publicCatalog();
+    .filter(Boolean);
+  if (!packages.some((p) => p.days >= 1)) return publicCatalog();
+  defaultHourPackages(dayStatic).forEach((pkg) => {
+    if (!packages.some((p) => p.days === 0 && p.hours === pkg.hours)) packages.push(pkg);
+  });
+  packages.sort((a, b) => a.hours - b.hours);
   return publicCatalog(packages, Math.max(1, Math.floor(Number(raw.version) || PRICE_VERSION)));
+}
+
+/** Sin coincidencia se usa el primer paquete por días (nunca uno por horas). */
+function fallbackPackage(catalog) {
+  return catalog.packages.find((p) => p.days >= 1) || catalog.packages[0];
 }
 
 function packageByDays(days, catalog = publicCatalog()) {
   const d = Math.floor(Number(days) || 0);
-  return catalog.packages.find((p) => p.days === d) || catalog.packages[0];
+  if (d < 1) return fallbackPackage(catalog);
+  return catalog.packages.find((p) => p.days === d) || fallbackPackage(catalog);
 }
 
 function packageById(id, catalog = publicCatalog()) {
   const key = String(id || '').trim();
-  return catalog.packages.find((p) => p.id === key) || catalog.packages[0];
+  return catalog.packages.find((p) => p.id === key) || fallbackPackage(catalog);
 }
 
 function quoteAmountCop(pkg, format) {
@@ -148,6 +177,7 @@ module.exports = {
   normalizeCatalog,
   packageByDays,
   packageById,
+  packageLabel,
   quoteAmountCop,
   quoteAmountInCents,
   promoPackageByDays,

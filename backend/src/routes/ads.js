@@ -12,7 +12,7 @@ const {
   isWompiMerchantActive,
 } = require('../lib/wompi');
 const { rememberOrder } = require('../lib/walletMemory');
-const { publicCatalog } = require('../lib/promoPackages');
+const { publicCatalog, packageLabel } = require('../lib/promoPackages');
 const promo = require('../lib/promoCampaigns');
 
 const router = express.Router();
@@ -270,8 +270,8 @@ router.post('/create-order', requireAuth, requireDbUser, async (req, res) => {
     let checkoutError = null;
     try {
       const link = await createPaymentLink({
-        name: `Publicidad ${quote.days} días`,
-        description: `Banner LiveBoom · ${quote.format === 'animated' ? 'animado' : 'estático'} · ${quote.days}d`,
+        name: `Publicidad ${packageLabel(quote.days, quote.hours)}`,
+        description: `Banner LiveBoom · ${quote.format === 'animated' ? 'animado' : 'estático'} · ${packageLabel(quote.days, quote.hours)}`,
         amountInCents: amount,
         reference,
       });

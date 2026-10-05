@@ -7,6 +7,9 @@ const {
   quoteAmountCop,
   quoteAmountInCents,
   packageByDays,
+  packageById,
+  packageLabel,
+  normalizeCatalog,
   animatedFromStatic,
 } = require('./promoPackages');
 const { projectRow, projectTable, DEFAULT_PARAMS } = require('./promoProjection');
@@ -32,6 +35,46 @@ describe('paquetes de banners', () => {
     assert.notEqual(roundedDaily * pkg.days, pkg.staticCop);
     assert.equal(quoteAmountCop(pkg, 'static'), 59_900);
     assert.equal(quoteAmountInCents(packageByDays(30), 'animated'), 49_987_500);
+  });
+
+  it('ofrece el paquete de 2 horas sin cambiar los paquetes por días', () => {
+    const h2 = packageById('2h');
+    assert.equal(h2.days, 0);
+    assert.equal(h2.hours, 2);
+    assert.equal(h2.label, '2 horas');
+    assert.equal(quoteAmountCop(h2, 'static'), 1_600);
+    assert.equal(quoteAmountCop(h2, 'animated'), 2_000);
+    assert.equal(quoteAmountInCents(h2, 'static'), 160_000);
+    assert.equal(publicCatalog().packages[0].id, '2h');
+    assert.equal(packageById('desconocido').id, '1d');
+    assert.equal(packageByDays(0).id, '1d');
+    assert.equal(packageByDays(undefined).id, '1d');
+    assert.equal(packageByDays(1).hours, 24);
+    assert.equal(packageLabel(3, 72), '3 días');
+  });
+
+  it('agrega el paquete de 2 horas a un catálogo guardado que no lo trae', () => {
+    const cat = normalizeCatalog({
+      version: 2,
+      packages: [
+        { id: '1d', days: 1, staticCop: 24_900 },
+        { id: '3d', days: 3, staticCop: 59_900 },
+      ],
+    });
+    assert.deepEqual(
+      cat.packages.map((p) => p.id),
+      ['2h', '1d', '3d'],
+    );
+    assert.equal(packageById('2h', cat).staticCop, 1_600);
+    assert.equal(packageById('nope', cat).id, '1d');
+    const custom = normalizeCatalog({
+      packages: [
+        { id: '2h', days: 0, hours: 2, staticCop: 1_800 },
+        { id: '1d', days: 1, staticCop: 24_900 },
+      ],
+    });
+    assert.equal(packageById('2h', custom).staticCop, 1_800);
+    assert.equal(custom.packages.filter((p) => p.id === '2h').length, 1);
   });
 
   it('calcula el ahorro contra el día del mismo formato', () => {

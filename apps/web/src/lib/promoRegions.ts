@@ -36,12 +36,15 @@ export type PromoKind = (typeof PROMO_KINDS)[number]['id'];
 
 /** Paquetes de publicidad (duración fija + precio COP). Mantener sincronizado con `backend/src/lib/promoPackages.js`. */
 export const PROMO_PACKAGES = [
-  { id: '1d', days: 1, staticCop: 24_900, animatedCop: 31_125, label: '1 día' },
-  { id: '3d', days: 3, staticCop: 59_900, animatedCop: 74_875, label: '3 días' },
-  { id: '7d', days: 7, staticCop: 119_900, animatedCop: 149_875, label: '7 días' },
-  { id: '15d', days: 15, staticCop: 219_900, animatedCop: 274_875, label: '15 días' },
-  { id: '30d', days: 30, staticCop: 399_900, animatedCop: 499_875, label: '30 días' },
+  { id: '2h', days: 0, hours: 2, staticCop: 1_600, animatedCop: 2_000, label: '2 horas' },
+  { id: '1d', days: 1, hours: 24, staticCop: 24_900, animatedCop: 31_125, label: '1 día' },
+  { id: '3d', days: 3, hours: 72, staticCop: 59_900, animatedCop: 74_875, label: '3 días' },
+  { id: '7d', days: 7, hours: 168, staticCop: 119_900, animatedCop: 149_875, label: '7 días' },
+  { id: '15d', days: 15, hours: 360, staticCop: 219_900, animatedCop: 274_875, label: '15 días' },
+  { id: '30d', days: 30, hours: 720, staticCop: 399_900, animatedCop: 499_875, label: '30 días' },
 ] as const;
+
+const PROMO_DAY_PACKAGES = PROMO_PACKAGES.filter((p) => p.days >= 1);
 
 export const PROMO_ANIMATED_MONTHLY_REF = 499_900;
 
@@ -55,16 +58,34 @@ export const PROMO_MAX_ANIMATED_SEC = 20;
 
 export type PromoPackageId = (typeof PROMO_PACKAGES)[number]['id'];
 
-export const PROMO_DAYS_MIN = PROMO_PACKAGES[0]!.days;
-export const PROMO_DAYS_MAX = PROMO_PACKAGES[PROMO_PACKAGES.length - 1]!.days;
+export const PROMO_DAYS_MIN = PROMO_DAY_PACKAGES[0]!.days;
+export const PROMO_DAYS_MAX = PROMO_DAY_PACKAGES[PROMO_DAY_PACKAGES.length - 1]!.days;
 
 export function promoPackageByDays(days: number) {
-  const d = Math.floor(Number(days) || PROMO_PACKAGES[0].days);
-  return PROMO_PACKAGES.find((p) => p.days === d) ?? PROMO_PACKAGES[0];
+  const d = Math.floor(Number(days) || PROMO_DAYS_MIN);
+  return PROMO_DAY_PACKAGES.find((p) => p.days === d) ?? PROMO_DAY_PACKAGES[0]!;
 }
 
 export function promoPackageById(id: string) {
-  return PROMO_PACKAGES.find((p) => p.id === id) ?? PROMO_PACKAGES[0];
+  return PROMO_PACKAGES.find((p) => p.id === id) ?? PROMO_DAY_PACKAGES[0]!;
+}
+
+/** "2 horas" o "3 días · 72 h". */
+export function promoDurationLabel(days: number, hours?: number) {
+  const d = Math.floor(Number(days) || 0);
+  const h = Math.floor(Number(hours) || d * 24);
+  if (d < 1) return h === 1 ? '1 hora' : `${h} horas`;
+  return `${d} ${d === 1 ? 'día' : 'días'} · ${h} h`;
+}
+
+/** Precio informativo por hora (paquetes por horas) o por día. */
+export function formatPromoUnitPrice(totalCop: number, days: number, hours?: number) {
+  const d = Math.floor(Number(days) || 0);
+  if (d < 1) {
+    const h = Math.max(1, Math.floor(Number(hours) || 1));
+    return `${formatPromoCop(totalCop / h)} / hora`;
+  }
+  return `${formatPromoCop(totalCop / d)} / día`;
 }
 
 export function promoPriceCop(days: number, format: PromoBannerFormat = 'static') {
