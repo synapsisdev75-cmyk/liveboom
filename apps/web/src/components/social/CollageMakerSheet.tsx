@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ImagePlus, LayoutGrid, X } from 'lucide-react';
+import { Camera, Image as ImageIcon, ImagePlus, LayoutGrid, X } from 'lucide-react';
 import { mediaKindFromFile } from '../../lib/mediaFile';
+import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 
 const COLLAGE_MIN = 2;
 const COLLAGE_MAX = 9;
@@ -147,6 +148,8 @@ export function CollageMakerSheet({ open, onClose, onApply, initialFiles, defaul
   const [selected, setSelected] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<Photo[]>([]);
   photosRef.current = photos;
@@ -162,6 +165,8 @@ export function CollageMakerSheet({ open, onClose, onApply, initialFiles, defaul
     setLayoutId('r0');
     setSelected(null);
     setError(null);
+    setSourceMenuOpen(false);
+    setCameraOpen(false);
     return () => {
       for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
       setPhotos([]);
@@ -174,7 +179,18 @@ export function CollageMakerSheet({ open, onClose, onApply, initialFiles, defaul
   const ratio = ASPECTS.find((item) => item.id === aspect)?.ratio ?? 1;
   const outH = Math.round(OUT_W * ratio);
 
-  function addFiles(files: FileList | null) {
+  function openGallery() {
+    setSourceMenuOpen(false);
+    inputRef.current?.click();
+  }
+
+  function openCamera() {
+    setSourceMenuOpen(false);
+    setError(null);
+    setCameraOpen(true);
+  }
+
+  function addFiles(files: FileList | File[] | null) {
     if (!files?.length) return;
     const picked = Array.from(files).filter((file) => mediaKindFromFile(file) === 'photo');
     if (picked.length === 0) {
@@ -242,7 +258,7 @@ export function CollageMakerSheet({ open, onClose, onApply, initialFiles, defaul
         if (event.target === event.currentTarget && !busy) onClose();
       }}
     >
-      <div className="flex max-h-[min(92dvh,48rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-amber-400/35 bg-zinc-950 pb-[max(0.75rem,var(--lb-safe-bottom))] sm:rounded-3xl">
+      <div className="relative flex max-h-[min(92dvh,48rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-amber-400/35 bg-zinc-950 pb-[max(0.75rem,var(--lb-safe-bottom))] sm:rounded-3xl">
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
           <p className="inline-flex items-center gap-2 text-sm font-bold text-amber-200">
             <LayoutGrid size={16} />
@@ -315,13 +331,13 @@ export function CollageMakerSheet({ open, onClose, onApply, initialFiles, defaul
             ) : (
               <button
                 type="button"
-                onClick={() => inputRef.current?.click()}
+                onClick={() => setSourceMenuOpen(true)}
                 className="flex min-h-48 w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/40 px-4 text-center text-sm text-zinc-300"
               >
                 <ImagePlus size={28} className="text-amber-300" />
                 <span className="font-semibold text-white">Elige de {COLLAGE_MIN} a {COLLAGE_MAX} fotos</span>
                 <span className="text-xs text-zinc-400">
-                  {photos.length === 1 ? 'Añade al menos una foto más.' : 'Toca para abrir tu galería.'}
+                  {photos.length === 1 ? 'Añade al menos una foto más.' : 'Toca para elegir de la galería o usar la cámara.'}
                 </span>
               </button>
             )}
@@ -349,7 +365,8 @@ export function CollageMakerSheet({ open, onClose, onApply, initialFiles, defaul
                 {canAddMore ? (
                   <button
                     type="button"
-                    onClick={() => inputRef.current?.click()}
+                    onClick={() => setSourceMenuOpen(true)}
+                    aria-haspopup="dialog"
                     className="grid h-14 w-14 shrink-0 place-items-center rounded-lg border border-dashed border-amber-400/50 text-amber-300"
                     aria-label="Añadir fotos"
                   >
@@ -482,7 +499,60 @@ export function CollageMakerSheet({ open, onClose, onApply, initialFiles, defaul
             {busy ? 'Creando…' : 'Usar collage'}
           </button>
         </div>
+
+        {sourceMenuOpen ? (
+          <div
+            className="absolute inset-0 z-20 flex items-end justify-center bg-black/60 p-3 sm:items-center"
+            role="dialog"
+            aria-label="Añadir fotos al collage"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setSourceMenuOpen(false);
+            }}
+          >
+            <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-amber-400/30 bg-zinc-900 shadow-[0_12px_40px_rgba(0,0,0,0.55)]">
+              <button
+                type="button"
+                onClick={openGallery}
+                className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-white/5 active:bg-white/10"
+              >
+                <ImageIcon size={20} className="shrink-0 text-amber-300" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-white">Galería</span>
+                  <span className="block text-[11px] leading-snug text-zinc-400">Elige varias fotos a la vez</span>
+                </span>
+              </button>
+              <div className="mx-4 h-px bg-white/10" />
+              <button
+                type="button"
+                onClick={openCamera}
+                className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-white/5 active:bg-white/10"
+              >
+                <Camera size={20} className="shrink-0 text-amber-300" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-white">Cámara</span>
+                  <span className="block text-[11px] leading-snug text-zinc-400">Toma una foto ahora</span>
+                </span>
+              </button>
+              <div className="h-px bg-white/10" />
+              <button
+                type="button"
+                onClick={() => setSourceMenuOpen(false)}
+                className="min-h-12 w-full text-sm font-semibold text-zinc-300 transition hover:bg-white/5"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
+      <FlashBoomCameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => addFiles([file])}
+        title="Foto para el collage"
+        allowVideo={false}
+        defaultMode="photo"
+      />
     </div>,
     document.body,
   );
