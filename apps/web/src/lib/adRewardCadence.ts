@@ -55,11 +55,46 @@ function tick() {
   if (document.visibilityState !== 'visible') return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   if (now - lastInteractionMs > IDLE_AFTER_MS) return;
+  const step = Math.min(Math.max(delta, 0), TICK_MS + 1000);
   const state = read();
   const wasDue = state.activeMs >= intervalMs;
-  state.activeMs += Math.min(Math.max(delta, 0), TICK_MS + 1000);
+  state.activeMs += step;
   write(state);
   if (!wasDue && state.activeMs >= intervalMs) window.dispatchEvent(new Event(AD_DUE_EVENT));
+  const promo = readPromo();
+  promo.activeMs += step;
+  writePromo(promo);
+}
+
+/** Aviso informativo de Gana Puntos en Publicaciones: primera vez y luego cada 20 min de uso activo. */
+const PROMO_KEY = 'lb.ganaPuntosPromo.v1';
+const PROMO_INTERVAL_MS = 20 * 60_000;
+
+type PromoState = { activeMs: number; shownCount: number };
+
+function readPromo(): PromoState {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROMO_KEY) || '{}') as Partial<PromoState>;
+    return { activeMs: Number(raw.activeMs) || 0, shownCount: Number(raw.shownCount) || 0 };
+  } catch {
+    return { activeMs: 0, shownCount: 0 };
+  }
+}
+
+function writePromo(state: PromoState) {
+  try {
+    localStorage.setItem(PROMO_KEY, JSON.stringify(state));
+  } catch {
+    /* almacenamiento lleno o bloqueado */
+  }
+}
+
+/** Toma el turno del aviso (un solo espacio lo muestra) y reinicia el contador de 20 min. */
+export function takeGanaPuntosPromoTurn(): boolean {
+  const state = readPromo();
+  if (state.shownCount > 0 && state.activeMs < PROMO_INTERVAL_MS) return false;
+  writePromo({ activeMs: 0, shownCount: state.shownCount + 1 });
+  return true;
 }
 
 const EVENTS: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];

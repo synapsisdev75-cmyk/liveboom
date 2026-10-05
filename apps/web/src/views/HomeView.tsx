@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGroup } from 'framer-motion';
 import { SponsoredFeedSlot } from '../components/rewards/SponsoredFeedSlot';
+import { GanaPuntosPromoSlot } from '../components/rewards/GanaPuntosPromo';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Gift,
@@ -81,6 +82,8 @@ type FeedTab = 'para_ti' | 'siguiendo' | 'cerca';
 
 /** Puntos seguros del feed donde puede entrar una publicación patrocinada. */
 const SPONSORED_EVERY = 4;
+/** Debe ser múltiplo de SPONSORED_EVERY para no caer junto a un patrocinado. */
+const GANA_PUNTOS_PROMO_EVERY = 8;
 
 function toSocial(post: FsPost): SocialPost {
   return {
@@ -902,6 +905,7 @@ export function HomeView() {
                 {index % SPONSORED_EVERY === SPONSORED_EVERY - 1 ? (
                   <SponsoredFeedSlot surface="inicio" />
                 ) : null}
+                {index % GANA_PUNTOS_PROMO_EVERY === 1 ? <GanaPuntosPromoSlot /> : null}
               </Fragment>
             );
           })}
