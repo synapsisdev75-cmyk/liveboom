@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../lib/api';
 import {
   listCoinPackages,
@@ -267,14 +268,14 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
 
   const selectedPack = packs.find((pack) => pack.id === selected);
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[200] grid place-items-end bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
+      className="fixed inset-0 z-[200] grid place-items-end overflow-hidden bg-black/70 p-0 backdrop-blur-sm sm:place-items-center sm:p-4"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="lb-safe-sheet flex max-h-[92dvh] w-full max-w-4xl flex-col rounded-t-3xl border border-white/10 bg-zinc-950 shadow-[0_0_48px_rgba(0,240,255,0.12)] sm:rounded-3xl">
+      <div className="lb-safe-sheet flex max-h-[92dvh] w-full min-w-0 max-w-4xl flex-col rounded-t-3xl border border-white/10 bg-zinc-950 shadow-[0_0_48px_rgba(0,240,255,0.12)] sm:max-h-[min(92dvh,calc(100dvh-2rem))] sm:rounded-3xl">
         <div className="shrink-0 border-b border-white/5 p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -362,6 +363,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
