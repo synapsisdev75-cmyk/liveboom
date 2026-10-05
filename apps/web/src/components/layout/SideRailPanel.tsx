@@ -27,11 +27,6 @@ import { MyPromotionsModal } from '../ads/MyPromotionsModal';
 import { PromoteAdsModal } from '../ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../ads/PublicidadSidebarCard';
 import { FollowButton } from '../social/SocialPostCard';
-import {
-  GmailBrandIcon,
-  InstagramBrandIcon,
-  WhatsAppBrandIcon,
-} from '../brand/SocialBrandIcons';
 import { bcp47For, useT } from '../../i18n';
 import {
   joinGroup,
@@ -435,48 +430,6 @@ function SearchFriendsRail() {
             </ul>
           </div>
         ) : null}
-      </section>
-
-      <section className="shrink-0 rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-sm font-bold text-white">Contactos sincronizados</p>
-          <span className="text-[11px] font-semibold text-violet-400">Ver todos</span>
-        </div>
-        <p className="text-[11px] text-zinc-500">Encuentra amigos que ya usan LiveBoom.</p>
-        <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-500/15"
-            title="WhatsApp · Próximamente"
-            aria-label="WhatsApp"
-          >
-            <WhatsAppBrandIcon size={22} />
-          </button>
-          <button
-            type="button"
-            className="grid h-11 w-11 place-items-center rounded-xl bg-fuchsia-500/15"
-            title="Instagram · Próximamente"
-            aria-label="Instagram"
-          >
-            <InstagramBrandIcon size={22} />
-          </button>
-          <button
-            type="button"
-            className="grid h-11 w-11 place-items-center rounded-xl bg-white/10"
-            title="Gmail · Próximamente"
-            aria-label="Gmail"
-          >
-            <GmailBrandIcon size={20} />
-          </button>
-          <button
-            type="button"
-            className="grid h-11 w-11 place-items-center rounded-xl bg-zinc-700/50 text-[11px] font-black text-zinc-300"
-            title="Más · Próximamente"
-            aria-label="Más opciones"
-          >
-            …
-          </button>
-        </div>
       </section>
 
       <section className="shrink-0 rounded-2xl border border-white/[0.08] bg-[#14151c] p-3.5">
