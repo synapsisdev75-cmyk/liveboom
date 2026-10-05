@@ -1,6 +1,7 @@
 const { resolveCoinPackage } = require('../lib/coinPackages');
 const {
   assertIntegrityPair,
+  buildWebCheckoutUrl,
   cleanWompiSecret,
   createWidgetIntegritySignature,
   createPaymentLink,
@@ -10,6 +11,7 @@ const {
   getWompiMerchant,
   isWompiMerchantActive,
   wompiAppReturnUrl,
+  wompiRedirectUrl,
 } = require('../lib/wompi');
 const {
   rememberOrder,
@@ -60,7 +62,7 @@ async function creditTopup(uid, coins, idempotencyKey) {
 function buildOrderResponse({ pack, packageId, amountInCop, publicKey, reference }) {
   const orderRef = reference || createBlastPurchaseReference();
   const currency = 'COP';
-  const expirationTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  const expirationTime = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, '.000Z');
   const integritySecret = assertIntegrityPair(publicKey, process.env.WOMPI_INTEGRITY_SECRET);
   const integritySignature = createWidgetIntegritySignature(
     orderRef,
@@ -480,6 +482,7 @@ async function createOrder(req, res) {
       }
     }
 
+    const redirectUrl = req.body?.returnToApp === true ? wompiAppReturnUrl() : wompiRedirectUrl();
     let checkoutUrl = null;
     let paymentLinkId = null;
     let checkoutError = null;
@@ -489,7 +492,7 @@ async function createOrder(req, res) {
         description: `Recarga Blast — ${resolved.pack.coins} blast`,
         amountInCents: amountInCop,
         reference: order.reference,
-        redirectUrl: req.body?.returnToApp === true ? wompiAppReturnUrl() : undefined,
+        redirectUrl,
       });
       checkoutUrl = link.url;
       paymentLinkId = link.id;
@@ -508,12 +511,20 @@ async function createOrder(req, res) {
     } catch (linkError) {
       checkoutError = linkError instanceof Error ? linkError.message : String(linkError);
       console.warn('[payments/create-order] payment link:', checkoutError);
+      checkoutUrl = buildWebCheckoutUrl({
+        publicKey,
+        currency: order.currency,
+        amountInCents: amountInCop,
+        reference: order.reference,
+        integritySignature: order.integritySignature,
+        redirectUrl,
+        expirationTime: order.expirationTime,
+      });
     }
 
     if (!widgetAvailable && !checkoutUrl) {
       res.status(503).json({
-        error:
-          'Wompi no reconoce tus llaves sandbox. En el dashboard copia de nuevo la llave pública, privada y secretos, o contacta soporte Wompi.',
+        error: 'Wompi no pudo abrir el checkout. Intenta de nuevo en unos minutos.',
         merchantOk: false,
         checkoutError,
       });
