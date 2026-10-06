@@ -20252,3 +20252,18 @@ html[data-lb-theme='light'] .lb-loc-scene {
 .lb-nav-banner__card.is-error {
   background: linear-gradient(135deg, #b91c1c, #7c2d12);
 }
+
+/* Pantallas táctiles (celular / tablet Android o iOS): se desplaza con el dedo, sin barras de scroll. */
+@media (hover: none) and (pointer: coarse) {
+  :root,
+  :root * {
+    scrollbar-width: none;
+  }
+
+  :root::-webkit-scrollbar,
+  :root *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
