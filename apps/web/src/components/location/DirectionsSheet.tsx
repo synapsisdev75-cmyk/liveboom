@@ -2,25 +2,20 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bike, Car, ExternalLink, Footprints, Navigation, X } from 'lucide-react';
-import { googleMapsDirectionsUrl, TRAVEL_MODES, type TravelMode } from '../../lib/googleMaps';
+import {
+  googleMapsDirectionsUrl,
+  readSavedTravelMode,
+  TRAVEL_MODE_STORAGE_KEY,
+  TRAVEL_MODES,
+  type TravelMode,
+} from '../../lib/googleMaps';
 import { navigationInAppHref, type SharedLocation } from '../../lib/locationShare';
-
-const MODE_STORAGE_KEY = 'lb.travelMode';
 
 const MODE_ICON: Record<TravelMode, ReactNode> = {
   driving: <Car size={16} />,
   motorcycle: <Bike size={16} />,
   walking: <Footprints size={16} />,
 };
-
-function savedMode(): TravelMode {
-  try {
-    const raw = localStorage.getItem(MODE_STORAGE_KEY);
-    return raw === 'motorcycle' || raw === 'walking' ? raw : 'driving';
-  } catch {
-    return 'driving';
-  }
-}
 
 export function TravelModePicker({
   value,
@@ -43,7 +38,7 @@ export function TravelModePicker({
           onClick={() => {
             onChange(mode.id);
             try {
-              localStorage.setItem(MODE_STORAGE_KEY, mode.id);
+              localStorage.setItem(TRAVEL_MODE_STORAGE_KEY, mode.id);
             } catch {
               /* almacenamiento bloqueado */
             }
@@ -68,7 +63,7 @@ export function DirectionsSheet({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<TravelMode>(savedMode);
+  const [mode, setMode] = useState<TravelMode>(readSavedTravelMode);
 
   useEffect(() => {
     if (!open) return;

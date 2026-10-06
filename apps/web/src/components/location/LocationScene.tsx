@@ -32,21 +32,67 @@ export type SceneCompanion = {
   person?: MapPerson | null;
   live?: boolean;
   label?: string;
+  /** Ruta por calles desde `companion` hasta el punto principal; sin ella se dibuja una línea recta. */
+  path?: [number, number][] | null;
 };
+
+function linkCoords(lat: number, lng: number, companion: SceneCompanion | null | undefined): [number, number][] {
+  if (!companion) return [];
+  if (companion.path && companion.path.length > 1) {
+    return [[companion.lng, companion.lat], ...companion.path, [lng, lat]];
+  }
+  return [[companion.lng, companion.lat], [lng, lat]];
+}
 
 function linkFeature(lat: number, lng: number, companion: SceneCompanion | null | undefined) {
   return {
     type: 'Feature' as const,
     properties: {},
-    geometry: {
-      type: 'LineString' as const,
-      coordinates: companion ? [[lng, lat], [companion.lng, companion.lat]] : [],
-    },
+    geometry: { type: 'LineString' as const, coordinates: linkCoords(lat, lng, companion) },
   };
 }
 
-function fitBoth(map: MapLibreMap, a: { lat: number; lng: number }, b: { lat: number; lng: number }, duration: number) {
+/** Punto a mitad del recorrido (por distancia), para la etiqueta. */
+function linkMidpoint(coords: [number, number][]): [number, number] {
+  if (coords.length < 2) return coords[0] ?? [0, 0];
+  const seg: number[] = [];
+  let total = 0;
+  for (let i = 1; i < coords.length; i += 1) {
+    const a = coords[i - 1]!;
+    const b = coords[i]!;
+    const d = Math.hypot((b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180), b[1] - a[1]);
+    seg.push(d);
+    total += d;
+  }
+  let half = total / 2;
+  for (let i = 0; i < seg.length; i += 1) {
+    const d = seg[i]!;
+    if (half <= d && d > 0) {
+      const a = coords[i]!;
+      const b = coords[i + 1]!;
+      const t = half / d;
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    half -= d;
+  }
+  return coords[coords.length - 1]!;
+}
+
+function styleLink(map: MapLibreMap, routed: boolean) {
+  if (!map.getLayer('lb-link-line')) return;
+  map.setPaintProperty('lb-link-line', 'line-dasharray', routed ? undefined : [1.5, 1.5]);
+  map.setPaintProperty('lb-link-line', 'line-width', routed ? 5 : 3);
+  map.setLayoutProperty('lb-link-casing', 'visibility', routed ? 'visible' : 'none');
+}
+
+function fitBoth(
+  map: MapLibreMap,
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number; path?: [number, number][] | null },
+  duration: number,
+) {
   const bounds = new maplibregl.LngLatBounds([a.lng, a.lat], [a.lng, a.lat]).extend([b.lng, b.lat]);
+  for (const c of b.path ?? []) bounds.extend(c);
   const height = map.getContainer().clientHeight;
   map.fitBounds(bounds, {
     padding: { top: Math.min(110, height * 0.28), bottom: Math.min(70, height * 0.18), left: 60, right: 60 },
@@ -152,6 +198,7 @@ export default function LocationScene({
   const labelMarkerRef = useRef<maplibregl.Marker | null>(null);
   const userMovedRef = useRef(false);
   const fittedRef = useRef(false);
+  const fittedPathRef = useRef(false);
   const latestRef = useRef({ lat, lng, accuracy, zoom, companion });
   const onFailRef = useRef(onFail);
   const [markerEl] = useState(() => {
@@ -222,6 +269,13 @@ export default function LocationScene({
       if (!map.getSource('lb-link')) {
         map.addSource('lb-link', { type: 'geojson', data: linkFeature(cur.lat, cur.lng, cur.companion) });
         map.addLayer({
+          id: 'lb-link-casing',
+          type: 'line',
+          source: 'lb-link',
+          layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+          paint: { 'line-color': theme === 'dark' ? '#0b0f19' : '#ffffff', 'line-width': 9, 'line-opacity': 0.9 },
+        });
+        map.addLayer({
           id: 'lb-link-line',
           type: 'line',
           source: 'lb-link',
@@ -229,10 +283,11 @@ export default function LocationScene({
           paint: {
             'line-color': '#a78bfa',
             'line-width': 3,
-            'line-opacity': 0.9,
+            'line-opacity': 0.95,
             'line-dasharray': [1.5, 1.5],
           },
         });
+        styleLink(map, Boolean(cur.companion?.path && cur.companion.path.length > 1));
       }
     });
     map.once('load', () => {
@@ -294,23 +349,27 @@ export default function LocationScene({
     if (!map) return;
     const link = map.getSource('lb-link') as GeoJSONSource | undefined;
     link?.setData(linkFeature(lat, lng, companion));
+    styleLink(map, Boolean(companion?.path && companion.path.length > 1));
     const marker = companionMarkerRef.current;
     const label = labelMarkerRef.current;
     if (!companion) {
       marker?.remove();
       label?.remove();
       fittedRef.current = false;
+      fittedPathRef.current = false;
       return;
     }
     marker?.setLngLat([companion.lng, companion.lat]);
-    label?.setLngLat([(lng + companion.lng) / 2, (lat + companion.lat) / 2]);
+    label?.setLngLat(linkMidpoint(linkCoords(lat, lng, companion)));
     if (marker && !marker.getElement().isConnected) marker.addTo(map);
     if (label && companion.label && !label.getElement().isConnected) label.addTo(map);
     if (label && !companion.label) label.remove();
     const bounds = map.getBounds();
     const inView = bounds.contains([lng, lat]) && bounds.contains([companion.lng, companion.lat]);
-    if (!userMovedRef.current && (!fittedRef.current || !inView)) {
+    const hasPath = Boolean(companion.path && companion.path.length > 1);
+    if (!userMovedRef.current && (!fittedRef.current || !inView || (hasPath && !fittedPathRef.current))) {
       fittedRef.current = true;
+      fittedPathRef.current = hasPath;
       fitBoth(map, { lat, lng }, companion, map.loaded() ? 900 : 0);
     }
   }, [lat, lng, companion]);

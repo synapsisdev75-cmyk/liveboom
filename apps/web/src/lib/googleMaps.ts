@@ -14,6 +14,17 @@ export function parseTravelMode(raw: string | null | undefined): TravelMode {
   return raw === 'motorcycle' || raw === 'walking' ? raw : 'driving';
 }
 
+export const TRAVEL_MODE_STORAGE_KEY = 'lb.travelMode';
+
+/** Último medio de transporte elegido en "Cómo llegar". */
+export function readSavedTravelMode(): TravelMode {
+  try {
+    return parseTravelMode(localStorage.getItem(TRAVEL_MODE_STORAGE_KEY));
+  } catch {
+    return 'driving';
+  }
+}
+
 /** Abre la navegación de la app/web de Google Maps hacia el destino. */
 export function googleMapsDirectionsUrl(
   dest: { lat: number; lng: number },

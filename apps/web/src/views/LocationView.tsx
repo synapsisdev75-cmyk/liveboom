@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Check, Copy, ExternalLink, MapPin, Radio, Share2, Square, Users } from 'lucide-react';
 import {
@@ -8,8 +8,17 @@ import {
   parseLocationParams,
 } from '../lib/locationShare';
 import { useDevicePosition, useLiveLocation, useLiveLocationShare, useNow } from '../lib/liveLocation';
-import { distanceM, formatDistance } from '../lib/routing';
+import { distanceM, fetchRoute, formatDistance, formatDuration, type LngLat, type Route } from '../lib/routing';
+import { readSavedTravelMode, type TravelMode } from '../lib/googleMaps';
 import type { SceneCompanion } from '../components/location/LocationScene';
+
+const ROUTE_REFRESH_MS = 10_000;
+const ROUTE_MOVE_M = 40;
+const MODE_PHRASE: Record<TravelMode, string> = {
+  driving: 'en auto',
+  motorcycle: 'en moto',
+  walking: 'a pie',
+};
 import { LocationShareModal } from '../components/location/LocationShareModal';
 import { DirectionsButton } from '../components/location/DirectionsSheet';
 import { UserAvatar } from '../components/profile/UserAvatar';
@@ -64,7 +73,44 @@ export default function LocationView() {
   const { position: gps, error: gpsError } = useDevicePosition(viewingOther && !sharingToo && gpsWanted);
   const me = sharingToo ? { lat: myLiveLat as number, lng: myLiveLng as number } : viewingOther ? gps : null;
   const apartM = me && point ? distanceM([me.lng, me.lat], [point.lng, point.lat]) : null;
-  const apartLabel = apartM !== null ? formatDistance(apartM) : '';
+
+  /* Ruta real por calles; se recalcula cuando alguno de los dos se mueve. */
+  const [route, setRoute] = useState<{ result: Route; mode: TravelMode } | null>(null);
+  const routeReqRef = useRef<{ at: number; from: LngLat; to: LngLat } | null>(null);
+  const routeAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!me || !point || (apartM !== null && apartM < 30)) {
+      routeReqRef.current = null;
+      setRoute(null);
+      return;
+    }
+    const from: LngLat = [me.lng, me.lat];
+    const to: LngLat = [point.lng, point.lat];
+    const last = routeReqRef.current;
+    const now = Date.now();
+    if (last && (now - last.at < ROUTE_REFRESH_MS || (distanceM(last.from, from) < ROUTE_MOVE_M && distanceM(last.to, to) < ROUTE_MOVE_M))) {
+      return;
+    }
+    routeReqRef.current = { at: now, from, to };
+    routeAbortRef.current?.abort();
+    const controller = new AbortController();
+    routeAbortRef.current = controller;
+    const mode = readSavedTravelMode();
+    fetchRoute(me, point, mode, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setRoute({ result, mode });
+      })
+      .catch(() => {
+        /* sin ruta: queda la línea recta y se reintenta al moverse */
+        if (!controller.signal.aborted) routeReqRef.current = null;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.lat, me?.lng, point?.lat, point?.lng]);
+  useEffect(() => () => routeAbortRef.current?.abort(), []);
+
+  const routeKm = route ? formatDistance(route.result.distanceM) : '';
+  const routeTime = route ? formatDuration(route.result.durationS) : '';
+  const apartLabel = route ? `${routeKm} · ${routeTime}` : apartM !== null ? formatDistance(apartM) : '';
   const companion = useMemo<SceneCompanion | null>(
     () =>
       me
@@ -73,13 +119,14 @@ export default function LocationView() {
             lng: me.lng,
             live: sharingToo,
             label: apartLabel,
+            path: route?.result.coords ?? null,
             person: profile
               ? { uid: profile.firebaseUid, avatarUrl: profile.avatarUrl, handle: profile.handle, displayName: profile.displayName }
               : null,
           }
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [me?.lat, me?.lng, sharingToo, apartLabel, profile?.firebaseUid, profile?.avatarUrl],
+    [me?.lat, me?.lng, sharingToo, apartLabel, route, profile?.firebaseUid, profile?.avatarUrl],
   );
   const otherName = person.displayName || (person.handle ? `@${person.handle}` : loc?.label || 'la ubicación');
   const title = loc?.liveId
@@ -172,14 +219,22 @@ export default function LocationView() {
                     <span className={`lb-loc-together__dot${sharingToo && isLive ? ' is-live' : ''}`} aria-hidden />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-bold">
-                        {apartM < 30 ? `Estás con ${otherName}` : `Estás a ${apartLabel} de ${otherName}`}
+                        {apartM < 30
+                          ? `Estás con ${otherName}`
+                          : route
+                            ? `${routeTime} ${MODE_PHRASE[route.mode]} · ${routeKm}`
+                            : `Estás a ${formatDistance(apartM)} de ${otherName}`}
                       </span>
                       <span className="block truncate text-[11px] opacity-80">
                         {sharingToo && isLive
-                          ? 'Conectados en tiempo real · los dos se ven en el mapa'
-                          : isLive
-                            ? 'Se actualiza en vivo con tu GPS'
-                            : 'Distancia desde tu ubicación actual'}
+                          ? `Conectados en tiempo real · ruta hasta ${otherName}`
+                          : route
+                            ? `Ruta por calles hasta ${otherName}${isLive ? ' · en vivo' : ''}`
+                            : apartM >= 30
+                              ? 'Calculando la ruta…'
+                              : isLive
+                                ? 'Se actualiza en vivo con tu GPS'
+                                : 'Desde tu ubicación actual'}
                       </span>
                     </span>
                   </div>
