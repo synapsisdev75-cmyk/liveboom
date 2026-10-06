@@ -135,9 +135,10 @@ async function runMutation(uid, idempotencyKey, mutator, options = {}) {
   return out;
 }
 
-async function creditPurchased({ userId, amount, idempotencyKey, referenceType, referenceId, metadata }) {
+async function creditPurchased({ userId, amount, idempotencyKey, referenceType, referenceId, metadata, fingerprint }) {
   const coins = engine.floorNonNeg(amount);
   if (!coins) return { ok: false, code: 'INVALID_AMOUNT' };
+  const options = fingerprint ? { fingerprint: String(fingerprint) } : {};
   return runMutation(userId, idempotencyKey, ({ current }) => {
     const balances = engine.applyCreditPurchased(current, coins);
     return {
@@ -157,7 +158,7 @@ async function creditPurchased({ userId, amount, idempotencyKey, referenceType, 
         },
       ],
     };
-  });
+  }, options);
 }
 
 async function creditEarned({

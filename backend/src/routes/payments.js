@@ -19,6 +19,12 @@ router.post(
 );
 
 router.post(
+  '/apple-iap',
+  requireAuth,
+  bind(() => require('../controllers/appleIapController'), 'confirmAppleIap'),
+);
+
+router.post(
   '/complete-redirect',
   requireAuth,
   bind(() => require('../controllers/paymentsController'), 'completeRedirect'),

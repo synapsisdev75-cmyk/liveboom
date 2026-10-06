@@ -22,7 +22,20 @@ import {
   markPendingBlastRecharge,
   watchPendingBlastRecharge,
 } from '../../lib/pendingBlastRecharge';
-import { assertWompiMerchantKey, isNativeApp, openWompiCheckoutUrl } from '../../lib/wompiCheckout';
+import {
+  appleBlastProductId,
+  applePurchaseWasCancelled,
+  loadAppleBlastPrices,
+  purchaseAppleBlast,
+  watchUnfinishedApplePurchases,
+  type AppleBlastCredit,
+} from '../../lib/appleIap';
+import {
+  assertWompiMerchantKey,
+  isIosStorePurchaseOnly,
+  isNativeApp,
+  openWompiCheckoutUrl,
+} from '../../lib/wompiCheckout';
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { PaymentMethodsStrip } from './PaymentMethodsStrip';
@@ -82,6 +95,8 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   );
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<RechargeNote | null>(null);
+  const [applePrices, setApplePrices] = useState<Record<string, string>>({});
+  const iosPurchase = isIosStorePurchaseOnly();
 
   useEffect(() => {
     const onCredited = (event: Event) => {
@@ -102,6 +117,29 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
       window.removeEventListener('liveboom:recharge-declined', onDeclined);
     };
   }, [syncProfile]);
+
+  function showAppleCredit(paid: AppleBlastCredit) {
+    applyTopup(paid);
+    setNote({ kind: 'success', coins: Math.max(0, Math.floor(Number(paid.coins) || 0)) });
+    void applyWalletSummary();
+  }
+
+  useEffect(() => {
+    if (!iosPurchase) return undefined;
+    let cancelled = false;
+    void loadAppleBlastPrices(packs.map((pack) => pack.coins))
+      .then((prices) => {
+        if (!cancelled) setApplePrices(prices);
+      })
+      .catch(() => undefined);
+    const stop = watchUnfinishedApplePurchases((paid) => {
+      if (!cancelled) showAppleCredit(paid);
+    });
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [iosPurchase, packsVersion]);
 
   function applyWalletSummary() {
     void fetchWalletSummary()
@@ -170,6 +208,25 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   }
 
   async function pay() {
+    if (iosPurchase) {
+      const pack = packs.find((item) => item.id === selected);
+      if (!pack) return;
+      setBusy(true);
+      setNote(null);
+      try {
+        const paid = await purchaseAppleBlast(pack.coins);
+        showAppleCredit(paid);
+      } catch (error) {
+        if (applePurchaseWasCancelled(error)) return;
+        setNote({
+          kind: 'error',
+          text: error instanceof Error ? error.message : 'No se pudo completar la compra de Apple',
+        });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setBusy(true);
     setNote(null);
     try {
@@ -282,7 +339,9 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-white sm:text-xl">Recargar blast</h2>
               <p className="mt-1 text-sm text-zinc-400">
-                El paquete se suma a tu saldo actual. Paga con Wompi sobre esta pantalla.
+                {iosPurchase
+                  ? 'El paquete se suma a tu saldo. El pago se hace con tu Apple ID.'
+                  : 'El paquete se suma a tu saldo actual. Paga con Wompi sobre esta pantalla.'}
               </p>
               <p className="mt-2 text-sm text-cyan-300">
                 Tienes {currentCoins.toLocaleString('es-CO')} blast
@@ -340,7 +399,9 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
                   </p>
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">blast</p>
                   <p className="mt-1 text-[11px] font-bold text-zinc-300">
-                    {packageCopLabel(pack.amountInCop)}
+                    {iosPurchase
+                      ? applePrices[appleBlastProductId(pack.coins)] || 'Precio de Apple'
+                      : packageCopLabel(pack.amountInCop)}
                   </p>
                 </button>
               );
@@ -349,7 +410,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
         </div>
 
         <div className="shrink-0 border-t border-white/5 p-4 sm:p-6">
-          <PaymentMethodsStrip compact className="mb-3" />
+          {iosPurchase ? null : <PaymentMethodsStrip compact className="mb-3" />}
           {note ? <RechargeStatus note={note} /> : null}
 
           <div className="flex flex-col gap-2 pb-[env(safe-area-inset-bottom)] sm:flex-row sm:justify-end sm:pb-0">
@@ -359,7 +420,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
               onClick={() => void pay()}
               className="w-full rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-3 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105 disabled:opacity-60 sm:w-auto sm:py-2"
             >
-              {busy ? 'Abriendo Wompi…' : 'Recargar BLAST'}
+              {busy ? (iosPurchase ? 'Abriendo Apple…' : 'Abriendo Wompi…') : iosPurchase ? 'Comprar con Apple' : 'Recargar BLAST'}
             </button>
           </div>
         </div>

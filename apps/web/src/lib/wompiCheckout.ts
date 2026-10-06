@@ -15,6 +15,18 @@ export function isNativeApp(): boolean {
   }
 }
 
+/** iPhone: BLAST y publicidad son bienes digitales. Apple exige su compra integrada, no Wompi. */
+export function isIosStorePurchaseOnly(): boolean {
+  try {
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+  } catch {
+    return false;
+  }
+}
+
+export const IOS_STORE_PURCHASE_MESSAGE =
+  'En iPhone, BLAST y la publicidad se compran con la compra de Apple dentro de la app. El pago externo no está disponible en esta versión.';
+
 export const WOMPI_INVALID_KEY_MESSAGE =
   'Los pagos con Wompi no están disponibles en este momento: Wompi no reconoce la llave del comercio. Intenta más tarde.';
 
@@ -49,6 +61,9 @@ function publicKeyFromCheckoutUrl(url: string): string {
  * En web usa navegación completa (comportamiento histórico).
  */
 export async function openWompiCheckoutUrl(checkoutUrl: string): Promise<'external' | 'navigated'> {
+  if (isIosStorePurchaseOnly()) {
+    throw new Error(IOS_STORE_PURCHASE_MESSAGE);
+  }
   const url = String(checkoutUrl || '').trim();
   if (!url) throw new Error('Falta la URL de checkout de Wompi');
   await assertWompiMerchantKey(publicKeyFromCheckoutUrl(url));

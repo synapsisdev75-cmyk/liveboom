@@ -15,13 +15,16 @@
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^7.5.0",
+    "@capacitor-firebase/messaging": "^7.5.0",
     "@capacitor/android": "^7.4.3",
     "@capacitor/app": "^7.1.0",
     "@capacitor/browser": "^7.0.5",
     "@capacitor/core": "^7.4.3",
+    "@capacitor/ios": "^7.6.9",
     "@capacitor/push-notifications": "^7.0.7",
     "@capacitor/splash-screen": "^7.0.3",
-    "@capacitor/status-bar": "^7.0.3"
+    "@capacitor/status-bar": "^7.0.3",
+    "@liveboom/apple-iap": "file:./plugins/apple-iap"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",

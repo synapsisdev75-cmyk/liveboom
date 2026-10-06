@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type CoinPackage } from '../../lib/api';
+import { IOS_STORE_PURCHASE_MESSAGE, isIosStorePurchaseOnly } from '../../lib/wompiCheckout';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 
@@ -16,6 +17,11 @@ export function TopupModal({ packages, onClose, onDone }: Props) {
 
   async function pay() {
     if (!selected) return;
+    if (isIosStorePurchaseOnly()) {
+      setToast(IOS_STORE_PURCHASE_MESSAGE);
+      window.setTimeout(() => setToast(null), 4200);
+      return;
+    }
     setBusy(true);
     try {
       const result = await api<{ mock: boolean; reference: string; checkoutUrl: string | null }>(

@@ -1,4 +1,9 @@
-import { assertWompiMerchantKey, getWompiRedirectUrl } from './wompiCheckout';
+import {
+  assertWompiMerchantKey,
+  getWompiRedirectUrl,
+  IOS_STORE_PURCHASE_MESSAGE,
+  isIosStorePurchaseOnly,
+} from './wompiCheckout';
 
 export type WompiOrder = {
   reference: string;
@@ -39,6 +44,9 @@ export async function openWompiWidget(
   order: WompiOrder,
   onResult?: (result: WompiWidgetResult) => void,
 ) {
+  if (isIosStorePurchaseOnly()) {
+    throw new Error(IOS_STORE_PURCHASE_MESSAGE);
+  }
   await assertWompiMerchantKey(order.publicKey);
   await loadWompiWidget();
   if (typeof window.WidgetCheckout !== 'function') {

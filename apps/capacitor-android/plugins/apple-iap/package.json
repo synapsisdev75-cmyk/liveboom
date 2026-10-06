@@ -1,0 +1,11 @@
+{
+  "name": "@liveboom/apple-iap",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Compra de BLAST con StoreKit en el iPhone",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

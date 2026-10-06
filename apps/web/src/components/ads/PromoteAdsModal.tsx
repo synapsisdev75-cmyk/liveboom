@@ -21,7 +21,12 @@ import {
 import { isPromotionVideoUrl } from '../../lib/promotionLinks';
 import { uploadUserMedia } from '../../lib/storage';
 import { openWompiWidget, type WompiOrder } from '../../lib/wompiWidget';
-import { isNativeApp, openWompiCheckoutUrl } from '../../lib/wompiCheckout';
+import {
+  IOS_STORE_PURCHASE_MESSAGE,
+  isIosStorePurchaseOnly,
+  isNativeApp,
+  openWompiCheckoutUrl,
+} from '../../lib/wompiCheckout';
 import { useAuthStore } from '../../store/authStore';
 
 type ServerPackage = {
@@ -231,6 +236,10 @@ export function PromoteAdsModal({ onClose, defaultRegionId, onDone }: Props) {
 
   async function payWithWompi() {
     if (!profile || !quote) return;
+    if (isIosStorePurchaseOnly()) {
+      setNote(IOS_STORE_PURCHASE_MESSAGE);
+      return;
+    }
     setBusy(true);
     setNote(null);
     try {

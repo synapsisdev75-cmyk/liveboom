@@ -3,7 +3,8 @@
   "appName": "LiveBoom",
   "webDir": "../web/dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "iosScheme": "https"
   },
   "android": {
     "allowMixedContent": true,
@@ -27,11 +28,14 @@
     },
     "FirebaseAuthentication": {
       "skipNativeAuth": true,
-      "providers": ["google.com"],
+      "providers": ["google.com", "apple.com"],
       "authDomain": "liveboom-app.firebaseapp.com"
     },
     "PushNotifications": {
       "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "FirebaseMessaging": {
+      "presentationOptions": ["alert", "badge", "sound"]
     }
   }
 }
