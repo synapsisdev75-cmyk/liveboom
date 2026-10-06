@@ -176,6 +176,8 @@ type Props = {
   onFirstFrame?: () => void;
   /** Acción extra del consumidor en la barra lateral (solo Explorar). */
   railExtra?: ReactNode;
+  /** Sin etiqueta de contenido, @autor ni descripción sobre el video (visor de Boom Clip). */
+  hideOverlayInfo?: boolean;
 };
 
 const SEEK_STEP_SEC = 10;
@@ -263,6 +265,7 @@ export function PostVideoPlayer({
   fastNavNext2Url = null,
   onFirstFrame,
   railExtra = null,
+  hideOverlayInfo = false,
 }: Props) {
   const t = useT();
   const reactId = useId();
@@ -1146,6 +1149,8 @@ export function PostVideoPlayer({
             style={{ paddingRight: 'max(0.75rem, env(safe-area-inset-right))' }}
           >
             <div className="pointer-events-auto space-y-2">
+            {hideOverlayInfo ? null : (
+            <>
             {contentBadge ? (
               <span className="lb-post-overlay__badge inline-flex rounded-md bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-200 ring-1 ring-white/15">
                 {contentBadge}
@@ -1193,6 +1198,8 @@ export function PostVideoPlayer({
                 </p>
               )
             ) : null}
+            </>
+            )}
 
             {canChangeVisibility ? (
               <div className="flex flex-wrap items-center gap-1.5">

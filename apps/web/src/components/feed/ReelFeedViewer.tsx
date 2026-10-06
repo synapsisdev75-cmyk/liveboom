@@ -73,6 +73,8 @@ type Props = {
   plaza?: ReactNode;
   /** Solo Explorar: acción "Chat del video" en la barra lateral. */
   railExtra?: ReactNode;
+  /** Visor de Boom Clip: sin etiqueta, @autor ni descripción sobre el video. */
+  hideMediaInfo?: boolean;
 };
 
 export function ReelFeedViewer({
@@ -88,6 +90,7 @@ export function ReelFeedViewer({
   exploreFastNav = false,
   plaza = null,
   railExtra = null,
+  hideMediaInfo = false,
 }: Props) {
   useBodyScrollLock(!embedded);
   useBackLayer(!embedded, onClose);
@@ -416,6 +419,7 @@ export function ReelFeedViewer({
               : undefined
           }
           railExtra={railExtra}
+          hideOverlayInfo={hideMediaInfo}
         />
       )}
       {storyMode && !embedded ? (

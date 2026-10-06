@@ -62,11 +62,9 @@ function ClipSegmentBar({ count }: { count: number }) {
 
 function AvatarPlusBadge({
   onPublish,
-  clipCount,
   isOwn,
 }: {
   onPublish?: () => void;
-  clipCount: number;
   isOwn: boolean;
 }) {
   if (isOwn) {
@@ -83,13 +81,6 @@ function AvatarPlusBadge({
       >
         <Plus size={13} strokeWidth={3} />
       </button>
-    );
-  }
-  if (clipCount > 1) {
-    return (
-      <span className="absolute -bottom-0.5 -right-0.5 z-20 grid h-5 min-w-5 place-items-center rounded-full bg-fuchsia-600 px-1 text-[9px] font-black tabular-nums text-white ring-2 ring-zinc-950">
-        {clipCount}
-      </span>
     );
   }
   return null;
@@ -158,7 +149,6 @@ function BoomClipGroupThumb({
           />
           <AvatarPlusBadge
             isOwn={Boolean(isOwn)}
-            clipCount={group.clips.length}
             onPublish={onPublish}
           />
         </span>
@@ -412,6 +402,7 @@ export function ReelsRow({
           storyMode={viewerStoryMode}
           immersiveLandscapeLayout
           collapsibleCaption
+          hideMediaInfo={mode === 'reels'}
           onClose={() => setViewerReels(null)}
         />
       ) : null}
