@@ -71,6 +71,8 @@ type Props = {
   exploreFastNav?: boolean;
   /** Solo Explorar: plaza (presencia, hilo, puerta al LIVE). Apagada en el resto. */
   plaza?: ReactNode;
+  /** Solo Explorar: acción "Chat del video" en la barra lateral. */
+  railExtra?: ReactNode;
 };
 
 export function ReelFeedViewer({
@@ -85,6 +87,7 @@ export function ReelFeedViewer({
   activeId,
   exploreFastNav = false,
   plaza = null,
+  railExtra = null,
 }: Props) {
   useBodyScrollLock(!embedded);
   useBackLayer(!embedded, onClose);
@@ -356,6 +359,7 @@ export function ReelFeedViewer({
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
           overlays={reel.overlays}
+          railExtra={railExtra}
         />
       ) : (
         <PostVideoPlayer
@@ -411,6 +415,7 @@ export function ReelFeedViewer({
                 }
               : undefined
           }
+          railExtra={railExtra}
         />
       )}
       {storyMode && !embedded ? (

@@ -31,7 +31,7 @@ import { listenExploreVideoPool, listenFollowing, type FsPost } from '../lib/soc
 import { warmExploreActiveVideo } from '../lib/feedVideoWarmup';
 import { enterExploreWithSound } from '../lib/exploreFeedMute';
 import { listenExploreHeat } from '../lib/explorePresence';
-import { ExplorePlaza } from '../components/feed/ExplorePlaza';
+import { ExplorePlaza, ExplorePlazaRailButton } from '../components/feed/ExplorePlaza';
 import { useAuthStore } from '../store/authStore';
 import { useT } from '../i18n';
 
@@ -495,6 +495,9 @@ export function ExploreView() {
                 autoOpenThread={plazaParam && activeId === videoParam}
               />
             ) : null
+          }
+          railExtra={
+            activeId && postsById.get(activeId) ? <ExplorePlazaRailButton postId={activeId} /> : null
           }
         />
       )}

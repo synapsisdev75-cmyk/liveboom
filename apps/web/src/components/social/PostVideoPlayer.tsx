@@ -10,7 +10,17 @@ import {
   X,
   Users,
 } from 'lucide-react';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
@@ -164,6 +174,8 @@ type Props = {
   fastNavNextUrl?: string | null;
   fastNavNext2Url?: string | null;
   onFirstFrame?: () => void;
+  /** Acción extra del consumidor en la barra lateral (solo Explorar). */
+  railExtra?: ReactNode;
 };
 
 const SEEK_STEP_SEC = 10;
@@ -250,6 +262,7 @@ export function PostVideoPlayer({
   fastNavNextUrl = null,
   fastNavNext2Url = null,
   onFirstFrame,
+  railExtra = null,
 }: Props) {
   const t = useT();
   const reactId = useId();
@@ -1042,6 +1055,7 @@ export function PostVideoPlayer({
               anchor="media"
               layout={expandedRailLayout}
               giftLayoutContext={storyMode ? 'flash_boom' : reelFeed ? 'boom_clip' : 'publicaciones'}
+              extraAction={railExtra}
             />
           }
         >

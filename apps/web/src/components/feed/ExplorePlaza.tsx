@@ -1,7 +1,8 @@
-import { Radio, Info } from 'lucide-react';
+import { Radio, Info, MessagesSquare } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
+import { create } from 'zustand';
 import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CommentComposerBar, type CommentDraftAttachment } from '../social/CommentComposerBar';
@@ -38,6 +39,54 @@ import { useAuthStore } from '../../store/authStore';
 
 const PREVIEW_MS = 20_000;
 
+/** Chat del video activo: lo abre la barra lateral y lo muestra la plaza. */
+const usePlazaUi = create<{ postId: string | null; viewers: number; open: boolean }>(() => ({
+  postId: null,
+  viewers: 0,
+  open: false,
+}));
+
+function viewersLabel(count: number) {
+  return count === 1 ? '1 en este video' : `${count} en este video`;
+}
+
+/** Botón "Chat del video" de la barra lateral de Explorar. */
+export function ExplorePlazaRailButton({ postId }: { postId: string }) {
+  const open = usePlazaUi((state) => state.open && state.postId === postId);
+  const viewers = usePlazaUi((state) => (state.postId === postId ? state.viewers : 0));
+  return (
+    <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.2rem)]">
+      <div className="relative">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            usePlazaUi.setState({ postId, open: !open });
+          }}
+          className={`lb-action-rail__btn grid place-items-center rounded-full shadow-lg backdrop-blur-sm transition ${
+            open ? 'bg-cyan-500 text-zinc-950' : 'bg-black/55 text-white'
+          }`}
+          aria-label={viewers > 0 ? `Chat del video, ${viewersLabel(viewers)}` : 'Chat del video'}
+          aria-expanded={open}
+        >
+          <MessagesSquare className="lb-action-rail__icon" size={20} aria-hidden />
+        </button>
+        {viewers > 1 ? (
+          <span
+            className="pointer-events-none absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-fuchsia-500 px-1 text-[9px] font-black tabular-nums text-white ring-2 ring-black/60"
+            aria-hidden
+          >
+            {viewers}
+          </span>
+        ) : null}
+      </div>
+      <span className="lb-action-rail__label max-w-[4.5rem] text-center font-bold leading-tight text-white drop-shadow">
+        Chat del video
+      </span>
+    </div>
+  );
+}
+
 type Props = {
   postId: string;
   authorUid: string;
@@ -53,7 +102,8 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
   const [presenceReady, setPresenceReady] = useState(false);
   const [liveOpen, setLiveOpen] = useState(false);
   const [closingNote, setClosingNote] = useState('');
-  const [threadOpen, setThreadOpen] = useState(autoOpenThread);
+  const threadOpen = usePlazaUi((state) => state.open && state.postId === postId);
+  const setThreadOpen = useCallback((open: boolean) => usePlazaUi.setState({ postId, open }), [postId]);
   const [messages, setMessages] = useState<PlazaMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [textStyle, setTextStyle] = useState<PostTextStyle | null>(null);
@@ -74,8 +124,10 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
 
   useBackLayer(threadOpen, () => setThreadOpen(false));
 
+  useEffect(() => () => usePlazaUi.setState({ postId: null, viewers: 0, open: false }), []);
+
   useEffect(() => {
-    setThreadOpen(autoOpenRef.current);
+    usePlazaUi.setState({ postId, viewers: 0, open: autoOpenRef.current });
     setDraft('');
     setSendError(null);
     setViewers([]);
@@ -87,13 +139,14 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
 
   useEffect(() => {
     if (autoOpenThread) setThreadOpen(true);
-  }, [autoOpenThread]);
+  }, [autoOpenThread, setThreadOpen]);
 
   useEffect(() => {
     setPresenceReady(false);
     return listenExploreViewers(postId, (people) => {
       setViewers(people);
       setPresenceReady(true);
+      usePlazaUi.setState({ postId, viewers: people.length });
     });
   }, [postId]);
 
@@ -154,7 +207,6 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
 
   const others = viewers.filter((viewer) => viewer.uid !== profile?.firebaseUid);
   const shown = [...others, ...viewers.filter((viewer) => viewer.uid === profile?.firebaseUid)].slice(0, 3);
-  const countLabel = viewers.length === 1 ? '1 en este video' : `${viewers.length} en este video`;
   const isAuthor = Boolean(profile?.firebaseUid && authorUid && profile.firebaseUid === authorUid);
   useTextStyleFontsIn(messages);
   const previews = threadOpen
@@ -245,7 +297,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
         count: viewers.length,
       });
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : 'No se pudo enviar a la plaza');
+      setSendError(err instanceof Error ? err.message : 'No se pudo enviar el mensaje');
       throw err;
     } finally {
       setSending(false);
@@ -320,14 +372,6 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
               />
             </button>
           ))}
-          <button
-            type="button"
-            className="lb-explore-plaza__count inline-flex min-h-11 items-center rounded-full border border-white/20 bg-black/55 px-3 text-xs font-semibold text-white backdrop-blur-md"
-            onClick={() => setThreadOpen(true)}
-            aria-expanded={threadOpen}
-          >
-            {countLabel}
-          </button>
           {liveOpen && authorUsername ? (
             <Link
               to={`/stream/${encodeURIComponent(authorUsername)}`}
@@ -346,16 +390,16 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
         <div
           className="lb-explore-plaza__sheet pointer-events-auto"
           role="dialog"
-          aria-label="Plaza de este video"
+          aria-label="Chat del video"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="lb-explore-plaza__title text-sm font-bold text-white">Plaza</p>
+            <p className="lb-explore-plaza__title text-sm font-bold text-white">Chat del video</p>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 className="lb-explore-plaza__flag inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-white/80"
-                aria-label="Reportar plaza"
-                title="Reportar plaza"
+                aria-label="Reportar chat del video"
+                title="Reportar chat del video"
                 onClick={() =>
                   openReport(`Plaza del video ${postId}. Autor @${authorUsername} (${authorUid}).`)
                 }
@@ -373,7 +417,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           </div>
           {isAuthor ? (
             <div className="lb-explore-plaza__author mb-2 rounded-xl border border-white/10 bg-white/[0.04] p-2">
-              <p className="lb-explore-plaza__muted mb-1.5 text-[11px] text-white/70">Responde a tu plaza</p>
+              <p className="lb-explore-plaza__muted mb-1.5 text-[11px] text-white/70">Responde al chat de tu video</p>
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
@@ -392,7 +436,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           ) : null}
           <div ref={logRef} className="lb-explore-plaza__log min-h-0 flex-1 space-y-2 overflow-y-auto">
             {messages.length === 0 ? (
-              <p className="lb-explore-plaza__muted text-xs text-white/70">Nadie ha escrito en este video todavía.</p>
+              <p className="lb-explore-plaza__muted text-xs text-white/70">Todavía no hay mensajes en este video.</p>
             ) : (
               messages.map((message) =>
                 isLiveReply(message) ? (
@@ -501,7 +545,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                 onChange={setDraft}
                 onPublish={publishThread}
                 busy={sending}
-                placeholder="Escribe en la plaza"
+                placeholder="Escribe un mensaje"
                 textStyle={textStyle}
                 onTextStyleChange={setTextStyle}
                 textStyleRanges={textStyleRanges}

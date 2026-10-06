@@ -1,6 +1,6 @@
 import { useBackLayer } from '../../lib/backLayer';
 import { X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
@@ -80,6 +80,8 @@ type Props = {
   overlays?: MediaOverlayItem[];
   /** Feed embebido en página (Explorar): sin conteo ni botón cerrar. */
   embedded?: boolean;
+  /** Acción extra del consumidor en la barra lateral (solo Explorar). */
+  railExtra?: ReactNode;
 };
 
 /**
@@ -112,6 +114,7 @@ export function PostPhotoViewer({
   originalHref = null,
   overlays = [],
   embedded = false,
+  railExtra = null,
 }: Props) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
@@ -416,6 +419,7 @@ export function PostPhotoViewer({
                 anchor="media"
                 layout={useLandscapeAside ? 'aside' : 'corner'}
                 giftLayoutContext={storyMode ? 'flash_boom' : 'publicaciones'}
+                extraAction={railExtra}
               />
             ) : null
           }

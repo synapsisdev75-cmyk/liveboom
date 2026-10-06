@@ -74,6 +74,8 @@ type Props = {
   /** `aside` = columna al lado del media (PC, igual que Explorar). */
   layout?: 'default' | 'corner' | 'aside';
   giftLayoutContext?: GiftLayoutVariantId;
+  /** Acción propia del consumidor, entre Compartir y Más (p. ej. "Chat del video" en Explorar). */
+  extraAction?: ReactNode;
 };
 
 /**
@@ -108,6 +110,7 @@ export function PostActionRail({
   anchor = 'viewport',
   layout = 'default',
   giftLayoutContext = 'publicaciones',
+  extraAction = null,
 }: Props) {
   const t = useT();
   const profilePath =
@@ -222,6 +225,8 @@ export function PostActionRail({
           onOpenChange={onShareOpenChange}
         />
       ) : null}
+
+      {extraAction}
 
       <PostOptionsMenu variant="rail" onOpenChange={onOptionsOpenChange} />
     </div>
