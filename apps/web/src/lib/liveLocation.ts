@@ -93,6 +93,37 @@ export function useLiveLocation(liveId?: string | null): LiveLocationState | nul
   return state;
 }
 
+/** Posición de este dispositivo mientras `enabled` (no se guarda en ningún lado). */
+export function useDevicePosition(enabled: boolean): {
+  position: { lat: number; lng: number; accuracy: number } | null;
+  error: string;
+} {
+  const [position, setPosition] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setError(locateErrorMessage('unsupported'));
+      return;
+    }
+    const id = navigator.geolocation.watchPosition(
+      (p) => {
+        setError('');
+        setPosition({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
+      },
+      (err) =>
+        setError(
+          locateErrorMessage(
+            err.code === err.PERMISSION_DENIED ? 'denied' : err.code === err.TIMEOUT ? 'timeout' : 'unavailable',
+          ),
+        ),
+      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [enabled]);
+  return { position: enabled ? position : null, error: enabled ? error : '' };
+}
+
 /** Re-renderiza cada `ms` mientras `active` (cuentas regresivas). */
 export function useNow(active: boolean, ms = 1000): number {
   const [now, setNow] = useState(() => Date.now());

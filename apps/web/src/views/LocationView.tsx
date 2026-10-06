@@ -1,13 +1,15 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, Copy, ExternalLink, MapPin, Share2, Square } from 'lucide-react';
+import { ArrowLeft, Check, Copy, ExternalLink, MapPin, Radio, Share2, Square, Users } from 'lucide-react';
 import {
   buildLocationUrl,
   formatRemaining,
   openStreetMapUrl,
   parseLocationParams,
 } from '../lib/locationShare';
-import { useLiveLocation, useLiveLocationShare, useNow } from '../lib/liveLocation';
+import { useDevicePosition, useLiveLocation, useLiveLocationShare, useNow } from '../lib/liveLocation';
+import { distanceM, formatDistance } from '../lib/routing';
+import type { SceneCompanion } from '../components/location/LocationScene';
 import { LocationShareModal } from '../components/location/LocationShareModal';
 import { DirectionsButton } from '../components/location/DirectionsSheet';
 import { UserAvatar } from '../components/profile/UserAvatar';
@@ -21,9 +23,12 @@ export default function LocationView() {
   const loc = useMemo(() => parseLocationParams(params), [params]);
   const live = useLiveLocation(loc?.liveId);
   const myShareId = useLiveLocationShare((state) => state.shareId);
+  const myLiveLat = useLiveLocationShare((state) => state.lat);
+  const myLiveLng = useLiveLocationShare((state) => state.lng);
   const stopMyShare = useLiveLocationShare((state) => state.stop);
   const [copied, setCopied] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [liveShareOpen, setLiveShareOpen] = useState(false);
 
   const liveData = live && live.status !== 'loading' ? live.data : null;
   const isLive = live?.status === 'live';
@@ -38,6 +43,45 @@ export default function LocationView() {
     displayName: liveData?.displayName,
   };
   const hasPerson = Boolean(person.uid || person.handle);
+
+  /* Tu posición: tu ubicación en tiempo real si la compartes; si no, el GPS de este dispositivo. */
+  const sharingToo = Boolean(myShareId && !isMine && myLiveLat !== null && myLiveLng !== null);
+  const [gpsWanted, setGpsWanted] = useState(false);
+  const viewingOther = Boolean(loc) && !isMine && !(profile && person.uid === profile.firebaseUid);
+  useEffect(() => {
+    if (!viewingOther) return;
+    let cancelled = false;
+    navigator.permissions
+      ?.query({ name: 'geolocation' as PermissionName })
+      .then((status) => {
+        if (!cancelled && status.state === 'granted') setGpsWanted(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [viewingOther]);
+  const { position: gps, error: gpsError } = useDevicePosition(viewingOther && !sharingToo && gpsWanted);
+  const me = sharingToo ? { lat: myLiveLat as number, lng: myLiveLng as number } : viewingOther ? gps : null;
+  const apartM = me && point ? distanceM([me.lng, me.lat], [point.lng, point.lat]) : null;
+  const apartLabel = apartM !== null ? formatDistance(apartM) : '';
+  const companion = useMemo<SceneCompanion | null>(
+    () =>
+      me
+        ? {
+            lat: me.lat,
+            lng: me.lng,
+            live: sharingToo,
+            label: apartLabel,
+            person: profile
+              ? { uid: profile.firebaseUid, avatarUrl: profile.avatarUrl, handle: profile.handle, displayName: profile.displayName }
+              : null,
+          }
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [me?.lat, me?.lng, sharingToo, apartLabel, profile?.firebaseUid, profile?.avatarUrl],
+  );
+  const otherName = person.displayName || (person.handle ? `@${person.handle}` : loc?.label || 'la ubicación');
   const title = loc?.liveId
     ? person.displayName || (person.handle ? `@${person.handle}` : 'Ubicación en tiempo real')
     : loc?.label || 'Ubicación compartida';
@@ -117,9 +161,44 @@ export default function LocationView() {
                 variant="scene"
                 person={person}
                 live={isLive}
+                companion={companion}
                 className={`h-full w-full ${ended ? 'grayscale-[0.6]' : ''}`}
               />
             </Suspense>
+            {viewingOther ? (
+              <div className="lb-loc-together" aria-live="polite">
+                {me && apartM !== null ? (
+                  <div className="lb-loc-together__card">
+                    <span className={`lb-loc-together__dot${sharingToo && isLive ? ' is-live' : ''}`} aria-hidden />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold">
+                        {apartM < 30 ? `Estás con ${otherName}` : `Estás a ${apartLabel} de ${otherName}`}
+                      </span>
+                      <span className="block truncate text-[11px] opacity-80">
+                        {sharingToo && isLive
+                          ? 'Conectados en tiempo real · los dos se ven en el mapa'
+                          : isLive
+                            ? 'Se actualiza en vivo con tu GPS'
+                            : 'Distancia desde tu ubicación actual'}
+                      </span>
+                    </span>
+                  </div>
+                ) : gpsError ? (
+                  <p className="lb-loc-together__card text-xs font-semibold">{gpsError}</p>
+                ) : !gpsWanted && !sharingToo ? (
+                  <button type="button" onClick={() => setGpsWanted(true)} className="lb-loc-together__card lb-loc-together__btn">
+                    <Users size={16} className="shrink-0" />
+                    <span className="text-sm font-bold">Ver la distancia entre nosotros</span>
+                  </button>
+                ) : null}
+                {isLive && !sharingToo && profile ? (
+                  <button type="button" onClick={() => setLiveShareOpen(true)} className="lb-loc-together__share">
+                    <Radio size={14} className="shrink-0" />
+                    Compartir la mía en tiempo real
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div
             className="grid grid-cols-2 gap-2 border-t border-[color:var(--border-soft)] p-3 sm:flex sm:justify-center"
@@ -169,6 +248,14 @@ export default function LocationView() {
           </div>
           {profile && !loc.liveId ? (
             <LocationShareModal open={shareOpen} onClose={() => setShareOpen(false)} mode="share" initial={loc} />
+          ) : null}
+          {profile && loc.liveId ? (
+            <LocationShareModal
+              open={liveShareOpen}
+              onClose={() => setLiveShareOpen(false)}
+              mode="share"
+              initialKind="live"
+            />
           ) : null}
         </>
       ) : (

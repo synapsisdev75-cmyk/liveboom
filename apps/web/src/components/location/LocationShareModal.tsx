@@ -44,6 +44,8 @@ type Props = {
   initial?: SharedLocation | null;
   pickLabel?: string;
   onPick?: (loc: SharedLocation) => void | Promise<void>;
+  /** Pestaña al abrir; por defecto "En tiempo real" solo si ya la estás compartiendo. */
+  initialKind?: 'now' | 'live';
 };
 
 type Panel = 'none' | 'chat' | 'post';
@@ -57,7 +59,15 @@ async function labelFor(lat: number, lng: number): Promise<string> {
   }
 }
 
-export function LocationShareModal({ open, onClose, mode, initial = null, pickLabel = 'Enviar ubicación', onPick }: Props) {
+export function LocationShareModal({
+  open,
+  onClose,
+  mode,
+  initial = null,
+  pickLabel = 'Enviar ubicación',
+  onPick,
+  initialKind,
+}: Props) {
   const profile = useAuthStore((state) => state.profile);
   const [loc, setLoc] = useState<SharedLocation | null>(initial);
   const [locating, setLocating] = useState(false);
@@ -120,7 +130,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
     setSentTo({});
     setCaption('');
     setPosted(false);
-    setKind(!initial && useLiveLocationShare.getState().shareId ? 'live' : 'now');
+    setKind(initialKind ?? (!initial && useLiveLocationShare.getState().shareId ? 'live' : 'now'));
     // Solo al abrir: `initial` cambia con cada movimiento en vivo y no debe reiniciar el panel.
   }, [open]);
 

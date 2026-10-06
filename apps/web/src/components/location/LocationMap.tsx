@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { LocationPin, type MapPerson } from './LocationPin';
+import type { SceneCompanion } from './LocationScene';
 
 const LocationScene = lazy(() => import('./LocationScene'));
 
@@ -21,6 +22,8 @@ type Props = {
   live?: boolean;
   /** card: mapa liviano inclinado (listas, chat). scene: mapa 3D con edificios (vista completa, vista previa). */
   variant?: 'card' | 'scene';
+  /** Solo en el mapa 3D: tu posición unida a la principal. */
+  companion?: SceneCompanion | null;
 };
 
 function canUseWebgl() {

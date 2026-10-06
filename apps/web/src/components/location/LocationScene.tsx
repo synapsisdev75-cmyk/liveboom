@@ -21,8 +21,39 @@ type Props = {
   className?: string;
   person?: MapPerson | null;
   live?: boolean;
+  /** Segundo punto (tú): se une al principal con una línea y la distancia en el medio. */
+  companion?: SceneCompanion | null;
   onFail: () => void;
 };
+
+export type SceneCompanion = {
+  lat: number;
+  lng: number;
+  person?: MapPerson | null;
+  live?: boolean;
+  label?: string;
+};
+
+function linkFeature(lat: number, lng: number, companion: SceneCompanion | null | undefined) {
+  return {
+    type: 'Feature' as const,
+    properties: {},
+    geometry: {
+      type: 'LineString' as const,
+      coordinates: companion ? [[lng, lat], [companion.lng, companion.lat]] : [],
+    },
+  };
+}
+
+function fitBoth(map: MapLibreMap, a: { lat: number; lng: number }, b: { lat: number; lng: number }, duration: number) {
+  const bounds = new maplibregl.LngLatBounds([a.lng, a.lat], [a.lng, a.lat]).extend([b.lng, b.lat]);
+  const height = map.getContainer().clientHeight;
+  map.fitBounds(bounds, {
+    padding: { top: Math.min(110, height * 0.28), bottom: Math.min(70, height * 0.18), left: 60, right: 60 },
+    maxZoom: 17,
+    duration,
+  });
+}
 
 function currentTheme(): Theme {
   return document.documentElement.getAttribute('data-lb-theme') === 'light' ? 'light' : 'dark';
@@ -111,19 +142,30 @@ export default function LocationScene({
   className = '',
   person = null,
   live = false,
+  companion = null,
   onFail,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
-  const latestRef = useRef({ lat, lng, accuracy, zoom });
+  const companionMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const labelMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const userMovedRef = useRef(false);
+  const fittedRef = useRef(false);
+  const latestRef = useRef({ lat, lng, accuracy, zoom, companion });
   const onFailRef = useRef(onFail);
   const [markerEl] = useState(() => {
     const el = document.createElement('div');
     el.className = 'lb-loc-scene-marker';
     return el;
   });
-  latestRef.current = { lat, lng, accuracy, zoom };
+  const [companionEl] = useState(() => {
+    const el = document.createElement('div');
+    el.className = 'lb-loc-scene-marker';
+    return el;
+  });
+  const [labelEl] = useState(() => document.createElement('div'));
+  latestRef.current = { lat, lng, accuracy, zoom, companion };
   onFailRef.current = onFail;
 
   useEffect(() => {
@@ -163,17 +205,51 @@ export default function LocationScene({
     })
       .setLngLat([start.lng, start.lat])
       .addTo(map);
+    companionMarkerRef.current = new maplibregl.Marker({
+      element: companionEl,
+      anchor: 'bottom',
+      pitchAlignment: 'viewport',
+      rotationAlignment: 'viewport',
+    }).setLngLat([start.lng, start.lat]);
+    labelMarkerRef.current = new maplibregl.Marker({ element: labelEl, anchor: 'center' }).setLngLat([start.lng, start.lat]);
+    if (start.companion) {
+      companionMarkerRef.current.setLngLat([start.companion.lng, start.companion.lat]).addTo(map);
+    }
 
     map.on('style.load', () => {
       const cur = latestRef.current;
       decorate(map, theme, cur.lat, cur.lng, cur.accuracy);
+      if (!map.getSource('lb-link')) {
+        map.addSource('lb-link', { type: 'geojson', data: linkFeature(cur.lat, cur.lng, cur.companion) });
+        map.addLayer({
+          id: 'lb-link-line',
+          type: 'line',
+          source: 'lb-link',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#a78bfa',
+            'line-width': 3,
+            'line-opacity': 0.9,
+            'line-dasharray': [1.5, 1.5],
+          },
+        });
+      }
     });
     map.once('load', () => {
       loaded = true;
-      if (!reduceMotion) {
-        map.easeTo({ pitch: 55, bearing: -18, zoom: latestRef.current.zoom, duration: 1800 });
+      const cur = latestRef.current;
+      if (cur.companion) {
+        fittedRef.current = true;
+        fitBoth(map, cur, cur.companion, reduceMotion ? 0 : 1400);
+      } else if (!reduceMotion) {
+        map.easeTo({ pitch: 55, bearing: -18, zoom: cur.zoom, duration: 1800 });
       }
     });
+    const markMoved = (event: { originalEvent?: unknown }) => {
+      if (event.originalEvent) userMovedRef.current = true;
+    };
+    map.on('dragstart', markMoved);
+    map.on('zoomstart', markMoved);
     map.on('error', () => {
       if (!loaded) onFailRef.current();
     });
@@ -193,10 +269,14 @@ export default function LocationScene({
       resizeObserver.disconnect();
       markerRef.current?.remove();
       markerRef.current = null;
+      companionMarkerRef.current?.remove();
+      companionMarkerRef.current = null;
+      labelMarkerRef.current?.remove();
+      labelMarkerRef.current = null;
       map.remove();
       mapRef.current = null;
     };
-  }, [interactive, markerEl]);
+  }, [interactive, markerEl, companionEl, labelEl]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -204,12 +284,46 @@ export default function LocationScene({
     markerRef.current?.setLngLat([lng, lat]);
     const source = map.getSource('lb-accuracy') as GeoJSONSource | undefined;
     source?.setData(accuracyFeature(lat, lng, accuracy));
+    if (companion) return;
     if (map.loaded()) map.easeTo({ center: [lng, lat], duration: 900 });
     else map.jumpTo({ center: [lng, lat] });
-  }, [lat, lng, accuracy]);
+  }, [lat, lng, accuracy, companion]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const link = map.getSource('lb-link') as GeoJSONSource | undefined;
+    link?.setData(linkFeature(lat, lng, companion));
+    const marker = companionMarkerRef.current;
+    const label = labelMarkerRef.current;
+    if (!companion) {
+      marker?.remove();
+      label?.remove();
+      fittedRef.current = false;
+      return;
+    }
+    marker?.setLngLat([companion.lng, companion.lat]);
+    label?.setLngLat([(lng + companion.lng) / 2, (lat + companion.lat) / 2]);
+    if (marker && !marker.getElement().isConnected) marker.addTo(map);
+    if (label && companion.label && !label.getElement().isConnected) label.addTo(map);
+    if (label && !companion.label) label.remove();
+    const bounds = map.getBounds();
+    const inView = bounds.contains([lng, lat]) && bounds.contains([companion.lng, companion.lat]);
+    if (!userMovedRef.current && (!fittedRef.current || !inView)) {
+      fittedRef.current = true;
+      fitBoth(map, { lat, lng }, companion, map.loaded() ? 900 : 0);
+    }
+  }, [lat, lng, companion]);
 
   function recenter() {
-    mapRef.current?.flyTo({ center: [lng, lat], zoom: Math.max(zoom, 15), pitch: 55, bearing: -18, duration: 1200 });
+    const map = mapRef.current;
+    if (!map) return;
+    userMovedRef.current = false;
+    if (companion) {
+      fitBoth(map, { lat, lng }, companion, 1000);
+      return;
+    }
+    map.flyTo({ center: [lng, lat], zoom: Math.max(zoom, 15), pitch: 55, bearing: -18, duration: 1200 });
   }
 
   return (
@@ -225,6 +339,16 @@ export default function LocationScene({
         </button>
       ) : null}
       {createPortal(<LocationPin person={person} live={live} size={interactive ? 52 : 46} />, markerEl)}
+      {companion
+        ? createPortal(
+            <div className="lb-loc-companion">
+              <LocationPin person={companion.person} live={companion.live} size={interactive ? 44 : 40} />
+              <span className="lb-loc-companion__tag">Tú</span>
+            </div>,
+            companionEl,
+          )
+        : null}
+      {companion?.label ? createPortal(<span className="lb-loc-link-label">{companion.label}</span>, labelEl) : null}
     </div>
   );
 }
