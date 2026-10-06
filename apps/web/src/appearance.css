@@ -3297,6 +3297,53 @@ html[data-lb-theme='light'] .lb-auth-card {
   background: var(--surface-primary);
 }
 
+/* Cámara in-app (Flash Boom, publicaciones, collage, chat): sigue el tema claro. */
+html[data-lb-theme='light'] .lb-camera-capture {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__title {
+  color: var(--text-primary);
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__icon-btn,
+html[data-lb-theme='light'] .lb-camera-capture__select {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__modes {
+  background: var(--surface-secondary);
+  border-color: var(--border-default);
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__mode-idle {
+  color: var(--text-secondary, var(--text-muted));
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__stage {
+  background: var(--surface-secondary);
+  --tw-ring-color: var(--border-default);
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__hint {
+  color: var(--text-muted);
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__secondary {
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+html[data-lb-theme='light'] .lb-camera-capture__shutter {
+  background: var(--surface-secondary);
+  border-color: color-mix(in srgb, var(--text-primary) 28%, transparent);
+  color: var(--text-primary);
+}
+
 html[data-lb-theme] .lb-auth-card .text-white,
 html[data-lb-theme='light'] .lb-auth-card .text-white {
   color: var(--text-primary);

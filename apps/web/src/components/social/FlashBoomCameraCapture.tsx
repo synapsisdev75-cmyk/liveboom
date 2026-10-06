@@ -367,7 +367,7 @@ export function FlashBoomCameraCapture({
         className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
         style={{ paddingTop: 'max(0.6rem, var(--lb-safe-top))' }}
       >
-        <p className="min-w-0 truncate text-sm font-semibold text-white">{title}</p>
+        <p className="lb-camera-capture__title min-w-0 truncate text-sm font-semibold text-white">{title}</p>
         <div className="flex min-w-0 shrink-0 items-center gap-1.5">
           {cameras.length > 1 && !reviewing && !recording ? (
             <>
@@ -378,7 +378,7 @@ export function FlashBoomCameraCapture({
                 id="lb-camera-select"
                 value={deviceId || ''}
                 onChange={(event) => selectCamera(event.target.value)}
-                className="hidden max-w-[min(12rem,42vw)] rounded-full border border-white/15 bg-black/55 px-2 py-1 text-[10px] text-white md:block"
+                className="lb-camera-capture__select hidden max-w-[min(12rem,42vw)] rounded-full border border-white/15 bg-black/55 px-2 py-1 text-[10px] text-white md:block"
               >
                 {cameras.map((item) => (
                   <option key={item.deviceId} value={item.deviceId}>
@@ -392,7 +392,7 @@ export function FlashBoomCameraCapture({
             <button
               type="button"
               onClick={cycleCamera}
-              className="grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white"
+              className="lb-camera-capture__icon-btn grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white"
               aria-label="Cambiar cámara"
             >
               <SwitchCamera size={18} />
@@ -401,7 +401,7 @@ export function FlashBoomCameraCapture({
           <button
             type="button"
             onClick={closeAll}
-            className="grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white"
+            className="lb-camera-capture__icon-btn grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white"
             aria-label="Cerrar"
           >
             <X size={18} />
@@ -410,13 +410,13 @@ export function FlashBoomCameraCapture({
       </div>
 
       {!reviewing && !recording && allowPhoto && allowVideo ? (
-        <div className="mx-auto mb-2 flex w-[min(100%-1.5rem,18rem)] rounded-full border border-white/15 bg-black/50 p-0.5">
+        <div className="lb-camera-capture__modes mx-auto mb-2 flex w-[min(100%-1.5rem,18rem)] rounded-full border border-white/15 bg-black/50 p-0.5">
           {allowPhoto ? (
             <button
               type="button"
               onClick={() => switchMode('photo')}
               className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-full text-xs font-semibold ${
-                mode === 'photo' ? 'bg-fuchsia-500 text-white' : 'text-zinc-300'
+                mode === 'photo' ? 'bg-fuchsia-500 text-white' : 'lb-camera-capture__mode-idle text-zinc-300'
               }`}
             >
               <Camera size={14} />
@@ -427,7 +427,7 @@ export function FlashBoomCameraCapture({
             type="button"
             onClick={() => switchMode('video')}
             className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-full text-xs font-semibold ${
-              mode === 'video' ? 'bg-cyan-500 text-zinc-950' : 'text-zinc-300'
+              mode === 'video' ? 'bg-cyan-500 text-zinc-950' : 'lb-camera-capture__mode-idle text-zinc-300'
             }`}
           >
             <Video size={14} />
@@ -439,7 +439,7 @@ export function FlashBoomCameraCapture({
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-3">
         {error ? <p className="max-w-sm shrink-0 text-center text-sm text-rose-300">{error}</p> : null}
 
-        <div className="relative min-h-0 w-full max-w-[min(100%,36rem)] flex-1 overflow-hidden rounded-3xl bg-zinc-950 ring-2 ring-white/10">
+        <div className="lb-camera-capture__stage relative min-h-0 w-full max-w-[min(100%,36rem)] flex-1 overflow-hidden rounded-3xl bg-zinc-950 ring-2 ring-white/10">
           <video
             ref={videoRef}
             autoPlay
@@ -460,7 +460,7 @@ export function FlashBoomCameraCapture({
           ) : null}
         </div>
 
-        <p className="max-w-xs shrink-0 text-center text-[11px] text-zinc-400">
+        <p className="lb-camera-capture__hint max-w-xs shrink-0 text-center text-[11px] text-zinc-400">
           {error
             ? 'Activa el permiso e inténtalo de nuevo.'
             : reviewing
@@ -486,7 +486,7 @@ export function FlashBoomCameraCapture({
             <button
               type="button"
               onClick={retake}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-white/20 px-4 text-sm text-zinc-200"
+              className="lb-camera-capture__secondary inline-flex min-h-11 items-center gap-1.5 rounded-full border border-white/20 px-4 text-sm text-zinc-200"
             >
               <RefreshCcw size={14} />
               Repetir
@@ -521,7 +521,7 @@ export function FlashBoomCameraCapture({
             className={`grid h-16 w-16 place-items-center rounded-full border-4 transition ${
               recording
                 ? 'border-red-400 bg-red-500/25 text-red-200'
-                : 'border-white/30 bg-white/10 text-white'
+                : 'lb-camera-capture__shutter border-white/30 bg-white/10 text-white'
             }`}
             aria-label={recording ? 'Detener grabación' : 'Iniciar grabación'}
           >
@@ -532,7 +532,7 @@ export function FlashBoomCameraCapture({
             type="button"
             disabled={starting}
             onClick={takePhoto}
-            className="grid h-16 w-16 place-items-center rounded-full border-4 border-white/30 bg-white/10 text-white"
+            className="lb-camera-capture__shutter grid h-16 w-16 place-items-center rounded-full border-4 border-white/30 bg-white/10 text-white"
             aria-label="Tomar foto"
           >
             <Camera size={26} />
