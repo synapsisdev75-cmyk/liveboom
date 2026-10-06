@@ -144,7 +144,7 @@ function ChatThemeSheetInner({ onClose, chatId, peerName }: Props) {
 
   const panel = (
     <div className="lb-cts" role="dialog" aria-modal="true" aria-labelledby="lb-cts-title">
-      <button type="button" className="lb-cts__scrim" aria-label="Cerrar" onClick={cancel} />
+      <div className="lb-cts__scrim" aria-hidden />
       <div className="lb-cts__panel">
         <header className="lb-cts__head">
           <h2 id="lb-cts-title" className="lb-cts__title">
