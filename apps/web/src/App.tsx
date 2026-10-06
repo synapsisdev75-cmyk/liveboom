@@ -197,11 +197,27 @@ function PendingEmailVerificationRedirect() {
   return null;
 }
 
+/** Al abrir LiveBoom (web, PWA, Android o iOS) la raíz lleva a Inicio; dentro de la app "/" sigue llevando a Explorar. */
+let openingApp = true;
+
+function AppLaunchTracker() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (pathname !== '/') openingApp = false;
+  }, [pathname]);
+  return null;
+}
+
+function RootRedirect() {
+  return <Navigate to={openingApp ? '/inicio' : '/explorar'} replace />;
+}
+
 /** Frontend + Firebase Auth sincronizado con PostgreSQL. */
 export default function App() {
   return (
     <ThemeProvider>
     <BrowserRouter>
+      <AppLaunchTracker />
       <AuthHydrator />
       <ShareIncomingRouter />
       <PendingEmailVerificationRedirect />
@@ -217,7 +233,7 @@ export default function App() {
           <Route path="/ruta" element={<NavigationView />} />
           <Route path="/stream/:username" element={<LiveRoom />} />
           <Route element={<MainLayout />}>
-            <Route index element={<Navigate to="/explorar" replace />} />
+            <Route index element={<RootRedirect />} />
             <Route path="inicio" element={<HomeView />} />
             <Route path="explorar" element={<ExploreView />} />
             <Route path="tendencias" element={<TrendsView />} />
@@ -261,7 +277,7 @@ export default function App() {
               }
             />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<RootRedirect />} />
         </Routes>
       </Suspense>
       <GlobalBoomAnimationOverlay />

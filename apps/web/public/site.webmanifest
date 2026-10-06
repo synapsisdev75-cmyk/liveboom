@@ -2,7 +2,7 @@
   "name": "LiveBoom",
   "short_name": "LiveBoom",
   "description": "Lives, clips y comunidad LiveBoom",
-  "start_url": "/",
+  "start_url": "/inicio",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
