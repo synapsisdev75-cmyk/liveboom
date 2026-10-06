@@ -44,6 +44,11 @@ html[data-lb-keyboard='open'] .lb-shell {
 }
 
 /* APK: el WebView ya se encoge con el teclado. No recortar otra vez con visualViewport. */
+/* APK: alto real de la barra de botones/gestos (plugin nativo); el WebView no siempre lo da en env(). */
+html.lb-android-native {
+  --lb-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--lb-native-inset-bottom, 0px));
+}
+
 html.lb-android-native,
 html.lb-android-native body,
 html.lb-android-native #root,

@@ -8,6 +8,7 @@ import './appearance.css';
 import './responsive/universal.css';
 import './responsive/mobile-tablet/landscape-explore.css';
 import { installViewportSync } from './responsive/syncViewport';
+import { installNativeSystemInsets } from './lib/nativeSystemInsets';
 
 // Fuerza HTTPS en producción (evita “No es seguro” y Failed to fetch por mixed content).
 if (
@@ -32,6 +33,7 @@ installViewportSync();
 // APK: el WebView se dibuja detrás de la barra de estado, sin fondo nativo encima.
 if (Capacitor.getPlatform() === 'android') {
   document.documentElement.classList.add('lb-android-native');
+  installNativeSystemInsets();
 }
 if (Capacitor.isNativePlatform()) {
   StatusBar.setOverlaysWebView({ overlay: true }).catch(console.error);

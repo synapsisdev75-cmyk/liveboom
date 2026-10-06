@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build:web": "npm run build -w @liveboom/web",
-    "sync": "npm run build:web && npx cap sync android",
+    "sync": "npm run build:web && npx cap sync android && node scripts/apply-native.mjs",
+    "apply:native": "node scripts/apply-native.mjs",
     "open": "npx cap open android",
     "run:android": "npm run sync && npx cap run android",
     "add:android": "npx cap add android",

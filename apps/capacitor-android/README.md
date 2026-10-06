@@ -32,7 +32,16 @@ npm run sync
 # o: npm run open
 ```
 
-`sync` hace build de `apps/web` y copia `dist` al proyecto Android.
+`sync` hace build de `apps/web`, copia `dist` al proyecto Android y copia las clases nativas
+versionadas de `native/` (`MainActivity.java`, `SystemInsetsPlugin.java`) a
+`android/app/src/main/java/com/liveboom/app/` (también: `npm run apply:native`).
+
+## Barra de botones / gestos de Android
+
+`SystemInsetsPlugin` entrega a la web el alto real de la barra de navegación del sistema y
+`MainActivity` quita el velo gris que Android pone sobre ella. Así la barra inferior de LiveBoom
+se apoya sobre los botones/gestos y los cubre con su color (tema oscuro o claro). En Android 14
+o menor la barra del sistema se pinta del mismo color que la barra de LiveBoom.
 
 ## Ícono de play gigante al cargar videos (solo APK/AAB)
 
@@ -41,9 +50,8 @@ cualquier `<video>` que aún no renderizó su primer frame (en Explorar se ve un
 al cambiar de video). En navegador no pasa; es comportamiento nativo del WebView
 (`WebChromeClient.getDefaultVideoPoster()`), y Capacitor no lo sobreescribe.
 
-La app web ya mitiga esto poniendo siempre un `poster` en sus videos, pero para
-eliminarlo de raíz en **todos** los videos de la app, tras `npx cap add android`
-reemplaza `android/app/src/main/java/com/liveboom/app/MainActivity.java` por:
+Ya está resuelto en `native/MainActivity.java` (lo copia `npm run sync`). Referencia del
+fragmento que lo hace:
 
 ```java
 package com.liveboom.app;
