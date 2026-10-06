@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { api } from './api';
-import { shouldSuppressMobileChatTrayNotify } from './chatNotifyContext';
+import { isAppInForeground, shouldSuppressMobileChatTrayNotify } from './chatNotifyContext';
 import { db } from './firebase';
 import {
   isNativeAndroidApp,
@@ -107,14 +107,15 @@ export async function registerPushNotifications(uid: string | null | undefined):
       console.warn('[push] registrationError', err);
     });
 
-    // Con la app en primer plano Android no muestra el banner FCM solo:
-    // lo replicamos como notificación nativa (estilo Facebook/WhatsApp).
+    // Con la app en primer plano Android no muestra el banner FCM solo.
+    // Dentro de la app los avisos son silenciosos (campana / badge); solo se replican llamadas.
     // Si ya estás dentro del chat del remitente → no banner (doble aviso).
     await PushNotifications.addListener('pushNotificationReceived', (ev) => {
       const title = String(ev.title || 'LiveBoom');
       const body = String(ev.body || '');
       const data = (ev.data || {}) as Record<string, string>;
       const channel = channelFromData(data);
+      if (channel !== 'calls' && isAppInForeground()) return;
       if (
         channel === 'messages' &&
         shouldSuppressMobileChatTrayNotify({

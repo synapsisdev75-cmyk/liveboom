@@ -3,8 +3,6 @@
  * Un mismo mensaje solo puede ir a campana, badge de lista, o marcarse leído.
  */
 
-import { isNativeAndroidApp } from './nativeLiveMedia';
-
 export type ChatNotifyDecision = 'bell' | 'list' | 'active' | 'ignore';
 
 type ChatNotifyContext = {
@@ -47,15 +45,16 @@ function matchesOpenChat(input: { chatId?: string | null; peerUid?: string | nul
   return false;
 }
 
-/**
- * App Android: no mostrar banner del sistema si ya estás viendo ese chat
- * (evita doble notificación). Web/desktop no aplica.
- */
+/** App visible en pantalla (no en segundo plano ni pestaña oculta). */
+export function isAppInForeground() {
+  return typeof document !== 'undefined' && document.visibilityState === 'visible';
+}
+
+/** No mostrar banner del sistema si ya estás viendo ese chat (página o ventana flotante). */
 export function shouldSuppressMobileChatTrayNotify(input: {
   chatId?: string | null;
   peerUid?: string | null;
 }): boolean {
-  if (!isNativeAndroidApp()) return false;
   const now = getChatNotifyContext();
   if (!now.documentVisible) return false;
   return matchesOpenChat(input);
@@ -65,10 +64,7 @@ export function countInboxUnread(
   list: Array<{ chatId: string; uid: string; unread?: number }>,
 ) {
   const now = getChatNotifyContext();
-  const viewingChat =
-    now.documentVisible &&
-    (now.inMessagesRoute || isNativeAndroidApp()) &&
-    (now.activeChatId || now.activePeerUid);
+  const viewingChat = now.documentVisible && (now.activeChatId || now.activePeerUid);
   return list.reduce((sum, chat) => {
     if (
       viewingChat &&
@@ -93,12 +89,8 @@ export function decideChatMessageNotify(input: {
     chatId: input.chatId,
     peerUid: input.peerUid,
   });
-  // App móvil: chat abierto (página o hoja) → sin campana ni tray.
-  if (now.documentVisible && matchingChat && isNativeAndroidApp()) {
-    return 'active';
-  }
-  const viewingThis = now.documentVisible && now.inMessagesRoute && matchingChat;
-  if (viewingThis) return 'active';
+  // Chat abierto (página, hoja o ventana flotante) → sin campana, sonido ni tray.
+  if (now.documentVisible && matchingChat) return 'active';
   if (now.documentVisible && now.inMessagesRoute) return 'list';
   return 'bell';
 }

@@ -1,3 +1,4 @@
+import { isAppInForeground } from './chatNotifyContext';
 import {
   cancelNativeSystemNotification,
   isNativeAndroidApp,
@@ -36,7 +37,7 @@ export async function notifyPrivateMessageSystem(input: {
   chatId?: string | null;
   peerUid?: string | null;
 }): Promise<void> {
-  if (!isNativeAndroidApp()) return;
+  if (!isNativeAndroidApp() || isAppInForeground()) return;
   const { shouldSuppressMobileChatTrayNotify } = await import('./chatNotifyContext');
   if (
     shouldSuppressMobileChatTrayNotify({
@@ -59,7 +60,7 @@ export async function notifyPrivateMessageSystem(input: {
 export async function notifyFriendRequestSystem(input: {
   username: string;
 }): Promise<void> {
-  if (!isNativeAndroidApp()) return;
+  if (!isNativeAndroidApp() || isAppInForeground()) return;
   const now = Date.now();
   if (now - lastFriendNotifAt < 2500) return;
   lastFriendNotifAt = now;
@@ -74,7 +75,7 @@ export async function notifyFriendLiveSystem(input: {
   name: string;
   username?: string;
 }): Promise<void> {
-  if (!isNativeAndroidApp()) return;
+  if (!isNativeAndroidApp() || isAppInForeground()) return;
   const now = Date.now();
   if (now - lastFriendNotifAt < 2000) return;
   lastFriendNotifAt = now;

@@ -1,10 +1,14 @@
 /** Alertas sonoras Liveboom: MP3 para notificaciones, Web Audio para regalos. */
+import { isAppInForeground } from './chatNotifyContext';
+
 let audioCtx: AudioContext | null = null;
 
 const NOTIFICATION_SRC = '/sounds/notification.mp3';
 let notificationAudio: HTMLAudioElement | null = null;
 
+/** Dentro de la app las notificaciones son silenciosas (solo campana / badge). */
 function playNotificationSound() {
+  if (isAppInForeground()) return;
   try {
     if (!notificationAudio) {
       notificationAudio = new Audio(NOTIFICATION_SRC);
@@ -161,21 +165,16 @@ export function playMessageAlert() {
 let lastIncomingMsgSoundAt = 0;
 
 /**
- * Sonido al recibir mensaje privado:
- * - fuera (pestaña oculta u otra pantalla) → alerta actual
- * - dentro de Mensajes con pestaña visible → pop corto
+ * Sonido al recibir mensaje privado: solo con la app en segundo plano / pestaña oculta.
+ * Dentro de la app (incluido el chat abierto) es silencioso.
  * Debounce evita doble tono (campana + chat abierto).
  */
-export function playIncomingMessageSound(viewingMessages: boolean) {
+export function playIncomingMessageSound(_viewingMessages?: boolean) {
+  if (isAppInForeground()) return;
   const now = Date.now();
   if (now - lastIncomingMsgSoundAt < 450) return;
   lastIncomingMsgSoundAt = now;
-  const outside =
-    typeof document === 'undefined' ||
-    document.visibilityState !== 'visible' ||
-    !viewingMessages;
-  if (outside) playMessageAlert();
-  else playMessagePop();
+  playMessageAlert();
 }
 
 /** Nueva publicación / actividad */
@@ -188,6 +187,7 @@ const LIVE_ALERT_SRC = '/sounds/live-alert.mp3';
 let liveAlertAudio: HTMLAudioElement | null = null;
 
 export function playLiveAlert() {
+  if (isAppInForeground()) return;
   try {
     if (!liveAlertAudio) {
       liveAlertAudio = new Audio(LIVE_ALERT_SRC);
