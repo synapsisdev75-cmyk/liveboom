@@ -1161,7 +1161,7 @@ export function PostVideoPlayer({
                 @{repostByUsername} reposteó
               </p>
             ) : null}
-            {originalUsername ? (
+            {!overlayOnly ? null : originalUsername ? (
               <Link
                 to={originalHref || profileHref(originalUsername)}
                 className="lb-post-overlay__author inline-block text-sm font-bold text-white drop-shadow hover:text-cyan-300"
