@@ -11010,9 +11010,9 @@ a.lb-entity:active,
   max-height: calc(100dvh - 0.5rem);
 }
 
-.lb-call-float.is-video:not(.is-compact):has(.lb-video-ring-screen),
-.lb-call-float.is-video:not(.is-compact):has(.lb-video-connected-screen),
-.lb-call-float.is-video:not(.is-compact):has(.lb-video-call-session) {
+.lb-call-float.is-video:not(.is-compact):not(.is-fullscreen):has(.lb-video-ring-screen),
+.lb-call-float.is-video:not(.is-compact):not(.is-fullscreen):has(.lb-video-connected-screen),
+.lb-call-float.is-video:not(.is-compact):not(.is-fullscreen):has(.lb-video-call-session) {
   width: min(26rem, calc(100vw - 1.25rem));
   height: auto !important;
   min-height: 0;
@@ -20467,6 +20467,194 @@ html[data-lb-theme='light'] .lb-loc-scene {
 
 .lb-nav-banner__card.is-error {
   background: linear-gradient(135deg, #b91c1c, #7c2d12);
+}
+
+/* Llamada expandida (entrante, saliente o conectada, voz o video): pantalla completa 9:16 o 16:9 según orientación. */
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  padding: var(--lb-safe-top) var(--lb-safe-right) var(--lb-safe-bottom) var(--lb-safe-left);
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #050508;
+  touch-action: manipulation;
+}
+
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact) > .lb-call-expanded-slot {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+}
+
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-expanded-slot > .lb-call-chrome-face,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-expanded-slot > .lb-video-call-session,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-expanded-slot > .lb-voice-call-session,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-expanded-slot > .lb-call-expanded-live,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-call-session > .lb-call-chrome-face,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-call-session > .lb-call-chrome-face,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-call-session > .lb-video-live-slot:not(.is-under-chrome),
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-call-session.is-connected > .lb-voice-live-slot {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  max-height: none;
+}
+
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-call-session,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-call-session {
+  position: relative;
+  height: 100%;
+}
+
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-chrome-face > .lb-voice-card,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-chrome-face > .lb-call-incoming,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-chrome-face > .lb-video-ring-screen,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-in-screen,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-out-screen,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-connected-screen,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-ring-screen,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-connected-screen,
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-active:not(.is-video-mini) {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-connected-screen .lb-call-video-stage {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  align-self: stretch;
+  aspect-ratio: auto;
+}
+
+/* LiveKit envuelve las pantallas conectadas en contenedores de alto automático: alto explícito del viewport. */
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-call-stage-keep.is-connected:not(.is-minimized-hold),
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) :is(.lb-video-connected-screen, .lb-voice-connected-screen) {
+  width: 100%;
+  max-width: none;
+  height: calc(var(--lb-call-fs-h, 100dvh) - var(--lb-safe-top) - var(--lb-safe-bottom));
+  max-height: none;
+}
+
+@media (orientation: landscape) and (max-height: 34rem) {
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) :is(.lb-voice-ring-screen, .lb-video-ring-screen) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: clamp(1rem, 5vw, 4rem);
+    align-items: center;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) :is(.lb-voice-ring-screen, .lb-video-ring-screen) > .lb-call-winbar {
+    grid-column: 1 / -1;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked)
+    :is(.lb-voice-ring-screen, .lb-video-ring-screen)
+    > :is(.lb-voice-in-screen__body, .lb-voice-out-screen__body, .lb-video-ring-screen__body) {
+    align-self: stretch;
+    justify-content: safe center;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked)
+    :is(.lb-voice-ring-screen, .lb-video-ring-screen)
+    > :is(.lb-voice-in-screen__body, .lb-voice-out-screen__body, .lb-video-ring-screen__body)
+    > * {
+    flex-shrink: 0;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked)
+    :is(.lb-voice-ring-screen, .lb-video-ring-screen)
+    > :is(.lb-voice-in-screen__body, .lb-voice-out-screen__body, .lb-video-ring-screen__body)
+    > * + * {
+    margin-top: clamp(0.15rem, 1.4dvh, 0.6rem);
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) :is(.lb-voice-ring-screen .lb-voice-out-avatar, .lb-video-ring-screen .lb-video-ring-avatar) {
+    width: clamp(4rem, 18dvh, 8.75rem);
+    height: clamp(4rem, 18dvh, 8.75rem);
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked)
+    :is(.lb-voice-ring-screen, .lb-video-ring-screen)
+    > :is(.lb-voice-in-screen__actions, .lb-voice-out-screen__actions, .lb-video-ring-screen__actions) {
+    margin: 0;
+    padding-inline-end: clamp(0.5rem, 3vw, 2rem);
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-connected-body {
+    justify-content: safe center;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-connected-body > * {
+    flex-shrink: 0;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-voice-connected-body > .lb-video-ring-avatar {
+    width: clamp(3.5rem, 15dvh, 8.75rem);
+    height: clamp(3.5rem, 15dvh, 8.75rem);
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-connected-screen {
+    position: relative;
+    padding: 0;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-connected-screen > .lb-call-video-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-connected-screen > .lb-video-connected-head {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 2;
+    padding-inline: clamp(0.5rem, 2vw, 1rem);
+    background: linear-gradient(180deg, rgb(0 0 0 / 0.6), transparent);
+  }
+
+  .lb-call-float-root > .lb-call-float.is-fullscreen.is-maximized:not(.is-compact):not(.is-parked) .lb-video-connected-screen > .lb-video-connected-actions {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 2;
+    background: linear-gradient(0deg, rgb(0 0 0 / 0.6), transparent);
+  }
 }
 
 /* Pantallas táctiles (celular / tablet Android o iOS): se desplaza con el dedo, sin barras de scroll. */

@@ -2561,7 +2561,6 @@ export function CallOverlay() {
   const livekitReadyRef = useRef(false);
   const [livekitEpoch, setLivekitEpoch] = useState(0);
   const [stageEpoch, setStageEpoch] = useState(0);
-  const [fillHost, setFillHost] = useState(false);
   const chromeStatusRef = useRef(status);
   const livekitFatalRef = useRef(false);
   const outgoingStartedRef = useRef<string | null>(null);
@@ -2604,13 +2603,11 @@ export function CallOverlay() {
   }
 
   function restoreCall() {
-    setFillHost(false);
     setCallViewMode('expanded', 'user-maximize');
   }
 
   function toggleMaximize() {
     if (callViewModeRef.current === 'minimized') restoreCall();
-    else setFillHost((open) => !open);
   }
 
   function hideCall() {
@@ -2693,7 +2690,6 @@ export function CallOverlay() {
     if (status === 'idle') {
       clearFloatingCallPosition();
       clearCallChrome();
-      setFillHost(false);
       setCallViewMode('expanded', 'status-idle');
       setUiPhase('ringing', 'status-idle');
       setLivekitReady(false, 'status-idle');
@@ -2733,7 +2729,6 @@ export function CallOverlay() {
     setRingMuted(false);
     setPermError(null);
     if (incoming?.callId) {
-      setFillHost(false);
       setCallViewMode('expanded', 'incoming-id');
       if (uiPhaseRef.current !== 'connecting' && uiPhaseRef.current !== 'connected') {
         setUiPhase('ringing', 'incoming-id');
@@ -2746,7 +2741,6 @@ export function CallOverlay() {
     if (status !== 'ringing-out' || !callId) return;
     if (outgoingStartedRef.current === callId) return;
     outgoingStartedRef.current = callId;
-    setFillHost(false);
     setCallViewMode('expanded', 'outgoing-id');
     if (uiPhaseRef.current !== 'connected') setUiPhase('ringing', 'outgoing-id');
   }, [status, callId]);
@@ -3048,7 +3042,6 @@ export function CallOverlay() {
       console.info('[VIDEO CALL] accept clicked');
       console.info('[CALL UI] accept clicked');
       setUiPhase('connecting', 'accept');
-      setFillHost(false);
       const session = await requestCallToken(incoming.callId, incoming.chatId);
       const connectedAtMs = await answerPrivateCall(incoming.chatId);
       setHeldIncoming(incoming);
@@ -3254,9 +3247,9 @@ export function CallOverlay() {
   const matchingDock =
     chatSurface && callChatKey && chatSurface.chatId === callChatKey ? chatSurface.dock : null;
   const viewMinimized = callViewMode === 'minimized';
-  const matchingHost = Boolean(chatSurface && callChatKey && chatSurface.chatId === callChatKey);
   const compact = viewMinimized && !matchingDock;
-  const maximized = !viewMinimized && fillHost && matchingHost;
+  const maximized = !viewMinimized;
+  const maximizeAction = viewMinimized ? toggleMaximize : undefined;
   const showHeaderDock = viewMinimized && Boolean(matchingDock);
   const callerSession = (status === 'ringing-out' || status === 'active') && !incoming && !heldIncoming;
   const showIncomingCard = incomingChrome && !viewMinimized;
@@ -3287,7 +3280,7 @@ export function CallOverlay() {
           onAccept={() => void accept()}
           onDecline={() => hangupWithCooldown('declined')}
           onMinimize={minimizeCall}
-          onMaximize={toggleMaximize}
+          onMaximize={maximizeAction}
           onClose={hideCall}
           maximized={maximized}
         />
@@ -3305,7 +3298,7 @@ export function CallOverlay() {
           onAccept={() => void accept()}
           onDecline={() => hangupWithCooldown('declined')}
           onMinimize={minimizeCall}
-          onMaximize={toggleMaximize}
+          onMaximize={maximizeAction}
           onClose={hideCall}
           maximized={maximized}
         />
@@ -3320,7 +3313,7 @@ export function CallOverlay() {
         elapsedLabel={formatCallClock(elapsed)}
         onCancel={() => hangupWithCooldown('cancelled')}
         onMinimize={minimizeCall}
-        onMaximize={toggleMaximize}
+        onMaximize={maximizeAction}
         onClose={hideCall}
         maximized={maximized}
       />
@@ -3336,7 +3329,7 @@ export function CallOverlay() {
           navigate(handle ? `/mensajes?con=${encodeURIComponent(handle)}` : '/mensajes');
         }}
         onMinimize={minimizeCall}
-        onMaximize={toggleMaximize}
+        onMaximize={maximizeAction}
         onClose={hideCall}
         maximized={maximized}
       />
@@ -3401,7 +3394,7 @@ export function CallOverlay() {
         peerUid={peerUid}
         onHangup={() => hangupWithCooldown(incomingChrome ? 'declined' : undefined)}
         onMinimize={minimizeCall}
-        onMaximize={toggleMaximize}
+        onMaximize={maximizeAction}
         onClose={hideCall}
         maximized={maximized}
         elapsedLabel={formatCallClock(elapsed)}
@@ -3427,7 +3420,7 @@ export function CallOverlay() {
               onCancel={() => hangupWithCooldown('cancelled')}
               onExpand={restoreCall}
               onMinimize={minimizeCall}
-              onMaximize={toggleMaximize}
+              onMaximize={maximizeAction}
               onClose={hideCall}
               onLivekitReady={() => setLivekitReady(true, 'stage-ready')}
               minimized={viewMinimized}
@@ -3460,7 +3453,7 @@ export function CallOverlay() {
               }}
               onExpand={restoreCall}
               onMinimize={minimizeCall}
-              onMaximize={toggleMaximize}
+              onMaximize={maximizeAction}
               onClose={hideCall}
               minimized={viewMinimized}
               maximized={maximized}
@@ -3540,7 +3533,7 @@ export function CallOverlay() {
             video={isVideo}
             compact={compact}
             incoming={showIncomingCard}
-            maximized={maximized}
+            fullscreen={maximized}
             parked={showHeaderDock}
             onReady={() => {
               if (!showCall) return;

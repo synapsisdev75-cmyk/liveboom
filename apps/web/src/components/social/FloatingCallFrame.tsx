@@ -1,5 +1,13 @@
 import { Maximize2, Minimize2, X } from 'lucide-react';
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { BRAND_LOGO_SRC } from '../../lib/brand';
 
 type Pos = { x: number; y: number };
@@ -243,7 +251,8 @@ export function FloatingCallFrame({
   children,
   compact = false,
   video = false,
-  maximized = false,
+  maximized: maximizedProp = false,
+  fullscreen: fullscreenProp = false,
   incoming = false,
   parked = false,
   onReady,
@@ -252,10 +261,14 @@ export function FloatingCallFrame({
   compact?: boolean;
   video?: boolean;
   maximized?: boolean;
+  /** Ocupa todo el viewport visible (9:16 o 16:9 según orientación). */
+  fullscreen?: boolean;
   incoming?: boolean;
   parked?: boolean;
   onReady?: () => void;
 }) {
+  const fullscreen = fullscreenProp && !compact && !parked;
+  const maximized = maximizedProp || fullscreen;
   const frameRef = useRef<HTMLDivElement>(null);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
@@ -285,7 +298,15 @@ export function FloatingCallFrame({
     if (!node) return;
     onReadyRef.current?.();
     if (parked) return;
-    const chat = chatBox();
+    const chat = fullscreen ? null : chatBox();
+    if (fullscreen) {
+      const view = viewBox();
+      const next = { x: view.left, y: view.top };
+      const dim = { w: Math.max(96, view.width), h: Math.max(96, view.height) };
+      setPos(next);
+      setSize(dim);
+      return;
+    }
     if (maximized) {
       const box = chat ?? (() => {
         const view = viewBox();
@@ -332,7 +353,7 @@ export function FloatingCallFrame({
       sessionPos = next;
       return next;
     });
-  }, [compact, video, maximized, incoming, parked]);
+  }, [compact, video, maximized, fullscreen, incoming, parked]);
 
   useLayoutEffect(() => {
     applySize();
@@ -486,14 +507,15 @@ export function FloatingCallFrame({
         ref={frameRef}
         className={`lb-call-float${compact ? ' is-compact' : ' is-normal'}${video ? ' is-video' : ' is-voice'}${
           maximized ? ' is-maximized' : ''
-        }${incoming ? ' is-incoming' : ''}${parked ? ' is-parked' : ''}${parked || pos ? '' : ' is-measure'}`}
+        }${fullscreen ? ' is-fullscreen' : ''}${incoming ? ' is-incoming' : ''}${parked ? ' is-parked' : ''}${parked || pos ? '' : ' is-measure'}`}
         style={
           parked
             ? undefined
-            : {
+            : ({
                 ...(pos ? { left: pos.x, top: pos.y } : null),
                 ...((maximized || (canResize && manualSize)) && size ? { width: size.w, height: size.h } : null),
-              }
+                ...(fullscreen && size ? { '--lb-call-fs-h': `${size.h}px` } : null),
+              } as CSSProperties)
         }
         aria-hidden={parked || undefined}
         data-call-view={parked ? 'minimized' : compact ? 'minimized' : 'expanded'}
