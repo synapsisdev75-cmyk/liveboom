@@ -577,7 +577,7 @@ export function PostPhotoViewer({
                   }
                 }}
               />
-              <MediaOverlayLayer overlays={overlays} />
+              <MediaOverlayLayer overlays={overlays} aspect={pubW > 0 && pubH > 0 ? pubW / pubH : null} />
             </div>
           </PublicationMedia>
         </button>

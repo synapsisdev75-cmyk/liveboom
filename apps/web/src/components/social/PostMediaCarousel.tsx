@@ -203,6 +203,7 @@ export function PostMediaCarousel({
 
   const frameW = frameSize?.width ?? 0;
   const frameH = frameSize?.height ?? 0;
+  const slideAspect = frameW > 1 && frameH > 1 ? frameW / frameH : null;
 
   const carouselBody = (
     <PublicationMedia
@@ -270,7 +271,10 @@ export function PostMediaCarousel({
             }`}
           />
         ))}
-        <MediaOverlayLayer overlays={overlays.filter((item) => (item.mediaIndex ?? 0) === index)} />
+        <MediaOverlayLayer
+          overlays={overlays.filter((item) => (item.mediaIndex ?? 0) === index)}
+          aspect={slideAspect}
+        />
       </div>
     </PublicationMedia>
   );
@@ -323,7 +327,10 @@ export function PostMediaCarousel({
               }
               mediaOverlay={
                 <>
-                  <MediaOverlayLayer overlays={overlays.filter((item) => (item.mediaIndex ?? 0) === index)} />
+                  <MediaOverlayLayer
+                    overlays={overlays.filter((item) => (item.mediaIndex ?? 0) === index)}
+                    aspect={slideAspect}
+                  />
                   {total > 1 ? (
                   <>
                     {index > 0 ? (

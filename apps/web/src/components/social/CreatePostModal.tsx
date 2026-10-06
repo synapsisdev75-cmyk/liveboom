@@ -183,6 +183,7 @@ export function CreatePostModal({
   const [reconstruction, setReconstruction] = useState<ReconstructionDraft | null>(getReconstructionDraft());
   const [photoEditOpen, setPhotoEditOpen] = useState(false);
   const [photoEdits, setPhotoEdits] = useState<Record<number, PhotoEditValues>>({});
+  const [previewNatural, setPreviewNatural] = useState<{ src: string; width: number; height: number } | null>(null);
   const [editHistory, setEditHistory] = useState<PhotoEditValues[]>([DEFAULT_PHOTO_EDIT]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [editBusy, setEditBusy] = useState(false);
@@ -929,6 +930,17 @@ export function CreatePostModal({
   const photoStageOpen =
     photoEditOpen && !previewIsVideo && Boolean(mediaFile || gifAttach || (previewSrc && kind !== 'video'));
   const cropRatio = cropAspectRatio(currentEdit.crop);
+  const previewNaturalSize = previewNatural && previewNatural.src === previewSrc ? previewNatural : null;
+  const previewQuarterTurn = Math.abs(currentEdit.rotate % 180) === 90;
+  /** Proporción de la foto tal como se publicará (recorte + giro), base de los stickers. */
+  const publishAspect = previewIsVideo
+    ? null
+    : cropRatio ??
+      (previewNaturalSize
+        ? previewQuarterTurn
+          ? previewNaturalSize.height / previewNaturalSize.width
+          : previewNaturalSize.width / previewNaturalSize.height
+        : null);
 
   function setCurrentEdit(next: PhotoEditValues, recordHistory = false) {
     const clamped = clampPan(next);
@@ -1692,13 +1704,26 @@ export function CreatePostModal({
                       className={`lb-composer-stage relative z-[1] flex w-full items-center justify-center ${
                         photoStageOpen ? 'cursor-grab touch-none active:cursor-grabbing' : ''
                       }`}
-                      style={cropRatio ? { aspectRatio: String(cropRatio) } : undefined}
                       onPointerDown={onStagePointerDown}
                       onPointerMove={onStagePointerMove}
                       onPointerUp={onStagePointerUp}
                       onPointerCancel={onStagePointerUp}
                     >
-                      <div className="relative max-h-full min-h-0 w-full overflow-hidden">
+                      <div
+                        className={`relative min-h-0 overflow-hidden ${
+                          publishAspect
+                            ? 'lb-composer-photo-frame mx-auto shadow-[0_0_0_1px_rgba(255,255,255,0.22),0_8px_28px_rgba(0,0,0,0.45)]'
+                            : 'max-h-full w-full'
+                        }`}
+                        style={
+                          publishAspect
+                            ? {
+                                aspectRatio: String(publishAspect),
+                                width: `min(100%, calc(min(56dvh, 28rem) * ${publishAspect.toFixed(4)}))`,
+                              }
+                            : undefined
+                        }
+                      >
                         {previewIsVideo ? (
                           <video
                             src={previewSrc}
@@ -1713,12 +1738,30 @@ export function CreatePostModal({
                             src={previewSrc}
                             alt=""
                             draggable={false}
-                            className="mx-auto max-h-[min(56dvh,28rem)] w-full select-none object-contain"
+                            onLoad={(event) => {
+                              const img = event.currentTarget;
+                              const src = img.getAttribute('src');
+                              if (!src || img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
+                              setPreviewNatural({ src, width: img.naturalWidth, height: img.naturalHeight });
+                            }}
+                            className={
+                              !publishAspect
+                                ? 'mx-auto max-h-[min(56dvh,28rem)] w-full select-none object-contain'
+                                : previewQuarterTurn
+                                  ? 'absolute left-1/2 top-1/2 max-w-none select-none object-cover'
+                                  : 'absolute inset-0 h-full w-full select-none object-cover'
+                            }
                             style={{
                               filter: photoCssFilter(currentEdit),
-                              transform: `translate(${currentEdit.panX}%, ${currentEdit.panY}%) scale(${
-                                currentEdit.zoom / 100
-                              }) rotate(${currentEdit.rotate}deg)`,
+                              ...(publishAspect && previewQuarterTurn
+                                ? {
+                                    width: `${(100 / publishAspect).toFixed(4)}%`,
+                                    height: `${(publishAspect * 100).toFixed(4)}%`,
+                                  }
+                                : null),
+                              transform: `${publishAspect && previewQuarterTurn ? 'translate(-50%, -50%) ' : ''}translate(${
+                                currentEdit.panX
+                              }%, ${currentEdit.panY}%) scale(${currentEdit.zoom / 100}) rotate(${currentEdit.rotate}deg)`,
                               transformOrigin: 'center center',
                             }}
                           />

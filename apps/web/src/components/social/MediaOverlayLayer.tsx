@@ -6,6 +6,8 @@ type Props = {
   overlays: MediaOverlayItem[];
   editable?: boolean;
   onChange?: (next: MediaOverlayItem[]) => void;
+  /** Proporción (ancho/alto) de la foto mostrada con object-contain: la capa se ajusta a la foto, no al marco. */
+  aspect?: number | null;
 };
 
 type DragState = {
@@ -21,7 +23,7 @@ type DragState = {
   pinch?: { dist: number; scale: number };
 };
 
-export function MediaOverlayLayer({ overlays, editable = false, onChange }: Props) {
+export function MediaOverlayLayer({ overlays, editable = false, onChange, aspect = null }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -112,10 +114,17 @@ export function MediaOverlayLayer({ overlays, editable = false, onChange }: Prop
 
   if (overlays.length === 0) return null;
 
-  return (
+  const fitAspect = aspect && Number.isFinite(aspect) && aspect > 0 ? aspect : null;
+
+  const layer = (
     <div
       ref={boxRef}
-      className="pointer-events-none absolute inset-0 z-[5] overflow-hidden"
+      className={`pointer-events-none z-[5] overflow-hidden ${fitAspect ? 'relative' : 'absolute inset-0'}`}
+      style={
+        fitAspect
+          ? { width: `min(100cqw, ${(fitAspect * 100).toFixed(4)}cqh)`, aspectRatio: String(fitAspect) }
+          : undefined
+      }
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
@@ -178,6 +187,17 @@ export function MediaOverlayLayer({ overlays, editable = false, onChange }: Prop
           </div>
         );
       })}
+    </div>
+  );
+
+  if (!fitAspect) return layer;
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-[5] grid place-items-center"
+      style={{ containerType: 'size' }}
+    >
+      {layer}
     </div>
   );
 }
