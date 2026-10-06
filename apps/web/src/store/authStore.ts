@@ -28,12 +28,31 @@ import { checkSignupEmail, emailCheckMessage } from '../lib/emailCheck';
 import { t } from '../i18n';
 
 type NativeGoogleAuthPlugin = {
-  signInWithGoogle: () => Promise<{ credential?: { idToken?: string | null } | null }>;
+  signInWithGoogle: (options?: {
+    /** Android: false = Google Sign-In clásico (celulares sin Credential Manager). */
+    useCredentialManager?: boolean;
+  }) => Promise<{ credential?: { idToken?: string | null } | null }>;
   signOut: () => Promise<void>;
 };
 
 /** Bridge nativo (@capacitor-firebase/authentication). En web no se usa. */
 const FirebaseAuthentication = registerPlugin<NativeGoogleAuthPlugin>('FirebaseAuthentication');
+
+const CREDENTIAL_MANAGER_UNSUPPORTED = /credential\s*manager|GetCredentialUnsupported|CreateCredentialUnsupported/i;
+
+function isCredentialManagerUnsupported(error: unknown) {
+  const msg = error instanceof Error ? error.message : String((error as { message?: unknown })?.message || error || '');
+  return CREDENTIAL_MANAGER_UNSUPPORTED.test(msg);
+}
+
+async function nativeGoogleSignIn() {
+  try {
+    return await FirebaseAuthentication.signInWithGoogle();
+  } catch (error) {
+    if (!isCredentialManagerUnsupported(error)) throw error;
+    return FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
+  }
+}
 
 type AuthState = {
   ready: boolean;
@@ -128,6 +147,9 @@ function mapAuthError(error: unknown): string {
     return t('auth.permissionDenied');
   }
   const msg = error instanceof Error ? error.message : '';
+  if (isCredentialManagerUnsupported(error)) {
+    return 'Este celular no permite iniciar con Google desde la app. Actualiza Google Play Services o crea tu cuenta con correo y contraseña.';
+  }
   if (/Developer console is not set up correctly|10:\s*\[28444\]|ApiException:\s*10/i.test(msg)) {
     return 'Google Play no reconoce esta app todavía (SHA / OAuth). Revisa google-services.json y los SHA de Play App Signing en Firebase.';
   }
@@ -521,7 +543,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       let user: FirebaseUser;
       if (Capacitor.isNativePlatform()) {
         // WebView no soporta signInWithPopup: usamos plugin nativo + credential Firebase.
-        const native = await FirebaseAuthentication.signInWithGoogle();
+        const native = await nativeGoogleSignIn();
         const idToken = String(native.credential?.idToken || '').trim();
         if (!idToken) {
           throw new Error(

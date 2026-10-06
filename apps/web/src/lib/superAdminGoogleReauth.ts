@@ -10,7 +10,9 @@ import { auth } from './firebase';
 import { normalizeEmail } from './superAdmin';
 
 type NativeGoogleAuthPlugin = {
-  signInWithGoogle: () => Promise<{ credential?: { idToken?: string | null } | null }>;
+  signInWithGoogle: (options?: {
+    useCredentialManager?: boolean;
+  }) => Promise<{ credential?: { idToken?: string | null } | null }>;
 };
 
 const FirebaseAuthentication = registerPlugin<NativeGoogleAuthPlugin>('FirebaseAuthentication');
@@ -112,7 +114,11 @@ export async function reauthenticateSuperAdminWithGoogle(
   const provider = buildProvider(input.expectedEmail);
 
   if (Capacitor.isNativePlatform()) {
-    const native = await FirebaseAuthentication.signInWithGoogle();
+    const native = await FirebaseAuthentication.signInWithGoogle().catch((error: unknown) => {
+      const msg = error instanceof Error ? error.message : String(error || '');
+      if (!/credential\s*manager|GetCredentialUnsupported/i.test(msg)) throw error;
+      return FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
+    });
     const idToken = String(native.credential?.idToken || '').trim();
     if (!idToken) {
       throw new Error(
