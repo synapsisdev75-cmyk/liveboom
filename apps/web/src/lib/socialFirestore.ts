@@ -28,6 +28,7 @@ import { getLocale } from '../store/localeStore';
 import { fetchPublicUserByUsername, fetchPublicUserByUid, type PublicFsUser } from './profileFirestore';
 import { readIgnoredSuggestionUids } from './ignoredSuggestions';
 import {
+  BOOM_CLIP_GROUP_MAX,
   diversifyReelFeed,
   isReelInPublicFeed,
   reelLifecycleFromCreatedAt,
@@ -2759,7 +2760,7 @@ export function listenActiveReels(onChange: (posts: FsPost[]) => void): Unsubscr
     onChange(
       diversifyReelFeed(
         posts.filter((post) => isBoomClipPost(post) && isReelInPublicFeed(post)),
-        2,
+        BOOM_CLIP_GROUP_MAX,
         16,
       ),
     );

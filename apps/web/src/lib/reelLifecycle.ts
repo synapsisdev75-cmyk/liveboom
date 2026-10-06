@@ -61,16 +61,26 @@ export function targetReelVisibility(
   return post.visibility;
 }
 
-/** Evita que pocos autores monopolicen el carrusel cuando hay muchos clips. */
-export function diversifyReelFeed(posts: FsPost[], maxPerAuthor = 2, limit = 16): FsPost[] {
+/** Clips activos que muestra el grupo de cada creador en el carrusel y en el visor. */
+export const BOOM_CLIP_GROUP_MAX = 10;
+
+/**
+ * Carrusel agrupado por creador: hasta `maxPerAuthor` clips (los más recientes) por grupo y
+ * hasta `maxAuthors` grupos, para que pocos autores no monopolicen la fila.
+ */
+export function diversifyReelFeed(
+  posts: FsPost[],
+  maxPerAuthor = BOOM_CLIP_GROUP_MAX,
+  maxAuthors = 16,
+): FsPost[] {
   const counts = new Map<string, number>();
   const picked: FsPost[] = [];
   for (const post of posts) {
     const n = counts.get(post.authorUid) || 0;
     if (n >= maxPerAuthor) continue;
+    if (n === 0 && counts.size >= maxAuthors) continue;
     counts.set(post.authorUid, n + 1);
     picked.push(post);
-    if (picked.length >= limit) break;
   }
   return picked;
 }

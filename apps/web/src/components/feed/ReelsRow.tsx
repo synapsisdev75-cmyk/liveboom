@@ -5,6 +5,7 @@ import { BOOM_CLIP_LABEL, FLASH_BOOM_LABEL } from '../../lib/brand';
 import { GO_HOME_EVENT } from '../../lib/goHome';
 import { groupBoomClipsByAuthor, type BoomClipGroup, type ReelItem } from '../../lib/boomClipGroups';
 import { formatClipDuration, MAX_CLIP_DURATION_SECONDS } from '../../lib/contentType';
+import { BOOM_CLIP_GROUP_MAX } from '../../lib/reelLifecycle';
 import { seedAvatarCache } from '../../hooks/useAuthorAvatar';
 import { fetchFirestoreProfile } from '../../lib/profileFirestore';
 import { listenActiveReels, listenActiveStories, type FsPost } from '../../lib/socialFirestore';
@@ -44,13 +45,14 @@ function toReel(post: FsPost, avatarUrl?: string | null): ReelItem {
 
 function ClipSegmentBar({ count }: { count: number }) {
   if (count <= 1) return null;
+  const shown = Math.min(count, BOOM_CLIP_GROUP_MAX);
   return (
     <div className="absolute inset-x-2 top-2 z-[9] flex gap-0.5">
-      {Array.from({ length: Math.min(count, 8) }).map((_, i) => (
+      {Array.from({ length: shown }).map((_, i) => (
         <span
           key={i}
           className={`h-[3px] min-w-0 flex-1 rounded-full ${
-            i === count - 1 ? 'bg-fuchsia-400' : 'bg-white/45'
+            i === shown - 1 ? 'bg-fuchsia-400' : 'bg-white/45'
           }`}
         />
       ))}
