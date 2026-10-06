@@ -37,6 +37,7 @@ export function PromotionBanner({ ad, className = '', compact = false, onOpen, p
       last = now;
       if (!sent && visibleMs >= 1000) {
         sent = true;
+        window.clearInterval(timer);
         void api(`/api/ads/promotions/${encodeURIComponent(ad.id)}/event`, {
           method: 'POST',
           body: JSON.stringify({ type: 'impression' }),

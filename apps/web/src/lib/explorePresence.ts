@@ -25,12 +25,12 @@ import {
 import { roomKey } from './roomKey';
 import type { PostCommentMedia, PostCommentMediaType } from './socialFirestore';
 
-export const EXPLORE_PRESENCE_TTL_MS = 20_000;
+export const EXPLORE_PRESENCE_TTL_MS = 30_000;
 export const EXPLORE_HEAT_TTL_MS = 25_000;
 export const EXPLORE_PLAZA_TTL_MS = 20 * 60 * 1000;
 const LIVE_HEARTBEAT_TTL_MS = 90_000;
 const LIVE_START_GRACE_MS = 90_000;
-const HEARTBEAT_MS = 8_000;
+const HEARTBEAT_MS = 12_000;
 const PLAZA_ALERT_GAP_MS = 10 * 60 * 1000;
 /** Las reglas solo dejan leer 20 min contados con el reloj del servidor. */
 const PLAZA_QUERY_MARGINS_MS = [3 * 60_000, 10 * 60_000, 17 * 60_000];
@@ -110,6 +110,14 @@ export function listenExploreViewers(
   onChange: (viewers: PlazaViewer[]) => void,
 ): () => void {
   const viewersQuery = query(collection(db, 'explorePresence', postId, 'viewers'), limit(30));
+  // Cada latido re-emite la misma gente: solo avisar cuando cambia quién está.
+  let lastSignature: string | null = null;
+  const emit = (people: PlazaViewer[]) => {
+    const signature = JSON.stringify(people);
+    if (signature === lastSignature) return;
+    lastSignature = signature;
+    onChange(people);
+  };
   return onSnapshot(
     viewersQuery,
     (snap) => {
@@ -128,9 +136,9 @@ export function listenExploreViewers(
           avatarUrl: typeof data.avatarUrl === 'string' ? data.avatarUrl : null,
         });
       }
-      onChange(people);
+      emit(people);
     },
-    () => onChange([]),
+    () => emit([]),
   );
 }
 

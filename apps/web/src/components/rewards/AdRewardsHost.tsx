@@ -171,12 +171,17 @@ export function AdRewardsHost() {
         });
     };
     // Punto seguro: al pasar de un video al siguiente (gesto de navegación), nunca a mitad de uno.
-    const onGesture = () => window.setTimeout(tryShow, 600);
+    let gestureTimer = 0;
+    const onGesture = () => {
+      window.clearTimeout(gestureTimer);
+      gestureTimer = window.setTimeout(tryShow, 600);
+    };
     window.addEventListener('wheel', onGesture, { passive: true });
     window.addEventListener('touchend', onGesture, { passive: true });
     window.addEventListener('keyup', onGesture);
     window.addEventListener(AD_DUE_EVENT, onGesture);
     return () => {
+      window.clearTimeout(gestureTimer);
       window.removeEventListener('wheel', onGesture);
       window.removeEventListener('touchend', onGesture);
       window.removeEventListener('keyup', onGesture);

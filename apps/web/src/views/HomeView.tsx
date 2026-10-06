@@ -526,7 +526,7 @@ export function HomeView() {
         .catch(() => undefined);
     };
     verify();
-    const timer = window.setInterval(verify, 12_000);
+    const timer = window.setInterval(verify, 45_000);
     document.addEventListener('visibilitychange', verify);
     return () => {
       cancelled = true;

@@ -18,6 +18,7 @@ import {
   notifyFriendLiveSystem,
 } from '../../lib/systemNotifications';
 import { api } from '../../lib/api';
+import { subscribeFriendsLive } from '../../lib/friendsLiveFeed';
 import {
   acceptFriendRequest,
   listenConversations,
@@ -47,14 +48,6 @@ type NotiItem = {
   hostUsername?: string;
   battleId?: string;
   postId?: string;
-};
-
-type ActiveStream = {
-  username: string;
-  displayName: string;
-  avatarUrl: string | null;
-  title: string;
-  viewers: number;
 };
 
 /** Campanita con solicitudes, lives/posts de amigos y mensajes en tiempo real. */
@@ -195,39 +188,27 @@ export function NotificationBell() {
       }
     });
 
-    let cancelled = false;
-    async function pollLives() {
-      try {
-        const data = await api<{ streams: ActiveStream[] }>('/api/stream/friends-live').catch(() => ({
-          streams: [] as ActiveStream[],
-        }));
-        if (cancelled) return;
-        const streams = data.streams || [];
-        if (knownLive.current == null) {
-          knownLive.current = new Set(streams.map((s) => s.username));
-          return;
-        }
-        const fresh = streams.filter((s) => !knownLive.current!.has(s.username));
-        if (fresh.length > 0) {
-          playLiveAlert();
-          setItems((current) => {
-            const notes = fresh.map((s) => ({
-              id: `live-${s.username}-${Date.now()}`,
-              kind: 'live' as const,
-              text: `${s.displayName || s.username} está en vivo`,
-              href: `/stream/${encodeURIComponent(s.username)}`,
-              at: Date.now(),
-            }));
-            return [...notes, ...current].slice(0, 40);
-          });
-        }
+    const unsubLives = subscribeFriendsLive((streams) => {
+      if (knownLive.current == null) {
         knownLive.current = new Set(streams.map((s) => s.username));
-      } catch {
-        // ignore
+        return;
       }
-    }
-    void pollLives();
-    const timer = window.setInterval(() => void pollLives(), 12000);
+      const fresh = streams.filter((s) => !knownLive.current!.has(s.username));
+      if (fresh.length > 0) {
+        playLiveAlert();
+        setItems((current) => {
+          const notes = fresh.map((s) => ({
+            id: `live-${s.username}-${Date.now()}`,
+            kind: 'live' as const,
+            text: `${s.displayName || s.username} está en vivo`,
+            href: `/stream/${encodeURIComponent(s.username)}`,
+            at: Date.now(),
+          }));
+          return [...notes, ...current].slice(0, 40);
+        });
+      }
+      knownLive.current = new Set(streams.map((s) => s.username));
+    });
 
     const unsubAlerts = listenLiveAlerts(profile.firebaseUid, (alerts) => {
       setItems((current) => {
@@ -263,8 +244,7 @@ export function NotificationBell() {
     });
 
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      unsubLives();
       unsubReq();
       unsubPostAlerts();
       unsubChats();

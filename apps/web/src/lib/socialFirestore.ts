@@ -1358,9 +1358,53 @@ export async function listFollowing(uid: string) {
   return snap.docs.map((item) => chipFromData(item.id, item.data() as Record<string, unknown>));
 }
 
+type SharedConversations = {
+  listeners: Set<(conversations: Conversation[]) => void>;
+  latest: Conversation[] | null;
+  stop: Unsubscribe;
+};
+
+/** Campana, insignias, menú, llamadas y chat escuchan la misma lista: un solo snapshot por usuario. */
+const sharedConversations = new Map<string, SharedConversations>();
+
 export function listenConversations(
   uid: string,
   onChange: (conversations: Conversation[]) => void,
+): Unsubscribe {
+  let entry = sharedConversations.get(uid);
+  if (!entry) {
+    const created: SharedConversations = { listeners: new Set(), latest: null, stop: () => undefined };
+    sharedConversations.set(uid, created);
+    created.stop = openConversationsSnapshot(
+      uid,
+      (list) => {
+        created.latest = list;
+        for (const listener of Array.from(created.listeners)) listener(list.slice());
+      },
+      () => {
+        if (sharedConversations.get(uid) === created) sharedConversations.delete(uid);
+      },
+    );
+    entry = created;
+  }
+  const shared = entry;
+  shared.listeners.add(onChange);
+  if (shared.latest) {
+    queueMicrotask(() => {
+      if (shared.listeners.has(onChange) && shared.latest) onChange(shared.latest.slice());
+    });
+  }
+  return () => {
+    if (!shared.listeners.delete(onChange) || shared.listeners.size > 0) return;
+    shared.stop();
+    if (sharedConversations.get(uid) === shared) sharedConversations.delete(uid);
+  };
+}
+
+function openConversationsSnapshot(
+  uid: string,
+  onChange: (conversations: Conversation[]) => void,
+  onFail: () => void,
 ): Unsubscribe {
   const q = query(collection(db, 'chats'), where('participants', 'array-contains', uid));
   return onSnapshot(
@@ -1405,6 +1449,7 @@ export function listenConversations(
     },
     (error) => {
       console.warn('[CALL] conversations listen error', error);
+      onFail();
     },
   );
 }

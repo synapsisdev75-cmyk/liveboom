@@ -8,6 +8,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  getDocsFromCache,
   increment,
   limit,
   onSnapshot,
@@ -664,7 +665,10 @@ export async function reconcileLiveFeedWithApi(activeUsernames: string[]) {
   const active = new Set(
     activeUsernames.map((name) => roomKey(name)).filter(Boolean),
   );
-  const snap = await getDocs(query(collection(db, 'liveRooms'), where('status', '==', 'live')));
+  const liveQuery = query(collection(db, 'liveRooms'), where('status', '==', 'live'));
+  // Inicio ya escucha esta consulta: la caché está al día y no cuesta lecturas al servidor.
+  const cached = await getDocsFromCache(liveQuery).catch(() => null);
+  const snap = cached && !cached.empty ? cached : await getDocs(liveQuery);
   const now = Date.now();
   await Promise.all(
     snap.docs.map(async (item) => {

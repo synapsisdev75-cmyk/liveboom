@@ -67,7 +67,7 @@ import { CHAT_EMOJI_SIZE, CHAT_LIST_EMOJI_SIZE, isEmojiOnlyText } from '../../li
 import { EmojiText } from './EmojiText';
 import { playIncomingMessageSound, playMessagePop } from '../../lib/alertSound';
 import { patchChatNotifyContext } from '../../lib/chatNotifyContext';
-import { api } from '../../lib/api';
+import { subscribeFriendsLive } from '../../lib/friendsLiveFeed';
 import {
   CHAT_FILE_ACCEPT,
   formatChatFileSize,
@@ -1092,9 +1092,12 @@ export function InternalChatPanel({
 
   // Reloj ligero para caducar "escribiendo…" en la lista.
   useEffect(() => {
-    const anyTyping = conversations.some((c) => (c.peerTypingAt || 0) > 0);
-    if (!anyTyping) return;
-    const id = window.setInterval(() => setTypingTick((n) => n + 1), 1000);
+    const latestTyping = Math.max(0, ...conversations.map((c) => c.peerTypingAt || 0));
+    if (Date.now() - latestTyping > TYPING_LIST_FRESH_MS) return;
+    const id = window.setInterval(() => {
+      setTypingTick((n) => n + 1);
+      if (Date.now() - latestTyping > TYPING_LIST_FRESH_MS) window.clearInterval(id);
+    }, 1000);
     return () => window.clearInterval(id);
   }, [conversations]);
 
@@ -1156,29 +1159,9 @@ export function InternalChatPanel({
 
   useEffect(() => {
     if (!profile || !isPage) return;
-    let cancelled = false;
-    const load = () => {
-      void api<{ streams?: { username?: string }[] }>('/api/stream/friends-live')
-        .then((data) => {
-          if (cancelled) return;
-          setLiveHandles(
-            new Set(
-              (data.streams || [])
-                .map((s) => (s.username || '').toLowerCase())
-                .filter(Boolean),
-            ),
-          );
-        })
-        .catch(() => {
-          if (!cancelled) setLiveHandles(new Set());
-        });
-    };
-    load();
-    const id = window.setInterval(load, 45_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
+    return subscribeFriendsLive((streams) => {
+      setLiveHandles(new Set(streams.map((s) => s.username.toLowerCase()).filter(Boolean)));
+    });
   }, [profile?.firebaseUid, isPage]);
 
   const conUser = searchParams.get('con');
