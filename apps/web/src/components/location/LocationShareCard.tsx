@@ -69,7 +69,7 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
           />
         </Suspense>
       </Link>
-      <div className="flex min-w-0 items-center gap-2.5 p-2.5">
+      <div className="lb-location-card__foot flex min-w-0 items-center gap-2.5 p-2.5">
         <span
           className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${
             isLive ? 'bg-[#ef4444]/15 text-[#ef4444]' : 'bg-[#22d3ee]/15 text-[#06b6d4]'
@@ -92,7 +92,7 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
               event.stopPropagation();
               void stopMyShare();
             }}
-            className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-[#ef4444] px-3 text-[11px] font-black uppercase text-[#ffffff]"
+            className="lb-location-card__action inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#ef4444] px-3 text-[11px] font-black uppercase text-[#ffffff]"
           >
             Dejar de compartir
           </button>
@@ -100,7 +100,7 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
           <DirectionsButton
             destination={location}
             iconSize={13}
-            className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-3 text-[11px] font-bold text-[#0b0f19]"
+            className="lb-location-card__action inline-flex min-h-10 shrink-0 items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-3 text-[11px] font-bold text-[#0b0f19]"
           />
         )}
       </div>

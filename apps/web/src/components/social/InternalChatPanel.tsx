@@ -2947,11 +2947,9 @@ export function InternalChatPanel({
                               <VoiceNotePlayer src={message.mediaUrl} mine={message.mine} />
                             ) : null}
                             {message.linkUrl && parseLocationUrl(message.linkUrl) ? (
-                              <LocationShareCard
-                                location={parseLocationUrl(message.linkUrl)!}
-                                compact
-                                className="mb-1 w-[min(16rem,68vw)]"
-                              />
+                              <div className="lb-chat-location mb-1">
+                                <LocationShareCard location={parseLocationUrl(message.linkUrl)!} compact />
+                              </div>
                             ) : message.linkUrl && parseSharedPostUrl(message.linkUrl) ? (
                               <SharedPostLinkCard postId={parseSharedPostUrl(message.linkUrl)!} />
                             ) : message.linkUrl ? (

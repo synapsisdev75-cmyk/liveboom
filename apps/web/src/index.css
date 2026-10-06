@@ -948,6 +948,30 @@ aside.chat-scroll::-webkit-scrollbar {
   flex-direction: column;
   justify-content: flex-end;
   min-height: 100%;
+  container-type: inline-size;
+}
+
+/* Columna del mensaje (85 % / 72 % del hilo) menos el padding de la burbuja y el botón de reaccionar. */
+.lb-chat-location {
+  width: min(16rem, calc(85cqw - 5.75rem));
+  container: lb-chat-location / inline-size;
+}
+
+@media (min-width: 1024px) {
+  .lb-chat-location {
+    width: min(16rem, calc(72cqw - 5.75rem));
+  }
+}
+
+@container lb-chat-location (max-width: 15rem) {
+  .lb-chat-location .lb-location-card__foot {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
+  .lb-chat-location .lb-location-card__action {
+    flex: 1 0 100%;
+  }
 }
 
 .lb-live-chat-identity--inline {
