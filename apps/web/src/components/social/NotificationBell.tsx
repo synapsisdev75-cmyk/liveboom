@@ -4,6 +4,7 @@ import {
   MessageCircle,
   Radio,
   Swords,
+  UserCheck,
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -145,7 +146,11 @@ export function NotificationBell() {
           at: alert.at,
           alertMeta: alert,
         }));
-        if (notes[0] && Date.now() - notes[0].at < 90_000) playPostAlert();
+        const latest = notes[0];
+        if (latest && Date.now() - latest.at < 90_000) {
+          if (latest.alertMeta.kind === 'friend_accepted') playFriendRequestAlert();
+          else playPostAlert();
+        }
         return [...notes, ...without].slice(0, 40);
       });
     });
@@ -733,6 +738,8 @@ export function NotificationBell() {
                       >
                         {item.kind === 'live' ? (
                           <Radio size={14} className="mt-0.5 shrink-0 text-fuchsia-400" />
+                        ) : item.alertMeta?.kind === 'friend_accepted' ? (
+                          <UserCheck size={14} className="mt-0.5 shrink-0 text-emerald-400" />
                         ) : (
                           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
                         )}

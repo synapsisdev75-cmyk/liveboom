@@ -949,6 +949,14 @@ export async function acceptFriendRequest(toUid: string, fromUsernameOrUid: stri
   await deleteDoc(doc(db, 'users', toUid, 'incomingRequests', from.firebaseUid)).catch(() => undefined);
   await deleteDoc(doc(db, 'users', from.firebaseUid, 'outgoingRequests', toUid)).catch(() => undefined);
 
+  await notifyFriendRequestAccepted({
+    recipientUid: from.firebaseUid,
+    accepterUid: toUid,
+    accepterUsername: toHandle,
+    accepterName: String(toData.displayName || toHandle),
+    accepterAvatarUrl: toData.avatarUrl ?? null,
+  }).catch((error) => console.warn('[friends] accepted alert', error));
+
   // Chat opcional: no debe impedir aceptar la amistad.
   try {
     await ensureChat(
@@ -967,6 +975,45 @@ export async function acceptFriendRequest(toUid: string, fromUsernameOrUid: stri
     );
   } catch (error) {
     console.warn('[friends] ensureChat after accept', error);
+  }
+}
+
+/** Avisa a quien envió la solicitud (campanita + push) que ya son amigos. */
+async function notifyFriendRequestAccepted(input: {
+  recipientUid: string;
+  accepterUid: string;
+  accepterUsername: string;
+  accepterName: string;
+  accepterAvatarUrl: string | null;
+}) {
+  if (!input.recipientUid || input.recipientUid === input.accepterUid) return;
+  const title = `${input.accepterName} aceptó tu solicitud de amistad. ¡Ya son amigos!`;
+  const href = `/u/${encodeURIComponent(input.accepterUsername)}?uid=${encodeURIComponent(input.accepterUid)}`;
+  await setDoc(doc(collection(db, 'users', input.recipientUid, 'postAlerts')), {
+    kind: 'friend_accepted',
+    authorUid: input.accepterUid,
+    authorUsername: input.accepterUsername.toLowerCase(),
+    authorName: input.accepterName,
+    title,
+    href,
+    imageUrl: toPublicHttpsUrl(input.accepterAvatarUrl) || null,
+    createdAt: serverTimestamp(),
+    createdAtMs: Date.now(),
+  });
+  try {
+    const { enqueuePushNotify } = await import('./pushNotifications');
+    enqueuePushNotify({
+      recipientUids: [input.recipientUid],
+      title: 'Solicitud de amistad aceptada',
+      body: `${input.accepterName} aceptó tu solicitud. ¡Ya son amigos!`,
+      channel: 'friends',
+      type: 'friend_accepted',
+      href,
+      fromUid: input.accepterUid,
+      imageUrl: toPublicHttpsUrl(input.accepterAvatarUrl) || null,
+    });
+  } catch {
+    /* push opcional */
   }
 }
 
@@ -2995,6 +3042,7 @@ export type PostAlertItem = {
   authorUsername?: string;
   postFormat?: 'story' | 'post';
   mediaType?: 'photo' | 'video' | 'text';
+  kind?: 'friend_accepted';
 };
 
 export function buildPostAlertTarget(alert: PostAlertItem): { pathname: string; search: string } {
@@ -3059,6 +3107,7 @@ export function listenPostAlerts(
               data.mediaType === 'photo' || data.mediaType === 'video' || data.mediaType === 'text'
                 ? data.mediaType
                 : undefined,
+            kind: data.kind === 'friend_accepted' ? 'friend_accepted' : undefined,
           };
         }),
       );
