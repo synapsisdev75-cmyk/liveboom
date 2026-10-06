@@ -18,6 +18,7 @@ import { registerPushNotifications } from './lib/pushNotifications';
 import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
 import { BootSplash } from './components/brand/BootSplash';
 import { LiveLocationIndicator } from './components/location/LiveLocationIndicator';
+import { PublishProgressPill } from './components/global/PublishProgressPill';
 import { flushPendingShare, installSharedLinkOpener } from './lib/openSharedLink';
 import { installShareIncomingListener, peekPendingIncomingShare, SHARE_INCOMING_EVENT } from './lib/shareIncoming';
 
@@ -115,8 +116,9 @@ function AuthHydrator() {
     void prepareNativeLiveWebView();
     installSharedLinkOpener();
     installShareIncomingListener();
-    // Android: notificaciones / media / bluetooth al abrir.
-    // Cámara y micrófono solo al transmitir, Sala Boom o llamadas (ensureNativeLiveAvPermissions).
+    // Android: al abrir solo se consulta el estado (sin diálogos). Notificaciones tras iniciar sesión;
+    // cámara, micrófono y Bluetooth al transmitir, Sala Boom o llamadas (ensureNativeLiveAvPermissions);
+    // ubicación solo al compartirla o abrir el mapa.
     void ensureNativeEssentialPermissions();
     return () => {
       unsubLevels();
@@ -204,6 +206,7 @@ export default function App() {
       <ShareIncomingRouter />
       <PendingEmailVerificationRedirect />
       <LiveLocationIndicator />
+      <PublishProgressPill />
       <BootSplash />
       <Suspense fallback={<RouteFallback />}>
         <Routes>

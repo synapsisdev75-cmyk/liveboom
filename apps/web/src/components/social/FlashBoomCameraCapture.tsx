@@ -3,6 +3,7 @@ import { Camera, RefreshCcw, SwitchCamera, Video, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
+import { isCameraBusyError, liveCameraDeniedMessage } from '../../lib/liveMediaDevices';
 
 const PERMISSION_ERROR = 'No se pudo acceder a la cámara. Activa el permiso de cámara para LiveBoom.';
 
@@ -70,6 +71,7 @@ export function FlashBoomCameraCapture({
   const timerRef = useRef<number | null>(null);
   const recordedSecRef = useRef(0);
   const deviceIdRef = useRef<string | null>(sessionDeviceId);
+  const startGenRef = useRef(0);
 
   const [mode, setMode] = useState<CaptureMode>(allowPhoto ? defaultMode : 'video');
   const [cameras, setCameras] = useState<CameraOption[]>([]);
@@ -115,6 +117,8 @@ export function FlashBoomCameraCapture({
         setStarting(false);
         return;
       }
+      // Cada apertura invalida a la anterior: cambiar de cámara o cerrar no deja streams huérfanos.
+      const gen = ++startGenRef.current;
       setStarting(true);
       setError(null);
       stopStream();
@@ -125,6 +129,10 @@ export function FlashBoomCameraCapture({
           : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } };
 
       const attach = async (stream: MediaStream) => {
+        if (gen !== startGenRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         streamRef.current = stream;
         const trackId = stream.getVideoTracks()[0]?.getSettings().deviceId;
         if (trackId) {
@@ -150,13 +158,22 @@ export function FlashBoomCameraCapture({
           );
         } catch (err) {
           const name = err instanceof DOMException ? err.name : '';
-          if (name === 'OverconstrainedError' && chosenId) {
+          if ((name === 'OverconstrainedError' || name === 'NotFoundError') && chosenId) {
             chosenId = null;
             deviceIdRef.current = null;
             await attach(
               await navigator.mediaDevices.getUserMedia({
                 audio: nextMode === 'video',
                 video: constraintFor(null),
+              }),
+            );
+          } else if (isCameraBusyError(err)) {
+            await new Promise((resolve) => window.setTimeout(resolve, 700));
+            if (gen !== startGenRef.current) return;
+            await attach(
+              await navigator.mediaDevices.getUserMedia({
+                audio: nextMode === 'video',
+                video: constraintFor(chosenId),
               }),
             );
           } else if (
@@ -174,10 +191,12 @@ export function FlashBoomCameraCapture({
             throw err;
           }
         }
-      } catch {
-        setError(PERMISSION_ERROR);
+      } catch (err) {
+        if (gen === startGenRef.current) {
+          setError(isCameraBusyError(err) ? liveCameraDeniedMessage(err) : PERMISSION_ERROR);
+        }
       } finally {
-        setStarting(false);
+        if (gen === startGenRef.current) setStarting(false);
       }
     },
     [listCameras, stopStream],
@@ -194,6 +213,7 @@ export function FlashBoomCameraCapture({
     setSeconds(0);
     void startStream(initialMode, sessionDeviceId);
     return () => {
+      startGenRef.current += 1;
       if (timerRef.current) window.clearInterval(timerRef.current);
       recorderRef.current?.stop();
       stopStream();

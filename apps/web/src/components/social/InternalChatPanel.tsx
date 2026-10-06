@@ -59,6 +59,8 @@ import { useLocaleStore } from '../../store/localeStore';
 import { readChatTranslateTarget, writeChatTranslateTarget } from '../../lib/chatTranslatePref';
 import { GifPickerSheet } from './GifPickerSheet';
 import { LocationShareCard } from '../location/LocationShareCard';
+import { SharedPostLinkCard } from './SharedPostLinkCard';
+import { parseSharedPostUrl } from '../../lib/sharedPostLink';
 import { LocationShareModal } from '../location/LocationShareModal';
 import { buildLocationUrl, LOCATION_MESSAGE_TEXT, parseLocationUrl } from '../../lib/locationShare';
 import { CHAT_EMOJI_SIZE, CHAT_LIST_EMOJI_SIZE, isEmojiOnlyText } from '../../lib/liveboomEmojis';
@@ -297,6 +299,52 @@ function formatAudioClock(sec: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+const VOICE_WAVE_BARS = 28;
+const VOICE_SPEEDS = [1, 1.5, 2] as const;
+const VOICE_LISTENED_KEY = 'lb-voice-listened-v1';
+const VOICE_LISTENED_MAX = 400;
+
+function voiceHash(src: string) {
+  let h = 2166136261;
+  for (let i = 0; i < src.length; i += 1) {
+    h ^= src.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Forma de onda estable por audio (decorativa, sin decodificar el archivo). */
+function voiceWaveHeights(src: string) {
+  let seed = voiceHash(src) || 1;
+  return Array.from({ length: VOICE_WAVE_BARS }, (_, i) => {
+    seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+    const noise = (seed % 1000) / 1000;
+    const envelope = 0.55 + 0.45 * Math.sin((i / (VOICE_WAVE_BARS - 1)) * Math.PI);
+    return Math.round(22 + 78 * envelope * (0.35 + 0.65 * noise));
+  });
+}
+
+function readVoiceListened(): string[] {
+  try {
+    const raw = localStorage.getItem(VOICE_LISTENED_KEY);
+    const list = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function markVoiceListened(src: string) {
+  const id = String(voiceHash(src));
+  const list = readVoiceListened().filter((x) => x !== id);
+  list.push(id);
+  try {
+    localStorage.setItem(VOICE_LISTENED_KEY, JSON.stringify(list.slice(-VOICE_LISTENED_MAX)));
+  } catch {
+    /* almacenamiento lleno o bloqueado: solo se pierde la marca visual */
+  }
+}
+
 function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -305,6 +353,11 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [speed, setSpeed] = useState<(typeof VOICE_SPEEDS)[number]>(1);
+  const [listened, setListened] = useState(
+    () => Boolean(mine) || readVoiceListened().includes(String(voiceHash(src))),
+  );
+  const waveHeights = useMemo(() => voiceWaveHeights(src), [src]);
 
   useEffect(() => {
     const node = rootRef.current;
@@ -375,35 +428,52 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
         setPlaying(false);
         return;
       }
+      el.defaultPlaybackRate = speed;
+      el.playbackRate = speed;
       await el.play();
       setPlaying(true);
+      if (!listened) {
+        setListened(true);
+        markVoiceListened(src);
+      }
     } catch {
       setError('Toca de nuevo para reproducir');
       setPlaying(false);
     }
   }
 
+  function cycleSpeed() {
+    const next = VOICE_SPEEDS[(VOICE_SPEEDS.indexOf(speed) + 1) % VOICE_SPEEDS.length]!;
+    setSpeed(next);
+    const el = audioRef.current;
+    if (el) {
+      el.defaultPlaybackRate = next;
+      el.playbackRate = next;
+    }
+  }
+
   const pct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
+  const activeBars = Math.round((pct / 100) * VOICE_WAVE_BARS);
 
   return (
     <div
       ref={rootRef}
-      className={`lb-chat-voice mb-0.5 flex w-[min(100%,15rem)] items-center gap-2 ${mine ? '' : ''}`}
+      className={`lb-chat-voice mb-0.5 flex w-[min(100%,16rem)] items-center gap-2 rounded-2xl px-1 py-1 ${
+        listened ? 'is-listened' : 'is-new'
+      }`}
     >
       <audio ref={audioRef} preload="none" playsInline className="hidden" />
       <button
         type="button"
         onClick={() => void toggle()}
-        className={`lb-chat-voice__play grid h-9 w-9 shrink-0 place-items-center rounded-full ${
-          mine ? 'bg-white/20 text-white' : 'bg-violet-500/25 text-violet-200'
-        }`}
+        className="lb-chat-voice__play grid h-10 w-10 shrink-0 place-items-center rounded-full"
         aria-label={playing ? 'Pausar' : 'Reproducir'}
       >
         {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
       </button>
       <div className="min-w-0 flex-1">
         <div
-          className={`lb-chat-voice__track h-1.5 overflow-hidden rounded-full ${mine ? 'bg-white/25' : 'bg-white/10'}`}
+          className="lb-chat-voice__track flex h-7 items-center gap-[2px]"
           onClick={(e) => {
             const el = audioRef.current;
             if (!el || !duration) return;
@@ -414,14 +484,30 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
           }}
           role="presentation"
         >
-          <div
-            className={`lb-chat-voice__fill h-full rounded-full ${mine ? 'bg-white' : 'bg-violet-400'}`}
-            style={{ width: `${pct}%` }}
-          />
+          {waveHeights.map((h, i) => (
+            <span
+              key={i}
+              className={`lb-chat-voice__bar min-w-0 flex-1 rounded-full${i < activeBars ? ' is-on' : ''}`}
+              style={{ height: `${h}%` }}
+            />
+          ))}
         </div>
-        <p className={`lb-chat-voice__time mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-zinc-500'}`}>
-          {error || `${formatAudioClock(progress)} / ${formatAudioClock(duration)}`}
-        </p>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          {!listened && !error ? (
+            <span className="lb-chat-voice__dot h-1.5 w-1.5 shrink-0 rounded-full" aria-label="Sin escuchar" />
+          ) : null}
+          <p className="lb-chat-voice__time min-w-0 flex-1 truncate text-[10px]">
+            {error || `${formatAudioClock(progress)} / ${formatAudioClock(duration)}`}
+          </p>
+          <button
+            type="button"
+            onClick={cycleSpeed}
+            className="lb-chat-voice__speed shrink-0 rounded-full border px-1.5 text-[10px] font-bold leading-4"
+            aria-label={`Velocidad ${speed}×`}
+          >
+            {speed}×
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1499,29 +1585,41 @@ export function InternalChatPanel({
   }, [chatId, activeFriend?.uid, profile?.firebaseUid, docVisible]);
 
   // Publicar / limpiar "escribiendo" según el draft local (solo si el chat está abierto y visible).
+  // Como mucho una escritura cada TYPING_PULSE_MS: teclear no escribe en Firestore por tecla.
+  const typingPulseRef = useRef<{ chatId: string; at: number }>({ chatId: '', at: 0 });
   useEffect(() => {
+    const TYPING_PULSE_MS = 1600;
+    const clearTyping = (id: string, uid: string) => {
+      if (typingPulseRef.current.chatId !== id || !typingPulseRef.current.at) return;
+      typingPulseRef.current = { chatId: id, at: 0 };
+      void clearChatTyping(id, uid);
+    };
     if (!profile?.firebaseUid || !chatId || !docVisible) {
-      if (profile?.firebaseUid && chatId) void clearChatTyping(chatId, profile.firebaseUid);
+      if (profile?.firebaseUid && chatId) clearTyping(chatId, profile.firebaseUid);
       return;
     }
     const meUid = profile.firebaseUid;
     const text = draft.trim();
     if (!text) {
-      void clearChatTyping(chatId, meUid);
+      clearTyping(chatId, meUid);
       return;
     }
 
     let cancelled = false;
-    const pulse = () => {
+    const pulse = (force = false) => {
       if (cancelled) return;
+      const last = typingPulseRef.current;
+      const now = Date.now();
+      if (!force && last.chatId === chatId && now - last.at < TYPING_PULSE_MS) return;
+      typingPulseRef.current = { chatId, at: now };
       void setChatTyping(chatId, meUid).catch((err) => {
         console.warn('[chat] typing pulse', err);
       });
     };
     pulse();
-    const keepAlive = window.setInterval(pulse, 1600);
+    const keepAlive = window.setInterval(() => pulse(true), TYPING_PULSE_MS);
     const stopTimer = window.setTimeout(() => {
-      void clearChatTyping(chatId, meUid);
+      clearTyping(chatId, meUid);
     }, 2800);
 
     return () => {
@@ -2854,6 +2952,8 @@ export function InternalChatPanel({
                                 compact
                                 className="mb-1 w-[min(16rem,68vw)]"
                               />
+                            ) : message.linkUrl && parseSharedPostUrl(message.linkUrl) ? (
+                              <SharedPostLinkCard postId={parseSharedPostUrl(message.linkUrl)!} />
                             ) : message.linkUrl ? (
                               <a
                                 href={message.linkUrl}

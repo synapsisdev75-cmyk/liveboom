@@ -15,6 +15,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SystemInsetsPlugin.class);
+        registerPlugin(AppPermissionsPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Android pinta un velo gris sobre la barra de botones en apps edge-to-edge;

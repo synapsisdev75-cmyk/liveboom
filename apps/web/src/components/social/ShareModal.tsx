@@ -16,13 +16,14 @@ import { listenMyGroups, sendGroupMessage, type LiveGroup } from '../../lib/grou
 import { POST_EMOJI_SIZE, emojiTokensToUnicode } from '../../lib/liveboomEmojis';
 import { profileHref } from '../../lib/profileFirestore';
 import { buildPostShareUrl, shareContent, type ShareMediaType } from '../../lib/shareContent';
-import { createRepost, getPostById } from '../../lib/socialFirestore';
+import { createRepost, getPostById, type FsPost } from '../../lib/socialFirestore';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { useAuthStore } from '../../store/authStore';
 import { useT, type MessageKey } from '../../i18n';
 import { UserAvatar } from '../profile/UserAvatar';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
 import { EmojiPickerButton } from './EmojiPicker';
+import { SendViaLiveBoom } from './SendViaLiveBoom';
 
 export type ShareVisibility = 'public' | 'friends' | 'private';
 
@@ -155,6 +156,7 @@ export function ShareModal({
   const [groups, setGroups] = useState<LiveGroup[]>([]);
   const [sendingGroupId, setSendingGroupId] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState(url);
+  const [postVisibility, setPostVisibility] = useState<FsPost['visibility'] | null>(null);
   const [origin, setOrigin] = useState({
     handle: String(authorUsername || '').replace(/^@/, ''),
     uid: authorUid,
@@ -177,6 +179,7 @@ export function ShareModal({
     setShowGroups(false);
     setSendingGroupId(null);
     setShareUrl(url);
+    setPostVisibility(null);
     setOrigin({
       handle: String(authorUsername || '').replace(/^@/, ''),
       uid: authorUid,
@@ -190,6 +193,7 @@ export function ShareModal({
     void getPostById(postId)
       .then((post) => {
         if (cancelled || !post) return;
+        setPostVisibility(post.visibility);
         const fromUser = (post.sharedFromUsername || post.username).replace(/^@/, '');
         const fromUid = post.sharedFromAuthorUid || post.authorUid;
         const fromPostId = post.sharedFromPostId || post.id;
@@ -476,6 +480,21 @@ export function ShareModal({
               </button>
             </div>
           </section>
+
+          {profile ? (
+            <>
+              <div className="my-4 h-px bg-white/10" />
+              <SendViaLiveBoom
+                shareUrl={shareUrl}
+                visibility={postVisibility}
+                authorHandle={origin.handle || null}
+                previewText={externalText || title}
+                previewMediaUrl={mediaType === 'photo' || mediaType === 'video' ? mediaUrl : null}
+                previewIsVideo={mediaType === 'video'}
+                defaultText={postId ? 'Te compartí una publicación de LiveBoom' : 'Mira esto en LiveBoom'}
+              />
+            </>
+          ) : null}
 
           <div className="my-4 h-px bg-white/10" />
 

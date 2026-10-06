@@ -2133,20 +2133,47 @@ function CreatorStage({
       );
       const track = (pub?.track || cameraTrackRef.current) as LocalVideoTrack | null;
       if (!track) return;
+      const selected = videoInputs.find((item) => item.deviceId === deviceId);
+      const nextFacing = liveCameraFacing(selected?.label || '');
       try {
-        await track.restartTrack({ deviceId: { exact: deviceId } });
+        try {
+          await track.restartTrack({ deviceId: { exact: deviceId } });
+        } catch (exactError) {
+          // Android/WebView: el id puede cambiar tras volver de segundo plano; se reintenta por lado.
+          if (nextFacing !== 'user' && nextFacing !== 'environment') throw exactError;
+          await track.restartTrack({ facingMode: nextFacing });
+        }
         cameraTrackRef.current = track;
         setCameraDeviceId(deviceId);
-        const selected = videoInputs.find((item) => item.deviceId === deviceId);
-        const nextFacing = liveCameraFacing(selected?.label || '');
         if (nextFacing === 'user' || nextFacing === 'environment') setFacing(nextFacing);
       } catch (error) {
         console.error('[live] switch camera device', error);
-        setInviteNote('No se pudo cambiar a esa cámara.');
+        setInviteNote('No se pudo cambiar a esa cámara. Puede estar ocupada por otra app.');
       }
     },
     [canPublish, room, videoInputs],
   );
+
+  // Volver de segundo plano / pantalla bloqueada: si el sistema cerró la cámara publicada,
+  // se reabre la misma pista (sin republicar ni cortar el directo).
+  useEffect(() => {
+    if (!canPublish) return;
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      const pub = Array.from(room.localParticipant.videoTrackPublications.values()).find(
+        (item) => item.source === Track.Source.Camera,
+      );
+      const track = (pub?.track || cameraTrackRef.current) as LocalVideoTrack | null;
+      if (!track || pub?.isMuted) return;
+      if (track.mediaStreamTrack?.readyState !== 'ended') return;
+      void track.restartTrack().catch((error) => {
+        console.warn('[live] camera resume', error);
+        setInviteNote('La cámara no se pudo reanudar. Puede estar ocupada por otra app.');
+      });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [canPublish, room]);
 
   const switchMicrophoneDevice = useCallback(
     async (deviceId: string) => {

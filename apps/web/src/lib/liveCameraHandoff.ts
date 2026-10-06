@@ -48,13 +48,20 @@ export function stashLiveCameraHandoff(input: {
   const audio = isUsable(input.audio) ? input.audio : null;
   if (!video && !audio) return false;
   if (pending) stopTracks(pending);
-  pending = {
+  const next: LiveCameraHandoff = {
     video,
     audio,
     cameraId: input.cameraId || null,
     microphoneId: input.microphoneId || null,
     at: Date.now(),
   };
+  pending = next;
+  // Si la sala nunca lo consume (error, salir antes de publicar), la cámara no queda encendida.
+  window.setTimeout(() => {
+    if (pending !== next) return;
+    stopTracks(next);
+    pending = null;
+  }, TTL_MS + 1000);
   return true;
 }
 

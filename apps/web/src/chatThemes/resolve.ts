@@ -107,6 +107,26 @@ function applyHighContrast(tokens: ChatThemeTokens, scheme: ChatThemeScheme): Ch
       };
 }
 
+/**
+ * Notas de voz legibles sobre la burbuja realmente mostrada: con estilo de burbuja propio,
+ * alto contraste o foto personalizada, el audio sale del texto de la burbuja (contraste
+ * garantizado) mezclado con el acento del tema.
+ */
+function deriveReadableAudio(tokens: ChatThemeTokens): ChatThemeTokens {
+  const fg = tokens.bubbleIncomingText;
+  const active = `color-mix(in srgb, ${tokens.accent} 55%, ${fg})`;
+  return {
+    ...tokens,
+    audioBackground: `color-mix(in srgb, ${fg} 8%, transparent)`,
+    audioForeground: fg,
+    audioWaveInactive: `color-mix(in srgb, ${fg} 34%, transparent)`,
+    audioWaveActive: active,
+    audioProgress: active,
+    audioPlayButton: tokens.accent,
+    audioDurationColor: `color-mix(in srgb, ${fg} 72%, transparent)`,
+  };
+}
+
 export function resolveChatTheme(input: {
   appearance: ChatAppearance;
   admin: ChatThemesAdminConfig;
@@ -122,6 +142,9 @@ export function resolveChatTheme(input: {
 
   tokens = applyBubbleStyle(tokens, appearance.bubbleStyle, scheme);
   if (appearance.highContrast) tokens = applyHighContrast(tokens, scheme);
+  if (appearance.bubbleStyle !== 'theme' || appearance.highContrast || appearance.customBackground) {
+    tokens = deriveReadableAudio(tokens);
+  }
 
   const hcBoost = appearance.highContrast ? 0.25 : 0;
   const custom = appearance.customBackground;

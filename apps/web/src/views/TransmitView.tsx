@@ -6,13 +6,16 @@ import type { BroadcastMode, LiveStudioFormat } from '../components/live/studio/
 import { studioFormatToAspect } from '../components/live/studio/liveStudioTypes';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  classifyLiveCameraError,
   getLiveUserMedia,
   listLiveMediaDevices,
   liveCameraDeniedMessage,
   loadLiveMediaPrefs,
   pickExistingId,
   saveLiveMediaPrefs,
+  type LiveCameraStatus,
 } from '../lib/liveMediaDevices';
+import { canOpenAppSettings, openAppSettings } from '../lib/appPermissions';
 import { ensureNativeLiveAvPermissions } from '../lib/nativeLiveMedia';
 import { stashLiveCameraHandoff } from '../lib/liveCameraHandoff';
 import { warmLiveGoLiveChunks } from '../lib/routePrefetch';
@@ -99,8 +102,12 @@ export function TransmitView() {
   const [checks, setChecks] = useState<ChecklistState>(() => loadChecklist());
   const [error, setError] = useState<string | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<LiveCameraStatus>('available');
+  const [cameraMessage, setCameraMessage] = useState<string | null>(null);
+  const [cameraAttempt, setCameraAttempt] = useState(0);
+  const uid = profile?.firebaseUid ?? null;
   const fileRef = useRef<HTMLInputElement>(null);
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const handedOffRef = useRef(false);
   const cameraIdRef = useRef(selectedCameraId);
@@ -149,7 +156,33 @@ export function TransmitView() {
       video.srcObject = stream;
       void video.play().catch(() => undefined);
     }
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      // Otra app o una llamada tomó la cámara mientras se veía la vista previa.
+      track.onended = () => {
+        if (streamRef.current !== stream || document.hidden) return;
+        setPreviewReady(false);
+        setCameraStatus('busy');
+        setCameraMessage('La cámara se detuvo (otra app o una llamada la está usando). Toca Reintentar.');
+      };
+    }
+    setCameraStatus('ready');
+    setCameraMessage(null);
     setPreviewReady(true);
+  }, []);
+
+  /** El <video> cambia entre pasos/diseños: cada elemento nuevo recibe el stream actual. */
+  const setPreviewVideo = useCallback((el: HTMLVideoElement | null) => {
+    previewVideoRef.current = el;
+    const stream = streamRef.current;
+    if (el && stream && el.srcObject !== stream) {
+      el.srcObject = stream;
+      void el.play().catch(() => undefined);
+    }
+  }, []);
+
+  const retryCamera = useCallback(() => {
+    setCameraAttempt((n) => n + 1);
   }, []);
 
   const refreshDevices = useCallback(async () => {
@@ -211,7 +244,7 @@ export function TransmitView() {
   }, [attachPreview]);
 
   useEffect(() => {
-    if (!profile) {
+    if (!uid) {
       if (!handedOffRef.current) {
         streamRef.current?.getTracks().forEach((t) => t.stop());
       }
@@ -221,6 +254,8 @@ export function TransmitView() {
     }
     let cancelled = false;
     handedOffRef.current = false;
+    setCameraStatus('requesting');
+    setCameraMessage(null);
     void (async () => {
       try {
         await ensureNativeLiveAvPermissions();
@@ -246,7 +281,10 @@ export function TransmitView() {
       } catch (err) {
         if (!cancelled) {
           setPreviewReady(false);
-          setError(liveCameraDeniedMessage(err));
+          const classified = await classifyLiveCameraError(err);
+          if (cancelled) return;
+          setCameraStatus(classified.status);
+          setCameraMessage(classified.message);
         }
       }
     })();
@@ -261,7 +299,19 @@ export function TransmitView() {
       streamRef.current = null;
       setPreviewReady(false);
     };
-  }, [profile, attachPreview, refreshDevices, savedPrefs.cameraId, savedPrefs.microphoneId]);
+  }, [uid, cameraAttempt, attachPreview, refreshDevices, savedPrefs.cameraId, savedPrefs.microphoneId]);
+
+  // Volver de segundo plano / pantalla bloqueada: si el sistema cerró la cámara, se reabre.
+  useEffect(() => {
+    if (!uid) return;
+    const onVisible = () => {
+      if (document.hidden || handedOffRef.current) return;
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track || track.readyState === 'ended') setCameraAttempt((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [uid]);
 
   useEffect(() => {
     const devices = navigator.mediaDevices;
@@ -439,7 +489,11 @@ export function TransmitView() {
       canContinue={canContinue}
       error={error}
       previewReady={previewReady}
-      previewVideoRef={previewVideoRef}
+      previewVideoRef={setPreviewVideo}
+      cameraStatus={previewReady ? undefined : cameraStatus}
+      cameraMessage={cameraMessage}
+      onRetryCamera={retryCamera}
+      onOpenCameraSettings={canOpenAppSettings() ? () => void openAppSettings() : null}
       fileRef={fileRef}
       onPickThumb={onPickThumb}
       displayTitle={displayTitle}

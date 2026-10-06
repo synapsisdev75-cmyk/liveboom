@@ -19,6 +19,9 @@ export type LiveLocationDoc = {
   active: boolean;
   startedAtMs: number;
   expiresAtMs: number;
+  /** "Hasta desactivarla": el vencimiento se renueva mientras el dueño comparte. */
+  untilOff: boolean;
+  endedAtMs: number;
 };
 
 export type LiveLocationState =
@@ -31,6 +34,8 @@ const STORAGE_KEY = 'lb.liveLocationShare';
 const MIN_WRITE_MS = 4_000;
 const HEARTBEAT_MS = 25_000;
 const MIN_MOVE_M = 8;
+/** "Hasta desactivarla": ventana renovable; si la app se cierra sin detener, vence sola. */
+const UNTIL_OFF_WINDOW_MS = 30 * 60_000;
 
 function readDoc(raw: Record<string, unknown> | undefined): LiveLocationDoc | null {
   if (!raw) return null;
@@ -50,6 +55,8 @@ function readDoc(raw: Record<string, unknown> | undefined): LiveLocationDoc | nu
     active: raw.active === true,
     startedAtMs: Number(raw.startedAtMs) || 0,
     expiresAtMs: Number(raw.expiresAtMs) || 0,
+    untilOff: raw.untilOff === true,
+    endedAtMs: Number(raw.endedAtMs) || 0,
   };
 }
 
@@ -117,7 +124,7 @@ export function useDevicePosition(enabled: boolean): {
             err.code === err.PERMISSION_DENIED ? 'denied' : err.code === err.TIMEOUT ? 'timeout' : 'unavailable',
           ),
         ),
-      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
+      { enableHighAccuracy: false, maximumAge: 15_000, timeout: 30_000 },
     );
     return () => navigator.geolocation.clearWatch(id);
   }, [enabled]);
@@ -151,6 +158,7 @@ type ShareState = {
   ownerUid: string | null;
   startedAtMs: number;
   expiresAtMs: number;
+  untilOff: boolean;
   lat: number | null;
   lng: number | null;
   accuracy: number;
@@ -167,8 +175,9 @@ let watchId: number | null = null;
 let expiryTimer: number | undefined;
 let heartbeatTimer: number | undefined;
 let lastWrite = { at: 0, lat: 0, lng: 0 };
-let visibilityBound = false;
+let visibilityHandler: (() => void) | null = null;
 
+/** Al detener: sin GPS, sin temporizadores y sin listeners (ningún acceso posterior a la ubicación). */
 function clearRuntime() {
   if (watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
     navigator.geolocation.clearWatch(watchId);
@@ -176,9 +185,31 @@ function clearRuntime() {
   watchId = null;
   window.clearTimeout(expiryTimer);
   window.clearInterval(heartbeatTimer);
+  if (visibilityHandler && typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', visibilityHandler);
+  }
+  visibilityHandler = null;
 }
 
-function persist(value: { shareId: string; ownerUid: string; startedAtMs: number; expiresAtMs: number } | null) {
+/** Marca la ubicación como finalizada conservando el último punto para quien la recibió. */
+async function endShareDoc(shareId: string) {
+  const now = Date.now();
+  try {
+    await updateDoc(doc(db, COLLECTION, shareId), {
+      active: false,
+      endedAtMs: now,
+      expiresAtMs: now,
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Documento antiguo sin permisos de actualización o ya borrado: se elimina.
+    await deleteDoc(doc(db, COLLECTION, shareId)).catch(() => undefined);
+  }
+}
+
+function persist(
+  value: { shareId: string; ownerUid: string; startedAtMs: number; expiresAtMs: number; untilOff?: boolean } | null,
+) {
   try {
     if (value) localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
     else localStorage.removeItem(STORAGE_KEY);
@@ -197,6 +228,15 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
     if (!force && now - lastWrite.at < MIN_WRITE_MS) return;
     if (!force && moved < MIN_MOVE_M && now - lastWrite.at < HEARTBEAT_MS) return;
     lastWrite = { at: now, lat: pos.lat, lng: pos.lng };
+    const renew = get().untilOff ? now + UNTIL_OFF_WINDOW_MS : 0;
+    if (renew) {
+      set({ expiresAtMs: renew });
+      scheduleExpiry();
+      const s = get();
+      if (s.ownerUid) {
+        persist({ shareId, ownerUid: s.ownerUid, startedAtMs: s.startedAtMs, expiresAtMs: renew, untilOff: true });
+      }
+    }
     try {
       await updateDoc(doc(db, COLLECTION, shareId), {
         lat: pos.lat,
@@ -204,10 +244,17 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
         accuracy: Math.round(pos.accuracy),
         heading: pos.heading,
         updatedAt: serverTimestamp(),
+        ...(renew ? { expiresAtMs: renew } : null),
       });
     } catch {
       /* se reintenta con la siguiente lectura del GPS */
     }
+  }
+
+  function scheduleExpiry() {
+    const remaining = get().expiresAtMs - Date.now();
+    window.clearTimeout(expiryTimer);
+    expiryTimer = window.setTimeout(() => void get().stop(), Math.max(0, remaining));
   }
 
   function startWatch() {
@@ -234,17 +281,19 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
       const { lat, lng, accuracy } = get();
       if (lat !== null && lng !== null) void pushPosition({ lat, lng, accuracy, heading: null }, true);
     }, HEARTBEAT_MS);
-    const remaining = get().expiresAtMs - Date.now();
-    window.clearTimeout(expiryTimer);
-    expiryTimer = window.setTimeout(() => void get().stop(), Math.max(0, remaining));
-    if (!visibilityBound && typeof document !== 'undefined') {
-      visibilityBound = true;
-      document.addEventListener('visibilitychange', () => {
+    scheduleExpiry();
+    if (!visibilityHandler && typeof document !== 'undefined') {
+      visibilityHandler = () => {
         if (document.visibilityState !== 'visible' || !get().shareId) return;
+        if (get().expiresAtMs <= Date.now()) {
+          void get().stop();
+          return;
+        }
         void locateOnce()
           .then((pos) => pushPosition({ ...pos, heading: null }, true))
           .catch(() => undefined);
-      });
+      };
+      document.addEventListener('visibilitychange', visibilityHandler);
     }
   }
 
@@ -253,6 +302,7 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
     ownerUid: null,
     startedAtMs: 0,
     expiresAtMs: 0,
+    untilOff: false,
     lat: null,
     lng: null,
     accuracy: 0,
@@ -288,7 +338,10 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
         const pos = await locateOnce();
         const ref = doc(collection(db, COLLECTION));
         const startedAtMs = Date.now();
-        const expiresAtMs = startedAtMs + Math.min(480, Math.max(5, minutes)) * 60_000;
+        const untilOff = minutes <= 0;
+        const expiresAtMs = untilOff
+          ? startedAtMs + UNTIL_OFF_WINDOW_MS
+          : startedAtMs + Math.min(480, Math.max(5, minutes)) * 60_000;
         let label = '';
         try {
           const geo = await reverseGeocode(pos.lat, pos.lng);
@@ -309,6 +362,7 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
           active: true,
           startedAtMs,
           expiresAtMs,
+          ...(untilOff ? { untilOff: true } : null),
           updatedAt: serverTimestamp(),
         });
         lastWrite = { at: Date.now(), lat: pos.lat, lng: pos.lng };
@@ -317,13 +371,14 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
           ownerUid: profile.firebaseUid,
           startedAtMs,
           expiresAtMs,
+          untilOff,
           lat: pos.lat,
           lng: pos.lng,
           accuracy: pos.accuracy,
           label,
           starting: false,
         });
-        persist({ shareId: ref.id, ownerUid: profile.firebaseUid, startedAtMs, expiresAtMs });
+        persist({ shareId: ref.id, ownerUid: profile.firebaseUid, startedAtMs, expiresAtMs, untilOff });
         startWatch();
         return get().currentLocation();
       } catch (code) {
@@ -339,18 +394,29 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
       const { shareId } = get();
       clearRuntime();
       persist(null);
-      set({ shareId: null, ownerUid: null, startedAtMs: 0, expiresAtMs: 0, starting: false });
+      set({
+        shareId: null,
+        ownerUid: null,
+        startedAtMs: 0,
+        expiresAtMs: 0,
+        untilOff: false,
+        lat: null,
+        lng: null,
+        starting: false,
+      });
       if (!shareId) return;
-      try {
-        await deleteDoc(doc(db, COLLECTION, shareId));
-      } catch {
-        /* sin conexión: el enlace igual expira por tiempo */
-      }
+      await endShareDoc(shareId);
     },
 
     resume() {
       if (get().shareId) return;
-      let saved: { shareId?: string; ownerUid?: string; startedAtMs?: number; expiresAtMs?: number } | null = null;
+      let saved: {
+        shareId?: string;
+        ownerUid?: string;
+        startedAtMs?: number;
+        expiresAtMs?: number;
+        untilOff?: boolean;
+      } | null = null;
       try {
         saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       } catch {
@@ -360,7 +426,7 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
       if (!saved?.shareId || !uid || saved.ownerUid !== uid) return;
       if (!saved.expiresAtMs || saved.expiresAtMs <= Date.now()) {
         persist(null);
-        void deleteDoc(doc(db, COLLECTION, saved.shareId)).catch(() => undefined);
+        void endShareDoc(saved.shareId);
         return;
       }
       set({
@@ -368,6 +434,7 @@ export const useLiveLocationShare = create<ShareState>((set, get) => {
         ownerUid: uid,
         startedAtMs: saved.startedAtMs || Date.now(),
         expiresAtMs: saved.expiresAtMs,
+        untilOff: saved.untilOff === true,
       });
       startWatch();
     },

@@ -113,6 +113,7 @@ const LiveMedia = registerPlugin<LiveMediaPluginApi>('LiveMedia');
 
 let essentialRequestInFlight: Promise<EssentialPermissionResult> | null = null;
 let essentialRequestedOnce = false;
+let bluetoothAskedThisSession = false;
 let nativeScreenHandles: PluginListenerHandle[] = [];
 let nativeScreenStream: MediaStream | null = null;
 let nativeCameraHandles: PluginListenerHandle[] = [];
@@ -349,16 +350,30 @@ export async function ensureNativeLiveAvPermissions(): Promise<AvPermissionResul
     return { camera: true, microphone: true };
   }
   await prepareNativeLiveWebView();
+  let result: AvPermissionResult;
   try {
     const current = await LiveMedia.checkAvPermissions();
-    if (current.camera && current.microphone) return current;
-    return await LiveMedia.requestAvPermissions();
+    result = current.camera && current.microphone ? current : await LiveMedia.requestAvPermissions();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err || '');
     throw new Error(
       message ||
         'Activa cámara y micrófono en Ajustes → Apps → LiveBoom → Permisos.',
     );
+  }
+  if (result.camera || result.microphone) await ensureCallBluetooth();
+  return result;
+}
+
+/** Bluetooth (audífonos en LIVE y llamadas): se pide al empezar a usar audio/video, no al abrir la app. */
+async function ensureCallBluetooth(): Promise<void> {
+  if (!isNativeAndroidApp() || bluetoothAskedThisSession) return;
+  bluetoothAskedThisSession = true;
+  try {
+    const current = await LiveMedia.checkEssentialPermissions();
+    if (!current.bluetooth) await ensureNativeEssentialPermissions({ force: true });
+  } catch {
+    /* opcional: sin Bluetooth el audio sigue por el altavoz/auricular */
   }
 }
 
@@ -391,8 +406,9 @@ export async function ensureNativeScreenSharePermissions(opts?: {
 }
 
 /**
- * Permisos al abrir la app (notificaciones, galería, bluetooth).
- * NO pide cámara ni micrófono: eso solo al transmitir, Sala Boom o llamadas.
+ * Estado de permisos al abrir la app: solo consulta, sin diálogos.
+ * Notificaciones las pide el registro push tras iniciar sesión; Bluetooth al iniciar LIVE/llamada
+ * (`force: true`). Cámara, micrófono y ubicación se piden al usar cada función.
  */
 export async function ensureNativeEssentialPermissions(
   options: { force?: boolean } = {},
@@ -420,13 +436,9 @@ export async function ensureNativeEssentialPermissions(
   essentialRequestInFlight = (async () => {
     try {
       const current = await LiveMedia.checkEssentialPermissions();
-      // Viewer / uso normal: no exigir ni solicitar CAMERA / RECORD_AUDIO.
-      const needsPrompt =
-        options.force ||
-        !current.notifications ||
-        !current.media ||
-        !current.bluetooth;
-      if (!needsPrompt) {
+      // Viewer / uso normal: no exigir ni solicitar CAMERA / RECORD_AUDIO / ubicación.
+      // Galería tampoco: fotos y videos se eligen con el selector del sistema (sin permiso amplio).
+      if (!options.force) {
         essentialRequestedOnce = true;
         return current;
       }

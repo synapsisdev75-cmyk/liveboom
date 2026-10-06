@@ -117,13 +117,13 @@ body,
 }
 
 html[data-lb-theme] ::selection {
-  background: var(--accent-soft);
+  background: var(--lb-selection-bg, var(--accent-soft));
   color: var(--text-primary);
 }
 
-/* Campo oculto de EmojiInput: su selección no debe pintar el texto (se vería doble sobre el espejo). */
-html[data-lb-theme] .lb-emoji-field::selection,
-.lb-emoji-field::selection {
+/* Campo oculto de EmojiInput (modo espejo): su selección no debe pintar el texto (se vería doble). */
+html[data-lb-theme] .lb-emoji-field:not(.lb-emoji-field--native)::selection,
+.lb-emoji-field:not(.lb-emoji-field--native)::selection {
   background: transparent;
   color: transparent;
   -webkit-text-fill-color: transparent;

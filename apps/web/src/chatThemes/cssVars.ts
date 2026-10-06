@@ -2,6 +2,26 @@ import type { CSSProperties } from 'react';
 import { fontStack } from './fonts';
 import type { ResolvedChatTheme } from './types';
 
+/** Tinta legible (oscura o clara) sobre un color sólido; null si el color no es hex/rgb. */
+function contrastInk(color: string): string | null {
+  const value = color.trim();
+  let rgb: number[] | null = null;
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})([0-9a-f]{2})?$/i);
+  if (hex) {
+    const h = hex[1]!.length === 3 ? hex[1]!.replace(/./g, (c) => c + c) : hex[1]!;
+    rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  } else {
+    const fn = value.match(/^rgba?\(([^)]+)\)$/i);
+    if (fn) rgb = fn[1]!.split(/[\s,/]+/).slice(0, 3).map((n) => Number.parseFloat(n));
+  }
+  if (!rgb || rgb.some((n) => !Number.isFinite(n))) return null;
+  const [r, g, b] = rgb.map((n) => {
+    const c = n / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.45 ? '#0b0f19' : '#ffffff';
+}
+
 /**
  * Convierte el tema resuelto en variables CSS para el contenedor del chat.
  * Se re-mapean los tokens semánticos globales (--text-primary, --bg-elevated…)
@@ -51,7 +71,19 @@ export function chatThemeStyle(resolved: ResolvedChatTheme): CSSProperties {
     '--lbct-quote-bg': t.quoteBackground,
     '--lbct-reply': t.reply,
     '--lbct-audio': t.audioWave,
-    '--lbct-selection': t.selection,
+    '--lbct-audio-bg': t.audioBackground,
+    '--lbct-audio-fg': t.audioForeground,
+    '--lbct-audio-wave': t.audioWaveInactive,
+    '--lbct-audio-wave-active': t.audioWaveActive,
+    '--lbct-audio-progress': t.audioProgress,
+    '--lbct-audio-play': t.audioPlayButton,
+    '--lbct-audio-play-icon': t.onAccent,
+    '--lbct-audio-time': t.audioDurationColor,
+    '--lbct-selection': t.textSelectionBackground,
+    '--lb-selection-bg': t.textSelectionBackground,
+    '--lb-selection-handle': t.textSelectionHandle,
+    '--lb-caret-color': t.caretColor,
+    '--lb-magnifier-border': t.magnifierBorder,
     '--lbct-radius': t.borderRadius,
     '--lbct-shadow': t.shadow,
     '--lbct-media-radius': t.mediaRadius,
@@ -62,6 +94,8 @@ export function chatThemeStyle(resolved: ResolvedChatTheme): CSSProperties {
     '--lbct-meta-bg': resolved.metaBackground,
     '--lbct-meta-text': resolved.metaText,
   };
+  const outInk = contrastInk(t.bubbleOutgoingText);
+  if (outInk) vars['--lbct-bubble-out-ink'] = outInk;
   return vars as CSSProperties;
 }
 

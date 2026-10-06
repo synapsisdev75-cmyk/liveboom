@@ -1,14 +1,15 @@
 import { Camera, Mic } from 'lucide-react';
-import type { RefObject } from 'react';
+import type { Ref, RefObject } from 'react';
 import { useState } from 'react';
 import { PrivacyLockArt } from '../components/live/privacy/PrivacyLockArt';
+import { CameraStatusPanel } from '../components/live/CameraStatusPanel';
 import { LIVE_CATEGORIES } from '../lib/categories';
 import {
   liveAspectRatioLabel,
   liveCanvasDimensions,
   livePreviewFrameClass,
 } from '../lib/liveAspectRatio';
-import { labelLiveCamera, labelLiveMicrophone } from '../lib/liveMediaDevices';
+import { labelLiveCamera, labelLiveMicrophone, type LiveCameraStatus } from '../lib/liveMediaDevices';
 import { AddSourceMenu } from '../components/live/studio/AddSourceMenu';
 import { AudioMixer } from '../components/live/studio/AudioMixer';
 import { BroadcastControlsBar } from '../components/live/studio/BroadcastControlsBar';
@@ -63,7 +64,11 @@ type Props = {
   canContinue: boolean;
   error: string | null;
   previewReady: boolean;
-  previewVideoRef: RefObject<HTMLVideoElement | null>;
+  previewVideoRef: Ref<HTMLVideoElement>;
+  cameraStatus?: LiveCameraStatus;
+  cameraMessage?: string | null;
+  onRetryCamera?: () => void;
+  onOpenCameraSettings?: (() => void) | null;
   fileRef: RefObject<HTMLInputElement | null>;
   onPickThumb: (file: File | null) => void;
   displayTitle: string;
@@ -189,8 +194,22 @@ export function TransmitStudioBody(props: Props) {
           {!props.previewReady ? (
             <div className="absolute inset-0 grid place-items-center bg-zinc-950/85 text-center">
               {props.thumbnail ? (
-                <img src={props.thumbnail} alt="" className="h-full w-full object-contain" />
-              ) : (
+                <img
+                  src={props.thumbnail}
+                  alt=""
+                  className={`absolute inset-0 h-full w-full object-contain ${props.cameraStatus ? 'opacity-30' : ''}`}
+                />
+              ) : null}
+              {props.cameraStatus ? (
+                <div className="relative">
+                  <CameraStatusPanel
+                    status={props.cameraStatus}
+                    message={props.cameraMessage}
+                    onRetry={props.onRetryCamera}
+                    onOpenSettings={props.onOpenCameraSettings}
+                  />
+                </div>
+              ) : props.thumbnail ? null : (
                 <div className="px-4">
                   <Camera className="mx-auto text-zinc-600" size={36} />
                   <p className="mt-2 text-xs text-zinc-500">
@@ -219,10 +238,21 @@ export function TransmitStudioBody(props: Props) {
         />
         {!props.previewReady ? (
           <div className="absolute inset-0 grid place-items-center bg-zinc-950/90 text-center">
-            <Camera className="text-zinc-600" size={32} />
-            <p className="mt-2 px-4 text-xs text-zinc-500">
-              No se pudo acceder a la cámara. Revisa los permisos del navegador.
-            </p>
+            {props.cameraStatus ? (
+              <CameraStatusPanel
+                status={props.cameraStatus}
+                message={props.cameraMessage}
+                onRetry={props.onRetryCamera}
+                onOpenSettings={props.onOpenCameraSettings}
+              />
+            ) : (
+              <div>
+                <Camera className="mx-auto text-zinc-600" size={32} />
+                <p className="mt-2 px-4 text-xs text-zinc-500">
+                  No se pudo acceder a la cámara. Revisa los permisos del navegador.
+                </p>
+              </div>
+            )}
           </div>
         ) : null}
       </div>

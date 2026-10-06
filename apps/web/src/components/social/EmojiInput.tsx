@@ -21,8 +21,10 @@ import {
   graphemeEndingAt,
   graphemeStartingAt,
   insertEmojiTokenAt,
+  listEmojiTokens,
   snapCaretOutOfEmojiToken,
 } from '../../lib/liveboomEmojis';
+import './liveboomTextEditor.css';
 import { searchMentionUsers } from '../../lib/mentionUsers';
 import type { PublicFsUser } from '../../lib/profileFirestore';
 import { mentionQueryAt } from '../../lib/textEntities';
@@ -83,10 +85,32 @@ export type EmojiInputHandle = {
   getSelection: () => { start: number; end: number };
 };
 
-// La selección nativa se dibuja con la geometría del campo oculto (shortcodes largos);
-// la visible se pinta sobre el espejo (.lb-emoji-selection).
+// Modo espejo (hay emojis LiveBoom :id: o fragmentos con estilo): la selección nativa se
+// dibuja con la geometría del campo oculto (shortcodes largos) y la visible se pinta sobre el
+// espejo (.lb-emoji-selection).
 const inputInner =
   'lb-emoji-field relative z-[1] w-full min-w-0 border-0 bg-transparent text-sm text-transparent outline-none [-webkit-text-fill-color:transparent] selection:bg-transparent selection:text-transparent disabled:opacity-60';
+// Modo nativo (texto normal): el campo real es el visible, con cursor, selección, handles y
+// lupa del sistema.
+const nativeInner =
+  'lb-emoji-field lb-emoji-field--native relative z-[1] w-full min-w-0 border-0 bg-transparent text-sm outline-none disabled:opacity-60';
+
+/** Interlineado del texto escrito, proporcional a la fuente (ajustable por fuente con --lb-text-lh). */
+const TEXT_LINE_HEIGHT = 1.35;
+
+/** Estilos del texto que solo el espejo sabe dibujar. */
+function styleNeedsMirror(style: PostTextStyle | null | undefined) {
+  return Boolean(style?.highlight);
+}
+
+function lineMetrics(field: HTMLElement, fontPxFallback: number) {
+  const cs = getComputedStyle(field);
+  const fontPx = Number.parseFloat(cs.fontSize) || fontPxFallback;
+  const lh = Number.parseFloat(cs.lineHeight);
+  const lineHeight = Number.isFinite(lh) && lh > 0 ? lh : fontPx * TEXT_LINE_HEIGHT;
+  const pad = (Number.parseFloat(cs.paddingTop) || 0) + (Number.parseFloat(cs.paddingBottom) || 0);
+  return { fontPx, lineHeight, pad };
+}
 
 type FieldBox = { left: number; top: number; width: number; height: number };
 
@@ -220,10 +244,10 @@ function commentComposerMinPx() {
   return 2 * 16;
 }
 
-/** Chat: crece hasta 2 líneas; desde la 3.ª hace scroll invisible. */
-function messageComposerMaxPx(lineHeight: number) {
-  const pad = 4;
-  return Math.round(Math.max(lineHeight, lineHeight * 2 + pad));
+/** Chat: crece línea a línea hasta 5 (sin pasar del 30 % del alto visible) y luego hace scroll interno. */
+function messageComposerMaxPx(lineHeight: number, pad: number) {
+  const viewH = window.visualViewport?.height ?? window.innerHeight;
+  return Math.round(Math.max(lineHeight + pad, Math.min(lineHeight * 5 + pad, viewH * 0.3)));
 }
 
 function visualCaretBox(
@@ -346,13 +370,27 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       null,
     );
 
-    const lineHeightPx =
-      resolvedGrow === 'message'
-        ? Math.max(emojiSize + 2, 24)
-        : resolvedGrow === 'comment'
-          ? // Interlineado denso (ref. imagen): ~1.3–1.35 sobre text-sm, sin solapar.
-            Math.max(Math.min(emojiSize, 18) + 3, 20)
-          : Math.max(emojiSize + 8, 28);
+    const hasEmojiTokens = value.includes(':') && listEmojiTokens(value).length > 0;
+    const nativeMode =
+      !hasEmojiTokens && !(mirrorTextStyleRanges?.length) && !styleNeedsMirror(mirrorTextStyle);
+
+    const [fontPx, setFontPx] = useState(14);
+    useLayoutEffect(() => {
+      const field = fieldRef.current;
+      if (!field) return;
+      const measure = () => {
+        const next = Number.parseFloat(getComputedStyle(field).fontSize) || 14;
+        setFontPx((prev) => (Math.abs(prev - next) < 0.25 ? prev : next));
+      };
+      measure();
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }, [fieldClassName, padClassName, mirrorTextStyle?.font]);
+
+    // Los emojis del espejo no superan ~1.45× la letra: así no estiran cada línea.
+    const mirrorEmojiSize = Math.max(16, Math.min(emojiSize, Math.round(fontPx * 1.45)));
+    const textLineHeightPx = Math.round(fontPx * TEXT_LINE_HEIGHT);
+    const lineHeightPx = nativeMode ? textLineHeightPx : Math.max(textLineHeightPx, mirrorEmojiSize + 2);
 
     function insertionRange() {
       const field = fieldRef.current;
@@ -406,8 +444,8 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         const field = fieldRef.current;
         const mirror = mirrorRef.current;
         const host = hostRef.current;
-        if (!field || !mirror || !host || document.activeElement !== field) {
-          setCaretBox(null);
+        if (nativeMode || !field || !mirror || !host || document.activeElement !== field) {
+          setCaretBox((prev) => (prev === null ? prev : null));
           clearSelectionBoxes();
           return;
         }
@@ -475,7 +513,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         }
         setCaretBox(box);
       },
-      [value, lineHeightPx, multiline, clearSelectionBoxes],
+      [value, lineHeightPx, multiline, clearSelectionBoxes, nativeMode],
     );
 
     useLayoutEffect(() => {
@@ -494,26 +532,27 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       if (!field || !(field instanceof HTMLTextAreaElement)) return;
 
       const applySize = () => {
+        const { lineHeight, pad } = lineMetrics(field, fontPx);
         const cap =
           resolvedGrow === 'message'
-            ? messageComposerMaxPx(lineHeightPx)
+            ? messageComposerMaxPx(lineHeight, pad)
             : resolvedGrow === 'comment'
               ? commentComposerMaxPx()
               : publicationComposerMaxPx();
         const minH =
           resolvedGrow === 'message'
-            ? lineHeightPx
+            ? Math.round(lineHeight + pad)
             : resolvedGrow === 'comment'
               ? commentComposerMinPx()
               : publicationComposerMinPx(lineHeightPx);
         field.style.height = 'auto';
         const mirror = mirrorRef.current;
-        // La altura sale del espejo (lo que se ve): en el campo oculto cada emoji ocupa
-        // su shortcode completo y forzaría líneas de más.
-        // Si el texto visible cabe en una fila, la altura es la del campo en `auto` (una fila);
-        // si no, la del contenido real del espejo.
+        // Modo nativo: la altura es la del texto real del campo (solo crece con líneas reales).
+        // Modo espejo: sale del espejo (lo que se ve); en el campo oculto cada emoji ocupa
+        // su shortcode completo y forzaría líneas de más. Si el texto visible cabe en una fila,
+        // la altura es la del campo en `auto` (una fila); si no, la del contenido del espejo.
         const contentH =
-          value && mirror
+          !nativeMode && value && mirror
             ? mirror.scrollHeight > mirror.clientHeight + 1
               ? mirror.scrollHeight
               : field.offsetHeight
@@ -541,16 +580,18 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
         window.removeEventListener('orientationchange', onResize);
         window.visualViewport?.removeEventListener('resize', onResize);
       };
-    }, [value, resolvedGrow, multiline, refreshCaret, lineHeightPx]);
+    }, [value, resolvedGrow, multiline, refreshCaret, lineHeightPx, nativeMode, fontPx]);
 
     useEffect(() => {
       if (!focused) return;
       const field = fieldRef.current;
       const caret = field?.selectionStart ?? savedCaret.current?.start ?? value.length;
       const next = mentionQueryAt(value, caret);
-      setMentionQuery(next);
+      setMentionQuery((prev) =>
+        prev === next || (prev && next && prev.start === next.start && prev.query === next.query) ? prev : next,
+      );
       if (!next) {
-        setMentionHits([]);
+        setMentionHits((prev) => (prev.length === 0 ? prev : []));
         setMentionIndex(0);
       }
     }, [value, focused]);
@@ -746,7 +787,13 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       const start = field.selectionStart ?? 0;
       const end = field.selectionEnd ?? 0;
       savedCaret.current = { start, end };
-      if (focused) setMentionQuery(mentionQueryAt(value, start));
+      if (focused) {
+        const next = mentionQueryAt(value, start);
+        setMentionQuery((prev) =>
+          prev === next || (prev && next && prev.start === next.start && prev.query === next.query) ? prev : next,
+        );
+      }
+      if (nativeMode) return;
       if (start !== end) {
         refreshCaret(true);
         return;
@@ -775,7 +822,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       const down = pointerDownAt.current;
       pointerDownAt.current = null;
       const fromPointer = event.clientX !== 0 || event.clientY !== 0;
-      if (field && mirror && value && fromPointer) {
+      if (!nativeMode && field && mirror && value && fromPointer) {
         const start = field.selectionStart ?? 0;
         const end = field.selectionEnd ?? 0;
         if (start === end) {
@@ -798,6 +845,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
     }
 
     function onFieldScroll(event: { currentTarget: HTMLInputElement | HTMLTextAreaElement }) {
+      if (nativeMode) return;
       const mirror = mirrorRef.current;
       // Solo el desplazamiento del usuario mueve el espejo; el automático del campo oculto
       // (que sigue a su propio cursor) se ignora porque sus líneas no coinciden.
@@ -814,26 +862,34 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       userScrollAt.current = Date.now();
     };
 
-    const fieldStyle = { lineHeight: `${lineHeightPx}px` };
-    // Cursor visual alineado al espejo (texto visible); nativo queda transparente.
-    const showCustomCaret = Boolean(focused && caretBox);
-    const caretClass = showCustomCaret ? 'caret-transparent' : 'caret-white';
+    const fieldStyle = nativeMode
+      ? { lineHeight: `var(--lb-text-lh, ${TEXT_LINE_HEIGHT})` }
+      : { lineHeight: `${lineHeightPx}px` };
+    // Modo espejo: cursor visual alineado al espejo (texto visible); el nativo queda transparente.
+    const showCustomCaret = Boolean(!nativeMode && focused && caretBox);
+    const caretClass = nativeMode ? '' : showCustomCaret ? 'caret-transparent' : 'caret-white';
+    // En modo nativo el campo hereda el color del texto desde el contenedor.
+    const hostModeClass = nativeMode ? `lb-emoji-host--native ${mirrorTextClassName}` : 'lb-emoji-host--mirror';
+    const fieldModeClass = nativeMode ? nativeInner : inputInner;
 
-    const mirror = value ? (
-      mirrorTextStyleRanges?.length ? (
-        <StyledText
-          text={value}
-          textStyle={mirrorTextStyle}
-          textStyleRanges={mirrorTextStyleRanges}
-          size={emojiSize}
-          fitInput
-          className={mirrorTextClassName}
-        />
-      ) : (
-        <EmojiText text={value} size={emojiSize} fitInput className={mirrorTextClassName} />
-      )
+    // Composers de una línea (chat, comentarios, inputs): el placeholder no se parte ni se corta a media línea.
+    const placeholderLineClass =
+      !multiline || resolvedGrow === 'message' || resolvedGrow === 'comment'
+        ? ' block overflow-hidden text-ellipsis whitespace-nowrap'
+        : '';
+    const mirror = !value ? (
+      <span className={`${placeholderClassName}${placeholderLineClass}`}>{placeholder}</span>
+    ) : nativeMode ? null : mirrorTextStyleRanges?.length ? (
+      <StyledText
+        text={value}
+        textStyle={mirrorTextStyle}
+        textStyleRanges={mirrorTextStyleRanges}
+        size={mirrorEmojiSize}
+        fitInput
+        className={mirrorTextClassName}
+      />
     ) : (
-      <span className={placeholderClassName}>{placeholder}</span>
+      <EmojiText text={value} size={mirrorEmojiSize} fitInput className={mirrorTextClassName} />
     );
 
     const mentionMenu =
@@ -900,7 +956,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
             top: caretBox.top + (caretBox.height || lineHeightPx) / 2,
             transform: 'translateY(-50%)',
             height: Math.min(
-              Math.max(Math.min(emojiSize, 18), 14),
+              Math.max(Math.min(mirrorEmojiSize, 18), 14),
               Math.min(caretBox.height || lineHeightPx, lineHeightPx),
             ),
           }}
@@ -925,7 +981,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
       const rows = resolvedGrow === 'publication' ? 1 : rowsProp;
       return (
         <div className={`relative min-w-0 ${className}`}>
-          <div ref={hostRef} className={`relative min-w-0 ${fieldClassName}`}>
+          <div ref={hostRef} className={`relative min-w-0 ${hostModeClass} ${fieldClassName}`}>
             <div
               ref={mirrorRef}
               aria-hidden
@@ -973,9 +1029,9 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                 setFocused(false);
                 setCaretBox(null);
               }}
-              // El subrayado ortográfico nativo se dibuja sobre el campo oculto, desfasado del texto visible.
-              spellCheck={textareaRest.spellCheck ?? false}
-              className={`${inputInner} ${caretClass} block resize-none whitespace-pre-wrap break-words ${padClassName} ${
+              // Modo espejo: el subrayado ortográfico nativo se dibujaría desfasado del texto visible.
+              spellCheck={textareaRest.spellCheck ?? nativeMode}
+              className={`${fieldModeClass} ${caretClass} block resize-none whitespace-pre-wrap break-words ${padClassName} ${
                 resolvedGrow === 'publication'
                   ? 'publication-composer-input overflow-y-auto'
                   : resolvedGrow === 'comment'
@@ -996,7 +1052,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
 
     return (
       <div className={`relative min-w-0 flex-1 ${className}`}>
-        <div ref={hostRef} className={`relative min-w-0 ${fieldClassName}`}>
+        <div ref={hostRef} className={`relative flex min-w-0 items-center ${hostModeClass} ${fieldClassName}`}>
           <div
             ref={mirrorRef}
             aria-hidden
@@ -1020,7 +1076,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
             onPointerDown={onFieldPointerDown}
             onClick={onFieldClick}
             onSelect={snapSelection}
-            spellCheck={false}
+            spellCheck={nativeMode}
             onFocus={() => setFocused(true)}
             onBlur={() => {
                 const field = fieldRef.current;
@@ -1033,7 +1089,7 @@ export const EmojiInput = forwardRef<EmojiInputHandle, InputProps | TextareaProp
                 setFocused(false);
                 setCaretBox(null);
               }}
-            className={`${inputInner} ${caretClass} min-h-10 ${padClassName}`}
+            className={`${fieldModeClass} ${caretClass} min-h-10 ${padClassName}`}
             style={fieldStyle}
             {...(rest as ComponentPropsWithoutRef<'input'>)}
           />

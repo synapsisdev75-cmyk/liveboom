@@ -197,6 +197,47 @@ export async function remuxVideoFastStart(
   }
 }
 
+/**
+ * MP4/MOV que ya tiene `moov` antes de `mdat` (arranque rápido): leer solo las cabeceras de
+ * las cajas de primer nivel, nunca el archivo entero. null = no se pudo determinar.
+ */
+export async function mp4HasFastStart(file: Blob): Promise<boolean | null> {
+  let offset = 0;
+  for (let i = 0; i < 64 && offset + 8 <= file.size; i += 1) {
+    const head = new DataView(await file.slice(offset, offset + 16).arrayBuffer());
+    if (head.byteLength < 8) return null;
+    let size = head.getUint32(0);
+    const type = String.fromCharCode(head.getUint8(4), head.getUint8(5), head.getUint8(6), head.getUint8(7));
+    if (i === 0 && type !== 'ftyp') return null;
+    if (type === 'moov') return true;
+    if (type === 'mdat') return false;
+    if (size === 1) {
+      if (head.byteLength < 16) return null;
+      size = head.getUint32(8) * 2 ** 32 + head.getUint32(12);
+    } else if (size === 0) {
+      return null;
+    }
+    if (size < 8) return null;
+    offset += size;
+  }
+  return null;
+}
+
+/**
+ * Como `shouldRemuxForFastStart`, pero sin remux si el MP4 ya arranca rápido:
+ * evita una segunda pasada completa del archivo en el teléfono.
+ */
+export async function needsFastStartRemux(file: File | Blob, durationSec: number): Promise<boolean> {
+  if (!shouldRemuxForFastStart(file, durationSec)) return false;
+  const type = String((file as File).type || '').toLowerCase();
+  if (type.includes('webm')) return true;
+  try {
+    return (await mp4HasFastStart(file)) !== true;
+  } catch {
+    return true;
+  }
+}
+
 /** true si conviene remux (video largo o música / webm). */
 export function shouldRemuxForFastStart(
   file: File | Blob,

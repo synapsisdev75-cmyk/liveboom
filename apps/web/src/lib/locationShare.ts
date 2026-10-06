@@ -17,10 +17,12 @@ export const LOCATION_PATH = '/ubicacion';
 export const LOCATION_SHARE_PATH = '/l';
 export const LOCATION_MESSAGE_TEXT = '📍 Ubicación';
 
+/** minutes 0 = "Hasta desactivarla" (vencimiento renovable mientras se comparte). */
 export const LIVE_LOCATION_DURATIONS = [
   { minutes: 15, label: '15 min' },
   { minutes: 60, label: '1 hora' },
   { minutes: 480, label: '8 horas' },
+  { minutes: 0, label: 'Hasta desactivarla' },
 ] as const;
 
 const APP_HOSTS = new Set([

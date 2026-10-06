@@ -372,20 +372,57 @@ export async function uploadUserCover(
   return getDownloadURL(objectRef);
 }
 
-/** Videos y fotos grandes: reanudable. Fotos chicas: un solo PUT (menos roundtrips). */
+export type UploadProgressOptions = {
+  /** Bytes subidos / total (0..1), con datos reales del SDK. */
+  onProgress?: (fraction: number, transferred: number, total: number) => void;
+  /** Cancela la subida (rechaza con AbortError). */
+  signal?: AbortSignal;
+};
+
+export function isUploadCanceled(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') return true;
+  return (err as { code?: string } | null)?.code === 'storage/canceled';
+}
+
+/**
+ * Videos y fotos grandes: subida reanudable por bloques (el archivo no se copia en memoria);
+ * sin red se pausa y continúa sola al volver la conexión. Fotos chicas sin progreso: un solo PUT.
+ */
 async function putStorageBlob(
   objectRef: StorageReference,
   payload: Blob,
   metadata: UploadMetadata,
+  opts?: UploadProgressOptions,
 ): Promise<void> {
-  if (payload.size < 768 * 1024) {
+  if (opts?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (payload.size < 768 * 1024 && !opts?.onProgress && !opts?.signal) {
     await uploadBytes(objectRef, payload, metadata);
     return;
   }
   const task = uploadBytesResumable(objectRef, payload, metadata);
-  await new Promise<void>((resolve, reject) => {
-    task.on('state_changed', undefined, reject, () => resolve());
-  });
+  const onAbort = () => task.cancel();
+  const onOffline = () => task.pause();
+  const onOnline = () => task.resume();
+  opts?.signal?.addEventListener('abort', onAbort, { once: true });
+  window.addEventListener('offline', onOffline);
+  window.addEventListener('online', onOnline);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      task.on(
+        'state_changed',
+        (snap) => {
+          const total = snap.totalBytes || payload.size || 1;
+          opts?.onProgress?.(Math.min(1, snap.bytesTransferred / total), snap.bytesTransferred, total);
+        },
+        (err) => reject(opts?.signal?.aborted ? new DOMException('Aborted', 'AbortError') : err),
+        () => resolve(),
+      );
+    });
+  } finally {
+    opts?.signal?.removeEventListener('abort', onAbort);
+    window.removeEventListener('offline', onOffline);
+    window.removeEventListener('online', onOnline);
+  }
 }
 
 export async function uploadUserMedia(
@@ -394,6 +431,7 @@ export async function uploadUserMedia(
   name: string,
   visibility: MediaVisibility = 'private',
   kind: UserMediaStorageKind = 'publication',
+  opts?: UploadProgressOptions,
 ): Promise<{ url: string; storagePath: string }> {
   const type = file.type || 'application/octet-stream';
   const isVideo = type.startsWith('video/');
@@ -417,7 +455,7 @@ export async function uploadUserMedia(
     contentType,
     cacheControl: 'public,max-age=31536000,immutable',
     customMetadata: { visibility, contentKind: kind },
-  });
+  }, opts);
   const url = await getDownloadURL(objectRef);
   return { url, storagePath };
 }
@@ -453,9 +491,23 @@ export async function uploadUserMediaMany(
   visibility: MediaVisibility = 'private',
   kind: UserMediaStorageKind = 'publication',
   concurrency = 2,
+  opts?: UploadProgressOptions,
 ): Promise<Array<{ url: string; storagePath: string }>> {
+  const done = files.map(() => 0);
+  const report = () => {
+    const fraction = done.reduce((sum, f) => sum + f, 0) / Math.max(1, files.length);
+    opts?.onProgress?.(fraction, 0, 0);
+  };
   return mapWithConcurrency(files, concurrency, (file, index) =>
-    uploadUserMedia(uid, file, file.name || `photo_${index + 1}.jpg`, visibility, kind),
+    uploadUserMedia(uid, file, file.name || `photo_${index + 1}.jpg`, visibility, kind, {
+      signal: opts?.signal,
+      onProgress: opts?.onProgress
+        ? (fraction) => {
+            done[index] = fraction;
+            report();
+          }
+        : undefined,
+    }),
   );
 }
 

@@ -90,6 +90,7 @@ export function LocationShareModal({
   const liveLabel = useLiveLocationShare((state) => state.label);
   const liveOwner = useLiveLocationShare((state) => state.ownerUid);
   const liveExpiresAt = useLiveLocationShare((state) => state.expiresAtMs);
+  const liveUntilOff = useLiveLocationShare((state) => state.untilOff);
   const liveStarting = useLiveLocationShare((state) => state.starting);
   const liveError = useLiveLocationShare((state) => state.error);
   const startLive = useLiveLocationShare((state) => state.start);
@@ -353,18 +354,19 @@ export function LocationShareModal({
                 <div className="flex items-center gap-2 bg-[color:var(--surface-secondary)] px-3 py-2.5">
                   <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-[#ef4444]" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">Compartiendo en tiempo real</p>
+                    <p className="truncate text-sm font-semibold">Compartiendo ubicación en tiempo real</p>
                     <p className="text-[11px] text-[color:var(--text-muted)]">
-                      Termina en {formatRemaining(liveExpiresAt - now)} · mantén LiveBoom abierto
+                      {liveUntilOff ? 'Hasta que la desactives' : `Termina en ${formatRemaining(liveExpiresAt - now)}`} ·
+                      mantén LiveBoom abierto
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => void stopLive()}
-                    className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg bg-[#ef4444] px-3 text-[11px] font-bold text-[#ffffff]"
+                    className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg bg-[#ef4444] px-3 text-[11px] font-black uppercase text-[#ffffff]"
                   >
                     <Square size={12} />
-                    Detener
+                    Dejar de compartir
                   </button>
                 </div>
               </div>
@@ -383,7 +385,7 @@ export function LocationShareModal({
                   </div>
                 </div>
                 <p className="mt-3 text-[11px] font-semibold text-[color:var(--text-muted)]">Durante</p>
-                <div className="mt-1.5 grid grid-cols-3 gap-1.5" role="group" aria-label="Duración">
+                <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4" role="group" aria-label="Duración">
                   {LIVE_LOCATION_DURATIONS.map((item) => (
                     <button
                       key={item.minutes}

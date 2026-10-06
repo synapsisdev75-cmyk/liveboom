@@ -11,6 +11,8 @@ type Props = {
   orientation?: 'portrait' | 'landscape';
 };
 
+const PREVIEW_WAVE = [40, 70, 55, 90, 60, 80, 45, 65, 85, 50, 70, 40, 60, 35];
+
 /** Chat de muestra con las mismas clases del chat real: lo que ves aquí es lo que verás en tus conversaciones. */
 export function ChatThemePreview({ resolved, className = '', compact = false, orientation }: Props) {
   return (
@@ -51,12 +53,14 @@ export function ChatThemePreview({ resolved, className = '', compact = false, or
         {!compact ? (
           <div className="lb-ctp__row is-in">
             <div className="lb-chat-bubble is-in">
-              <span className="lb-ctp__voice">
+              <span className="lb-ctp__voice lb-chat-voice">
                 <span className="lb-chat-voice__play">
                   <Play size={12} fill="currentColor" />
                 </span>
                 <span className="lb-chat-voice__track">
-                  <span className="lb-chat-voice__fill" />
+                  {PREVIEW_WAVE.map((h, i) => (
+                    <span key={i} className={`lb-chat-voice__bar${i < 6 ? ' is-on' : ''}`} style={{ height: `${h}%` }} />
+                  ))}
                 </span>
                 <span className="lb-chat-voice__time text-[10px]">0:15</span>
               </span>

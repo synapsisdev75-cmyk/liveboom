@@ -176,22 +176,71 @@
   border-color: color-mix(in srgb, var(--lbct-accent) 60%, transparent);
 }
 
-/* Audio */
-.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__play {
-  background: color-mix(in srgb, var(--lbct-audio) 24%, transparent);
-  color: var(--lbct-audio);
+/* Audio: tokens audio* del tema; en la burbuja enviada salen del texto de esa burbuja. */
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-bubble.is-out {
+  --lbct-audio-bg: color-mix(in srgb, var(--lbct-bubble-out-text) 10%, transparent);
+  --lbct-audio-fg: var(--lbct-bubble-out-text);
+  --lbct-audio-wave: color-mix(in srgb, var(--lbct-bubble-out-text) 38%, transparent);
+  --lbct-audio-wave-active: var(--lbct-bubble-out-text);
+  --lbct-audio-progress: var(--lbct-bubble-out-text);
+  --lbct-audio-play: var(--lbct-bubble-out-text);
+  --lbct-audio-play-icon: var(--lbct-bubble-out-ink, var(--lbct-bubble-out));
+  --lbct-audio-time: color-mix(in srgb, var(--lbct-bubble-out-text) 76%, transparent);
 }
 
-.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__track {
-  background: color-mix(in srgb, var(--lbct-audio) 24%, transparent);
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice {
+  background: var(--lbct-audio-bg);
+  color: var(--lbct-audio-fg);
+  border: 1px solid color-mix(in srgb, var(--lbct-audio-fg) 12%, transparent);
+}
+
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__play {
+  background: var(--lbct-audio-play);
+  color: var(--lbct-audio-play-icon);
+}
+
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__bar {
+  background: var(--lbct-audio-wave);
+}
+
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__bar.is-on {
+  background: var(--lbct-audio-wave-active);
 }
 
 .lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__fill {
-  background: var(--lbct-audio);
+  background: var(--lbct-audio-progress);
+}
+
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__dot {
+  background: var(--lbct-audio-progress);
 }
 
 .lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__time {
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+  color: var(--lbct-audio-time);
+}
+
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice__speed {
+  border-color: color-mix(in srgb, var(--lbct-audio-fg) 35%, transparent);
+  color: var(--lbct-audio-fg);
+}
+
+.lb-chat-themed[data-lb-chat-theme] .lb-chat-voice.is-listened .lb-chat-voice__play {
+  background: color-mix(in srgb, var(--lbct-audio-play) 78%, transparent);
+}
+
+.lb-chat-voice__track {
+  cursor: pointer;
+}
+
+.lb-chat-voice__speed {
+  position: relative;
+}
+
+/* Área táctil ≥ 44 px sin agrandar el chip. */
+.lb-chat-voice__speed::after {
+  content: '';
+  position: absolute;
+  inset: -0.75rem -0.5rem;
 }
 
 /* Multimedia: solo marco (radio y borde), nunca filtros de color */
@@ -369,17 +418,22 @@
   border-radius: 999px;
 }
 
-.lb-ctp__voice .lb-chat-voice__track {
-  position: relative;
-  height: 0.3rem;
-  flex: 1;
-  overflow: hidden;
-  border-radius: 999px;
+.lb-ctp__voice {
+  padding: 0.2rem 0.3rem;
+  border-radius: 0.9rem;
 }
 
-.lb-ctp__voice .lb-chat-voice__fill {
-  position: absolute;
-  inset: 0 55% 0 0;
+.lb-ctp__voice .lb-chat-voice__track {
+  display: flex;
+  height: 1rem;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+}
+
+.lb-ctp__voice .lb-chat-voice__bar {
+  min-width: 0;
+  flex: 1;
   border-radius: 999px;
 }
 

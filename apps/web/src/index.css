@@ -8113,12 +8113,11 @@ body {
     0 0 0 1px color-mix(in srgb, var(--accent-primary) 35%, transparent),
     0 0 12px color-mix(in srgb, var(--accent-primary) 38%, transparent),
     0 0 22px color-mix(in srgb, var(--accent-secondary) 24%, transparent);
-  animation: lb-composer-glow-pulse 2.4s ease-in-out infinite;
 }
 
-/* El textarea es transparente a propósito: el texto visible vive en el espejo. */
-.publication-composer-field textarea,
-.publication-composer-field input {
+/* Modo espejo: el textarea es transparente a propósito; el texto visible vive en el espejo. */
+.publication-composer-field textarea:not(.lb-emoji-field--native),
+.publication-composer-field input:not(.lb-emoji-field--native) {
   background: transparent;
   color: transparent;
   -webkit-text-fill-color: transparent;
@@ -8147,8 +8146,8 @@ body {
 }
 
 /* La selección visible se dibuja sobre el espejo (.lb-emoji-selection). */
-.publication-composer-field textarea::selection,
-.publication-composer-field input::selection {
+.publication-composer-field textarea:not(.lb-emoji-field--native)::selection,
+.publication-composer-field input:not(.lb-emoji-field--native)::selection {
   background: transparent;
   color: transparent;
   -webkit-text-fill-color: transparent;
@@ -9516,7 +9515,7 @@ a.lb-entity:active,
 
 .lb-emoji-selection {
   border-radius: 2px;
-  background: color-mix(in srgb, var(--accent-primary) 34%, transparent);
+  background: var(--lb-selection-bg, color-mix(in srgb, var(--accent-primary) 34%, transparent));
 }
 
 @keyframes lb-emoji-caret-blink {
@@ -16873,7 +16872,6 @@ a.lb-entity:active,
     0 0 0 1px color-mix(in srgb, var(--accent-primary) 35%, transparent),
     0 0 12px color-mix(in srgb, var(--accent-primary) 42%, transparent),
     0 0 22px color-mix(in srgb, var(--accent-secondary) 28%, transparent);
-  animation: lb-composer-glow-pulse 2.4s ease-in-out infinite;
 }
 
 @keyframes lb-composer-glow-pulse {
@@ -20050,20 +20048,59 @@ html[data-lb-theme='light'] .lb-loc-card-map {
   white-space: nowrap;
 }
 
-.lb-live-loc-indicator__text > span {
+.lb-live-loc-indicator__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.lb-live-loc-indicator__title,
+.lb-live-loc-indicator__time {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.lb-live-loc-indicator__time {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .lb-live-loc-indicator__stop {
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
+  display: inline-flex;
+  min-height: 2.75rem;
   flex-shrink: 0;
-  place-items: center;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.85rem;
   border-radius: 9999px;
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Dentro de un directo: arriba, sin tapar el chat ni los controles inferiores. */
+.lb-live-loc-indicator.is-stream {
+  top: calc(var(--lb-safe-top) + 3.5rem);
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 430px) {
+  .lb-live-loc-indicator {
+    border-radius: 1.1rem;
+  }
+
+  .lb-live-loc-indicator__title {
+    font-size: 0.66rem;
+    white-space: normal;
+  }
 }
 
 @keyframes lb-live-loc-blink {

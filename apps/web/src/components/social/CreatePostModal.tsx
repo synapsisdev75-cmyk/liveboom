@@ -19,7 +19,16 @@ import { readVideoDurationSec } from '../../lib/videoDuration';
 import { MAX_CLIP_DURATION_SECONDS, BOOM_CLIP_CAPTION_MAX, FLASH_BOOM_CAPTION_MAX } from '../../lib/contentType';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { isVideoFile, mediaKindFromFile, fileFromMediaUrl } from '../../lib/mediaFile';
-import { prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
+import { isUploadCanceled, prefetchImageForUpload, uploadUserMedia } from '../../lib/storage';
+import {
+  detachPublishJob,
+  finishPublishJob,
+  publishStageLabel,
+  startPublishJob,
+  updatePublishJob,
+  usePublishProgressStore,
+} from '../../lib/publishProgress';
+import '../global/publishProgress.css';
 import { useAuthStore } from '../../store/authStore';
 import { EmojiPickerButton } from './EmojiPicker';
 import { EmojiInput, type EmojiInputHandle } from './EmojiInput';
@@ -33,6 +42,7 @@ import {
   type PostTextStyle,
 } from '../../lib/postTextStyle';
 import { VideoTrimEditor } from './VideoTrimEditor';
+import { PhotoCropEditor } from './PhotoCropEditor';
 import { MusicPickerModal } from './MusicPickerModal';
 import { FlashBoomCameraCapture } from './FlashBoomCameraCapture';
 import type { SelectedMusicClip } from '../../lib/musicLibrary';
@@ -146,6 +156,21 @@ export function CreatePostModal({
   const [caption, setCaption] = useState('');
   const [textStyle, setTextStyle] = useState<PostTextStyle>(DEFAULT_POST_TEXT_STYLE);
   const [textStyleRanges, setTextStyleRanges] = useTextStyleRangesDraft(caption);
+  const [publishJobId, setPublishJobId] = useState<string | null>(null);
+  const publishJob = usePublishProgressStore((state) =>
+    publishJobId ? (state.jobs.find((job) => job.id === publishJobId) ?? null) : null,
+  );
+  const publishAbortRef = useRef<AbortController | null>(null);
+  const publishJobIdRef = useRef<string | null>(null);
+  publishJobIdRef.current = publishJobId;
+  // Si el compositor se cierra o se navega mientras publica, la subida sigue y su progreso
+  // pasa al indicador flotante global.
+  useEffect(
+    () => () => {
+      if (publishJobIdRef.current) detachPublishJob(publishJobIdRef.current);
+    },
+    [],
+  );
   const captionInputRef = useRef<EmojiInputHandle>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewData | null>(null);
   const [linkPreviewBusy, setLinkPreviewBusy] = useState(false);
@@ -171,6 +196,13 @@ export function CreatePostModal({
     durationSec: number;
     maxDurationSec: number;
     forcedKind?: PostKind;
+  } | null>(null);
+  /** Recorte obligatorio antes de que una foto entre al composer (una a una si son varias). */
+  const [cropSession, setCropSession] = useState<{
+    files: File[];
+    index: number;
+    done: File[];
+    resolve: (files: File[]) => void;
   } | null>(null);
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [cameraAppend, setCameraAppend] = useState(false);
@@ -238,8 +270,18 @@ export function CreatePostModal({
     );
   }
 
+  /** Cerrar mientras publica: la subida continúa y se ve en el indicador flotante. */
+  function continueInBackground() {
+    if (publishJobIdRef.current) detachPublishJob(publishJobIdRef.current);
+    closeModal();
+  }
+
   function requestClose() {
     if (isInline) return;
+    if (busy && publishJobIdRef.current) {
+      continueInBackground();
+      return;
+    }
     if (hasDraft()) {
       setDiscardOpen(true);
       return;
@@ -686,12 +728,11 @@ export function CreatePostModal({
       void onFileChange(videos[0], 'video');
       return;
     }
-    if (photos.length > 1) {
-      appendAlbumPhotos(photos);
-      return;
-    }
-    if (photos[0]) {
-      void onFileChange(photos[0], 'photo');
+    if (photos.length > 0) {
+      void cropPhotosFirst(photos).then((cropped) => {
+        if (cropped.length > 1) appendAlbumPhotos(cropped);
+        else if (cropped[0]) void onFileChange(cropped[0], 'photo');
+      });
       return;
     }
     const audio = seedFiles.find((file) => String(file.type || '').startsWith('audio/'));
@@ -764,7 +805,43 @@ export function CreatePostModal({
     setError(null);
   }
 
-  async function onMultiPhotoChange(files: FileList) {
+  function isCroppablePhoto(file: File) {
+    return mediaKindFromFile(file) === 'photo' && file.type !== 'image/gif';
+  }
+
+  /** Paso 1 obligatorio: cada foto pasa por el recorte; videos y GIF siguen igual. */
+  function cropPhotosFirst(files: readonly File[]): Promise<File[]> {
+    const list = [...files];
+    const first = composeTab === 'boomclip' ? -1 : list.findIndex(isCroppablePhoto);
+    if (first < 0) return Promise.resolve(list);
+    return new Promise((resolve) => {
+      setCropSession({ files: list, index: first, done: list.slice(0, first), resolve });
+    });
+  }
+
+  function advanceCrop(result: File) {
+    const session = cropSession;
+    if (!session) return;
+    const done = [...session.done, result];
+    let index = session.index + 1;
+    while (index < session.files.length && !isCroppablePhoto(session.files[index]!)) {
+      done.push(session.files[index]!);
+      index += 1;
+    }
+    if (index >= session.files.length) {
+      setCropSession(null);
+      session.resolve(done);
+      return;
+    }
+    setCropSession({ ...session, index, done });
+  }
+
+  function gatePhotos(files: FileList | null, next: (files: File[]) => void) {
+    if (!files || files.length === 0) return;
+    void cropPhotosFirst(Array.from(files)).then(next);
+  }
+
+  async function onMultiPhotoChange(files: FileList | readonly File[]) {
     setError(null);
     setMediaMenuOpen(false);
     if (composeTab === 'boomclip') {
@@ -823,7 +900,7 @@ export function CreatePostModal({
     picked.forEach((file) => prefetchImageForUpload(file));
   }
 
-  function onGalleryPhotoChange(files: FileList | null) {
+  function onGalleryPhotoChange(files: FileList | readonly File[] | null) {
     if (!files || files.length === 0) return;
     if (
       composeTab === 'publication' &&
@@ -840,7 +917,7 @@ export function CreatePostModal({
     void onFileChange(files[0] || null, 'photo');
   }
 
-  function onGalleryMediaChange(files: FileList | null) {
+  function onGalleryMediaChange(files: FileList | readonly File[] | null) {
     if (!files || files.length === 0) return;
     const photos = Array.from(files).filter((file) => mediaKindFromFile(file) === 'photo');
     const hasVideo = Array.from(files).some((file) => mediaKindFromFile(file) === 'video');
@@ -932,7 +1009,8 @@ export function CreatePostModal({
     setCameraCaptureOpen(true);
   }
 
-  async function onCameraCapture(file: File, durationSec?: number) {
+  async function onCameraCapture(captured: File, durationSec?: number) {
+    const file = isCroppablePhoto(captured) ? (await cropPhotosFirst([captured]))[0] ?? captured : captured;
     if (cameraAppend) {
       setCameraAppend(false);
       if ((mediaKindFromFile(file) || 'photo') === 'photo') {
@@ -1083,12 +1161,7 @@ export function CreatePostModal({
       setError('Archivo no compatible. Usa foto (JPG, PNG).');
       return;
     }
-    if (
-      !mediaFile &&
-      mediaFiles.length === 0 &&
-      albumUrls.length === 0 &&
-      files instanceof FileList
-    ) {
+    if (!mediaFile && mediaFiles.length === 0 && albumUrls.length === 0) {
       void onMultiPhotoChange(files);
       return;
     }
@@ -1263,6 +1336,23 @@ export function CreatePostModal({
 
     setBusy(true);
     setError(null);
+    const controller = new AbortController();
+    publishAbortRef.current = controller;
+    const { signal } = controller;
+    const jobId = startPublishJob(
+      isFlashBoom ? FLASH_BOOM_LABEL : isBoomClip ? BOOM_CLIP_LABEL : isEditMode ? 'Editar publicación' : 'Publicación',
+      () => controller.abort(),
+    );
+    publishJobIdRef.current = jobId;
+    setPublishJobId(jobId);
+    let jobResult: 'done' | 'error' | 'canceled' = 'error';
+    let jobMessage: string | undefined;
+    const throwIfCanceled = () => {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    };
+    const onUploadProgress = (fraction: number) => {
+      updatePublishJob(jobId, fraction >= 1 ? 'processing' : 'uploading', fraction * 100);
+    };
     try {
       let durationSec = 0;
       const reconReady = reconstruction?.status === 'ready' && Boolean(reconstruction.result);
@@ -1395,17 +1485,23 @@ export function CreatePostModal({
         );
       }
 
-      // Videos largos / música: moov al inicio para que Explorar arranque sin esperar el archivo entero.
+      throwIfCanceled();
+      // Videos largos / música: moov al inicio para que Explorar arranque sin esperar el archivo
+      // entero. Si el MP4 ya viene así, no se procesa de nuevo (sin pasadas ni copias extra).
       if (publishKind === 'video' && uploadFile) {
         try {
-          const { remuxVideoFastStart, shouldRemuxForFastStart } = await import('../../lib/videoTrim');
-          if (shouldRemuxForFastStart(uploadFile, durationSec)) {
-            uploadFile = await remuxVideoFastStart(uploadFile);
+          const { remuxVideoFastStart, needsFastStartRemux } = await import('../../lib/videoTrim');
+          if (await needsFastStartRemux(uploadFile, durationSec)) {
+            uploadFile = await remuxVideoFastStart(uploadFile, signal, (p) =>
+              updatePublishJob(jobId, 'preparing', p * 100),
+            );
           }
         } catch {
           /* Si el remux falla, se publica el original. */
         }
       }
+      throwIfCanceled();
+      updatePublishJob(jobId, uploadFile || albumForUpload.length ? 'uploading' : 'processing', 0);
 
       if (isEditMode && editPost?.id) {
         const displayUrls = albumUrls.length ? albumUrls : previewUrl ? [previewUrl] : [];
@@ -1429,6 +1525,8 @@ export function CreatePostModal({
         }
         const savedType =
           publishKind === 'text' && gifAttach && !mediaSlots.length ? 'photo' : publishKind;
+        throwIfCanceled();
+        updatePublishJob(jobId, 'processing');
         const saved = await updatePost({
           postId: editPost.id,
           authorUid: profile.firebaseUid,
@@ -1462,6 +1560,7 @@ export function CreatePostModal({
           edited: true,
           updatedAt: new Date().toISOString(),
         });
+        jobResult = 'done';
         reset();
         closeModal();
         return;
@@ -1491,7 +1590,10 @@ export function CreatePostModal({
         linkPreview,
         textStyle,
         textStyleRanges,
+        onUploadProgress,
+        signal,
       });
+      jobResult = 'done';
 
       onCreated?.({
         id: created.id,
@@ -1519,8 +1621,18 @@ export function CreatePostModal({
       reset();
       closeModal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo publicar');
+      if (signal.aborted || isUploadCanceled(err)) {
+        jobResult = 'canceled';
+        setError('Subida cancelada. Tu contenido sigue aquí para intentarlo de nuevo.');
+      } else {
+        jobMessage = err instanceof Error ? err.message : 'No se pudo publicar';
+        setError(jobMessage);
+      }
     } finally {
+      finishPublishJob(jobId, jobResult, jobMessage);
+      if (publishAbortRef.current === controller) publishAbortRef.current = null;
+      publishJobIdRef.current = null;
+      setPublishJobId(null);
       setBusy(false);
     }
   }
@@ -1537,13 +1649,42 @@ export function CreatePostModal({
       : isBoomClip
         ? BOOM_CLIP_LABEL
         : 'Nueva publicación';
-  const submitLabel = isEditMode
-    ? busy
-      ? 'Guardando…'
-      : 'Guardar cambios'
-    : busy
-      ? 'Subiendo…'
+  const submitLabel = busy
+    ? publishJob
+      ? publishStageLabel(publishJob)
+      : isEditMode
+        ? 'Guardando…'
+        : 'Preparando…'
+    : isEditMode
+      ? 'Guardar cambios'
       : 'Publicar';
+  const publishProgress =
+    busy && publishJob ? (
+      <div className="lb-publish-inline mb-2" role="status" aria-live="polite">
+        <div className="lb-publish-inline__row">
+          <span>{publishStageLabel(publishJob)}</span>
+        </div>
+        {publishJob.stage === 'uploading' || publishJob.pct != null ? (
+          <span className="lb-publish-progress__bar" aria-hidden>
+            <span style={{ width: `${publishJob.pct ?? 0}%` }} />
+          </span>
+        ) : null}
+        <div className="lb-publish-inline__actions">
+          <button
+            type="button"
+            className="lb-publish-inline__btn"
+            onClick={() => publishAbortRef.current?.abort()}
+          >
+            Cancelar subida
+          </button>
+          {!isInline ? (
+            <button type="button" className="lb-publish-inline__btn" onClick={continueInBackground}>
+              Seguir usando la app
+            </button>
+          ) : null}
+        </div>
+      </div>
+    ) : null;
   const composeRows = 1;
   const composerTextStyle = textStyleProps(textStyle, textStyleRanges);
   const captionMax = isFlashBoom ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : undefined;
@@ -1560,7 +1701,7 @@ export function CreatePostModal({
         accept="image/*"
         multiple={composeTab === 'publication'}
         className="hidden"
-        onChange={(event) => onGalleryPhotoChange(event.target.files)}
+        onChange={(event) => gatePhotos(event.target.files, onGalleryPhotoChange)}
       />
       <input
         ref={galleryVideoRef}
@@ -1575,7 +1716,7 @@ export function CreatePostModal({
         accept={composeTab === 'boomclip' ? 'video/*' : 'image/*,video/*'}
         multiple={composeTab === 'publication'}
         className="hidden"
-        onChange={(event) => onGalleryMediaChange(event.target.files)}
+        onChange={(event) => gatePhotos(event.target.files, onGalleryMediaChange)}
       />
       <input
         ref={galleryAppendRef}
@@ -1584,7 +1725,7 @@ export function CreatePostModal({
         multiple
         className="hidden"
         onChange={(event) => {
-          appendAlbumPhotos(event.target.files);
+          gatePhotos(event.target.files, appendAlbumPhotos);
           event.target.value = '';
         }}
       />
@@ -2199,6 +2340,7 @@ export function CreatePostModal({
           ) : null}
         </div>
       ) : null}
+      {!isModalOpen ? <div className="mt-3">{publishProgress}</div> : null}
       {!isModalOpen ? (
         <div className={`mt-3 flex justify-end gap-2 ${isInline ? '' : 'pb-[max(0.5rem,env(safe-area-inset-bottom))]'}`}>
           {!isInline ? (
@@ -2241,9 +2383,10 @@ export function CreatePostModal({
           ) : null}
         </div>
       ) : null}
+      {publishProgress}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={requestClose} className="lb-composer-cancel px-4 py-2 text-sm">
-          Cancelar
+          {busy ? 'Ocultar' : 'Cancelar'}
         </button>
         <button
           type="button"
@@ -2356,6 +2499,21 @@ export function CreatePostModal({
           productLabel={isFlashBoom ? FLASH_BOOM_LABEL : isBoomClip ? BOOM_CLIP_LABEL : 'Publicación'}
           onCancel={cancelTrim}
           onSave={acceptTrim}
+        />
+      ) : null}
+      {cropSession && cropSession.files[cropSession.index] ? (
+        <PhotoCropEditor
+          key={`${cropSession.index}-${cropSession.files.length}`}
+          file={cropSession.files[cropSession.index]!}
+          progressLabel={
+            cropSession.files.filter(isCroppablePhoto).length > 1
+              ? `Foto ${cropSession.files.slice(0, cropSession.index + 1).filter(isCroppablePhoto).length} de ${
+                  cropSession.files.filter(isCroppablePhoto).length
+                }`
+              : undefined
+          }
+          onConfirm={advanceCrop}
+          onCancel={() => advanceCrop(cropSession.files[cropSession.index]!)}
         />
       ) : null}
       <FlashBoomCameraCapture

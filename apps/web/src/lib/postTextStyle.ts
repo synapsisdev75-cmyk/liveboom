@@ -239,8 +239,13 @@ export function useTextStyleRangesDraft(
   const [state, setState] = useState<{ text: string; ranges: TextStyleRange[] }>(() => ({ text, ranges: [] }));
   let current = state;
   if (state.text !== text) {
-    current = { text, ranges: shiftTextStyleRanges(state.text, text, state.ranges) };
-    setState(current);
+    if (state.ranges.length === 0) {
+      // Sin fragmentos no hay nada que desplazar: evita un segundo render del compositor por tecla.
+      current = { text, ranges: state.ranges };
+    } else {
+      current = { text, ranges: shiftTextStyleRanges(state.text, text, state.ranges) };
+      setState(current);
+    }
   }
   return [current.ranges, (next, forText) => setState({ text: forText ?? text, ranges: next })];
 }

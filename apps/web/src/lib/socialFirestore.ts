@@ -3164,6 +3164,10 @@ export async function createPost(input: {
   } | null;
   textStyle?: PostTextStyle | null;
   textStyleRanges?: TextStyleRange[];
+  /** Progreso real de la subida del archivo (0..1). */
+  onUploadProgress?: (fraction: number) => void;
+  /** Cancela la subida antes de crear el documento. */
+  signal?: AbortSignal;
 }): Promise<{
   id: string;
   mediaUrl: string | null;
@@ -3222,6 +3226,8 @@ export async function createPost(input: {
         multiPhotoFiles,
         visibility,
         storageKind,
+        2,
+        { onProgress: input.onUploadProgress, signal: input.signal },
       );
       const uploadedUrls = uploadedList.map((item) => item.url);
       mediaUrls = uploadedUrls;
@@ -3250,15 +3256,13 @@ export async function createPost(input: {
             })().catch(() => null)
           : Promise.resolve(null);
       const [uploaded, clipExtras] = await Promise.all([
-        uploadUserMedia(
-          input.authorUid,
-          mediaToUpload,
-          fileName,
-          visibility,
-          storageKind,
-        ),
+        uploadUserMedia(input.authorUid, mediaToUpload, fileName, visibility, storageKind, {
+          onProgress: input.onUploadProgress,
+          signal: input.signal,
+        }),
         clipExtrasPromise,
       ]);
+      if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       mediaUrl = uploaded.url;
       storagePath = uploaded.storagePath;
       if (clipExtras) {

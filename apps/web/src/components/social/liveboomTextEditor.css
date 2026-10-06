@@ -1,0 +1,64 @@
+/*
+ * LiveBoom · base común de escritura (EmojiInput en chat, grupos, comentarios, respuestas,
+ * Publicaciones, Flash Boom, Boom Clip, LIVE y modales).
+ *
+ * Tokens de selección (los temas de chat los sobrescriben en su contenedor):
+ *   --lb-selection-bg      textSelectionBackground
+ *   --lb-selection-handle  textSelectionHandle (Android dibuja handles y lupa con el acento del sistema)
+ *   --lb-caret-color       caretColor
+ *   --lb-magnifier-border  magnifierBorder
+ *   --lb-text-lh           interlineado del texto escrito
+ */
+:root {
+  --lb-selection-bg: color-mix(in srgb, var(--accent-secondary, #22d3ee) 42%, transparent);
+  --lb-selection-handle: var(--accent-secondary, #22d3ee);
+  --lb-caret-color: var(--accent-secondary, #22d3ee);
+  --lb-magnifier-border: color-mix(in srgb, var(--text-primary, #fff) 28%, transparent);
+  --lb-text-lh: 1.35;
+}
+
+html[data-lb-theme='light'] {
+  --lb-selection-bg: color-mix(in srgb, var(--accent-primary, #c026d3) 30%, transparent);
+  --lb-selection-handle: var(--accent-primary, #c026d3);
+  --lb-caret-color: var(--accent-primary, #c026d3);
+  --lb-magnifier-border: color-mix(in srgb, var(--text-primary, #18181b) 22%, transparent);
+}
+
+/* Modo nativo: el campo real es el visible (cursor, selección, lupa y handles del sistema). */
+:root .lb-emoji-field.lb-emoji-field--native {
+  color: inherit;
+  -webkit-text-fill-color: currentColor;
+  caret-color: var(--lb-caret-color, currentColor);
+  accent-color: var(--lb-selection-handle, currentColor);
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+:root .lb-emoji-field.lb-emoji-field--native::selection {
+  background: var(--lb-selection-bg);
+}
+
+/* Estilos de texto "Aa" que en modo espejo pinta .lb-emoji-text. */
+.lb-ts.lb-ts-colored .lb-emoji-host--native {
+  color: var(--lb-post-text-color);
+}
+
+.lb-ts.lb-ts-underline .lb-emoji-field--native {
+  text-decoration-line: underline;
+  text-underline-offset: 0.18em;
+}
+
+.lb-ts.lb-ts-strike .lb-emoji-field--native {
+  text-decoration-line: line-through;
+}
+
+.lb-ts.lb-ts-underline.lb-ts-strike .lb-emoji-field--native {
+  text-decoration-line: underline line-through;
+}
+
+.lb-ts.lb-ts-neon .lb-emoji-field--native {
+  text-shadow:
+    0 0 6px color-mix(in srgb, currentColor 70%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent-secondary) 60%, transparent);
+}

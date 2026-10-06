@@ -46,6 +46,8 @@ import { useAuthStore } from '../store/authStore';
 import { EmojiPickerButton } from '../components/social/EmojiPicker';
 import { EmojiInput, type EmojiInputHandle } from '../components/social/EmojiInput';
 import { TextStyleButton } from '../components/social/TextStyleButton';
+import { SharedPostLinkCard } from '../components/social/SharedPostLinkCard';
+import { parseSharedPostUrl } from '../lib/sharedPostLink';
 import {
   textStyleProps,
   useTextStyleFontsIn,
@@ -1171,7 +1173,9 @@ export function GroupsView() {
                                   />
                                 </a>
                               ) : null}
-                              {msg.linkUrl ? (
+                              {msg.linkUrl && parseSharedPostUrl(msg.linkUrl) ? (
+                                <SharedPostLinkCard postId={parseSharedPostUrl(msg.linkUrl)!} />
+                              ) : msg.linkUrl ? (
                                 <a
                                   href={msg.linkUrl}
                                   target="_blank"

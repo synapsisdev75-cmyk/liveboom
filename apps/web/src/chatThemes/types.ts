@@ -31,6 +31,20 @@ export type ChatThemeTokens = {
   reply: string;
   audioWave: string;
   selection: string;
+  /** Notas de voz (burbuja recibida; la enviada se deriva del texto de su burbuja). */
+  audioBackground: string;
+  audioForeground: string;
+  audioWaveInactive: string;
+  audioWaveActive: string;
+  audioProgress: string;
+  /** Fondo del botón reproducir/pausar (el icono usa `onAccent`). */
+  audioPlayButton: string;
+  audioDurationColor: string;
+  /** Edición de texto (composer, buscador, modales del chat). */
+  textSelectionBackground: string;
+  textSelectionHandle: string;
+  caretColor: string;
+  magnifierBorder: string;
   fontFamily: string;
   fontHeading: string;
   borderRadius: string;

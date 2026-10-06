@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Radio } from 'lucide-react';
 import { formatRemaining, locationInAppHref, type SharedLocation } from '../../lib/locationShare';
-import { useLiveLocation, useNow } from '../../lib/liveLocation';
+import { useLiveLocation, useLiveLocationShare, useNow } from '../../lib/liveLocation';
 import { DirectionsButton } from './DirectionsSheet';
 
 const LocationMap = lazy(() => import('./LocationMap'));
@@ -22,7 +22,7 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
   const isLive = live?.status === 'live';
   const ended = Boolean(location.liveId) && live?.status === 'ended';
   const now = useNow(isLive);
-  const point = isLive && liveData ? { lat: liveData.lat, lng: liveData.lng } : location;
+  const point = liveData ? { lat: liveData.lat, lng: liveData.lng } : location;
   const person = {
     uid: liveData?.ownerUid || location.uid,
     avatarUrl: liveData?.avatarUrl,
@@ -30,16 +30,21 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
     displayName: liveData?.displayName,
   };
   const who = person.handle ? `@${person.handle}` : '';
+  const myShareId = useLiveLocationShare((state) => state.shareId);
+  const stopMyShare = useLiveLocationShare((state) => state.stop);
+  const isMyActiveShare = Boolean(location.liveId) && location.liveId === myShareId && isLive;
   const title = location.liveId
     ? isLive
       ? `En vivo${who ? ` · ${who}` : ''}`
       : ended
-        ? 'Ubicación en tiempo real terminada'
+        ? 'Ubicación en tiempo real finalizada'
         : 'Ubicación en tiempo real'
     : location.label || 'Ubicación compartida';
   const subtitle = location.liveId
     ? isLive && liveData
-      ? `Termina en ${formatRemaining(liveData.expiresAtMs - now)}`
+      ? liveData.untilOff
+        ? 'Hasta que se desactive'
+        : `Termina en ${formatRemaining(liveData.expiresAtMs - now)}`
       : ended
         ? 'Último punto compartido'
         : 'Conectando…'
@@ -79,11 +84,25 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
             {subtitle}
           </span>
         </Link>
-        <DirectionsButton
-          destination={location}
-          iconSize={13}
-          className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-3 text-[11px] font-bold text-[#0b0f19]"
-        />
+        {isMyActiveShare ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void stopMyShare();
+            }}
+            className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-[#ef4444] px-3 text-[11px] font-black uppercase text-[#ffffff]"
+          >
+            Dejar de compartir
+          </button>
+        ) : (
+          <DirectionsButton
+            destination={location}
+            iconSize={13}
+            className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-3 text-[11px] font-bold text-[#0b0f19]"
+          />
+        )}
       </div>
       {onDismiss ? (
         <button

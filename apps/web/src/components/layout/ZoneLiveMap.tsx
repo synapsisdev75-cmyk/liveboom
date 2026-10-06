@@ -101,19 +101,7 @@ export default function ZoneLiveMap({
     if (followRef.current) map.panTo(latLng, { animate: true });
   }, [pos?.lat, pos?.lng, pos?.accuracy]);
 
-  useEffect(() => {
-    let cancelled = false;
-    navigator.permissions
-      ?.query({ name: 'geolocation' as PermissionName })
-      .then((status) => {
-        if (!cancelled && status.state === 'granted') setWatching(true);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+  /* Sin seguimiento automático: el GPS solo se usa cuando el usuario pulsa "Ver en tiempo real". */
   useEffect(() => {
     if (!watching || !navigator.geolocation) return;
     let id: number | null = null;
@@ -132,7 +120,7 @@ export default function ZoneLiveMap({
             setError('No se pudo actualizar la ubicación.');
           }
         },
-        { enableHighAccuracy: true, maximumAge: 10_000, timeout: 30_000 },
+        { enableHighAccuracy: false, maximumAge: 30_000, timeout: 30_000 },
       );
     };
     const stop = () => {
@@ -183,7 +171,7 @@ export default function ZoneLiveMap({
           type="button"
           onClick={recenter}
           aria-label="Centrar en mi ubicación"
-          className="absolute bottom-6 right-2 z-[500] flex h-9 w-9 items-center justify-center rounded-full border border-[#22d3ee]/40 bg-[#0b0f19]/85 text-[#67e8f9] shadow transition hover:bg-[#0b0f19]"
+          className="absolute bottom-6 right-2 z-[500] flex h-11 w-11 items-center justify-center rounded-full border border-[#22d3ee]/40 bg-[#0b0f19]/85 text-[#67e8f9] shadow transition hover:bg-[#0b0f19]"
         >
           <LocateFixed size={16} />
         </button>
@@ -193,7 +181,7 @@ export default function ZoneLiveMap({
           <button
             type="button"
             onClick={startLive}
-            className="min-h-9 w-full rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-300"
+            className="min-h-11 w-full rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-300"
           >
             Ver en tiempo real
           </button>
@@ -202,7 +190,7 @@ export default function ZoneLiveMap({
           <button
             type="button"
             onClick={() => onShare(pos)}
-            className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] text-[11px] font-bold text-[#0b0f19]"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] text-[11px] font-bold text-[#0b0f19]"
           >
             <Share2 size={13} style={{ color: '#0b0f19' }} />
             Compartir
