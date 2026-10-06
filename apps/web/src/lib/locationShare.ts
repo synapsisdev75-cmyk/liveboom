@@ -13,6 +13,8 @@ export type SharedLocation = {
 };
 
 export const LOCATION_PATH = '/ubicacion';
+/** Enlace para compartir: el servidor da a WhatsApp/redes la imagen del mapa y redirige a LOCATION_PATH. */
+export const LOCATION_SHARE_PATH = '/l';
 export const LOCATION_MESSAGE_TEXT = '📍 Ubicación';
 
 export const LIVE_LOCATION_DURATIONS = [
@@ -43,8 +45,17 @@ function validLatLng(lat: number, lng: number) {
   );
 }
 
+function shareOrigin(): string {
+  if (typeof window === 'undefined') return 'https://liveboomapp.com';
+  const { hostname, origin } = window.location;
+  return APP_HOSTS.has(hostname) && hostname !== 'localhost' && hostname !== '127.0.0.1' ? origin : 'https://liveboomapp.com';
+}
+
 export function buildLocationUrl(loc: SharedLocation): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://liveboomapp.com';
+  return `${shareOrigin()}${LOCATION_SHARE_PATH}?${locationParams(loc).toString()}`;
+}
+
+function locationParams(loc: SharedLocation): URLSearchParams {
   const params = new URLSearchParams({ lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) });
   const label = loc.label.trim().slice(0, 80);
   if (label) params.set('n', label);
@@ -52,7 +63,7 @@ export function buildLocationUrl(loc: SharedLocation): string {
   if (loc.uid && UID_RE.test(loc.uid)) params.set('u', loc.uid);
   const handle = (loc.handle || '').replace(/^@/, '').trim().slice(0, 32);
   if (handle) params.set('h', handle);
-  return `${origin}${LOCATION_PATH}?${params.toString()}`;
+  return params;
 }
 
 /** Reconoce solo enlaces de ubicación de LiveBoom; cualquier otro enlace devuelve null. */
@@ -64,7 +75,8 @@ export function parseLocationUrl(raw: string | null | undefined): SharedLocation
   } catch {
     return null;
   }
-  if (!APP_HOSTS.has(url.hostname) || url.pathname.replace(/\/$/, '') !== LOCATION_PATH) return null;
+  const path = url.pathname.replace(/\/$/, '');
+  if (!APP_HOSTS.has(url.hostname) || (path !== LOCATION_PATH && path !== LOCATION_SHARE_PATH)) return null;
   return parseLocationParams(url.searchParams);
 }
 
@@ -101,8 +113,11 @@ export function openStreetMapUrl(loc: { lat: number; lng: number }): string {
 }
 
 export function locationInAppHref(loc: SharedLocation): string {
-  const url = new URL(buildLocationUrl(loc));
-  return `${url.pathname}${url.search}`;
+  return `${LOCATION_PATH}?${locationParams(loc).toString()}`;
+}
+
+export function whatsappShareUrl(text: string, url: string): string {
+  return `https://api.whatsapp.com/send?text=${encodeURIComponent(`${text}\n${url}`)}`;
 }
 
 export type LocateError = 'unsupported' | 'denied' | 'unavailable' | 'timeout';

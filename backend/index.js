@@ -179,11 +179,18 @@ try {
   module.exports.sharePreview = onRequest(
     {
       region: 'us-central1',
-      memory: '256MiB',
+      memory: '512MiB',
       timeoutSeconds: 20,
       invoker: 'public',
     },
-    (req, res) => handleSharePreview(req, res),
+    (req, res) => {
+      const path = String(req.path || '');
+      if (path === '/l' || path.startsWith('/l/')) {
+        const { handleLocationPreview } = require('./src/lib/locationPreview');
+        return handleLocationPreview(req, res);
+      }
+      return handleSharePreview(req, res);
+    },
   );
 } catch (error) {
   console.warn('[liveboom] firebase-functions no disponible (solo dev local):', error.message);

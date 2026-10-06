@@ -26,6 +26,7 @@ import {
   locateOnce,
   locationLinkPreview,
   LOCATION_MESSAGE_TEXT,
+  whatsappShareUrl,
   type SharedLocation,
 } from '../../lib/locationShare';
 import { useLiveLocationShare, useNow } from '../../lib/liveLocation';
@@ -247,7 +248,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
 
   async function nativeShare() {
     const text =
-      kind === 'live' ? '🔴 Sigue mi ubicación en tiempo real en LiveBoom' : `📍 ${loc?.label || 'Mi ubicación'} en LiveBoom`;
+      kind === 'live' ? 'Sigue mi ubicación en tiempo real en LiveBoom' : `${loc?.label || 'Mi ubicación'} en LiveBoom`;
     if (navigator.share) {
       try {
         await navigator.share({ title: 'Ubicación · LiveBoom', text, url: shareUrl });
@@ -517,9 +518,10 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
                     </button>
                   </div>
                   <a
-                    href={`https://wa.me/?text=${encodeURIComponent(
-                      `${kind === 'live' ? '🔴 Mi ubicación en tiempo real' : `📍 ${shareLoc.label || 'Mi ubicación'}`}\n${shareUrl}`,
-                    )}`}
+                    href={whatsappShareUrl(
+                      kind === 'live' ? 'Mi ubicación en tiempo real' : shareLoc.label || 'Mi ubicación',
+                      shareUrl,
+                    )}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#25d366] px-4 text-sm font-bold text-[#06210f]"
