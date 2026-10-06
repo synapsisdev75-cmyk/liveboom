@@ -163,6 +163,8 @@ export function CreatePostModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false);
+  const [mediaMenuBelow, setMediaMenuBelow] = useState(false);
+  const mediaMenuPanelRef = useRef<HTMLDivElement>(null);
   const [trimDraft, setTrimDraft] = useState<{
     file: File;
     url: string;
@@ -391,6 +393,27 @@ export function CreatePostModal({
     document.addEventListener('mousedown', onPointerDown);
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [mediaMenuOpen]);
+
+  useEffect(() => {
+    if (!mediaMenuOpen) return;
+    mediaMenuPanelRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [mediaMenuOpen, mediaMenuBelow]);
+
+  function toggleMediaMenu() {
+    if (mediaMenuOpen) {
+      setMediaMenuOpen(false);
+      return;
+    }
+    const row = mediaMenuRef.current;
+    if (row) {
+      const scroller = row.closest('.overflow-y-auto');
+      const limitTop = scroller ? scroller.getBoundingClientRect().top : 0;
+      const spaceAbove = row.getBoundingClientRect().top - limitTop;
+      const menuHeight = composeTab === 'publication' ? 190 : 130;
+      setMediaMenuBelow(spaceAbove < menuHeight);
+    }
+    setMediaMenuOpen(true);
+  }
 
   function reset() {
     const trimUrl = trimDraft?.url;
@@ -1998,7 +2021,7 @@ export function CreatePostModal({
               />
                         <button
                           type="button"
-                onClick={() => setMediaMenuOpen((value) => !value)}
+                onClick={toggleMediaMenu}
                 className={`lb-composer-attach inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-lg border px-2 transition ${
                   mediaMenuOpen ? 'is-open' : ''
                 }`}
@@ -2009,7 +2032,12 @@ export function CreatePostModal({
                 <span className="hidden text-[11px] font-semibold sm:inline">Adjuntar</span>
                         </button>
               {mediaMenuOpen ? (
-                <div className="lb-composer-attach-menu absolute bottom-full left-0 z-20 mb-1.5 w-[min(18.5rem,calc(100vw-2.5rem))] rounded-2xl p-px">
+                <div
+                  ref={mediaMenuPanelRef}
+                  className={`lb-composer-attach-menu absolute left-0 z-20 w-[min(18.5rem,calc(100vw-2.5rem))] rounded-2xl p-px ${
+                    mediaMenuBelow ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
+                  }`}
+                >
                   <div className="lb-composer-attach-menu__inner overflow-hidden rounded-[15px]">
                     <button
                       type="button"
