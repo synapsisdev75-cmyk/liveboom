@@ -12,6 +12,7 @@ import { AdminVerificationPanel } from '../components/admin/AdminVerificationPan
 import { CommunityHeaderEditor } from '../components/admin/CommunityHeaderEditor';
 import { AdminDelegatePanel } from '../components/admin/AdminDelegatePanel';
 import { AdminChangeRequestsPanel } from '../components/admin/AdminChangeRequestsPanel';
+import { AdminChatThemesPanel } from '../components/admin/AdminChatThemesPanel';
 import {
   hasSuperAdminCapability,
   isOwnerEmail,
@@ -38,6 +39,7 @@ type AdminTab =
   | 'levels'
   | 'users'
   | 'messages'
+  | 'chatThemes'
   | 'community'
   | 'gifts'
   | 'blast'
@@ -50,6 +52,7 @@ type AdminTab =
 
 const TAB_CAPABILITY: Partial<Record<AdminTab, SuperAdminCapability>> = {
   messages: 'messages',
+  chatThemes: 'messages',
   gifts: 'gifts',
   blast: 'blast',
   ads: 'ads',
@@ -65,6 +68,7 @@ const ALL_TABS: AdminTab[] = [
   'users',
   'delegate',
   'messages',
+  'chatThemes',
   'gifts',
   'blast',
   'ads',
@@ -343,6 +347,7 @@ export function SuperAdminView() {
             ...(owner ? [{ id: 'delegate' as const, label: 'Delegar' }] : []),
             ...(owner ? [{ id: 'users' as const, label: 'Usuarios / XP' }] : []),
             ...(can('messages') ? [{ id: 'messages' as const, label: 'Mensajes' }] : []),
+            ...(can('messages') ? [{ id: 'chatThemes' as const, label: 'Chat · Temas' }] : []),
             ...(can('gifts') ? [{ id: 'gifts' as const, label: 'Regalos' }] : []),
             ...(can('blast') ? [{ id: 'blast' as const, label: 'Blast' }] : []),
             ...(can('ads') ? [{ id: 'ads' as const, label: 'Publicidad' }] : []),
@@ -379,6 +384,7 @@ export function SuperAdminView() {
       {tab === 'delegate' && owner ? <AdminDelegatePanel /> : null}
       {tab === 'users' && owner ? <AdminUsersPanel /> : null}
       {tab === 'messages' && can('messages') ? <AdminMessagesPanel /> : null}
+      {tab === 'chatThemes' && can('messages') ? <AdminChatThemesPanel /> : null}
       {tab === 'gifts' && can('gifts') ? <AdminCatalogPanel modules={['gifts']} /> : null}
       {tab === 'blast' && can('blast') ? <AdminCatalogPanel modules={['coins']} /> : null}
       {tab === 'ads' && can('ads') ? <AdminAdsPanel /> : null}

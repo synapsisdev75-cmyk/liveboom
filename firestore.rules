@@ -113,6 +113,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /config/chatThemes {
+      allow read: if true;
+      allow create, update: if hasCapability('messages')
+        && request.resource.data.themes is map
+        && request.resource.data.version is number;
+      allow delete: if false;
+    }
+
     match /config/superAdminSecurity {
       allow read: if isSuperAdmin();
       // Solo owner puede configurar/rotar secretos (sin exigir sesión: bootstrap inicial).
@@ -300,6 +308,16 @@ service cloud.firestore {
       match /callSettings/{docId} {
         allow read: if signedIn();
         allow write: if isSelf(userId);
+      }
+
+      // Temas del chat: privado del usuario (global o por conversación).
+      match /chatAppearance/{docId} {
+        allow read, delete: if isSelf(userId);
+        allow create, update: if isSelf(userId)
+          && docId.size() <= 160
+          && request.resource.data.themeId is string
+          && request.resource.data.themeId.size() <= 64
+          && request.resource.size() <= 40;
       }
 
       match /savedStickers/{stickerId} {

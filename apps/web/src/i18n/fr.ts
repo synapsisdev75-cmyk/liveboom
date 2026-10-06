@@ -74,6 +74,7 @@ export const fr: Catalog = {
     tabWithdrawals: 'Demandes de retrait',
     tabAppearance: 'Apparence',
     tabLanguage: 'Langue',
+    tabChat: 'Chat',
     accountInfo: 'Informations du compte',
     accountInfoSub: 'Mets à jour tes informations personnelles et de contact.',
     changePhoto: 'Changer la photo',

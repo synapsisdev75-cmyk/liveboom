@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'cyber-city';
+
+export const cyberCity: ChatTheme = {
+  id: ID,
+  name: 'Cyber City',
+  description: 'Ciudad futurista, lluvia y neón cian y magenta.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.11, 'linear-gradient(180deg, #0b0d26 0%, #1a1440 60%, #2a0f3a 100%)'),
+  fonts: ['Oxanium', 'Rajdhani'],
+  tokens: {
+    background: '#0f1230',
+    backgroundOverlay: 'rgba(6, 6, 20, 1)',
+    surface: 'rgba(10, 10, 28, 0.88)',
+    surfaceSecondary: '#14143a',
+    bubbleIncoming: 'rgba(14, 18, 40, 0.94)',
+    bubbleIncomingText: '#e0fbff',
+    bubbleOutgoing: 'linear-gradient(135deg, #c026d3 0%, #7c3aed 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(34, 211, 238, 0.45)',
+    textPrimary: '#e0fbff',
+    textSecondary: '#67e8f9',
+    accent: '#22d3ee',
+    accentSecondary: '#e879f9',
+    onAccent: '#0b1020',
+    border: 'rgba(34, 211, 238, 0.3)',
+    inputBackground: 'rgba(12, 12, 34, 0.94)',
+    icon: '#22d3ee',
+    reactionBackground: 'rgba(16, 16, 44, 0.96)',
+    quoteBackground: 'rgba(34, 211, 238, 0.12)',
+    reply: '#22d3ee',
+    audioWave: '#22d3ee',
+    selection: 'rgba(232, 121, 249, 0.35)',
+    fontFamily: 'Oxanium',
+    fontHeading: 'Rajdhani',
+    borderRadius: '6px',
+    shadow: '0 0 12px rgba(34, 211, 238, 0.22)',
+    bubbleBlur: 0,
+    mediaRadius: '6px',
+    mediaBorder: '1px solid rgba(34, 211, 238, 0.4)',
+  },
+};

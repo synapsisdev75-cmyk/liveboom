@@ -21,6 +21,7 @@ import {
   Wallet,
   Languages,
   Banknote,
+  MessageCircle,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -52,6 +53,7 @@ import { useUiStore } from '../store/uiStore';
 import { LanguageSelector } from '../components/i18n/LanguageSelector';
 import { LanguageControl } from '../components/i18n/LanguageControl';
 import { WithdrawalRequestsPanel } from '../components/wallet/WithdrawalRequestsPanel';
+import { ChatThemeSettingsCard } from '../components/chatThemes/ChatThemeSettingsCard';
 import { bcp47For, categoryMessageKey, useT } from '../i18n';
 
 type SettingsTab =
@@ -61,7 +63,8 @@ type SettingsTab =
   | 'preferencias'
   | 'billetera'
   | 'retiros'
-  | 'idioma';
+  | 'idioma'
+  | 'chat';
 
 type EditField = 'displayName' | 'username' | null;
 
@@ -114,9 +117,10 @@ function formEqualsSnapshot(
   );
 }
 
-const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabWithdrawals' | 'settings.tabLanguage'; icon: typeof User }> = [
+const TABS: Array<{ id: SettingsTab; labelKey: 'settings.tabAccount' | 'settings.tabPrivacy' | 'settings.tabNotifications' | 'settings.tabPreferences' | 'settings.tabWallet' | 'settings.tabWithdrawals' | 'settings.tabLanguage' | 'settings.tabChat'; icon: typeof User }> = [
   { id: 'cuenta', labelKey: 'settings.tabAccount', icon: User },
   { id: 'preferencias', labelKey: 'settings.tabPreferences', icon: Eye },
+  { id: 'chat', labelKey: 'settings.tabChat', icon: MessageCircle },
   { id: 'idioma', labelKey: 'settings.tabLanguage', icon: Languages },
   { id: 'notificaciones', labelKey: 'settings.tabNotifications', icon: Bell },
   { id: 'privacidad', labelKey: 'settings.tabPrivacy', icon: Shield },
@@ -1047,6 +1051,8 @@ export function ProfileView() {
           </div>
         </Card>
       ) : null}
+
+      {tab === 'chat' ? <ChatThemeSettingsCard /> : null}
 
       {tab === 'idioma' ? (
         <Card title={t('language.title')} subtitle={t('language.subtitle')}>

@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'candy-boom';
+
+export const candyBoom: ChatTheme = {
+  id: ID,
+  name: 'Candy Boom',
+  description: 'Dulce, fresco y divertido en tonos pastel.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'light',
+  background: themeBackground(ID, 0.88, 'linear-gradient(180deg, #f3d9ef 0%, #e6dcf7 55%, #d8e6fb 100%)'),
+  fonts: ['Nunito', 'Quicksand'],
+  tokens: {
+    background: '#f6e6f2',
+    backgroundOverlay: 'rgba(255, 255, 255, 1)',
+    surface: 'rgba(255, 255, 255, 0.82)',
+    surfaceSecondary: '#ffffff',
+    bubbleIncoming: 'rgba(255, 255, 255, 0.94)',
+    bubbleIncomingText: '#3b2240',
+    bubbleOutgoing: 'linear-gradient(135deg, #ec4899 0%, #a78bfa 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(236, 72, 153, 0.16)',
+    textPrimary: '#3b2240',
+    textSecondary: '#7a5582',
+    accent: '#ec4899',
+    accentSecondary: '#8b5cf6',
+    onAccent: '#ffffff',
+    border: 'rgba(190, 24, 93, 0.14)',
+    inputBackground: 'rgba(255, 255, 255, 0.94)',
+    icon: '#db2777',
+    reactionBackground: '#ffffff',
+    quoteBackground: 'rgba(236, 72, 153, 0.1)',
+    reply: '#be185d',
+    audioWave: '#db2777',
+    selection: 'rgba(236, 72, 153, 0.25)',
+    fontFamily: 'Nunito',
+    fontHeading: 'Quicksand',
+    borderRadius: '22px',
+    shadow: '0 2px 10px rgba(190, 24, 93, 0.12)',
+    bubbleBlur: 0,
+    mediaRadius: '18px',
+    mediaBorder: '1px solid rgba(236, 72, 153, 0.18)',
+  },
+};

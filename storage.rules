@@ -193,6 +193,15 @@ service firebase.storage {
       allow delete: if isOwner(userId);
     }
 
+    // Temas del chat — «Mi fondo»: solo el dueño. La app re-codifica a WebP/JPEG (sin metadata).
+    match /users/{userId}/chat-backgrounds/{bgId}/{fileName} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.size < 4 * 1024 * 1024
+        && request.resource.contentType.matches('image/(webp|jpeg)')
+        && fileName.matches('^(thumb|medium|full)\\.(webp|jpg)$');
+    }
+
     // Media de grupos (portada / chat) bajo la carpeta del usuario — permisos fiables.
     match /users/{userId}/groups/{fileName} {
       allow read: if true;
@@ -253,6 +262,15 @@ service firebase.storage {
           request.resource.contentType.matches('image/.*')
           || request.resource.contentType.matches('video/.*')
         );
+    }
+
+    // Temas del chat (Super Admin): miniaturas y fondos oficiales re-codificados.
+    match /admin/chat-themes/{themeId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn()
+        && hasStorageCapability('messages')
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(webp|jpeg|png)');
     }
 
     // Catálogo Super Admin — regalos / Blast (AdminCatalogPanel)

@@ -31,6 +31,7 @@ import {
   ChevronLeft,
   Languages,
   MapPin,
+  Palette,
 } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
@@ -133,6 +134,11 @@ import { registerChatCallSurface } from '../../lib/chatCallSurface';
 import { profileHref } from '../../lib/profileFirestore';
 import { StickerPickerSheet } from './StickerPickerSheet';
 import { StickerViewerSheet } from './StickerViewerSheet';
+import { ChatBackgroundRenderer } from '../chatThemes/ChatBackgroundRenderer';
+import { ChatThemeSheet } from '../chatThemes/ChatThemeSheet';
+import { chatThemeAttrs, chatThemeStyle } from '../../chatThemes/cssVars';
+import { useResolvedChatTheme } from '../../chatThemes/useChatTheme';
+import '../../chatThemes/chatThemes.css';
 import type { ComposerSticker } from '../../lib/composerStickers';
 
 type Props = {
@@ -382,13 +388,13 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
   return (
     <div
       ref={rootRef}
-      className={`mb-0.5 flex w-[min(100%,15rem)] items-center gap-2 ${mine ? '' : ''}`}
+      className={`lb-chat-voice mb-0.5 flex w-[min(100%,15rem)] items-center gap-2 ${mine ? '' : ''}`}
     >
       <audio ref={audioRef} preload="none" playsInline className="hidden" />
       <button
         type="button"
         onClick={() => void toggle()}
-        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${
+        className={`lb-chat-voice__play grid h-9 w-9 shrink-0 place-items-center rounded-full ${
           mine ? 'bg-white/20 text-white' : 'bg-violet-500/25 text-violet-200'
         }`}
         aria-label={playing ? 'Pausar' : 'Reproducir'}
@@ -397,7 +403,7 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
       </button>
       <div className="min-w-0 flex-1">
         <div
-          className={`h-1.5 overflow-hidden rounded-full ${mine ? 'bg-white/25' : 'bg-white/10'}`}
+          className={`lb-chat-voice__track h-1.5 overflow-hidden rounded-full ${mine ? 'bg-white/25' : 'bg-white/10'}`}
           onClick={(e) => {
             const el = audioRef.current;
             if (!el || !duration) return;
@@ -409,11 +415,11 @@ function VoiceNotePlayer({ src, mine }: { src: string; mine?: boolean }) {
           role="presentation"
         >
           <div
-            className={`h-full rounded-full ${mine ? 'bg-white' : 'bg-violet-400'}`}
+            className={`lb-chat-voice__fill h-full rounded-full ${mine ? 'bg-white' : 'bg-violet-400'}`}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <p className={`mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-zinc-500'}`}>
+        <p className={`lb-chat-voice__time mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-zinc-500'}`}>
           {error || `${formatAudioClock(progress)} / ${formatAudioClock(duration)}`}
         </p>
       </div>
@@ -784,6 +790,9 @@ export function InternalChatPanel({
     setActiveUid(null),
   );
   const [chatId, setChatId] = useState<string | null>(null);
+  const threadTheme = useResolvedChatTheme(chatId);
+  const listTheme = useResolvedChatTheme(null);
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [draftStyle, setDraftStyle] = useState<PostTextStyle | null>(null);
@@ -2113,11 +2122,13 @@ export function InternalChatPanel({
 
   const listPane = (
     <div
-      className={`lb-chat-pane flex min-h-0 flex-col border-white/[0.06] bg-[#0a0a0b] ${
+      className={`lb-chat-pane lb-chat-themed flex min-h-0 flex-col border-white/[0.06] bg-[#0a0a0b] ${
         isPage
           ? `w-full md:w-[min(32%,18rem)] lg:w-[min(26%,16.5rem)] md:shrink-0 md:border-l ${mobileHideList ? 'hidden md:flex' : 'flex'}`
           : 'flex w-full md:w-48 md:border-r'
       }`}
+      style={chatThemeStyle(listTheme)}
+      {...chatThemeAttrs(listTheme)}
     >
       <div className="shrink-0 px-4 pb-2 pt-4">
         <div className="flex items-center justify-between gap-2">
@@ -2359,10 +2370,13 @@ export function InternalChatPanel({
 
   const threadPane = activeFriend ? (
       <div
-        className={`lb-chat-pane relative min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-[#0a0a0b] ${
+        className={`lb-chat-pane lb-chat-themed relative min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-[#0a0a0b] ${
           isPage ? (chatOpen ? 'flex' : 'hidden md:flex') : 'flex'
         }`}
+        style={chatThemeStyle(threadTheme)}
+        {...chatThemeAttrs(threadTheme)}
       >
+        <ChatBackgroundRenderer background={threadTheme.background} />
         <div className="lb-chat-thread-head">
           <div className="lb-chat-thread-head__row">
             {isFloating ? (
@@ -2465,6 +2479,15 @@ export function InternalChatPanel({
               ) : null}
               <button
                 type="button"
+                onClick={() => setThemeSheetOpen(true)}
+                className="lb-chat-thread-head__icon"
+                aria-label="Temas del chat"
+                title="Temas del chat"
+              >
+                <Palette size={16} />
+              </button>
+              <button
+                type="button"
                 disabled={busy || !chatId}
                 onClick={() => setManageOpen(true)}
                 className="lb-chat-thread-head__icon"
@@ -2500,7 +2523,7 @@ export function InternalChatPanel({
         >
           <div className="lb-chat-thread-scroll__inner space-y-3">
           {messages.filter((item) => !clearedAtMs || Date.parse(item.createdAt) >= clearedAtMs).length === 0 ? (
-            <p className="py-10 text-center text-xs leading-relaxed text-zinc-500">
+            <p className="lb-chat-empty-hint my-10 text-center text-xs leading-relaxed text-zinc-500">
               No hay mensajes todavía.
               <br />
               Escribe algo para comenzar de nuevo.
@@ -2608,7 +2631,7 @@ export function InternalChatPanel({
                   }}
                 >
                   {showDay ? (
-                    <p className="mb-3 text-center text-[11px] font-medium text-zinc-500">
+                    <p className="lb-chat-day-label mb-3 text-center text-[11px] font-medium text-zinc-500">
                       {dayLabel(message.createdAt)}
                     </p>
                   ) : null}
@@ -2713,7 +2736,7 @@ export function InternalChatPanel({
                                 playsInline
                                 preload="metadata"
                                 onClick={(event) => event.stopPropagation()}
-                                className="lb-chat-video mb-1 block max-h-[min(20rem,50dvh)] w-[min(16rem,62vw)] max-w-full rounded-xl bg-black object-contain"
+                                className="lb-chat-video lb-chat-media mb-1 block max-h-[min(20rem,50dvh)] w-[min(16rem,62vw)] max-w-full rounded-xl bg-black object-contain"
                               />
                             ) : null}
                             {isSticker ? (
@@ -2749,7 +2772,7 @@ export function InternalChatPanel({
                                   alt=""
                                   loading="lazy"
                                   decoding="async"
-                                  className={`max-h-48 ${isBarePhoto ? 'rounded-2xl' : 'rounded-lg'} ${
+                                  className={`lb-chat-media max-h-48 ${isBarePhoto ? 'rounded-2xl' : 'rounded-lg'} ${
                                     isGif ? 'object-contain' : 'object-cover'
                                   }`}
                                 />
@@ -3132,7 +3155,7 @@ export function InternalChatPanel({
                             ) : null}
                           </span>
                         ) : null}
-                        <span className="text-[10px] text-zinc-500">
+                        <span className="lb-chat-meta-time text-[10px] text-zinc-500">
                           {formatBubbleTime(message.createdAt)}
                         </span>
                         {message.mine ? <MessageTicks status={message.status} /> : null}
@@ -3515,6 +3538,12 @@ export function InternalChatPanel({
 
   const chatExtras = (
     <>
+      <ChatThemeSheet
+        open={themeSheetOpen}
+        onClose={() => setThemeSheetOpen(false)}
+        chatId={chatId}
+        peerName={activeFriend?.displayName || activeFriend?.username || undefined}
+      />
       {peerDeletedNotice ? (
         <div className="lb-chat-deleted-toast" role="status">
           {peerDeletedNotice}

@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'boom-neon';
+
+export const boomNeon: ChatTheme = {
+  id: ID,
+  name: 'Boom Neon',
+  description: 'Energía gamer con luces neón azul y violeta.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.05, 'radial-gradient(90% 60% at 0% 20%, #2a1a7a 0%, transparent 60%), radial-gradient(90% 60% at 100% 85%, #0b3aa8 0%, transparent 60%), #03041a'),
+  fonts: ['Space Grotesk', 'Rajdhani'],
+  tokens: {
+    background: '#05061a',
+    backgroundOverlay: 'rgba(2, 3, 14, 1)',
+    surface: 'rgba(6, 8, 28, 0.84)',
+    surfaceSecondary: '#0c0f2e',
+    bubbleIncoming: 'rgba(16, 20, 52, 0.9)',
+    bubbleIncomingText: '#eef2ff',
+    bubbleOutgoing: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(99, 102, 241, 0.38)',
+    textPrimary: '#eef2ff',
+    textSecondary: '#a5b4fc',
+    accent: '#3b82f6',
+    accentSecondary: '#a855f7',
+    onAccent: '#ffffff',
+    border: 'rgba(129, 140, 248, 0.24)',
+    inputBackground: 'rgba(10, 12, 40, 0.92)',
+    icon: '#60a5fa',
+    reactionBackground: 'rgba(14, 16, 48, 0.96)',
+    quoteBackground: 'rgba(96, 165, 250, 0.14)',
+    reply: '#60a5fa',
+    audioWave: '#60a5fa',
+    selection: 'rgba(59, 130, 246, 0.35)',
+    fontFamily: 'Space Grotesk',
+    fontHeading: 'Rajdhani',
+    borderRadius: '16px',
+    shadow: '0 0 14px rgba(59, 130, 246, 0.25)',
+    bubbleBlur: 0,
+    mediaRadius: '14px',
+    mediaBorder: '1px solid rgba(96, 165, 250, 0.35)',
+  },
+};

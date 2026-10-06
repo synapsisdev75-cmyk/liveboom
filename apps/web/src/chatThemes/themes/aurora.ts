@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'aurora';
+
+export const aurora: ChatTheme = {
+  id: ID,
+  name: 'Aurora',
+  description: 'Calma y luz con burbujas de cristal.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.47, 'linear-gradient(180deg, #1c2452 0%, #4a5aa6 55%, #7d8cc4 100%)'),
+  fonts: ['Manrope'],
+  tokens: {
+    background: '#1d2a55',
+    backgroundOverlay: 'rgba(10, 16, 40, 1)',
+    surface: 'rgba(20, 28, 62, 0.6)',
+    surfaceSecondary: '#1e2a52',
+    bubbleIncoming: 'rgba(255, 255, 255, 0.18)',
+    bubbleIncomingText: '#ffffff',
+    bubbleOutgoing: 'linear-gradient(135deg, rgba(45, 212, 191, 0.78) 0%, rgba(129, 140, 248, 0.78) 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(255, 255, 255, 0.24)',
+    textPrimary: '#ffffff',
+    textSecondary: '#dbe4ff',
+    accent: '#2dd4bf',
+    accentSecondary: '#c084fc',
+    onAccent: '#ffffff',
+    border: 'rgba(255, 255, 255, 0.2)',
+    inputBackground: 'rgba(255, 255, 255, 0.16)',
+    icon: '#a5f3fc',
+    reactionBackground: 'rgba(30, 40, 80, 0.85)',
+    quoteBackground: 'rgba(255, 255, 255, 0.14)',
+    reply: '#99f6e4',
+    audioWave: '#99f6e4',
+    selection: 'rgba(45, 212, 191, 0.35)',
+    fontFamily: 'Manrope',
+    fontHeading: 'Manrope',
+    borderRadius: '20px',
+    shadow: '0 4px 18px rgba(8, 12, 30, 0.25)',
+    bubbleBlur: 14,
+    mediaRadius: '16px',
+    mediaBorder: '1px solid rgba(255, 255, 255, 0.22)',
+  },
+};

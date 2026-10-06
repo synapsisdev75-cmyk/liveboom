@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'golden-night';
+
+export const goldenNight: ChatTheme = {
+  id: ID,
+  name: 'Golden Night',
+  description: 'Lujo y elegancia en negro y dorado.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.09, 'radial-gradient(120% 50% at 50% 100%, #4a3010 0%, transparent 65%), #120c06'),
+  fonts: ['Manrope', 'Cormorant Garamond'],
+  tokens: {
+    background: '#140d06',
+    backgroundOverlay: 'rgba(8, 5, 2, 1)',
+    surface: 'rgba(18, 12, 6, 0.88)',
+    surfaceSecondary: '#1e150b',
+    bubbleIncoming: 'rgba(30, 22, 14, 0.94)',
+    bubbleIncomingText: '#fdf6e3',
+    bubbleOutgoing: 'linear-gradient(135deg, #b8860b 0%, #e6c35c 100%)',
+    bubbleOutgoingText: '#1a1206',
+    bubbleBorder: 'rgba(212, 175, 55, 0.32)',
+    textPrimary: '#fdf6e3',
+    textSecondary: '#e6c35c',
+    accent: '#d4af37',
+    accentSecondary: '#f5d77a',
+    onAccent: '#1a1206',
+    border: 'rgba(212, 175, 55, 0.28)',
+    inputBackground: 'rgba(24, 17, 9, 0.94)',
+    icon: '#e6c35c',
+    reactionBackground: 'rgba(30, 22, 12, 0.96)',
+    quoteBackground: 'rgba(212, 175, 55, 0.14)',
+    reply: '#e6c35c',
+    audioWave: '#e6c35c',
+    selection: 'rgba(212, 175, 55, 0.35)',
+    fontFamily: 'Manrope',
+    fontHeading: 'Cormorant Garamond',
+    borderRadius: '16px',
+    shadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
+    bubbleBlur: 0,
+    mediaRadius: '14px',
+    mediaBorder: '1px solid rgba(212, 175, 55, 0.35)',
+  },
+};

@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'fuego-boom';
+
+export const fuegoBoom: ChatTheme = {
+  id: ID,
+  name: 'Fuego Boom',
+  description: 'Pasión y potencia sobre carbón oscuro.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.11, 'radial-gradient(120% 50% at 50% 110%, #7a1d0c 0%, transparent 65%), #120c0b'),
+  fonts: ['Archivo', 'Barlow Condensed'],
+  tokens: {
+    background: '#120c0b',
+    backgroundOverlay: 'rgba(8, 4, 4, 1)',
+    surface: 'rgba(20, 12, 10, 0.86)',
+    surfaceSecondary: '#1d1311',
+    bubbleIncoming: 'rgba(34, 26, 24, 0.94)',
+    bubbleIncomingText: '#fff4ed',
+    bubbleOutgoing: 'linear-gradient(135deg, #dc2626 0%, #f97316 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(251, 146, 60, 0.2)',
+    textPrimary: '#fff4ed',
+    textSecondary: '#fdba74',
+    accent: '#f97316',
+    accentSecondary: '#ef4444',
+    onAccent: '#ffffff',
+    border: 'rgba(251, 146, 60, 0.2)',
+    inputBackground: 'rgba(28, 18, 16, 0.94)',
+    icon: '#fb923c',
+    reactionBackground: 'rgba(36, 22, 18, 0.96)',
+    quoteBackground: 'rgba(249, 115, 22, 0.14)',
+    reply: '#fb923c',
+    audioWave: '#fb923c',
+    selection: 'rgba(249, 115, 22, 0.35)',
+    fontFamily: 'Archivo',
+    fontHeading: 'Barlow Condensed',
+    borderRadius: '14px',
+    shadow: '0 0 14px rgba(239, 68, 68, 0.22)',
+    bubbleBlur: 0,
+    mediaRadius: '12px',
+    mediaBorder: '1px solid rgba(251, 146, 60, 0.28)',
+  },
+};

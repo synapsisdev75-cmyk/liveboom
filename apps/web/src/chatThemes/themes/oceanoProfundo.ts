@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'oceano-profundo';
+
+export const oceanoProfundo: ChatTheme = {
+  id: ID,
+  name: 'Océano Profundo',
+  description: 'Serenidad azul con luz que llega desde la superficie.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.13, 'radial-gradient(100% 60% at 50% 0%, #0d5a8f 0%, transparent 70%), #04203f'),
+  fonts: ['DM Sans'],
+  tokens: {
+    background: '#04203f',
+    backgroundOverlay: 'rgba(2, 12, 28, 1)',
+    surface: 'rgba(4, 22, 46, 0.84)',
+    surfaceSecondary: '#082a4d',
+    bubbleIncoming: 'rgba(10, 40, 72, 0.9)',
+    bubbleIncomingText: '#e0f2fe',
+    bubbleOutgoing: 'linear-gradient(135deg, #0891b2 0%, #2563eb 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(56, 189, 248, 0.22)',
+    textPrimary: '#e0f2fe',
+    textSecondary: '#7dd3fc',
+    accent: '#06b6d4',
+    accentSecondary: '#3b82f6',
+    onAccent: '#ffffff',
+    border: 'rgba(56, 189, 248, 0.2)',
+    inputBackground: 'rgba(6, 30, 58, 0.92)',
+    icon: '#67e8f9',
+    reactionBackground: 'rgba(8, 36, 66, 0.96)',
+    quoteBackground: 'rgba(103, 232, 249, 0.12)',
+    reply: '#67e8f9',
+    audioWave: '#67e8f9',
+    selection: 'rgba(6, 182, 212, 0.35)',
+    fontFamily: 'DM Sans',
+    fontHeading: 'DM Sans',
+    borderRadius: '20px',
+    shadow: '0 2px 12px rgba(2, 12, 28, 0.35)',
+    bubbleBlur: 0,
+    mediaRadius: '16px',
+    mediaBorder: '1px solid rgba(103, 232, 249, 0.25)',
+  },
+};

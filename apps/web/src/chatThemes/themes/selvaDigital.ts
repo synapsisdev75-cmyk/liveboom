@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'selva-digital';
+
+export const selvaDigital: ChatTheme = {
+  id: ID,
+  name: 'Selva Digital',
+  description: 'Naturaleza y tecnología con brillo esmeralda.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.11, 'radial-gradient(90% 60% at 50% 40%, #0f3a1a 0%, transparent 70%), #04140a'),
+  fonts: ['Manrope', 'Sora'],
+  tokens: {
+    background: '#06180b',
+    backgroundOverlay: 'rgba(2, 10, 4, 1)',
+    surface: 'rgba(6, 20, 10, 0.86)',
+    surfaceSecondary: '#0b2412',
+    bubbleIncoming: 'rgba(12, 34, 18, 0.92)',
+    bubbleIncomingText: '#ecfdf5',
+    bubbleOutgoing: 'linear-gradient(135deg, #15803d 0%, #4d7c0f 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(74, 222, 128, 0.24)',
+    textPrimary: '#ecfdf5',
+    textSecondary: '#86efac',
+    accent: '#22c55e',
+    accentSecondary: '#a3e635',
+    onAccent: '#04210d',
+    border: 'rgba(74, 222, 128, 0.2)',
+    inputBackground: 'rgba(8, 26, 14, 0.94)',
+    icon: '#4ade80',
+    reactionBackground: 'rgba(10, 30, 16, 0.96)',
+    quoteBackground: 'rgba(74, 222, 128, 0.12)',
+    reply: '#86efac',
+    audioWave: '#86efac',
+    selection: 'rgba(34, 197, 94, 0.35)',
+    fontFamily: 'Manrope',
+    fontHeading: 'Sora',
+    borderRadius: '18px',
+    shadow: '0 0 12px rgba(34, 197, 94, 0.18)',
+    bubbleBlur: 0,
+    mediaRadius: '14px',
+    mediaBorder: '1px solid rgba(74, 222, 128, 0.28)',
+  },
+};

@@ -72,6 +72,7 @@ export const es = {
     tabWithdrawals: 'Solicitud de retiros',
     tabAppearance: 'Apariencia',
     tabLanguage: 'Idioma',
+    tabChat: 'Chat',
     accountInfo: 'Información de la cuenta',
     accountInfoSub: 'Actualiza tu información personal y de contacto.',
     changePhoto: 'Cambiar foto',

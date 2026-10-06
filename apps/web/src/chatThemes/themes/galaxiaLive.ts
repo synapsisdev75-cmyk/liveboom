@@ -1,0 +1,45 @@
+import type { ChatTheme } from '../types';
+import { themeBackground, themeThumbnail } from './shared';
+
+const ID = 'galaxia-live';
+
+export const galaxiaLive: ChatTheme = {
+  id: ID,
+  name: 'Galaxia Live',
+  description: 'Un universo violeta lleno de estrellas.',
+  thumbnail: themeThumbnail(ID),
+  scheme: 'dark',
+  background: themeBackground(ID, 0.07, 'radial-gradient(80% 50% at 20% 70%, #3b1d6e 0%, transparent 65%), radial-gradient(70% 45% at 85% 75%, #1d3a7a 0%, transparent 65%), #0b0b1e'),
+  fonts: ['Space Grotesk', 'Exo 2'],
+  tokens: {
+    background: '#0d0d22',
+    backgroundOverlay: 'rgba(4, 4, 14, 1)',
+    surface: 'rgba(14, 12, 34, 0.84)',
+    surfaceSecondary: '#17143a',
+    bubbleIncoming: 'rgba(30, 26, 64, 0.9)',
+    bubbleIncomingText: '#f3e8ff',
+    bubbleOutgoing: 'linear-gradient(135deg, #7c3aed 0%, #db2777 100%)',
+    bubbleOutgoingText: '#ffffff',
+    bubbleBorder: 'rgba(167, 139, 250, 0.26)',
+    textPrimary: '#f3e8ff',
+    textSecondary: '#c4b5fd',
+    accent: '#a855f7',
+    accentSecondary: '#ec4899',
+    onAccent: '#ffffff',
+    border: 'rgba(167, 139, 250, 0.22)',
+    inputBackground: 'rgba(20, 18, 46, 0.92)',
+    icon: '#c4b5fd',
+    reactionBackground: 'rgba(26, 22, 58, 0.96)',
+    quoteBackground: 'rgba(196, 181, 253, 0.14)',
+    reply: '#d8b4fe',
+    audioWave: '#d8b4fe',
+    selection: 'rgba(168, 85, 247, 0.35)',
+    fontFamily: 'Space Grotesk',
+    fontHeading: 'Exo 2',
+    borderRadius: '18px',
+    shadow: '0 0 16px rgba(168, 85, 247, 0.22)',
+    bubbleBlur: 0,
+    mediaRadius: '14px',
+    mediaBorder: '1px solid rgba(196, 181, 253, 0.28)',
+  },
+};

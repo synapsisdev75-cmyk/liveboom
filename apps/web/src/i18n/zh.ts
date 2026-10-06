@@ -73,6 +73,7 @@ export const zh: Catalog = {
     tabWithdrawals: '提现申请',
     tabAppearance: '外观',
     tabLanguage: '语言',
+    tabChat: '聊天',
     accountInfo: '账号信息',
     accountInfoSub: '更新你的个人和联系信息。',
     changePhoto: '更换头像',
