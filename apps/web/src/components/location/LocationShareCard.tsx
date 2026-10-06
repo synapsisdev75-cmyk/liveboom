@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Navigation, Radio } from 'lucide-react';
-import { directionsUrl, formatRemaining, locationInAppHref, type SharedLocation } from '../../lib/locationShare';
+import { MapPin, Radio } from 'lucide-react';
+import { formatRemaining, locationInAppHref, type SharedLocation } from '../../lib/locationShare';
 import { useLiveLocation, useNow } from '../../lib/liveLocation';
+import { DirectionsButton } from './DirectionsSheet';
 
 const LocationMap = lazy(() => import('./LocationMap'));
 
@@ -78,15 +79,11 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
             {subtitle}
           </span>
         </Link>
-        <a
-          href={directionsUrl(point)}
-          target="_blank"
-          rel="noopener noreferrer"
+        <DirectionsButton
+          destination={location}
+          iconSize={13}
           className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-3 text-[11px] font-bold text-[#0b0f19]"
-        >
-          <Navigation size={13} />
-          Cómo llegar
-        </a>
+        />
       </div>
       {onDismiss ? (
         <button

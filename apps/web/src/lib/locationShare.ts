@@ -116,6 +116,15 @@ export function locationInAppHref(loc: SharedLocation): string {
   return `${LOCATION_PATH}?${locationParams(loc).toString()}`;
 }
 
+/** Navegación paso a paso dentro de LiveBoom hacia la ubicación. */
+export const NAVIGATION_PATH = '/ruta';
+
+export function navigationInAppHref(loc: SharedLocation, mode?: string): string {
+  const params = locationParams(loc);
+  if (mode) params.set('m', mode);
+  return `${NAVIGATION_PATH}?${params.toString()}`;
+}
+
 export function whatsappShareUrl(text: string, url: string): string {
   return `https://api.whatsapp.com/send?text=${encodeURIComponent(`${text}\n${url}`)}`;
 }

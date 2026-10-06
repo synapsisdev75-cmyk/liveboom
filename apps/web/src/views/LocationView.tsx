@@ -1,15 +1,15 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, Copy, ExternalLink, MapPin, Navigation, Share2, Square } from 'lucide-react';
+import { ArrowLeft, Check, Copy, ExternalLink, MapPin, Share2, Square } from 'lucide-react';
 import {
   buildLocationUrl,
-  directionsUrl,
   formatRemaining,
   openStreetMapUrl,
   parseLocationParams,
 } from '../lib/locationShare';
 import { useLiveLocation, useLiveLocationShare, useNow } from '../lib/liveLocation';
 import { LocationShareModal } from '../components/location/LocationShareModal';
+import { DirectionsButton } from '../components/location/DirectionsSheet';
 import { UserAvatar } from '../components/profile/UserAvatar';
 import { useAuthStore } from '../store/authStore';
 
@@ -125,15 +125,10 @@ export default function LocationView() {
             className="grid grid-cols-2 gap-2 border-t border-[color:var(--border-soft)] p-3 sm:flex sm:justify-center"
             style={{ paddingBottom: 'max(0.75rem, var(--lb-safe-bottom, 0px))' }}
           >
-            <a
-              href={directionsUrl(point)}
-              target="_blank"
-              rel="noopener noreferrer"
+            <DirectionsButton
+              destination={loc}
               className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-5 text-sm font-bold text-[#0b0f19] sm:col-span-1"
-            >
-              <Navigation size={16} />
-              Cómo llegar
-            </a>
+            />
             {isMine ? (
               <button
                 type="button"

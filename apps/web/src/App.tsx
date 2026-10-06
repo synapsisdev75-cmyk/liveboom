@@ -77,6 +77,7 @@ const RewardsView = lazy(() =>
   import('./views/RewardsView').then((m) => ({ default: m.RewardsView })),
 );
 const LocationView = lazy(() => import('./views/LocationView'));
+const NavigationView = lazy(() => import('./views/NavigationView'));
 const SuperAdminView = lazy(() =>
   import('./views/SuperAdminView').then((m) => ({ default: m.SuperAdminView })),
 );
@@ -208,6 +209,7 @@ export default function App() {
           <Route path="/registro" element={<LoginView />} />
           <Route path="/legal/:slug" element={<LegalView />} />
           <Route path="/ubicacion" element={<LocationView />} />
+          <Route path="/ruta" element={<NavigationView />} />
           <Route path="/stream/:username" element={<LiveRoom />} />
           <Route element={<MainLayout />}>
             <Route index element={<Navigate to="/explorar" replace />} />

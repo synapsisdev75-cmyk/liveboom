@@ -20090,3 +20090,165 @@ html[data-lb-theme='light'] .lb-loc-scene {
   color: #06b6d4;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 }
+
+/* Cómo llegar: medio de transporte */
+.lb-travel-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.9rem;
+  background: var(--surface-secondary);
+}
+
+.lb-travel-modes__btn {
+  display: inline-flex;
+  min-height: 2.5rem;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.lb-travel-modes__btn.is-active {
+  background: linear-gradient(90deg, #22d3ee, #a78bfa);
+  color: #0b0f19;
+}
+
+@media (pointer: coarse) {
+  .lb-travel-modes__btn {
+    min-height: 2.75rem;
+  }
+}
+
+/* Navegación dentro de LiveBoom */
+.lb-nav-user {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  pointer-events: none;
+}
+
+.lb-nav-user__halo {
+  position: absolute;
+  inset: 4px;
+  border-radius: 9999px;
+  background: rgba(34, 211, 238, 0.25);
+  animation: lb-nav-user-pulse 2s ease-out infinite;
+}
+
+.lb-nav-user__dot {
+  position: absolute;
+  inset: 13px;
+  border: 3px solid #ffffff;
+  border-radius: 9999px;
+  background: #06b6d4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.lb-nav-user__arrow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: none;
+  width: 0;
+  height: 0;
+  border-right: 8px solid transparent;
+  border-bottom: 13px solid #22d3ee;
+  border-left: 8px solid transparent;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.lb-nav-user.has-heading .lb-nav-user__arrow {
+  display: block;
+}
+
+@keyframes lb-nav-user-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-nav-user__halo {
+    animation: none;
+  }
+}
+
+.lb-nav-map-actions {
+  position: absolute;
+  right: 10px;
+  bottom: 36px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lb-nav-map-actions__btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-default);
+  border-radius: 9999px;
+  background: var(--bg-elevated);
+  color: #06b6d4;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.lb-nav-banner {
+  position: absolute;
+  left: max(0.6rem, var(--lb-safe-left, 0px));
+  right: max(0.6rem, var(--lb-safe-right, 0px));
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+
+.lb-nav-banner__back {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-default);
+  border-radius: 9999px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.lb-nav-banner__card {
+  min-width: 0;
+  flex: 1;
+  padding: 0.7rem 0.9rem;
+  border-radius: 1.1rem;
+  background: linear-gradient(135deg, #0e7490, #6d28d9);
+  color: #ffffff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.lb-nav-banner__card.is-arrived {
+  background: linear-gradient(135deg, #15803d, #0e7490);
+}
+
+.lb-nav-banner__card.is-error {
+  background: linear-gradient(135deg, #b91c1c, #7c2d12);
+}

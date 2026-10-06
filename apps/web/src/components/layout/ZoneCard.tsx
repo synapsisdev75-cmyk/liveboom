@@ -1,4 +1,4 @@
-import { MapPin } from 'lucide-react';
+import { MapPin, Navigation } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useT } from '../../i18n';
 import { syncPublicGeo } from '../../lib/publicGeo';
@@ -13,6 +13,7 @@ import {
 import type { SharedLocation } from '../../lib/locationShare';
 import { useAuthStore } from '../../store/authStore';
 import { LocationShareModal } from '../location/LocationShareModal';
+import { PlaceDirectionsModal } from '../location/PlaceDirectionsModal';
 
 const ZoneLiveMap = lazy(() => import('./ZoneLiveMap'));
 
@@ -29,6 +30,7 @@ export function ZoneCard({
   const [locBusy, setLocBusy] = useState(false);
   const [showPrompt, setShowPrompt] = useState(() => !locationPromptDismissed());
   const [shareLoc, setShareLoc] = useState<SharedLocation | null>(null);
+  const [directionsOpen, setDirectionsOpen] = useState(false);
 
   async function shareLocation() {
     if (!profile) return;
@@ -74,6 +76,19 @@ export function ZoneCard({
               }
             />
           </Suspense>
+          <button
+            type="button"
+            onClick={() => setDirectionsOpen(true)}
+            className="mt-2 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-300 [@media(pointer:coarse)]:min-h-11"
+          >
+            <Navigation size={13} />
+            Cómo llegar a un lugar
+          </button>
+          <PlaceDirectionsModal
+            open={directionsOpen}
+            onClose={() => setDirectionsOpen(false)}
+            near={{ lat: location.lat, lng: location.lng }}
+          />
           <LocationShareModal
             open={Boolean(shareLoc)}
             onClose={() => setShareLoc(null)}
