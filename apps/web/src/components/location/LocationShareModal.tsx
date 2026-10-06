@@ -11,7 +11,6 @@ import {
   Radio,
   RefreshCw,
   Search,
-  Share2,
   Square,
   Users,
   X,
@@ -246,20 +245,6 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
     }
   }
 
-  async function nativeShare() {
-    const text =
-      kind === 'live' ? 'Sigue mi ubicación en tiempo real en LiveBoom' : `${loc?.label || 'Mi ubicación'} en LiveBoom`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: 'Ubicación · LiveBoom', text, url: shareUrl });
-      } catch {
-        /* el usuario canceló */
-      }
-      return;
-    }
-    await copyLink();
-  }
-
   if (!open || typeof document === 'undefined') return null;
 
   const destBtn =
@@ -491,7 +476,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
                 ) : null
               ) : shareLoc ? (
                 <>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setPanel((p) => (p === 'chat' ? 'none' : 'chat'))}
@@ -511,10 +496,6 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
                     <button type="button" onClick={() => void copyLink()} className={`${destBtn} ${destIdle}`}>
                       {copied ? <Check size={18} className="text-[#22c55e]" /> : <Copy size={18} className="text-[#f59e0b]" />}
                       {copied ? 'Copiado' : 'Copiar'}
-                    </button>
-                    <button type="button" onClick={() => void nativeShare()} className={`${destBtn} ${destIdle}`}>
-                      <Share2 size={18} className="text-[#ec4899]" />
-                      Más
                     </button>
                   </div>
                   <a
