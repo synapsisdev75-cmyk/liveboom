@@ -50,6 +50,9 @@ export default function ZoneLiveMap({
       keyboard: false,
     });
     map.attributionControl.setPrefix(false);
+    const attribution = map.attributionControl.getContainer();
+    attribution?.setAttribute('tabindex', '0');
+    attribution?.setAttribute('aria-label', 'Créditos del mapa');
     L.control.zoom({ position: 'topright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' }).addTo(map);
     L.tileLayer(TILE_URL, {
       maxZoom: 19,

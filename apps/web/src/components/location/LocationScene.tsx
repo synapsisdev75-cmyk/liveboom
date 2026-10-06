@@ -170,9 +170,6 @@ export default function LocationScene({
     });
     map.once('load', () => {
       loaded = true;
-      const attrib = host.querySelector('details.maplibregl-ctrl-attrib');
-      attrib?.classList.remove('maplibregl-compact-show');
-      attrib?.removeAttribute('open');
       if (!reduceMotion) {
         map.easeTo({ pitch: 55, bearing: -18, zoom: latestRef.current.zoom, duration: 1800 });
       }

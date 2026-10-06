@@ -19731,6 +19731,27 @@ html:not([data-lb-theme='light']) .lb-zone-map .leaflet-tile-pane {
   line-height: 1.5;
   background: rgba(11, 15, 25, 0.6);
   color: #cbd5e1;
+  cursor: pointer;
+  outline: none;
+}
+
+/* Créditos plegados en un ⓘ; se leen al tocarlo o pasar el mouse (licencia OSM). */
+.lb-zone-map .leaflet-control-attribution:not(:hover):not(:focus) {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: 0 4px 4px 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  font-size: 0;
+}
+
+.lb-zone-map .leaflet-control-attribution:not(:hover):not(:focus)::before {
+  content: 'i';
+  font: italic 700 11px/1 Georgia, serif;
+  color: #cbd5e1;
 }
 
 .lb-zone-map .leaflet-control-attribution a {
@@ -20068,6 +20089,15 @@ html[data-lb-theme='light'] .lb-loc-scene {
 
 .lb-loc-scene .maplibregl-ctrl-attrib {
   font-size: 9px;
+}
+
+/* Créditos plegados en el ⓘ; se leen al tocarlo o pasar el mouse (licencia OSM). */
+.lb-loc-scene .maplibregl-ctrl-attrib.maplibregl-compact:not(:hover):not(:focus-within) {
+  padding: 2px 24px 2px 0;
+}
+
+.lb-loc-scene .maplibregl-ctrl-attrib.maplibregl-compact:not(:hover):not(:focus-within) .maplibregl-ctrl-attrib-inner {
+  display: none;
 }
 
 .lb-loc-scene__brand {
