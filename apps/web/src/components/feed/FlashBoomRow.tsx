@@ -78,14 +78,14 @@ function StoryThumb({
           style={videoAspect.isReady ? videoAspect.aspectStyle : undefined}
         >
           {reel.mediaType === 'photo' ? (
-            <img src={reel.mediaUrl} alt="" className="h-full w-full object-cover" />
+            <img src={reel.mediaUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
           ) : (
             <AutoplayMuteVideo src={reel.mediaUrl} className="h-full w-full object-cover" />
           )}
         </span>
         <span className="absolute -bottom-0.5 -right-0.5 h-6 w-6 overflow-hidden rounded-full ring-2 ring-zinc-950">
           {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+            <img src={avatarUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
           ) : (
             <span className="grid h-full w-full place-items-center bg-zinc-800 text-[9px] font-bold uppercase text-zinc-300">
               {reel.username.slice(0, 1)}

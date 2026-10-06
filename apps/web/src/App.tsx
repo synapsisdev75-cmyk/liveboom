@@ -4,7 +4,6 @@ import { MainLayout } from './components/layout/MainLayout';
 import { useAuthStore } from './store/authStore';
 import { LoginView } from './views/LoginView';
 import { CookieBanner } from './components/legal/CookieBanner';
-import { CallOverlay } from './components/social/CallOverlay';
 import { SuperAdminRoute } from './components/auth/SuperAdminRoute';
 import { useLevelsConfigStore } from './store/levelsConfigStore';
 import { useCatalogConfigStore } from './store/catalogConfigStore';
@@ -78,6 +77,9 @@ const RewardsView = lazy(() =>
 );
 const LocationView = lazy(() => import('./views/LocationView'));
 const NavigationView = lazy(() => import('./views/NavigationView'));
+const CallOverlay = lazy(() =>
+  import('./components/social/CallOverlay').then((m) => ({ default: m.CallOverlay })),
+);
 const SuperAdminView = lazy(() =>
   import('./views/SuperAdminView').then((m) => ({ default: m.SuperAdminView })),
 );
@@ -260,7 +262,9 @@ export default function App() {
         </Routes>
       </Suspense>
       <GlobalBoomAnimationOverlay />
-      <CallOverlay />
+      <Suspense fallback={null}>
+        <CallOverlay />
+      </Suspense>
       <CookieBanner />
     </BrowserRouter>
     </ThemeProvider>

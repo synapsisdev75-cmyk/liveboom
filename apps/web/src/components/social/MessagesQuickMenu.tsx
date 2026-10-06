@@ -4,7 +4,7 @@
   Search,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { countInboxUnread } from '../../lib/chatNotifyContext';
@@ -22,7 +22,10 @@ import {
 import { UserAvatar } from '../profile/UserAvatar';
 import { CHAT_LIST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
 import { EmojiText } from './EmojiText';
-import { InternalChatPanel } from './InternalChatPanel';
+
+const InternalChatPanel = lazy(() =>
+  import('./InternalChatPanel').then((m) => ({ default: m.InternalChatPanel })),
+);
 
 /** Clics en estos nodos no minimizan la ventana celular (overlays / UI de mensajes). */
 const MSG_OUTSIDE_KEEP_SEL = [
@@ -427,11 +430,13 @@ function PhoneChatWindow({
         zIndex: 80 + index,
       }}
     >
-      <InternalChatPanel
-        floatingPeer={peer}
-        onFloatingClose={onClose}
-        onFloatingMinimize={onMinimize}
-      />
+      <Suspense fallback={null}>
+        <InternalChatPanel
+          floatingPeer={peer}
+          onFloatingClose={onClose}
+          onFloatingMinimize={onMinimize}
+        />
+      </Suspense>
     </div>,
     document.body,
   );

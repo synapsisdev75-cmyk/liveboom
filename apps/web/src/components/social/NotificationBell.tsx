@@ -21,16 +21,13 @@ import { api } from '../../lib/api';
 import {
   acceptFriendRequest,
   listenConversations,
-  listenFriends,
   listenIncomingRequests,
   listenPostAlerts,
-  listenRecentPosts,
   rejectFriendRequest,
   deletePostAlert,
   clearPostAlerts,
   buildPostAlertTarget,
   type PostAlertItem,
-  type FriendChip,
   type FriendRequest,
 } from '../../lib/socialFirestore';
 import { listenLiveAlerts, deleteLiveAlert, clearLiveAlerts, removeLiveGuestInvites } from '../../lib/liveGiftsFirestore';
@@ -74,9 +71,7 @@ export function NotificationBell() {
   const [items, setItems] = useState<NotiItem[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const friendsRef = useRef<FriendChip[]>([]);
   const knownRequestIds = useRef<Set<string> | null>(null);
-  const knownPostIds = useRef<Set<string> | null>(null);
   const knownLive = useRef<Set<string> | null>(null);
   const knownMsgAt = useRef<Map<string, string>>(new Map());
   const dismissedMsgIds = useRef<Set<string>>(new Set());
@@ -84,13 +79,6 @@ export function NotificationBell() {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
   const [sheetMobile, setSheetMobile] = useState(false);
-
-  useEffect(() => {
-    if (!profile) return;
-    return listenFriends(profile.firebaseUid, (list) => {
-      friendsRef.current = list;
-    });
-  }, [profile?.firebaseUid]);
 
   useEffect(() => {
     if (!profile) {
@@ -125,14 +113,6 @@ export function NotificationBell() {
         }));
         return [...notes, ...without].slice(0, 40);
       });
-    });
-
-    const unsubPosts = listenRecentPosts((list) => {
-      if (knownPostIds.current == null) {
-        knownPostIds.current = new Set(list.map((item) => item.id));
-        return;
-      }
-      knownPostIds.current = new Set(list.map((item) => item.id));
     });
 
     const unsubPostAlerts = listenPostAlerts(profile.firebaseUid, (alerts) => {
@@ -286,7 +266,6 @@ export function NotificationBell() {
       cancelled = true;
       window.clearInterval(timer);
       unsubReq();
-      unsubPosts();
       unsubPostAlerts();
       unsubChats();
       unsubAlerts();

@@ -20,7 +20,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { sweepAuthorReelLifecycle } from '../../lib/socialFirestore';
@@ -30,7 +30,6 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { isPhoneLandscapeViewport } from '../../responsive/viewport';
 import { useAppReload, usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { GO_HOME_EVENT, requestGoHome } from '../../lib/goHome';
-import { CoinModal } from '../wallet/CoinModal';
 import { initPendingBlastRechargeWatcher } from '../../lib/pendingBlastRecharge';
 import { NotificationBell } from '../social/NotificationBell';
 import { MessagesFloatingHost } from '../social/MessagesQuickMenu';
@@ -48,6 +47,8 @@ import { useLocaleStore } from '../../store/localeStore';
 import { prefetchRoute } from '../../lib/routePrefetch';
 import { useMessagesInboxVisible } from '../../hooks/useMessagesInboxVisible';
 import { AdRewardsHost } from '../rewards/AdRewardsHost';
+
+const CoinModal = lazy(() => import('../wallet/CoinModal').then((m) => ({ default: m.CoinModal })));
 
 function UnreadCountBadge({ className = '' }: { className?: string }) {
   const unread = useUnreadMessageCount();
@@ -679,7 +680,11 @@ export function MainLayout() {
         </div>
       ) : null}
 
-      {rechargeOpen ? <CoinModal onClose={() => setRechargeOpen(false)} /> : null}
+      {rechargeOpen ? (
+        <Suspense fallback={null}>
+          <CoinModal onClose={() => setRechargeOpen(false)} />
+        </Suspense>
+      ) : null}
 
       <InAppFeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 

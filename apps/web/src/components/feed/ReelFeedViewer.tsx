@@ -165,17 +165,21 @@ export function ReelFeedViewer({
   }, [originId, profile?.firebaseUid]);
 
   // Precarga los siguientes videos de ESTA cola (evita pantalla vacía al deslizar).
+  // Clave por URL: el arreglo `reels` cambia de identidad con cada actualización del pool y eso
+  // cancelaba y reiniciaba las mismas descargas.
+  const upcomingUrlsKey = exploreFastNav
+    ? ''
+    : [reels[index + 1], reels[index + 2], reels[index + 3]]
+        .filter((item): item is ReelFeedItem => Boolean(item?.mediaUrl && item.mediaType !== 'photo'))
+        .map((item) => item.mediaUrl)
+        .join('\n');
   useEffect(() => {
-    if (exploreFastNav) return;
-    const upcoming = [reels[index + 1], reels[index + 2], reels[index + 3]].filter(
-      (item): item is ReelFeedItem => Boolean(item?.mediaUrl && item.mediaType !== 'photo'),
-    );
-    if (upcoming.length === 0) return;
-    const els = upcoming.map((item) => {
+    if (!upcomingUrlsKey) return;
+    const els = upcomingUrlsKey.split('\n').map((url) => {
       const el = document.createElement('video');
       el.preload = 'auto';
       el.muted = true;
-      el.src = item.mediaUrl;
+      el.src = url;
       return el;
     });
     return () => {
@@ -184,7 +188,7 @@ export function ReelFeedViewer({
         el.load();
       }
     };
-  }, [index, reels, exploreFastNav]);
+  }, [upcomingUrlsKey]);
 
   const explorePrevUrl = exploreFastNav
     ? reels[index - 1]?.mediaType === 'photo'

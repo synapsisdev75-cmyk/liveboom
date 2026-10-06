@@ -20,12 +20,10 @@ import {
   Users,
   Wifi,
 } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import { Link, useLocation, useMatch } from 'react-router-dom';
-import { MyPromotionsModal } from '../ads/MyPromotionsModal';
-import { PromoteAdsModal } from '../ads/PromoteAdsModal';
 import { PublicidadSidebarCard } from '../ads/PublicidadSidebarCard';
-import { FollowButton } from '../social/SocialPostCard';
+import { FollowButton } from '../social/FollowButton';
 import { bcp47For, useT } from '../../i18n';
 import {
   joinGroup,
@@ -55,6 +53,13 @@ import { MessagesSideRail } from '../social/MessagesQuickMenu';
 import { SidebarWalletDock } from './SidebarWalletDock';
 import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
 import { ZoneCard } from './ZoneCard';
+
+const PromoteAdsModal = lazy(() =>
+  import('../ads/PromoteAdsModal').then((m) => ({ default: m.PromoteAdsModal })),
+);
+const MyPromotionsModal = lazy(() =>
+  import('../ads/MyPromotionsModal').then((m) => ({ default: m.MyPromotionsModal })),
+);
 
 type SuggestedUser = {
   uid: string;
@@ -1579,13 +1584,17 @@ function DiscoveryRail() {
       {/* Barra móvil Publicidad/Tendencias… eliminada: redundante (menú + bottom nav). */}
 
       {promoteOpen ? (
-        <PromoteAdsModal
-          defaultRegionId={location?.regionId || 'nacional'}
-          onClose={() => setPromoteOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <PromoteAdsModal
+            defaultRegionId={location?.regionId || 'nacional'}
+            onClose={() => setPromoteOpen(false)}
+          />
+        </Suspense>
       ) : null}
       {myPromotionsOpen ? (
-        <MyPromotionsModal ads={myAds} onClose={() => setMyPromotionsOpen(false)} />
+        <Suspense fallback={null}>
+          <MyPromotionsModal ads={myAds} onClose={() => setMyPromotionsOpen(false)} />
+        </Suspense>
       ) : null}
     </>
   );

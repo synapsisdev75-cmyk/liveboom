@@ -150,7 +150,7 @@ export function startExploreHeartbeat(postId: string, profile: PlazaProfile): ()
   let stopped = false;
 
   async function beat() {
-    if (stopped) return;
+    if (stopped || document.hidden) return;
     try {
       await setDoc(viewerRef, {
         uid: profile.uid,
@@ -166,9 +166,14 @@ export function startExploreHeartbeat(postId: string, profile: PlazaProfile): ()
 
   void beat();
   const timer = window.setInterval(() => void beat(), HEARTBEAT_MS);
+  const onVisible = () => {
+    if (!document.hidden) void beat();
+  };
+  document.addEventListener('visibilitychange', onVisible);
   return () => {
     stopped = true;
     window.clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVisible);
     void deleteDoc(viewerRef).catch(() => undefined);
   };
 }

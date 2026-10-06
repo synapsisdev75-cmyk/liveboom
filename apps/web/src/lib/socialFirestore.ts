@@ -1766,8 +1766,9 @@ export async function markMessagesRead(chatId: string, viewerUid: string, messag
  * Marca como entregados los mensajes entrantes de varios chats.
  * Se usa con presencia (app abierta / en línea) aunque el chat no esté abierto.
  */
-export async function markInboxDelivered(uid: string, chatIds: string[]) {
+export async function markInboxDelivered(uid: string, chatIds: string[]): Promise<string[]> {
   const ids = chatIds.filter(Boolean).slice(0, 20);
+  const done: string[] = [];
   for (const chatId of ids) {
     try {
       const snap = await getDocs(
@@ -1785,10 +1786,12 @@ export async function markInboxDelivered(uid: string, chatIds: string[]) {
         count += 1;
       }
       if (count > 0) await batch.commit();
+      done.push(chatId);
     } catch (err) {
       console.warn('[chat] inbox deliver failed', chatId, err);
     }
   }
+  return done;
 }
 
 async function purgeChatMessageAssets(chatId: string, actorUid: string) {

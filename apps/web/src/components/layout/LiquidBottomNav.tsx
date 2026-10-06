@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { motion, useMotionValueEvent, useSpring } from 'framer-motion';
+import { domAnimation, LazyMotion, m, useMotionValueEvent, useSpring } from 'framer-motion';
 import { requestGoHome } from '../../lib/goHome';
 import { prefetchRoute } from '../../lib/routePrefetch';
 import { useAuthStore } from '../../store/authStore';
@@ -107,23 +107,25 @@ export function LiquidBottomNav({ items }: Props) {
   return (
     <nav className="lb-liquid-nav fixed inset-x-0 bottom-0 z-40 md:hidden" aria-label="Navegación principal">
       <div className="lb-liquid-nav__shell relative mx-auto w-full max-w-[42rem] px-[max(0.25rem,var(--lb-safe-left))] pr-[max(0.25rem,var(--lb-safe-right))]">
-        <motion.div
-          className="lb-liquid-nav__bubble pointer-events-none absolute z-[2] grid h-11 w-11 place-items-center rounded-full"
-          initial={false}
-          animate={{ left: bubbleLeft }}
-          transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.85 }}
-          style={{ top: 0 }}
-          aria-hidden
-        >
-          {ActiveIcon ? (
-            <ActiveIcon
-              key={activeItem.id}
-              size={20}
-              strokeWidth={2.45}
-              className="lb-liquid-nav__bubble-icon"
-            />
-          ) : null}
-        </motion.div>
+        <LazyMotion features={domAnimation}>
+          <m.div
+            className="lb-liquid-nav__bubble pointer-events-none absolute z-[2] grid h-11 w-11 place-items-center rounded-full"
+            initial={false}
+            animate={{ left: bubbleLeft }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.85 }}
+            style={{ top: 0 }}
+            aria-hidden
+          >
+            {ActiveIcon ? (
+              <ActiveIcon
+                key={activeItem.id}
+                size={20}
+                strokeWidth={2.45}
+                className="lb-liquid-nav__bubble-icon"
+              />
+            ) : null}
+          </m.div>
+        </LazyMotion>
 
         <div className="lb-liquid-nav__bar relative z-[1] mt-[1.35rem] overflow-hidden rounded-t-[1.15rem]">
           <svg

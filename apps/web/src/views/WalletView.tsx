@@ -206,19 +206,19 @@ export function WalletView() {
   useEffect(() => {
     if (!profile?.firebaseUid) return;
     let cancelled = false;
+    const onWallet = () => {
+      if (!cancelled) void refreshWallet();
+    };
     void getSocket()
       .then((socket) => {
-        const onWallet = () => {
-          if (!cancelled) void refreshWallet();
-        };
+        if (cancelled) return;
         socket.on('wallet_updated', onWallet);
-        socket.on('disconnect', () => undefined);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
       void getSocket()
-        .then((socket) => socket.off('wallet_updated'))
+        .then((socket) => socket.off('wallet_updated', onWallet))
         .catch(() => undefined);
     };
   }, [profile?.firebaseUid]);

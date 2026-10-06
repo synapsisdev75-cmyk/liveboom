@@ -61,6 +61,7 @@ export function UserAvatar({
           className="h-full w-full object-cover object-center"
           style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
           draggable={false}
+          loading="lazy"
           decoding="async"
           onError={() => setFailedUrl(preferred)}
         />

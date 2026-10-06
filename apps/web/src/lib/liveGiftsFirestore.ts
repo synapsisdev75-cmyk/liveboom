@@ -606,6 +606,8 @@ export function listenActiveLiveRooms(
 ): Unsubscribe {
   const q = query(collection(db, 'liveRooms'), where('status', '==', 'live'));
   let latestDocs: QueryDocumentSnapshot[] = [];
+  // Heartbeats y el tick de 10 s re-emitían la misma lista y re-renderizaban Home sin cambios.
+  let lastEmitted: string | null = null;
 
   const emit = () => {
     const now = Date.now();
@@ -629,6 +631,9 @@ export function listenActiveLiveRooms(
       });
     }
     streams.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+    const signature = JSON.stringify(streams);
+    if (signature === lastEmitted) return;
+    lastEmitted = signature;
     onChange(streams);
     // No marcar ended aquí: solo oculta. El reconcile con API cierra salas muertas.
   };
@@ -641,6 +646,7 @@ export function listenActiveLiveRooms(
     },
     (err) => {
       console.error('[live] listenActiveLiveRooms', err);
+      lastEmitted = null;
       onChange([]);
     },
   );

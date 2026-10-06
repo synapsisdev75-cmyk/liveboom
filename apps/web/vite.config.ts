@@ -22,15 +22,17 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_API_URL': JSON.stringify(apiOnline),
     },
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         output: {
-          manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.includes('livekit') || id.includes('@livekit')) return 'livekit';
-              if (id.includes('agora-rtc-sdk-ng')) return 'agora';
-              if (id.includes('firebase')) return 'firebase';
-            }
-            return undefined;
+          codeSplitting: {
+            groups: [
+              // React primero: los grupos arrastran sus dependencias y sin esto React quedaba dentro de
+              // LiveKit, obligando a descargar LiveKit en el arranque.
+              { name: 'react-vendor', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 3 },
+              { name: 'livekit', test: /[\\/]node_modules[\\/](livekit-client|@livekit)[\\/]/, priority: 2 },
+              { name: 'agora', test: /[\\/]node_modules[\\/]agora-rtc-sdk-ng[\\/]/, priority: 2 },
+              { name: 'firebase', test: /[\\/]node_modules[\\/](firebase|@firebase)[\\/]/, priority: 1 },
+            ],
           },
         },
       },

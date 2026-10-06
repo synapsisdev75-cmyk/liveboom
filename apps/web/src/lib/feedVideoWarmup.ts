@@ -9,6 +9,8 @@ import { isPublicationPost, type ContentLike } from './contentType';
 const LONG_SEC = 15;
 const BUFFER_SEC = 2.5;
 const PER_VIDEO_MS = 4000;
+/** Cada <video> retenido conserva búfer y decodificador; sin tope crecía con cada video de Explorar. */
+const MAX_RETAINED = 3;
 
 type Phase = 'idle' | 'running' | 'settled';
 
@@ -20,6 +22,23 @@ type WarmPost = ContentLike & {
 const warmedUrls = new Set<string>();
 const listeners = new Set<(phase: Phase) => void>();
 let phase: Phase = 'idle';
+const retained: HTMLVideoElement[] = [];
+
+function retain(video: HTMLVideoElement) {
+  retained.push(video);
+  while (retained.length > MAX_RETAINED) {
+    const old = retained.shift();
+    if (!old) break;
+    try {
+      old.pause();
+      old.removeAttribute('src');
+      old.load();
+    } catch {
+      /* ignore */
+    }
+    old.remove();
+  }
+}
 
 function setPhase(next: Phase) {
   phase = next;
@@ -110,6 +129,7 @@ function warmOne(url: string) {
       } catch {
         /* el elemento sigue montado para conservar la caché */
       }
+      retain(video);
       warmedUrls.add(url);
       resolve();
     };

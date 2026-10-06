@@ -1,4 +1,3 @@
-import * as deepar from 'deepar';
 import type { DeepAR } from 'deepar';
 
 /** Clave DeepAR: en el portal deben estar liveboomapp.com, www.liveboomapp.com y localhost. */
@@ -32,6 +31,7 @@ export async function createCallDeepAR(
   previewElement: HTMLElement,
   facingMode: 'user' | 'environment' = 'user',
 ): Promise<DeepAR> {
+  const deepar = await import('deepar');
   return deepar.initialize({
     licenseKey: DEEPAR_LICENSE_KEY,
     previewElement,

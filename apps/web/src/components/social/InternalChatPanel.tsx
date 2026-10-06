@@ -1215,7 +1215,11 @@ export function InternalChatPanel({
   const callHostRef = useRef<HTMLDivElement>(null);
   const callDockRef = useRef<HTMLDivElement>(null);
 
-  const presenceUidsKey = people.map((item) => item.uid).join('|');
+  // Conjunto ordenado: `people` se reordena con cada mensaje y eso reabría todos los listeners de presencia.
+  const presenceUidsKey = useMemo(
+    () => [...new Set(people.map((item) => item.uid))].sort().join('|'),
+    [people],
+  );
   useEffect(() => {
     const uids = presenceUidsKey ? presenceUidsKey.split('|') : [];
     if (uids.length === 0) {

@@ -1,7 +1,7 @@
 import { UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FollowButton } from '../social/SocialPostCard';
+import { FollowButton } from '../social/FollowButton';
 import { useT } from '../../i18n';
 import {
   browseSuggestedCreators,

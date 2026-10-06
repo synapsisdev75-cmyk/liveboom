@@ -2827,19 +2827,44 @@ export function CallOverlay() {
   // aunque no tenga el chat abierto → el remitente ve ✓✓ gris.
   useEffect(() => {
     if (!profile) return;
-    let chatIds: string[] = [];
+    const uid = profile.firebaseUid;
+    let convs: { chatId: string; lastAt: string | null }[] = [];
+    // Solo se revisan chats cuyo último mensaje cambió: la lista se re-emite con cada "escribiendo…"
+    // y releer 40 mensajes × 20 chats en cada emisión disparaba cientos de lecturas.
+    const checkedAt = new Map<string, string>();
+    let running = false;
+    let disposed = false;
     const run = () => {
-      if (chatIds.length === 0) return;
-      void markInboxDelivered(profile.firebaseUid, chatIds);
+      if (running || disposed) return;
+      const due = convs
+        .filter((item) => item.chatId && checkedAt.get(item.chatId) !== (item.lastAt ?? ''))
+        .slice(0, 20);
+      if (due.length === 0) return;
+      running = true;
+      void markInboxDelivered(
+        uid,
+        due.map((item) => item.chatId),
+      )
+        .then((done) => {
+          const ok = new Set(done);
+          for (const item of due) if (ok.has(item.chatId)) checkedAt.set(item.chatId, item.lastAt ?? '');
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          running = false;
+          // Los fallidos se reintentan en el siguiente tick de 20 s, no en bucle inmediato.
+          if (due.every((item) => checkedAt.get(item.chatId) === (item.lastAt ?? ''))) run();
+        });
     };
-    const unsub = listenConversations(profile.firebaseUid, (list) => {
-      chatIds = list.map((item) => item.chatId);
+    const unsub = listenConversations(uid, (list) => {
+      convs = list.map((item) => ({ chatId: item.chatId, lastAt: item.lastAt }));
       run();
     });
     const onVis = () => run();
     document.addEventListener('visibilitychange', onVis);
     const timer = window.setInterval(run, 20_000);
     return () => {
+      disposed = true;
       unsub();
       document.removeEventListener('visibilitychange', onVis);
       window.clearInterval(timer);

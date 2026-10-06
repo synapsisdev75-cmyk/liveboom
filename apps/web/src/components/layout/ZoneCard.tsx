@@ -12,10 +12,14 @@ import {
 } from '../../lib/userLocation';
 import type { SharedLocation } from '../../lib/locationShare';
 import { useAuthStore } from '../../store/authStore';
-import { LocationShareModal } from '../location/LocationShareModal';
-import { PlaceDirectionsModal } from '../location/PlaceDirectionsModal';
 
 const ZoneLiveMap = lazy(() => import('./ZoneLiveMap'));
+const LocationShareModal = lazy(() =>
+  import('../location/LocationShareModal').then((m) => ({ default: m.LocationShareModal })),
+);
+const PlaceDirectionsModal = lazy(() =>
+  import('../location/PlaceDirectionsModal').then((m) => ({ default: m.PlaceDirectionsModal })),
+);
 
 /** Tarjeta "Tu zona": mapa en tiempo real + compartir ubicación (rail de escritorio y menú móvil). */
 export function ZoneCard({
@@ -31,6 +35,8 @@ export function ZoneCard({
   const [showPrompt, setShowPrompt] = useState(() => !locationPromptDismissed());
   const [shareLoc, setShareLoc] = useState<SharedLocation | null>(null);
   const [directionsOpen, setDirectionsOpen] = useState(false);
+  const [directionsUsed, setDirectionsUsed] = useState(false);
+  const [shareUsed, setShareUsed] = useState(false);
 
   async function shareLocation() {
     if (!profile) return;
@@ -66,35 +72,45 @@ export function ZoneCard({
           >
             <ZoneLiveMap
               saved={{ lat: location.lat, lng: location.lng }}
-              onShare={(pos) =>
+              onShare={(pos) => {
+                setShareUsed(true);
                 setShareLoc({
                   lat: pos.lat,
                   lng: pos.lng,
                   accuracy: pos.accuracy,
                   label: [location.city, location.regionLabel].filter(Boolean).join(' · '),
-                })
-              }
+                });
+              }}
             />
           </Suspense>
           <button
             type="button"
-            onClick={() => setDirectionsOpen(true)}
+            onClick={() => {
+              setDirectionsUsed(true);
+              setDirectionsOpen(true);
+            }}
             className="mt-2 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-cyan-400/30 text-[11px] font-semibold text-cyan-300 [@media(pointer:coarse)]:min-h-11"
           >
             <Navigation size={13} />
             Cómo llegar a un lugar
           </button>
-          <PlaceDirectionsModal
-            open={directionsOpen}
-            onClose={() => setDirectionsOpen(false)}
-            near={{ lat: location.lat, lng: location.lng }}
-          />
-          <LocationShareModal
-            open={Boolean(shareLoc)}
-            onClose={() => setShareLoc(null)}
-            mode="share"
-            initial={shareLoc}
-          />
+          <Suspense fallback={null}>
+            {directionsUsed ? (
+              <PlaceDirectionsModal
+                open={directionsOpen}
+                onClose={() => setDirectionsOpen(false)}
+                near={{ lat: location.lat, lng: location.lng }}
+              />
+            ) : null}
+            {shareUsed ? (
+              <LocationShareModal
+                open={Boolean(shareLoc)}
+                onClose={() => setShareLoc(null)}
+                mode="share"
+                initial={shareLoc}
+              />
+            ) : null}
+          </Suspense>
         </>
       ) : showPrompt ? (
         <button

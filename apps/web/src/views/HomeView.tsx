@@ -514,6 +514,7 @@ export function HomeView() {
   useEffect(() => {
     let cancelled = false;
     const verify = () => {
+      if (document.hidden) return;
       void apiPublic<{ streams?: { username?: string }[] }>('/api/stream/live')
         .then((data) => {
           if (cancelled) return;
@@ -526,9 +527,11 @@ export function HomeView() {
     };
     verify();
     const timer = window.setInterval(verify, 12_000);
+    document.addEventListener('visibilitychange', verify);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', verify);
     };
   }, []);
 
@@ -980,7 +983,7 @@ function LiveHeroCard({ stream }: { stream: ActiveLiveFeedItem }) {
         <span className="live-ring grid h-10 w-10 place-items-center rounded-full p-[2px]">
           <span className="grid h-full w-full place-items-center overflow-hidden rounded-full bg-zinc-900 text-sm font-black text-fuchsia-100">
             {stream.avatarUrl ? (
-              <img src={stream.avatarUrl} alt="" className="h-full w-full object-cover" />
+              <img src={stream.avatarUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
             ) : (
               name.slice(0, 1).toUpperCase()
             )}
