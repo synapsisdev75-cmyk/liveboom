@@ -1,4 +1,4 @@
-import { Radio, Flag } from 'lucide-react';
+import { Radio, Info } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
@@ -353,13 +353,14 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                className="lb-explore-plaza__flag inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-amber-100"
+                className="lb-explore-plaza__flag inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-white/80"
                 aria-label="Reportar plaza"
+                title="Reportar plaza"
                 onClick={() =>
                   openReport(`Plaza del video ${postId}. Autor @${authorUsername} (${authorUid}).`)
                 }
               >
-                <Flag size={16} />
+                <Info size={18} />
               </button>
               <button
                 type="button"
@@ -476,15 +477,16 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                   </div>
                   <button
                     type="button"
-                    className="lb-explore-plaza__flag inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-amber-100"
+                    className="lb-explore-plaza__flag inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-white/70"
                     aria-label="Reportar mensaje"
+                    title="Reportar mensaje"
                     onClick={() =>
                       openReport(
                         `Mensaje de plaza ${message.id} en el video ${postId}, de @${message.username} (${message.fromUid}): ${message.text}`,
                       )
                     }
                   >
-                    <Flag size={14} />
+                    <Info size={15} />
                   </button>
                 </div>
                 ),
