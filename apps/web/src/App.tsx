@@ -18,6 +18,7 @@ import { prepareNativeLiveWebView, ensureNativeEssentialPermissions } from './li
 import { registerPushNotifications } from './lib/pushNotifications';
 import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimationOverlay';
 import { BootSplash } from './components/brand/BootSplash';
+import { LiveLocationIndicator } from './components/location/LiveLocationIndicator';
 import { flushPendingShare, installSharedLinkOpener } from './lib/openSharedLink';
 import { installShareIncomingListener, peekPendingIncomingShare, SHARE_INCOMING_EVENT } from './lib/shareIncoming';
 
@@ -199,6 +200,7 @@ export default function App() {
       <AuthHydrator />
       <ShareIncomingRouter />
       <PendingEmailVerificationRedirect />
+      <LiveLocationIndicator />
       <BootSplash />
       <Suspense fallback={<RouteFallback />}>
         <Routes>

@@ -983,6 +983,34 @@ service cloud.firestore {
       }
     }
 
+    // Ubicación en tiempo real: el id aleatorio del enlace permite leer ese documento; no se pueden listar.
+    match /liveLocations/{shareId} {
+      function validLiveLocation() {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+            'ownerUid', 'handle', 'displayName', 'avatarUrl', 'lat', 'lng', 'accuracy',
+            'heading', 'label', 'active', 'startedAtMs', 'expiresAtMs', 'updatedAt'
+          ])
+          && d.ownerUid == request.auth.uid
+          && d.lat is number && d.lat >= -90 && d.lat <= 90
+          && d.lng is number && d.lng >= -180 && d.lng <= 180
+          && d.active is bool
+          && d.expiresAtMs is number
+          && d.expiresAtMs <= request.time.toMillis() + 8 * 60 * 60 * 1000 + 5 * 60 * 1000
+          && d.handle is string && d.handle.size() <= 32
+          && d.displayName is string && d.displayName.size() <= 80
+          && d.label is string && d.label.size() <= 80
+          && (d.avatarUrl == null || (d.avatarUrl is string && d.avatarUrl.size() <= 800));
+      }
+      allow get: if true;
+      allow list: if false;
+      allow create: if signedIn() && validLiveLocation();
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && validLiveLocation();
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

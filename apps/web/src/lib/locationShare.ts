@@ -1,9 +1,25 @@
 import type { LinkPreviewData } from './linkPreview';
 
-export type SharedLocation = { lat: number; lng: number; label: string; accuracy?: number };
+export type SharedLocation = {
+  lat: number;
+  lng: number;
+  label: string;
+  accuracy?: number;
+  /** Documento `liveLocations/{liveId}` cuando es ubicación en tiempo real. */
+  liveId?: string;
+  /** Quien comparte: su foto aparece en el marcador. */
+  uid?: string;
+  handle?: string;
+};
 
 export const LOCATION_PATH = '/ubicacion';
 export const LOCATION_MESSAGE_TEXT = '📍 Ubicación';
+
+export const LIVE_LOCATION_DURATIONS = [
+  { minutes: 15, label: '15 min' },
+  { minutes: 60, label: '1 hora' },
+  { minutes: 480, label: '8 horas' },
+] as const;
 
 const APP_HOSTS = new Set([
   'liveboomapp.com',
@@ -13,6 +29,9 @@ const APP_HOSTS = new Set([
   'localhost',
   '127.0.0.1',
 ]);
+
+const LIVE_ID_RE = /^[A-Za-z0-9]{12,40}$/;
+const UID_RE = /^[A-Za-z0-9_-]{6,128}$/;
 
 function validLatLng(lat: number, lng: number) {
   return (
@@ -29,6 +48,10 @@ export function buildLocationUrl(loc: SharedLocation): string {
   const params = new URLSearchParams({ lat: loc.lat.toFixed(5), lng: loc.lng.toFixed(5) });
   const label = loc.label.trim().slice(0, 80);
   if (label) params.set('n', label);
+  if (loc.liveId && LIVE_ID_RE.test(loc.liveId)) params.set('live', loc.liveId);
+  if (loc.uid && UID_RE.test(loc.uid)) params.set('u', loc.uid);
+  const handle = (loc.handle || '').replace(/^@/, '').trim().slice(0, 32);
+  if (handle) params.set('h', handle);
   return `${origin}${LOCATION_PATH}?${params.toString()}`;
 }
 
@@ -49,14 +72,21 @@ export function parseLocationParams(params: URLSearchParams): SharedLocation | n
   const lat = Number(params.get('lat'));
   const lng = Number(params.get('lng'));
   if (!validLatLng(lat, lng)) return null;
-  return { lat, lng, label: String(params.get('n') || '').trim().slice(0, 80) };
+  const loc: SharedLocation = { lat, lng, label: String(params.get('n') || '').trim().slice(0, 80) };
+  const liveId = String(params.get('live') || '');
+  if (LIVE_ID_RE.test(liveId)) loc.liveId = liveId;
+  const uid = String(params.get('u') || '');
+  if (UID_RE.test(uid)) loc.uid = uid;
+  const handle = String(params.get('h') || '').replace(/^@/, '').trim().slice(0, 32);
+  if (handle) loc.handle = handle;
+  return loc;
 }
 
 export function locationLinkPreview(loc: SharedLocation): LinkPreviewData {
   return {
     url: buildLocationUrl(loc),
-    title: `📍 ${loc.label || 'Ubicación compartida'}`,
-    description: 'Toca para ver el mapa',
+    title: loc.liveId ? '🔴 Ubicación en tiempo real' : `📍 ${loc.label || 'Ubicación compartida'}`,
+    description: loc.liveId ? 'Toca para seguirla en el mapa' : 'Toca para ver el mapa',
     image: '',
     siteName: 'LiveBoom · Ubicación',
   };
@@ -110,4 +140,13 @@ export function locateErrorMessage(code: unknown): string {
     default:
       return 'No se pudo obtener tu ubicación. Inténtalo de nuevo.';
   }
+}
+
+export function formatRemaining(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min`;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }

@@ -1,16 +1,34 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy, Globe, Lock, MapPin, MessageCircle, PenLine, RefreshCw, Search, Share2, Users, X } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  Globe,
+  Lock,
+  MapPin,
+  MessageCircle,
+  PenLine,
+  Radio,
+  RefreshCw,
+  Search,
+  Share2,
+  Square,
+  Users,
+  X,
+} from 'lucide-react';
 import { useBackLayer } from '../../lib/backLayer';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import {
   buildLocationUrl,
+  formatRemaining,
+  LIVE_LOCATION_DURATIONS,
   locateErrorMessage,
   locateOnce,
   locationLinkPreview,
   LOCATION_MESSAGE_TEXT,
   type SharedLocation,
 } from '../../lib/locationShare';
+import { useLiveLocationShare, useNow } from '../../lib/liveLocation';
 import { reverseGeocode } from '../../lib/userLocation';
 import { createPost, listenFriends, sendChatMessage, type FriendChip } from '../../lib/socialFirestore';
 import { useAuthStore } from '../../store/authStore';
@@ -53,6 +71,40 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
   const [caption, setCaption] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'friends' | 'private'>('friends');
   const [posted, setPosted] = useState(false);
+  const [kind, setKind] = useState<'now' | 'live'>('now');
+  const [liveMinutes, setLiveMinutes] = useState<number>(60);
+  const liveShareId = useLiveLocationShare((state) => state.shareId);
+  const liveLat = useLiveLocationShare((state) => state.lat);
+  const liveLng = useLiveLocationShare((state) => state.lng);
+  const liveAccuracy = useLiveLocationShare((state) => state.accuracy);
+  const liveLabel = useLiveLocationShare((state) => state.label);
+  const liveOwner = useLiveLocationShare((state) => state.ownerUid);
+  const liveExpiresAt = useLiveLocationShare((state) => state.expiresAtMs);
+  const liveStarting = useLiveLocationShare((state) => state.starting);
+  const liveError = useLiveLocationShare((state) => state.error);
+  const startLive = useLiveLocationShare((state) => state.start);
+  const stopLive = useLiveLocationShare((state) => state.stop);
+  const liveActive = Boolean(liveShareId);
+  const now = useNow(open && liveActive);
+  const liveLoc: SharedLocation | null =
+    liveShareId && liveLat !== null && liveLng !== null
+      ? {
+          lat: liveLat,
+          lng: liveLng,
+          accuracy: liveAccuracy,
+          label: liveLabel,
+          liveId: liveShareId,
+          uid: liveOwner || profile?.firebaseUid,
+          handle: profile?.handle,
+        }
+      : null;
+  const shareLoc = kind === 'live' ? liveLoc : loc;
+  const mapPerson = (target: SharedLocation) => ({
+    uid: target.uid,
+    handle: target.handle,
+    avatarUrl: target.uid && target.uid === profile?.firebaseUid ? profile?.avatarUrl : null,
+    displayName: target.uid && target.uid === profile?.firebaseUid ? profile?.displayName : null,
+  });
 
   useBodyScrollLock(open);
   useBackLayer(open, onClose);
@@ -68,6 +120,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
     setSentTo({});
     setCaption('');
     setPosted(false);
+    setKind(!initial && useLiveLocationShare.getState().shareId ? 'live' : 'now');
     // Solo al abrir: `initial` cambia con cada movimiento en vivo y no debe reiniciar el panel.
   }, [open]);
 
@@ -85,7 +138,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const shareUrl = useMemo(() => (loc ? buildLocationUrl(loc) : ''), [loc]);
+  const shareUrl = useMemo(() => (shareLoc ? buildLocationUrl(shareLoc) : ''), [shareLoc]);
   const filteredFriends = useMemo(() => {
     const q = query.trim().toLowerCase().replace(/^@/, '');
     if (!q) return friends;
@@ -97,7 +150,14 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
     setError('');
     try {
       const pos = await locateOnce();
-      setLoc({ lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, label: '' });
+      setLoc({
+        lat: pos.lat,
+        lng: pos.lng,
+        accuracy: pos.accuracy,
+        label: '',
+        uid: profile?.firebaseUid,
+        handle: profile?.handle,
+      });
       const label = await labelFor(pos.lat, pos.lng);
       setLoc((current) => (current && current.lat === pos.lat && current.lng === pos.lng ? { ...current, label } : current));
     } catch (code) {
@@ -107,11 +167,23 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
     }
   }
 
+  async function beginLive() {
+    setError('');
+    await startLive(liveMinutes);
+  }
+
   async function confirmPick() {
-    if (!loc || !onPick) return;
+    if (!onPick) return;
+    let target = shareLoc;
+    if (kind === 'live' && !target) {
+      setBusy(true);
+      target = await startLive(liveMinutes);
+      setBusy(false);
+    }
+    if (!target) return;
     setBusy(true);
     try {
-      await onPick(loc);
+      await onPick(target);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo compartir la ubicación');
@@ -121,7 +193,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
   }
 
   async function sendToFriend(friend: FriendChip) {
-    if (!profile || !loc) return;
+    if (!profile || !shareLoc) return;
     setSentTo((s) => ({ ...s, [friend.uid]: 'sending' }));
     try {
       await sendChatMessage(
@@ -142,7 +214,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
   }
 
   async function publish() {
-    if (!profile || !loc) return;
+    if (!profile || !shareLoc) return;
     setBusy(true);
     setError('');
     try {
@@ -153,7 +225,7 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
         type: 'text',
         caption: caption.trim(),
         visibility,
-        linkPreview: locationLinkPreview(loc),
+        linkPreview: locationLinkPreview(shareLoc),
       });
       setPosted(true);
     } catch (err) {
@@ -174,7 +246,8 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
   }
 
   async function nativeShare() {
-    const text = `📍 ${loc?.label || 'Mi ubicación'} en LiveBoom`;
+    const text =
+      kind === 'live' ? '🔴 Sigue mi ubicación en tiempo real en LiveBoom' : `📍 ${loc?.label || 'Mi ubicación'} en LiveBoom`;
     if (navigator.share) {
       try {
         await navigator.share({ title: 'Ubicación · LiveBoom', text, url: shareUrl });
@@ -223,7 +296,125 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
         </div>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          {!loc ? (
+          <div
+            className="grid grid-cols-2 gap-1 rounded-xl border border-[color:var(--border-default)] bg-[color:var(--surface-primary)] p-1"
+            role="tablist"
+            aria-label="Tipo de ubicación"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={kind === 'now'}
+              onClick={() => {
+                setKind('now');
+                setPanel('none');
+              }}
+              className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition ${
+                kind === 'now' ? 'bg-[#22d3ee]/15 text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)]'
+              }`}
+            >
+              <MapPin size={14} className="text-[#06b6d4]" />
+              Ubicación actual
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={kind === 'live'}
+              onClick={() => {
+                setKind('live');
+                setPanel('none');
+              }}
+              className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition ${
+                kind === 'live' ? 'bg-[#ef4444]/15 text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)]'
+              }`}
+            >
+              <Radio size={14} className={`text-[#ef4444] ${liveActive ? 'animate-pulse' : ''}`} />
+              En tiempo real
+            </button>
+          </div>
+
+          {kind === 'live' ? (
+            liveActive ? (
+              <div className="overflow-hidden rounded-2xl border border-[#ef4444]/40">
+                {liveLoc ? (
+                  <Suspense fallback={<div className="h-48 w-full animate-pulse bg-[color:var(--surface-primary)]" />}>
+                    <LocationMap
+                      lat={liveLoc.lat}
+                      lng={liveLoc.lng}
+                      accuracy={liveLoc.accuracy}
+                      zoom={16}
+                      variant="scene"
+                      person={mapPerson(liveLoc)}
+                      live
+                      className="h-48 w-full"
+                    />
+                  </Suspense>
+                ) : (
+                  <div className="grid h-48 w-full place-items-center bg-[color:var(--surface-primary)] text-xs text-[color:var(--text-muted)]">
+                    Buscando tu posición…
+                  </div>
+                )}
+                <div className="flex items-center gap-2 bg-[color:var(--surface-secondary)] px-3 py-2.5">
+                  <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-[#ef4444]" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">Compartiendo en tiempo real</p>
+                    <p className="text-[11px] text-[color:var(--text-muted)]">
+                      Termina en {formatRemaining(liveExpiresAt - now)} · mantén LiveBoom abierto
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void stopLive()}
+                    className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg bg-[#ef4444] px-3 text-[11px] font-bold text-[#ffffff]"
+                  >
+                    <Square size={12} />
+                    Detener
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-[#ef4444]/30 bg-[#ef4444]/8 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#ef4444]/15 text-[#ef4444]" aria-hidden>
+                    <Radio size={20} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold">Ubicación en tiempo real</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-[color:var(--text-muted)]">
+                      Quien reciba el enlace verá cómo te mueves en el mapa, con tu foto de perfil, mientras LiveBoom esté
+                      abierto. Puedes detenerla cuando quieras.
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 text-[11px] font-semibold text-[color:var(--text-muted)]">Durante</p>
+                <div className="mt-1.5 grid grid-cols-3 gap-1.5" role="group" aria-label="Duración">
+                  {LIVE_LOCATION_DURATIONS.map((item) => (
+                    <button
+                      key={item.minutes}
+                      type="button"
+                      onClick={() => setLiveMinutes(item.minutes)}
+                      className={`inline-flex min-h-10 items-center justify-center rounded-lg border text-xs font-semibold ${
+                        liveMinutes === item.minutes ? destOn : destIdle
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                {mode === 'share' ? (
+                  <button
+                    type="button"
+                    onClick={() => void beginLive()}
+                    disabled={liveStarting}
+                    className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#ef4444] to-[#ec4899] px-4 text-sm font-bold text-[#ffffff] disabled:opacity-60"
+                  >
+                    <Radio size={16} />
+                    {liveStarting ? 'Iniciando…' : 'Iniciar ubicación en tiempo real'}
+                  </button>
+                ) : null}
+              </div>
+            )
+          ) : !loc ? (
             <div className="rounded-2xl border border-[#22d3ee]/30 bg-[#22d3ee]/8 p-4 text-center">
               <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#22d3ee]/15 text-2xl" aria-hidden>
                 📍
@@ -243,10 +434,17 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
               </button>
             </div>
           ) : (
-            <>
               <div className="overflow-hidden rounded-2xl border border-[color:var(--border-default)]">
-                <Suspense fallback={<div className="h-44 w-full animate-pulse bg-[color:var(--surface-primary)]" />}>
-                  <LocationMap lat={loc.lat} lng={loc.lng} accuracy={loc.accuracy} zoom={15} className="h-44 w-full" />
+                <Suspense fallback={<div className="h-48 w-full animate-pulse bg-[color:var(--surface-primary)]" />}>
+                  <LocationMap
+                    lat={loc.lat}
+                    lng={loc.lng}
+                    accuracy={loc.accuracy}
+                    zoom={16}
+                    variant="scene"
+                    person={mapPerson(loc)}
+                    className="h-48 w-full"
+                  />
                 </Suspense>
                 <div className="flex items-center gap-2 bg-[color:var(--surface-secondary)] px-3 py-2.5">
                   <div className="min-w-0 flex-1">
@@ -266,18 +464,31 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
                   </button>
                 </div>
               </div>
+          )}
 
               {mode === 'pick' ? (
+                kind === 'live' || loc ? (
                 <button
                   type="button"
                   onClick={() => void confirmPick()}
-                  disabled={busy || locating}
-                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-4 text-sm font-bold text-[#0b0f19] disabled:opacity-60"
+                  disabled={busy || locating || liveStarting}
+                  className={`inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold disabled:opacity-60 ${
+                    kind === 'live'
+                      ? 'bg-gradient-to-r from-[#ef4444] to-[#ec4899] text-[#ffffff]'
+                      : 'bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] text-[#0b0f19]'
+                  }`}
                 >
-                  <MapPin size={16} />
-                  {busy ? 'Enviando…' : pickLabel}
+                  {kind === 'live' ? <Radio size={16} /> : <MapPin size={16} />}
+                  {busy || liveStarting
+                    ? 'Enviando…'
+                    : kind === 'live'
+                      ? liveActive
+                        ? 'Enviar ubicación en tiempo real'
+                        : 'Iniciar y enviar en tiempo real'
+                      : pickLabel}
                 </button>
-              ) : (
+                ) : null
+              ) : shareLoc ? (
                 <>
                   <div className="grid grid-cols-4 gap-2">
                     <button
@@ -306,7 +517,9 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
                     </button>
                   </div>
                   <a
-                    href={`https://wa.me/?text=${encodeURIComponent(`📍 ${loc.label || 'Mi ubicación'}\n${shareUrl}`)}`}
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      `${kind === 'live' ? '🔴 Mi ubicación en tiempo real' : `📍 ${shareLoc.label || 'Mi ubicación'}`}\n${shareUrl}`,
+                    )}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#25d366] px-4 text-sm font-bold text-[#06210f]"
@@ -428,10 +641,10 @@ export function LocationShareModal({ open, onClose, mode, initial = null, pickLa
                     </div>
                   ) : null}
                 </>
-              )}
-            </>
-          )}
-          {error ? <p className="text-xs leading-relaxed text-[#ef4444]">{error}</p> : null}
+              ) : null}
+          {error || (kind === 'live' && liveError) ? (
+            <p className="text-xs leading-relaxed text-[#ef4444]">{error || liveError}</p>
+          ) : null}
         </div>
       </div>
     </div>,

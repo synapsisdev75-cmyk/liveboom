@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Navigation } from 'lucide-react';
-import { directionsUrl, locationInAppHref, type SharedLocation } from '../../lib/locationShare';
+import { MapPin, Navigation, Radio } from 'lucide-react';
+import { directionsUrl, formatRemaining, locationInAppHref, type SharedLocation } from '../../lib/locationShare';
+import { useLiveLocation, useNow } from '../../lib/liveLocation';
 
 const LocationMap = lazy(() => import('./LocationMap'));
 
@@ -12,9 +13,39 @@ type Props = {
   className?: string;
 };
 
-/** Tarjeta de ubicación compartida: mapa con el punto, nombre del lugar y "Cómo llegar". */
+/** Tarjeta de ubicación compartida: mapa con la foto de quien comparte, nombre del lugar y "Cómo llegar". */
 export function LocationShareCard({ location, onDismiss, compact = false, className = '' }: Props) {
   const mapHeight = compact ? 'h-28' : 'h-36 sm:h-40';
+  const live = useLiveLocation(location.liveId);
+  const liveData = live && live.status !== 'loading' ? live.data : null;
+  const isLive = live?.status === 'live';
+  const ended = Boolean(location.liveId) && live?.status === 'ended';
+  const now = useNow(isLive);
+  const point = isLive && liveData ? { lat: liveData.lat, lng: liveData.lng } : location;
+  const person = {
+    uid: liveData?.ownerUid || location.uid,
+    avatarUrl: liveData?.avatarUrl,
+    handle: liveData?.handle || location.handle,
+    displayName: liveData?.displayName,
+  };
+  const who = person.handle ? `@${person.handle}` : '';
+  const title = location.liveId
+    ? isLive
+      ? `En vivo${who ? ` · ${who}` : ''}`
+      : ended
+        ? 'Ubicación en tiempo real terminada'
+        : 'Ubicación en tiempo real'
+    : location.label || 'Ubicación compartida';
+  const subtitle = location.liveId
+    ? isLive && liveData
+      ? `Termina en ${formatRemaining(liveData.expiresAtMs - now)}`
+      : ended
+        ? 'Último punto compartido'
+        : 'Conectando…'
+    : who
+      ? `Compartida por ${who}`
+      : 'LiveBoom · Ubicación';
+
   return (
     <div
       className={`lb-location-card relative w-full min-w-0 overflow-hidden rounded-2xl border border-[color:var(--border-default)] bg-[color:var(--surface-secondary)] text-left shadow-[0_8px_24px_rgba(0,0,0,0.18)] ${className}`}
@@ -22,23 +53,33 @@ export function LocationShareCard({ location, onDismiss, compact = false, classN
     >
       <Link to={locationInAppHref(location)} className="block" aria-label="Ver ubicación en el mapa">
         <Suspense fallback={<div className={`${mapHeight} w-full animate-pulse bg-[color:var(--surface-primary)]`} />}>
-          <LocationMap lat={location.lat} lng={location.lng} zoom={15} className={`${mapHeight} pointer-events-none w-full`} />
+          <LocationMap
+            lat={point.lat}
+            lng={point.lng}
+            zoom={15}
+            person={person}
+            live={isLive}
+            className={`${mapHeight} pointer-events-none w-full ${ended ? 'opacity-60 grayscale' : ''}`}
+          />
         </Suspense>
       </Link>
       <div className="flex min-w-0 items-center gap-2.5 p-2.5">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#22d3ee]/15 text-[#06b6d4]" aria-hidden>
-          <MapPin size={17} />
+        <span
+          className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${
+            isLive ? 'bg-[#ef4444]/15 text-[#ef4444]' : 'bg-[#22d3ee]/15 text-[#06b6d4]'
+          }`}
+          aria-hidden
+        >
+          {location.liveId ? <Radio size={17} className={isLive ? 'animate-pulse' : ''} /> : <MapPin size={17} />}
         </span>
         <Link to={locationInAppHref(location)} className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-[color:var(--text-primary)]">
-            {location.label || 'Ubicación compartida'}
-          </span>
+          <span className="block truncate text-sm font-semibold text-[color:var(--text-primary)]">{title}</span>
           <span className="block truncate text-[10px] font-medium uppercase tracking-wide text-[color:var(--text-muted)]">
-            LiveBoom · Ubicación
+            {subtitle}
           </span>
         </Link>
         <a
-          href={directionsUrl(location)}
+          href={directionsUrl(point)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-3 text-[11px] font-bold text-[#0b0f19]"

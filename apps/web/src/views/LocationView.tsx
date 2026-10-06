@@ -1,13 +1,16 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, Copy, ExternalLink, MapPin, Navigation, Share2 } from 'lucide-react';
+import { ArrowLeft, Check, Copy, ExternalLink, MapPin, Navigation, Share2, Square } from 'lucide-react';
 import {
   buildLocationUrl,
   directionsUrl,
+  formatRemaining,
   openStreetMapUrl,
   parseLocationParams,
 } from '../lib/locationShare';
+import { useLiveLocation, useLiveLocationShare, useNow } from '../lib/liveLocation';
 import { LocationShareModal } from '../components/location/LocationShareModal';
+import { UserAvatar } from '../components/profile/UserAvatar';
 import { useAuthStore } from '../store/authStore';
 
 const LocationMap = lazy(() => import('../components/location/LocationMap'));
@@ -16,8 +19,37 @@ export default function LocationView() {
   const [params] = useSearchParams();
   const profile = useAuthStore((state) => state.profile);
   const loc = useMemo(() => parseLocationParams(params), [params]);
+  const live = useLiveLocation(loc?.liveId);
+  const myShareId = useLiveLocationShare((state) => state.shareId);
+  const stopMyShare = useLiveLocationShare((state) => state.stop);
   const [copied, setCopied] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+
+  const liveData = live && live.status !== 'loading' ? live.data : null;
+  const isLive = live?.status === 'live';
+  const ended = Boolean(loc?.liveId) && live?.status === 'ended';
+  const now = useNow(isLive);
+  const isMine = Boolean(loc?.liveId && myShareId === loc.liveId);
+  const point = loc ? (isLive && liveData ? { lat: liveData.lat, lng: liveData.lng } : { lat: loc.lat, lng: loc.lng }) : null;
+  const person = {
+    uid: liveData?.ownerUid || loc?.uid,
+    avatarUrl: liveData?.avatarUrl,
+    handle: liveData?.handle || loc?.handle,
+    displayName: liveData?.displayName,
+  };
+  const hasPerson = Boolean(person.uid || person.handle);
+  const title = loc?.liveId
+    ? person.displayName || (person.handle ? `@${person.handle}` : 'Ubicación en tiempo real')
+    : loc?.label || 'Ubicación compartida';
+  const status = loc?.liveId
+    ? isLive && liveData
+      ? `En vivo · termina en ${formatRemaining(liveData.expiresAtMs - now)}`
+      : ended
+        ? 'La ubicación en tiempo real terminó · último punto'
+        : 'Conectando…'
+    : person.handle
+      ? `Compartida por @${person.handle}`
+      : 'LiveBoom · Ubicación';
 
   async function copyLink() {
     if (!loc) return;
@@ -39,24 +71,54 @@ export default function LocationView() {
         <Link
           to={profile ? '/inicio' : '/'}
           aria-label="Volver a LiveBoom"
-          className="grid h-11 w-11 place-items-center rounded-full hover:bg-[color:var(--surface-hover)]"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full hover:bg-[color:var(--surface-hover)]"
         >
           <ArrowLeft size={20} />
         </Link>
+        {hasPerson ? (
+          person.handle ? (
+            <Link
+              to={`/u/${person.handle}`}
+              className={`shrink-0 rounded-full p-[2px] ${
+                isLive ? 'bg-gradient-to-br from-[#ef4444] to-[#a78bfa]' : 'bg-gradient-to-br from-[#22d3ee] to-[#a78bfa]'
+              }`}
+              aria-label={`Perfil de @${person.handle}`}
+            >
+              <UserAvatar src={person.avatarUrl} uid={person.uid} username={person.handle} displayName={person.displayName} size={38} />
+            </Link>
+          ) : (
+            <span className="shrink-0 rounded-full bg-gradient-to-br from-[#22d3ee] to-[#a78bfa] p-[2px]">
+              <UserAvatar src={person.avatarUrl} uid={person.uid} displayName={person.displayName} size={38} />
+            </span>
+          )
+        ) : null}
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 truncate text-sm font-bold">
-            <MapPin size={15} className="shrink-0 text-[#06b6d4]" />
-            {loc?.label || 'Ubicación compartida'}
+            {!hasPerson ? <MapPin size={15} className="shrink-0 text-[#06b6d4]" /> : null}
+            {title}
           </p>
-          <p className="text-[11px] text-[color:var(--text-muted)]">LiveBoom · Ubicación</p>
+          <p className="flex items-center gap-1.5 truncate text-[11px] text-[color:var(--text-muted)]">
+            {isLive ? <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#ef4444]" aria-hidden /> : null}
+            {status}
+          </p>
         </div>
       </header>
 
-      {loc ? (
+      {loc && point ? (
         <>
           <div className="relative min-h-0 flex-1">
             <Suspense fallback={<div className="h-full w-full animate-pulse bg-[color:var(--surface-primary)]" />}>
-              <LocationMap lat={loc.lat} lng={loc.lng} zoom={16} interactive className="h-full w-full" />
+              <LocationMap
+                lat={point.lat}
+                lng={point.lng}
+                accuracy={isLive ? liveData?.accuracy : undefined}
+                zoom={16.5}
+                interactive
+                variant="scene"
+                person={person}
+                live={isLive}
+                className={`h-full w-full ${ended ? 'grayscale-[0.6]' : ''}`}
+              />
             </Suspense>
           </div>
           <div
@@ -64,7 +126,7 @@ export default function LocationView() {
             style={{ paddingBottom: 'max(0.75rem, var(--lb-safe-bottom, 0px))' }}
           >
             <a
-              href={directionsUrl(loc)}
+              href={directionsUrl(point)}
               target="_blank"
               rel="noopener noreferrer"
               className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#a78bfa] px-5 text-sm font-bold text-[#0b0f19] sm:col-span-1"
@@ -72,7 +134,16 @@ export default function LocationView() {
               <Navigation size={16} />
               Cómo llegar
             </a>
-            {profile ? (
+            {isMine ? (
+              <button
+                type="button"
+                onClick={() => void stopMyShare()}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#ef4444] px-4 text-sm font-bold text-[#ffffff]"
+              >
+                <Square size={14} />
+                Detener
+              </button>
+            ) : profile && !loc.liveId ? (
               <button
                 type="button"
                 onClick={() => setShareOpen(true)}
@@ -92,7 +163,7 @@ export default function LocationView() {
               </button>
             )}
             <a
-              href={openStreetMapUrl(loc)}
+              href={openStreetMapUrl(point)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[color:var(--border-default)] px-4 text-sm font-semibold"
@@ -101,7 +172,7 @@ export default function LocationView() {
               Abrir mapa
             </a>
           </div>
-          {profile ? (
+          {profile && !loc.liveId ? (
             <LocationShareModal open={shareOpen} onClose={() => setShareOpen(false)} mode="share" initial={loc} />
           ) : null}
         </>
