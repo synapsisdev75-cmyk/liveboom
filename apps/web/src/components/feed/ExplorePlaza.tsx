@@ -26,7 +26,6 @@ import {
   listenCreatorClosing,
   listenExploreViewers,
   listenPlazaMessages,
-  notifyCreatorPeopleWaiting,
   notifyCreatorPlazaMessage,
   plazaMediaLabel,
   publishExploreHeat,
@@ -167,12 +166,6 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
 
   useEffect(() => listenAuthorLive(authorUsername, setLiveOpen), [authorUsername]);
   useEffect(() => listenCreatorClosing(authorUsername, setClosingNote), [authorUsername]);
-
-  useEffect(() => {
-    if (!presenceReady || !profile?.firebaseUid || !authorUid) return;
-    if (liveOpen || viewers.length < 2) return;
-    void notifyCreatorPeopleWaiting({ postId, authorUid, count: viewers.length });
-  }, [presenceReady, profile?.firebaseUid, authorUid, liveOpen, viewers.length, postId]);
 
   useEffect(() => {
     if (!profile?.firebaseUid) return;

@@ -31,7 +31,6 @@ export const EXPLORE_PLAZA_TTL_MS = 20 * 60 * 1000;
 const LIVE_HEARTBEAT_TTL_MS = 90_000;
 const LIVE_START_GRACE_MS = 90_000;
 const HEARTBEAT_MS = 8_000;
-const WAITING_ALERT_GAP_MS = 30 * 60 * 1000;
 const PLAZA_ALERT_GAP_MS = 10 * 60 * 1000;
 /** Las reglas solo dejan leer 20 min contados con el reloj del servidor. */
 const PLAZA_QUERY_MARGINS_MS = [3 * 60_000, 10 * 60_000, 17 * 60_000];
@@ -410,38 +409,6 @@ export function listenAuthorLive(
     },
     () => onChange(false),
   );
-}
-
-/** Un aviso al autor cuando ya hay gente en su video y él no está en vivo. */
-export async function notifyCreatorPeopleWaiting(input: {
-  postId: string;
-  authorUid: string;
-  count: number;
-}): Promise<void> {
-  const authorUid = String(input.authorUid || '').trim();
-  const postId = String(input.postId || '').trim();
-  const count = Math.max(0, Math.min(40, Math.round(input.count)));
-  if (!authorUid || !postId || count < 2) return;
-
-  const claimed = await claimPlazaAlert(postId, 'waitingAlertAt', WAITING_ALERT_GAP_MS, count);
-  if (!claimed) return;
-
-  const title = 'Hay gente en tu video';
-  const href = plazaHref(postId);
-  try {
-    await addDoc(collection(db, 'users', authorUid, 'liveAlerts'), {
-      kind: 'plaza',
-      title,
-      href,
-      postId,
-      createdAt: serverTimestamp(),
-      createdAtMs: Date.now(),
-    });
-  } catch {
-    await releasePlazaAlert(postId, 'waitingAlertAt', count);
-    return;
-  }
-  void pushPlazaAlert(authorUid, title, `${count} personas están viendo tu video ahora.`, href);
 }
 
 export function creatorClosingNote(data: Record<string, unknown> | undefined, now = Date.now()): string {
