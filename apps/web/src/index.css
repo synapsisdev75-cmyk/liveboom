@@ -20070,6 +20070,27 @@ html[data-lb-theme='light'] .lb-loc-scene {
   font-size: 9px;
 }
 
+.lb-loc-scene__brand {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 5;
+  display: inline-flex;
+  max-width: calc(100% - 4.5rem);
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #22d3ee, #a78bfa);
+  color: #0b0f19;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
 .lb-loc-scene .maplibregl-ctrl-group button {
   width: 36px;
   height: 36px;

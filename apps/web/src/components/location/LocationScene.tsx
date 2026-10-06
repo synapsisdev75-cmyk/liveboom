@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LocateFixed } from 'lucide-react';
+import { LocateFixed, Navigation } from 'lucide-react';
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { LocationPin, type MapPerson } from './LocationPin';
@@ -170,6 +170,9 @@ export default function LocationScene({
     });
     map.once('load', () => {
       loaded = true;
+      const attrib = host.querySelector('details.maplibregl-ctrl-attrib');
+      attrib?.classList.remove('maplibregl-compact-show');
+      attrib?.removeAttribute('open');
       if (!reduceMotion) {
         map.easeTo({ pitch: 55, bearing: -18, zoom: latestRef.current.zoom, duration: 1800 });
       }
@@ -215,6 +218,10 @@ export default function LocationScene({
   return (
     <div className={`lb-loc-scene relative isolate overflow-hidden ${className}`}>
       <div ref={hostRef} className="h-full w-full" aria-label="Mapa 3D de la ubicación" role="img" />
+      <span className="lb-loc-scene__brand" aria-hidden>
+        <Navigation size={12} />
+        Llega con LiveBoom
+      </span>
       {interactive ? (
         <button type="button" onClick={recenter} className="lb-loc-scene__recenter" aria-label="Centrar en la ubicación">
           <LocateFixed size={18} />
