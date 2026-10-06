@@ -2515,6 +2515,13 @@ input[type='datetime-local'] {
   margin-inline: auto;
 }
 
+/* Video de publicación en el feed: llena todo su cuadro, sin franjas negras. */
+.lb-media-stage--publication .lb-publication-media__fit .lb-post-media__video,
+.lb-media-stage--publication .lb-publication-media__fit .lb-post-media__poster {
+  object-fit: cover;
+  object-position: center;
+}
+
 @media (min-width: 640px) {
   .lb-media-stage--publication .lb-media-stage__ambient-media {
     filter: blur(clamp(36px, 5vw, 64px)) brightness(0.4) saturate(1);

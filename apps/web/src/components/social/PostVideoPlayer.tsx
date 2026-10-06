@@ -821,7 +821,7 @@ export function PostVideoPlayer({
         <img
           src={resolvedPoster}
           alt=""
-          className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain"
+          className="lb-post-media__poster pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain"
           draggable={false}
         />
       ) : null}
