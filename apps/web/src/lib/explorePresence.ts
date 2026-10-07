@@ -15,6 +15,7 @@ import {
   type Timestamp as FsTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { plazaMessageExpiresAt, visiblePlazaMessages } from './plazaMessageExpiry';
 import {
   parsePostTextStyle,
   parseTextStyleRanges,
@@ -64,6 +65,8 @@ export type PlazaMessage = {
   mediaPreviewUrl: string | null;
   textStyle: PostTextStyle | null;
   textStyleRanges: TextStyleRange[];
+  /** Últimos instantes antes de borrarse (para desvanecerlo). */
+  leaving: boolean;
 };
 
 export type PlazaMessageExtras = {
@@ -213,6 +216,25 @@ export function listenPlazaMessages(
   let unsub: () => void = () => undefined;
   let stopped = false;
   let marginStep = 0;
+  let primed = false;
+  let latest: PlazaMessage[] = [];
+  let tick = 0;
+  /** Hora local en que se borra cada mensaje. Los que llegan en vivo cuentan desde que llegan
+   *  (un reloj del teléfono adelantado no debe borrarlos antes de tiempo). */
+  const expiresAt = new Map<string, number>();
+
+  function emit() {
+    window.clearTimeout(tick);
+    if (stopped) return;
+    const now = Date.now();
+    const { visible, nextAt } = visiblePlazaMessages(latest, expiresAt, now);
+    const ids = new Set(latest.map((message) => message.id));
+    for (const [id, end] of expiresAt) {
+      if (!ids.has(id) && now >= end) expiresAt.delete(id);
+    }
+    onChange(visible);
+    if (nextAt !== null) tick = window.setTimeout(emit, Math.max(16, nextAt - now));
+  }
 
   function attach() {
     unsub();
@@ -221,7 +243,7 @@ export function listenPlazaMessages(
     const messagesQuery = query(
       collection(db, 'explorePlaza', postId, 'messages'),
       where('createdAt', '>', cutoff),
-      orderBy('createdAt', 'asc'),
+      orderBy('createdAt', 'desc'),
       limit(40),
     );
     unsub = onSnapshot(
@@ -229,7 +251,7 @@ export function listenPlazaMessages(
       (snap) => {
         const now = Date.now();
         const messages: PlazaMessage[] = [];
-        for (const item of snap.docs) {
+        for (const item of [...snap.docs].reverse()) {
           const data = item.data({ serverTimestamps: 'estimate' });
           const createdAtMs = millisOf(data.createdAt);
           if (createdAtMs <= 0 || now - createdAtMs > EXPLORE_PLAZA_TTL_MS) continue;
@@ -255,9 +277,13 @@ export function listenPlazaMessages(
             mediaPreviewUrl: mediaType ? mediaUrlOf(data.mediaPreviewUrl) : null,
             textStyle: text ? parsePostTextStyle(data.textStyle) : null,
             textStyleRanges: text ? parseTextStyleRanges(data.textStyleRanges, text.length) : [],
+            leaving: false,
           });
+          if (!expiresAt.has(item.id)) expiresAt.set(item.id, plazaMessageExpiresAt(now, createdAtMs, primed));
         }
-        onChange(messages);
+        if (!snap.metadata.fromCache) primed = true;
+        latest = messages;
+        emit();
       },
       () => {
         // Reloj del teléfono atrasado: ampliar el margen antes de rendirse.
@@ -266,7 +292,8 @@ export function listenPlazaMessages(
           attach();
           return;
         }
-        onChange([]);
+        latest = [];
+        emit();
       },
     );
   }
@@ -278,6 +305,7 @@ export function listenPlazaMessages(
   return () => {
     stopped = true;
     window.clearInterval(timer);
+    window.clearTimeout(tick);
     unsub();
   };
 }

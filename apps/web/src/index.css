@@ -19712,6 +19712,23 @@ a.lb-entity:active,
   max-height: min(42dvh, 16rem);
 }
 
+.lb-explore-plaza__msg {
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
+}
+
+.lb-explore-plaza__msg.is-leaving {
+  opacity: 0;
+  transform: translateY(-0.35rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-explore-plaza__msg {
+    transition: none;
+  }
+}
+
 /* El botón de cámara está a la izquierda de un panel estrecho: el menú ocupa el ancho del composer. */
 .lb-explore-plaza__composer {
   position: relative;

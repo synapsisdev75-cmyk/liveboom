@@ -429,11 +429,16 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           ) : null}
           <div ref={logRef} className="lb-explore-plaza__log min-h-0 flex-1 space-y-2 overflow-y-auto">
             {messages.length === 0 ? (
-              <p className="lb-explore-plaza__muted text-xs text-white/70">Todavía no hay mensajes en este video.</p>
+              <p className="lb-explore-plaza__muted text-xs text-white/70">No hay mensajes recientes. Cada mensaje se borra a los 3 minutos.</p>
             ) : (
               messages.map((message) =>
                 isLiveReply(message) ? (
-                <div key={message.id} className="rounded-xl border border-rose-400/40 bg-rose-500/15 p-2">
+                <div
+                  key={message.id}
+                  className={`lb-explore-plaza__msg rounded-xl border border-rose-400/40 bg-rose-500/15 p-2 ${
+                    message.leaving ? 'is-leaving' : ''
+                  }`}
+                >
                   <p className="lb-explore-plaza__live-label flex items-center gap-1 text-[11px] font-bold text-rose-200">
                     <Radio size={12} aria-hidden />
                     {message.displayName || message.username} responde en LIVE
@@ -453,7 +458,10 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                   )}
                 </div>
                 ) : (
-                <div key={message.id} className="flex items-start gap-2">
+                <div
+                  key={message.id}
+                  className={`lb-explore-plaza__msg flex items-start gap-2 ${message.leaving ? 'is-leaving' : ''}`}
+                >
                   <button
                     type="button"
                     className="mt-0.5 shrink-0 rounded-full"
