@@ -6,10 +6,13 @@ const {
   sharePostIdFromPath,
   previewFromPost,
   renderShareOgHtml,
-  renderOpenInBrowserHtml,
-  shareAppHandoffEnabled,
+  renderAndroidChoiceHtml,
+  browserIntentUrl,
+  shareImageUrl,
+  isShareImagePath,
   webPostPath,
 } = require('./sharePreview');
+const { shareCardBox } = require('./shareImage');
 
 test('crawlers de redes se reconocen y el celular no', () => {
   assert.equal(isShareCrawler('WhatsApp/2.23.1'), true);
@@ -33,18 +36,65 @@ test('el dispositivo manda a tienda o al sitio', () => {
   );
 });
 
-test('sin apps publicadas, el enlace abre el sitio en el navegador', () => {
-  delete process.env.SHARE_APP_HANDOFF;
-  assert.equal(shareAppHandoffEnabled(), false);
-  const html = renderOpenInBrowserHtml({ webUrl: 'https://liveboomapp.com/u/yemdups?post=abc&uid=uid1' });
-  assert.match(html, /intent:\/\/liveboomapp\.com\/u\/yemdups\?post=abc&uid=uid1#Intent;scheme=https;/);
-  assert.doesNotMatch(html, /play\.google\.com/);
+test('Android: Google Play o seguir en el navegador; dentro de Instagram sale al navegador', () => {
+  const webUrl = 'https://liveboomapp.com/u/yemdups?post=abc&uid=uid1';
+  const preview = previewFromPost({ username: 'yemdups', visibility: 'public', type: 'photo', caption: 'Goku' });
+  const html = renderAndroidChoiceHtml({ preview, webUrl, imageUrl: 'https://liveboomapp.com/s/abc/og.jpg?v=1' });
+  assert.match(html, /scheme=market;package=com\.android\.vending/);
+  assert.match(html, /id=com\.liveboom\.app/);
+  assert.match(html, /Continuar en el navegador/);
+  assert.match(html, /href="https:\/\/liveboomapp\.com\/u\/yemdups\?post=abc&amp;uid=uid1"/);
+  assert.match(html, /og\.jpg/);
+  assert.doesNotMatch(html, /scheme=https;/);
+  const inApp = renderAndroidChoiceHtml({ preview, webUrl, imageUrl: 'x', inApp: true });
+  assert.match(inApp, /intent:\/\/liveboomapp\.com\/u\/yemdups\?post=abc&uid=uid1#Intent;scheme=https;/);
+  assert.equal(
+    browserIntentUrl(webUrl),
+    `intent://liveboomapp.com/u/yemdups?post=abc&uid=uid1#Intent;scheme=https;S.browser_fallback_url=${encodeURIComponent(webUrl)};end`,
+  );
   const og = renderShareOgHtml({
     preview: previewFromPost({ username: 'yemdups', visibility: 'public', type: 'text' }),
     pageUrl: 'https://liveboomapp.com/s/abc',
     webUrl: 'https://liveboomapp.com/u/yemdups?post=abc',
   });
   assert.match(og, /Ver publicación en LiveBoom/);
+});
+
+test('WhatsApp recibe la imagen grande 1200×630 generada', () => {
+  const preview = previewFromPost({
+    username: 'yemdups',
+    visibility: 'public',
+    type: 'photo',
+    mediaUrl: 'https://cdn.example/goku.jpg',
+    mediaWidth: 1080,
+    mediaHeight: 1350,
+  });
+  const ogImage = shareImageUrl('abc', preview);
+  assert.match(ogImage, /^https:\/\/liveboomapp\.com\/s\/abc\/og\.jpg\?v=[0-9a-f]{10}$/);
+  assert.notEqual(ogImage, shareImageUrl('abc', { ...preview, image: 'https://cdn.example/otra.jpg' }));
+  const html = renderShareOgHtml({ preview, pageUrl: 'https://liveboomapp.com/s/abc', ogImage });
+  assert.match(html, /og:image" content="https:\/\/liveboomapp\.com\/s\/abc\/og\.jpg/);
+  assert.match(html, /og:image:width" content="1200"/);
+  assert.match(html, /og:image:height" content="630"/);
+  assert.match(html, /og:image:type" content="image\/jpeg"/);
+  assert.match(html, /summary_large_image/);
+  assert.equal(isShareImagePath('/s/abc/og.jpg'), true);
+  assert.equal(isShareImagePath('/s/abc'), false);
+  assert.equal(sharePostIdFromPath('/s/abc/og.jpg'), 'abc');
+});
+
+test('la tarjeta de la imagen: vertical se recorta a lo ancho, horizontal entra completa', () => {
+  const portrait = shareCardBox(9 / 16);
+  assert.deepEqual([portrait.width, portrait.height], [720, 590]);
+  const wide = shareCardBox(16 / 9);
+  assert.equal(wide.height, 590);
+  assert.equal(wide.width, 1049);
+  const pano = shareCardBox(3);
+  assert.deepEqual([pano.width, pano.height], [1080, 360]);
+  for (const box of [portrait, wide, pano]) {
+    assert.ok(box.left >= 0 && box.top >= 0);
+    assert.ok(box.left + box.width <= 1200 && box.top + box.height <= 630);
+  }
 });
 
 test('la vista previa usa el video público y no filtra uno privado', () => {

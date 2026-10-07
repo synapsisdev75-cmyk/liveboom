@@ -2,6 +2,10 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.livebo
 const APP_STORE_URL = 'https://apps.apple.com/search?term=LiveBoom';
 const SITE_ORIGIN = 'https://liveboomapp.com';
 const DEFAULT_IMAGE = `${SITE_ORIGIN}/brand/logo-clear.png`;
+const SHARE_IMAGE_W = 1200;
+const SHARE_IMAGE_H = 630;
+/** Subir si cambia el diseño de og.jpg para que WhatsApp/Facebook no usen la versión vieja. */
+const SHARE_IMAGE_LAYOUT = 'card-v1';
 
 function escapeHtml(value) {
   return String(value || '')
@@ -46,6 +50,10 @@ function sharePostIdFromPath(path) {
   } catch {
     return '';
   }
+}
+
+function isShareImagePath(path) {
+  return /^\/s\/[^/]+\/og\.jpg$/i.test(String(path || '').split('?')[0]);
 }
 
 function isSafePostId(postId) {
@@ -140,10 +148,21 @@ function webPostPath(preview, postId) {
   return `/u/${handle}?${params.toString()}`;
 }
 
-function renderShareOgHtml({ preview, pageUrl, webUrl = '' }) {
+/** URL de la imagen 1200×630 generada; `v` cambia si cambia la foto/miniatura de origen. */
+function shareImageUrl(postId, preview) {
+  const crypto = require('crypto');
+  const v = crypto
+    .createHash('sha1')
+    .update(`${SHARE_IMAGE_LAYOUT}|${preview.image}|${preview.video ? 1 : 0}`)
+    .digest('hex')
+    .slice(0, 10);
+  return `${SITE_ORIGIN}/s/${encodeURIComponent(postId)}/og.jpg?v=${v}`;
+}
+
+function renderShareOgHtml({ preview, pageUrl, webUrl = '', ogImage = '' }) {
   const title = escapeHtml(preview.title);
   const description = escapeHtml(preview.description);
-  const image = escapeHtml(preview.image);
+  const image = escapeHtml(ogImage || preview.image);
   const page = escapeHtml(pageUrl);
   const videoTags = preview.video
     ? `<meta property="og:video" content="${escapeHtml(preview.video)}" />
@@ -151,11 +170,15 @@ function renderShareOgHtml({ preview, pageUrl, webUrl = '' }) {
     <meta property="og:video:type" content="${escapeHtml(preview.videoType)}" />
     <meta property="og:type" content="video.other" />`
     : `<meta property="og:type" content="article" />`;
-  const sizeTags =
-    preview.width > 0 && preview.height > 0
+  const sizeTags = ogImage
+    ? `<meta property="og:image:width" content="${SHARE_IMAGE_W}" />
+    <meta property="og:image:height" content="${SHARE_IMAGE_H}" />
+    <meta property="og:image:alt" content="${title}" />`
+    : preview.width > 0 && preview.height > 0
       ? `<meta property="og:image:width" content="${preview.width}" />
     <meta property="og:image:height" content="${preview.height}" />`
       : '';
+  const imageType = ogImage ? 'image/jpeg' : preview.imageType;
   return `<!doctype html>
 <html lang="es">
   <head>
@@ -168,7 +191,7 @@ function renderShareOgHtml({ preview, pageUrl, webUrl = '' }) {
     <meta property="og:url" content="${page}" />
     <meta property="og:image" content="${image}" />
     <meta property="og:image:secure_url" content="${image}" />
-    <meta property="og:image:type" content="${escapeHtml(preview.imageType)}" />
+    <meta property="og:image:type" content="${escapeHtml(imageType)}" />
     ${sizeTags}
     ${videoTags}
     <meta name="twitter:card" content="${preview.video ? 'player' : 'summary_large_image'}" />
@@ -194,102 +217,128 @@ function renderShareOgHtml({ preview, pageUrl, webUrl = '' }) {
 </html>`;
 }
 
-/** Saca el enlace del navegador interno (Instagram, Facebook…) al navegador predeterminado de Android. */
-function renderOpenInBrowserHtml({ webUrl }) {
-  const safeWeb = escapeHtml(webUrl);
+/** Abre la URL https en el navegador predeterminado de Android (sale de Instagram, Facebook…). */
+function browserIntentUrl(webUrl) {
   const target = new URL(webUrl);
-  const intent =
+  return (
     'intent://' +
     target.host +
     target.pathname +
     target.search +
     '#Intent;scheme=https;S.browser_fallback_url=' +
     encodeURIComponent(webUrl) +
-    ';end';
-  return `<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LiveBoom</title>
-  </head>
-  <body style="margin:0;min-height:100dvh;display:grid;place-items:center;background:#0a0a0b;color:#fff;font-family:system-ui,sans-serif;text-align:center">
-    <div style="padding:1.5rem">
-      <p>Abriendo LiveBoom en tu navegador…</p>
-      <p><a href="${safeWeb}" style="display:inline-block;min-height:44px;line-height:44px;padding:0 1.25rem;border-radius:999px;background:#22d3ee;color:#000;font-weight:600;text-decoration:none">Ver publicación</a></p>
-    </div>
-    <script>
-      (function () {
-        var hidden = false;
-        document.addEventListener('visibilitychange', function () {
-          if (document.visibilityState === 'hidden') hidden = true;
-        });
-        window.location.href = ${JSON.stringify(intent)};
-        setTimeout(function () {
-          if (!hidden) window.location.replace(${JSON.stringify(webUrl)});
-        }, 1200);
-      })();
-    </script>
-  </body>
-</html>`;
+    ';end'
+  );
 }
 
-/** Abrir la app / tienda desde el enlace solo cuando las apps estén publicadas (SHARE_APP_HANDOFF=1). */
-function shareAppHandoffEnabled() {
-  return String(process.env.SHARE_APP_HANDOFF || '').trim() === '1';
-}
+/** Ficha de LiveBoom en la app de Google Play; si no está la app de Play, la ficha web. */
+const PLAY_STORE_INTENT =
+  'intent://details?id=com.liveboom.app#Intent;scheme=market;package=com.android.vending;S.browser_fallback_url=' +
+  encodeURIComponent(PLAY_STORE_URL) +
+  ';end';
 
-function renderShareHandoffHtml({ kind, postId, webUrl }) {
+/** Android: vista de la publicación + descargar la app en Google Play o seguir en el navegador. */
+function renderAndroidChoiceHtml({ preview, webUrl, imageUrl, inApp = false }) {
+  const title = escapeHtml(preview.title);
+  const caption = escapeHtml(preview.description);
+  const who = escapeHtml(`@${preview.username}`);
   const safeWeb = escapeHtml(webUrl);
-  const safePlay = escapeHtml(PLAY_STORE_URL);
-  const safeAppStore = escapeHtml(APP_STORE_URL);
-  const safeId = escapeHtml(postId);
-  if (kind === 'ios') {
-    return `<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LiveBoom</title>
-  </head>
-  <body>
-    <p>Abriendo LiveBoom…</p>
-    <p><a href="${safeAppStore}">Abrir en App Store</a></p>
-    <script>
+  const continueScript = inApp
+    ? `<script>
       (function () {
-        var hidden = false;
-        document.addEventListener('visibilitychange', function () {
-          if (document.visibilityState === 'hidden') hidden = true;
+        var link = document.getElementById('lb-web');
+        link.addEventListener('click', function (event) {
+          event.preventDefault();
+          var hidden = false;
+          document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') hidden = true;
+          });
+          window.location.href = ${JSON.stringify(browserIntentUrl(webUrl))};
+          setTimeout(function () {
+            if (!hidden) window.location.replace(${JSON.stringify(webUrl)});
+          }, 1200);
         });
-        window.location.href = 'liveboom://s/${safeId}';
-        setTimeout(function () {
-          if (!hidden) window.location.replace(${JSON.stringify(APP_STORE_URL)});
-        }, 900);
       })();
-    </script>
-  </body>
-</html>`;
-  }
-  const intent =
-    'intent://s/' +
-    encodeURIComponent(postId) +
-    '#Intent;scheme=liveboom;package=com.liveboom.app;S.browser_fallback_url=' +
-    encodeURIComponent(PLAY_STORE_URL) +
-    ';end';
+    </script>`
+    : '';
   return `<!doctype html>
 <html lang="es">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LiveBoom</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0b" />
+    <meta name="robots" content="noindex" />
+    <title>${title} · LiveBoom</title>
+    <link rel="icon" href="${SITE_ORIGIN}/favicon.ico" />
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(120% 80% at 50% 0%, #14213f 0%, #0a0a0b 62%);
+        color: #fff;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+          max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+      }
+      .lb-card { width: min(100%, 26rem); display: flex; flex-direction: column; gap: 1rem; }
+      .lb-brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.1rem; }
+      .lb-brand img { width: 2.25rem; height: 2.25rem; border-radius: 0.6rem; }
+      .lb-media {
+        width: 100%;
+        aspect-ratio: ${SHARE_IMAGE_W} / ${SHARE_IMAGE_H};
+        border-radius: 1.1rem;
+        overflow: hidden;
+        background: #111827;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+      }
+      .lb-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .lb-who { font-size: 0.85rem; color: #a1a1aa; }
+      .lb-caption {
+        margin: 0.25rem 0 0;
+        font-size: 1rem;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .lb-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 3.25rem;
+        padding: 0 1.25rem;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 1rem;
+        text-align: center;
+        text-decoration: none;
+      }
+      .lb-btn--primary { background: linear-gradient(90deg, #22d3ee, #a78bfa, #ec4899); color: #05060a; }
+      .lb-btn--secondary { border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.05); color: #fff; }
+      .lb-hint { margin: 0; font-size: 0.78rem; color: #71717a; text-align: center; }
+    </style>
   </head>
   <body>
-    <p>Abriendo LiveBoom…</p>
-    <p><a href="${safePlay}">Abrir en Play Store</a></p>
-    <script>
-      window.location.replace(${JSON.stringify(intent)});
-    </script>
-    <noscript><p><a href="${safeWeb}">Ver en el sitio</a></p></noscript>
+    <main class="lb-card">
+      <div class="lb-brand"><img src="${SITE_ORIGIN}/brand/app-icon-192.png" alt="" />LiveBoom</div>
+      <div class="lb-media"><img src="${escapeHtml(imageUrl)}" alt="${title}" /></div>
+      <div>
+        <div class="lb-who">${who} en LiveBoom</div>
+        ${caption ? `<p class="lb-caption">${caption}</p>` : ''}
+      </div>
+      <a class="lb-btn lb-btn--primary" href="${escapeHtml(PLAY_STORE_INTENT)}">Descargar la app en Google Play</a>
+      <a class="lb-btn lb-btn--secondary" id="lb-web" href="${safeWeb}">Continuar en el navegador</a>
+      <p class="lb-hint">Si ya tienes LiveBoom instalada, Google Play te mostrará «Abrir».</p>
+    </main>
+    ${continueScript}
   </body>
 </html>`;
 }
@@ -370,35 +419,52 @@ async function handleSharePreview(req, res) {
     return;
   }
   const preview = previewFromPost(data);
+  if (isShareImagePath(req.path || req.url || '')) {
+    try {
+      const { renderShareImage } = require('./shareImage');
+      const jpg = await renderShareImage({
+        imageUrl: preview.image,
+        isVideo: Boolean(preview.video),
+        brandOnly: preview.image === DEFAULT_IMAGE,
+        logoUrl: DEFAULT_IMAGE,
+      });
+      res
+        .status(200)
+        .set('Content-Type', 'image/jpeg')
+        .set('Cache-Control', 'public, max-age=86400, s-maxage=86400')
+        .send(jpg);
+    } catch (error) {
+      console.error('[liveboom] share image', error?.message || error);
+      res.set('Cache-Control', 'no-store').redirect(302, preview.image);
+    }
+    return;
+  }
   const pageUrl = `${SITE_ORIGIN}/s/${encodeURIComponent(postId)}`;
   const webUrl = `${SITE_ORIGIN}${webPostPath(preview, postId)}`;
+  const ogImage = shareImageUrl(postId, preview);
   const ua = req.get?.('user-agent') || req.headers?.['user-agent'] || '';
+  // La respuesta depende del dispositivo: `private` evita que el CDN sirva la de un bot a una persona.
   if (isShareCrawler(ua)) {
     res
       .status(200)
       .set('Content-Type', 'text/html; charset=utf-8')
-      .set('Cache-Control', 'public, max-age=300')
-      .send(renderShareOgHtml({ preview, pageUrl, webUrl }));
+      .set('Cache-Control', 'private, max-age=300')
+      .send(renderShareOgHtml({ preview, pageUrl, webUrl, ogImage }));
     return;
   }
   const kind = shareClientKind(ua);
-  if (kind === 'android-inapp') {
+  if (kind === 'android' || kind === 'android-inapp') {
     res
       .status(200)
       .set('Content-Type', 'text/html; charset=utf-8')
       .set('Cache-Control', 'no-store')
-      .send(renderOpenInBrowserHtml({ webUrl }));
+      .send(
+        renderAndroidChoiceHtml({ preview, webUrl, imageUrl: ogImage, inApp: kind === 'android-inapp' }),
+      );
     return;
   }
-  if (!shareAppHandoffEnabled() || kind === 'desktop' || kind === 'app') {
-    res.redirect(302, webUrl);
-    return;
-  }
-  res
-    .status(200)
-    .set('Content-Type', 'text/html; charset=utf-8')
-    .set('Cache-Control', 'no-store')
-    .send(renderShareHandoffHtml({ kind, postId, webUrl }));
+  // iPhone/iPad (aún sin App Store), PC y la propia app: directo al navegador.
+  res.set('Cache-Control', 'no-store').redirect(302, webUrl);
 }
 
 module.exports = {
@@ -410,12 +476,13 @@ module.exports = {
   isAndroidInAppBrowser,
   shareClientKind,
   sharePostIdFromPath,
+  isShareImagePath,
   isSafePostId,
   previewFromPost,
   webPostPath,
+  shareImageUrl,
   renderShareOgHtml,
-  renderShareHandoffHtml,
-  renderOpenInBrowserHtml,
-  shareAppHandoffEnabled,
+  renderAndroidChoiceHtml,
+  browserIntentUrl,
   handleSharePreview,
 };
