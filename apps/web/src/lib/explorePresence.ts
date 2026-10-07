@@ -70,7 +70,7 @@ export type PlazaMessage = {
   replyTo: PlazaReplyRef | null;
 };
 
-/** Mensaje al que se responde (copia corta: el original se borra a los 3 min). */
+/** Mensaje al que se responde (copia corta: el original se borra a los 10 min). */
 export type PlazaReplyRef = {
   id: string;
   name: string;

@@ -1,5 +1,5 @@
 /**
- * Chat del video: cada mensaje se borra a los 3 minutos, del más viejo al más nuevo.
+ * Chat del video: cada mensaje se borra a los 10 minutos, del más viejo al más nuevo.
  * Ejecutar: npx tsx apps/web/src/lib/plazaMessageExpiry.test.ts
  */
 import {
@@ -17,11 +17,11 @@ const T0 = 1_000_000;
 const MIN = 60_000;
 
 // Carga inicial: se descuenta lo que ya lleva publicado.
-assert(plazaMessageExpiresAt(T0, T0 - MIN, false) === T0 + 2 * MIN, 'mensaje de 1 min: quedan 2 min');
-assert(plazaMessageExpiresAt(T0, T0 - 5 * MIN, false) === T0, 'mensaje de 5 min: ya vencido');
-assert(plazaMessageExpiresAt(T0, T0 + 2 * MIN, false) === T0 + PLAZA_MESSAGE_VISIBLE_MS, 'reloj atrasado: 3 min completos');
-// En vivo: siempre 3 min desde que llega, aunque el reloj del teléfono esté adelantado.
-assert(plazaMessageExpiresAt(T0, T0 - 10 * MIN, true) === T0 + PLAZA_MESSAGE_VISIBLE_MS, 'en vivo: 3 min completos');
+assert(plazaMessageExpiresAt(T0, T0 - MIN, false) === T0 + 9 * MIN, 'mensaje de 1 min: quedan 9 min');
+assert(plazaMessageExpiresAt(T0, T0 - 12 * MIN, false) === T0, 'mensaje de 12 min: ya vencido');
+assert(plazaMessageExpiresAt(T0, T0 + 2 * MIN, false) === T0 + PLAZA_MESSAGE_VISIBLE_MS, 'reloj atrasado: 10 min completos');
+// En vivo: siempre 10 min desde que llega, aunque el reloj del teléfono esté adelantado.
+assert(plazaMessageExpiresAt(T0, T0 - 15 * MIN, true) === T0 + PLAZA_MESSAGE_VISIBLE_MS, 'en vivo: 10 min completos');
 
 const messages = [{ id: 'viejo' }, { id: 'medio' }, { id: 'nuevo' }];
 const expiresAt = new Map([

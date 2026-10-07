@@ -1,5 +1,5 @@
-/** Cada mensaje del chat del video se borra a los 3 min de enviado: el más viejo sale primero. */
-export const PLAZA_MESSAGE_VISIBLE_MS = 3 * 60_000;
+/** Cada mensaje del chat del video se borra a los 10 min de enviado: el más viejo sale primero. */
+export const PLAZA_MESSAGE_VISIBLE_MS = 10 * 60_000;
 export const PLAZA_MESSAGE_FADE_MS = 600;
 
 /** `live`: llegó con el chat ya abierto, así que es nuevo aunque el reloj local no coincida. */

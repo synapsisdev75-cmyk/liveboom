@@ -446,7 +446,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           ) : null}
           <div ref={logRef} className="lb-explore-plaza__log min-h-0 flex-1 space-y-2 overflow-y-auto">
             {messages.length === 0 ? (
-              <p className="lb-explore-plaza__muted text-xs text-white/70">No hay mensajes recientes. Cada mensaje se borra a los 3 minutos.</p>
+              <p className="lb-explore-plaza__muted text-xs text-white/70">No hay mensajes recientes. Cada mensaje se borra a los 10 minutos.</p>
             ) : (
               messages.map((message) =>
                 isLiveReply(message) ? (
