@@ -8,6 +8,8 @@ function presenceRef(db, uid) {
   return db.collection('users').doc(String(uid)).collection('presence').doc('now');
 }
 
+const LIVE_CALL_STATUS = new Set(['ringing', 'accepted', 'connecting', 'connected', 'active']);
+
 function isLocked(data, now, opts = {}) {
   if (!data || data.callStatus !== 'busy') return false;
   const t = Number(data.callUpdatedAtMs) || 0;
@@ -16,6 +18,21 @@ function isLocked(data, now, opts = {}) {
   if (exceptCallId && data.callId && String(data.callId) === exceptCallId) return false;
   const resumePeerUid = opts.resumePeerUid ? String(opts.resumePeerUid) : '';
   if (resumePeerUid && data.callPeerUid && String(data.callPeerUid) === resumePeerUid) return false;
+  return true;
+}
+
+/** El lock de presencia no cuenta si el chat ya colgó o apunta a otra llamada. */
+async function presenceStillBusy(tx, db, data, now, opts) {
+  if (!isLocked(data, now, opts)) return false;
+  const chatId = data.callChatId ? String(data.callChatId) : '';
+  if (!chatId) return true;
+  const chatSnap = await tx.get(db.collection('chats').doc(chatId));
+  const call = chatSnap.exists ? chatSnap.data()?.call : null;
+  if (!call || typeof call !== 'object') return false;
+  const status = String(call.status || '');
+  if (!LIVE_CALL_STATUS.has(status)) return false;
+  const lockedId = data.callId ? String(data.callId) : '';
+  if (lockedId && call.id && String(call.id) !== lockedId) return false;
   return true;
 }
 
@@ -67,10 +84,10 @@ async function claimUsersBusy({ callerId, receiverId, callId, chatId }) {
     const callerData = a === first ? firstData : secondData;
     const receiverData = a === first ? secondData : firstData;
 
-    if (isLocked(callerData, now, { exceptCallId: id, resumePeerUid: b })) {
+    if (await presenceStillBusy(tx, db, callerData, now, { exceptCallId: id, resumePeerUid: b })) {
       return { ok: false, code: 'USER_ALREADY_IN_CALL' };
     }
-    if (isLocked(receiverData, now, { exceptCallId: id })) {
+    if (await presenceStillBusy(tx, db, receiverData, now, { exceptCallId: id })) {
       return { ok: false, code: 'USER_BUSY' };
     }
 

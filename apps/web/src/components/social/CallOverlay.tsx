@@ -2789,17 +2789,29 @@ export function CallOverlay() {
     if (status === 'ringing-out' || status === 'ringing-in' || status === 'active') {
       const id = callId || incoming?.callId || null;
       lastOwnedCallIdRef.current = id;
+      let cancelled = false;
       const tick = () => {
+        if (cancelled) return;
         void setCallAvailability(profile.firebaseUid, {
           available: false,
           callId: id,
           chatId: chatId || incoming?.chatId || null,
           peerUid: peer?.uid || incoming?.peer.uid || null,
-        }).catch(() => undefined);
+        })
+          .then(() => {
+            const live = useCallStore.getState();
+            if (live.status === 'idle' || (id && live.callId !== id)) {
+              void releaseOwnCallPresence(profile.firebaseUid, id).catch(() => undefined);
+            }
+          })
+          .catch(() => undefined);
       };
       tick();
       const timer = window.setInterval(tick, 20_000);
-      return () => window.clearInterval(timer);
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+      };
     }
     const owned = lastOwnedCallIdRef.current;
     lastOwnedCallIdRef.current = null;

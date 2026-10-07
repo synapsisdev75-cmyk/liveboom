@@ -166,7 +166,14 @@ export function CallChatActions({
         token: session.token,
         serverUrl: session.serverUrl,
       });
-      void claimOwnCallBusy(profile.firebaseUid, { callId, chatId, peerUid: peer.uid });
+      void claimOwnCallBusy(profile.firebaseUid, { callId, chatId, peerUid: peer.uid })
+        .then(() => {
+          const live = useCallStore.getState();
+          if (live.status === 'idle' || live.callId !== callId) {
+            void releaseOwnCallPresence(profile.firebaseUid, callId).catch(() => undefined);
+          }
+        })
+        .catch(() => undefined);
       setAuthId(null);
     } catch (err) {
       releasePendingCallMicrophone();

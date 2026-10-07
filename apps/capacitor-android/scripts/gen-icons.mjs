@@ -15,9 +15,10 @@ const sizes = [
 for (const [folder, size] of sizes) {
   const dir = path.join(res, folder);
   fs.mkdirSync(dir, { recursive: true });
-  await sharp(src).resize(size, size).png().toFile(path.join(dir, 'ic_launcher.png'));
-  await sharp(src).resize(size, size).png().toFile(path.join(dir, 'ic_launcher_round.png'));
-  await sharp(src).resize(size, size).png().toFile(path.join(dir, 'ic_launcher_foreground.png'));
+  const icon = sharp(src).resize(size, size).flatten({ background: '#051D4C' });
+  await icon.clone().png().toFile(path.join(dir, 'ic_launcher.png'));
+  await icon.clone().png().toFile(path.join(dir, 'ic_launcher_round.png'));
+  await icon.clone().png().toFile(path.join(dir, 'ic_launcher_foreground.png'));
 }
 
 const anydpi = path.join(res, 'mipmap-anydpi-v26');
@@ -38,7 +39,7 @@ fs.writeFileSync(
   colorsPath,
   `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0B1B3A</color>
+    <color name="ic_launcher_background">#051D4C</color>
 </resources>
 `,
 );

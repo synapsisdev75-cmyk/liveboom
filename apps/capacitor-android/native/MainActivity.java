@@ -1,9 +1,13 @@
 package com.liveboom.app;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.webkit.PermissionRequest;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 
@@ -16,6 +20,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SystemInsetsPlugin.class);
         registerPlugin(AppPermissionsPlugin.class);
+        registerPlugin(LiveMediaPlugin.class);
+        registerPlugin(ShareIncomingPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Android pinta un velo gris sobre la barra de botones en apps edge-to-edge;
@@ -35,6 +41,30 @@ public class MainActivity extends BridgeActivity {
                         Bitmap pixel = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
                         pixel.eraseColor(Color.TRANSPARENT);
                         return pixel;
+                    }
+
+                    @Override
+                    public void onPermissionRequest(final PermissionRequest request) {
+                        // Si LiveMedia ya obtuvo cámara y micrófono, conceder al WebView
+                        // sin un segundo diálogo: si no, getUserMedia falla en el APK.
+                        boolean waitingForRuntime = false;
+                        for (String resource : request.getResources()) {
+                            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                                && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA)
+                                    != PackageManager.PERMISSION_GRANTED) {
+                                waitingForRuntime = true;
+                            }
+                            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                                && ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO)
+                                    != PackageManager.PERMISSION_GRANTED) {
+                                waitingForRuntime = true;
+                            }
+                        }
+                        if (!waitingForRuntime) {
+                            request.grant(request.getResources());
+                            return;
+                        }
+                        super.onPermissionRequest(request);
                     }
                 }
             );

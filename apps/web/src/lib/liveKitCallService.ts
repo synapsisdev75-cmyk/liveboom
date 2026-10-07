@@ -219,10 +219,18 @@ export function formatCallApiError(error: unknown, ctx?: { handle?: string }) {
       : [];
     if (missing.length > 0) return `${error.message} (falta ${missing.join(', ')})`;
     const msg = String(error.message || '');
-    if (/^\d{3}\b/.test(msg) || /livekit|room occupied|api error|\b409\b/i.test(msg)) {
+    if (
+      /^\d{3}\b/.test(msg) ||
+      /livekit|room occupied|api error|\b409\b|insufficient permissions|permission-denied|missing or insufficient/i.test(
+        msg,
+      )
+    ) {
       return 'No se pudo iniciar la llamada. Intenta de nuevo.';
     }
     return msg || 'No se pudo iniciar la llamada';
+  }
+  if (error instanceof Error && /insufficient permissions|permission-denied|missing or insufficient/i.test(error.message)) {
+    return 'No se pudo iniciar la llamada. Intenta de nuevo.';
   }
   return error instanceof Error ? error.message : 'No se pudo iniciar la llamada';
 }

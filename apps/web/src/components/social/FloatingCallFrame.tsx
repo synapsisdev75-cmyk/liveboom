@@ -301,10 +301,8 @@ export function FloatingCallFrame({
     const chat = fullscreen ? null : chatBox();
     if (fullscreen) {
       const view = viewBox();
-      const next = { x: view.left, y: view.top };
-      const dim = { w: Math.max(96, view.width), h: Math.max(96, view.height) };
-      setPos(next);
-      setSize(dim);
+      setPos({ x: view.left, y: view.top });
+      setSize(null);
       return;
     }
     if (maximized) {
@@ -513,8 +511,12 @@ export function FloatingCallFrame({
             ? undefined
             : ({
                 ...(pos ? { left: pos.x, top: pos.y } : null),
-                ...((maximized || (canResize && manualSize)) && size ? { width: size.w, height: size.h } : null),
-                ...(fullscreen && size ? { '--lb-call-fs-h': `${size.h}px` } : null),
+                ...(fullscreen
+                  ? { right: 0, bottom: 0, width: 'auto', height: 'auto', maxWidth: 'none' }
+                  : null),
+                ...(!fullscreen && (maximized || (canResize && manualSize)) && size
+                  ? { width: size.w, height: size.h }
+                  : null),
               } as CSSProperties)
         }
         aria-hidden={parked || undefined}

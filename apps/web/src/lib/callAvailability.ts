@@ -6,6 +6,7 @@ import {
   setDoc,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { api } from './api';
 import { db } from './firebase';
 
 /** Presencia de llamada: una sola fuente, voz y video juntos. */
@@ -85,6 +86,16 @@ export function availabilityFromData(data: Record<string, unknown> | undefined |
   };
 }
 
+function isPermissionDenied(error: unknown): boolean {
+  const raw = error instanceof Error ? error.message : String(error || '');
+  return /insufficient permissions|permission-denied|missing or insufficient/i.test(raw);
+}
+
+/**
+ * Si el chat de ese lock ya no está en llamada, el lock está viejo.
+ * Solo el dueño puede borrar su presencia. Escribir la del otro usuario
+ * falla con "Missing or insufficient permissions" y la siguiente llamada no arranca.
+ */
 async function releaseIfCallNotLive(
   uid: string,
   availability: CallAvailability,
@@ -94,7 +105,11 @@ async function releaseIfCallNotLive(
     ? await peekPresenceCallStatus(availability.chatId).catch(() => null)
     : null;
   if (isLiveCallStatus(live)) return false;
-  await releaseOwnCallPresence(uid, availability.activeCallId);
+  try {
+    await releaseOwnCallPresence(uid, availability.activeCallId);
+  } catch (error) {
+    if (!isPermissionDenied(error)) throw error;
+  }
   return true;
 }
 
@@ -131,17 +146,25 @@ export async function assertCanStartCall(
     getCallAvailability(receiverId),
   ]);
   if (!caller.available) {
+    const live = caller.chatId ? await peekPresenceCallStatus(caller.chatId).catch(() => null) : null;
+    if (!isLiveCallStatus(live) && caller.activeCallId) {
+      await api('/api/calls/release', {
+        method: 'POST',
+        body: JSON.stringify({ callId: caller.activeCallId }),
+      }).catch(() => undefined);
+    }
     const stale = await releaseIfCallNotLive(callerId, caller);
     if (!stale) {
       throw new CallBusyError('USER_ALREADY_IN_CALL', { activeCallId: caller.activeCallId });
     }
   }
-  if (!receiver.available) {
-    const stale = await releaseIfCallNotLive(receiverId, receiver);
+  const receiverNow = caller.available ? receiver : await getCallAvailability(receiverId);
+  if (!receiverNow.available) {
+    const stale = await releaseIfCallNotLive(receiverId, receiverNow);
     if (!stale) {
       throw new CallBusyError('USER_BUSY', {
         handle: opts?.handle,
-        activeCallId: receiver.activeCallId,
+        activeCallId: receiverNow.activeCallId,
       });
     }
   }

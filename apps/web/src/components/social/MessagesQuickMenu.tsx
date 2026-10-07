@@ -427,9 +427,13 @@ function PhoneChatWindow({
     <div
       className="lb-phone-chat-window lb-phone-chat-window--sheet"
       style={{
-        right: `calc(max(0.75rem, env(safe-area-inset-right, 0px)) + ${index} * (min(24.375rem, calc(100vw - 1.25rem)) + 0.75rem))`,
+        left: 0,
+        right: 0,
+        top: 0,
         bottom: 0,
-        zIndex: 80 + index,
+        width: '100%',
+        height: '100%',
+        zIndex: 90 + index,
       }}
     >
       <Suspense fallback={null}>

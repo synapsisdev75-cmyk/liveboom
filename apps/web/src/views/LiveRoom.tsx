@@ -4000,6 +4000,8 @@ function CreatorStage({
           setEndLiveError('No se pudo finalizar el LIVE. Intenta nuevamente.');
           return;
         }
+        setLeaveOpen(false);
+        setSummaryOpen(true);
         try {
           await onLeaveLive(endStats);
         } catch {

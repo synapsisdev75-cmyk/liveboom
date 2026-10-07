@@ -354,12 +354,9 @@ export async function ensureNativeLiveAvPermissions(): Promise<AvPermissionResul
   try {
     const current = await LiveMedia.checkAvPermissions();
     result = current.camera && current.microphone ? current : await LiveMedia.requestAvPermissions();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err || '');
-    throw new Error(
-      message ||
-        'Activa cámara y micrófono en Ajustes → Apps → LiveBoom → Permisos.',
-    );
+  } catch {
+    // Si el plugin no responde, getUserMedia del WebView sigue pudiendo abrir la cámara.
+    return { camera: false, microphone: false };
   }
   if (result.camera || result.microphone) await ensureCallBluetooth();
   return result;

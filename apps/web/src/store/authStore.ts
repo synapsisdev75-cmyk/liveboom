@@ -46,12 +46,9 @@ function isCredentialManagerUnsupported(error: unknown) {
 }
 
 async function nativeGoogleSignIn() {
-  try {
-    return await FirebaseAuthentication.signInWithGoogle();
-  } catch (error) {
-    if (!isCredentialManagerUnsupported(error)) throw error;
-    return FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
-  }
+  // Credential Manager no está en todos los Android y muestra el error en inglés
+  // «Your device doesn't support credential manager». El Sign-In clásico sí abre la cuenta.
+  return FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
 }
 
 type AuthState = {

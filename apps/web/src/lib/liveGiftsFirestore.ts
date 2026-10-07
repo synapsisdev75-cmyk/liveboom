@@ -302,7 +302,6 @@ export async function markLiveRoomEnded(roomName: string, stats?: LiveEndStats) 
   const data = snap?.exists() ? snap.data() : null;
   const alreadyEnded =
     String(data?.status || '') === 'ended' || Number(data?.endedAtMs || 0) > 0;
-  await clearLiveViewers(roomName).catch(() => undefined);
   const now = Date.now();
   await setDoc(
     ref,
@@ -342,7 +341,8 @@ export async function markLiveRoomEnded(roomName: string, stats?: LiveEndStats) 
     },
     { merge: true },
   );
-  await Promise.all([
+  void clearLiveViewers(roomName).catch(() => undefined);
+  void Promise.all([
     deleteLiveRoomHostDocs(roomName, 'privateRequests'),
     deleteLiveRoomHostDocs(roomName, 'privateGrants'),
   ]).catch(() => undefined);

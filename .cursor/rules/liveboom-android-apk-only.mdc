@@ -1,0 +1,13 @@
+---
+description: En este equipo solo se genera el APK de Android, nunca el AAB
+alwaysApply: true
+---
+
+# LiveBoom: solo APK
+
+Cuando el usuario pida crear, armar o actualizar la app Android:
+
+- Generar únicamente el **APK** firmado (`assembleRelease`).
+- **No** generar el AAB (`bundleRelease`), salvo que lo pida de forma explícita en ese mensaje.
+- Copiar el APK a `C:\Users\empre\Desktop\liveboom-aab\` con el nombre `LiveBoom-<versionName>-<versionCode>.apk`.
+- Subir `versionCode` y `versionName` en `apps/capacitor-android/android/app/build.gradle` antes de compilar.

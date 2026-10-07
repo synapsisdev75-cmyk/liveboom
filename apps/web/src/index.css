@@ -1727,20 +1727,22 @@ html[data-lb-theme='light'] .lb-chat-gift-card__coins {
   height: min(32rem, calc(var(--lb-vv-height, 100dvh) - 5.5rem));
 }
 
-/* Ventana chat = proporción/tamaño celular real (~390×844), varias en fila desde la derecha. */
+/* Chat abierto: ocupa toda la pantalla, igual que la llamada. */
 .lb-phone-chat-window {
   position: fixed;
-  z-index: 80;
+  z-index: 90;
   display: flex;
   flex-direction: column;
-  width: min(24.375rem, calc(100vw - 1.25rem));
-  height: min(52.75rem, calc(var(--lb-vv-height, 100dvh) - 1rem));
-  max-height: calc(var(--lb-vv-height, 100dvh) - 0.5rem);
-  border-radius: 1.25rem 1.25rem 0 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-bottom: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  border: 0;
   background: #0a0a0b;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: none;
   overflow: hidden;
   pointer-events: auto;
 }
@@ -1902,8 +1904,13 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
   }
 
   .lb-phone-chat-window {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
   }
 
   body:has(.lb-phone-chat-window) .lb-msg-min-dock,
@@ -1925,13 +1932,13 @@ html.lb-msg-boxes-off .lb-msg-min-dock {
   }
 
   .lb-phone-chat-window {
-    width: min(24.375rem, calc(100vw - 1rem));
-    height: min(
-      52.75rem,
-      calc(var(--lb-vv-height, 100dvh) - var(--lb-bottom-nav-h, 4.25rem) - 0.5rem)
-    );
-    bottom: calc(var(--lb-bottom-nav-h, 4.25rem));
-    border-radius: 1.25rem 1.25rem 0 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    max-width: none;
+    bottom: 0;
+    border-radius: 0;
   }
 
   .lb-msg-min-dock {
@@ -11023,16 +11030,16 @@ a.lb-entity:active,
   max-height: calc(100dvh - 0.5rem);
 }
 
-.lb-call-float.is-normal:not(.is-video):not(.is-compact) {
+.lb-call-float.is-normal:not(.is-video):not(.is-compact):not(.is-fullscreen) {
   min-width: min(17.25rem, calc(100vw - 1.25rem));
   min-height: 16.5rem;
   max-width: min(24.5rem, calc(100vw - 1.25rem));
 }
 
-.lb-call-float.is-normal:not(.is-video):not(.is-compact):has(.lb-voice-out-screen),
-.lb-call-float.is-normal:not(.is-video):not(.is-compact):has(.lb-voice-in-screen),
-.lb-call-float.is-normal:not(.is-video):not(.is-compact):has(.lb-video-ring-screen),
-.lb-call-float.is-normal:not(.is-video):not(.is-compact):has(.lb-voice-connected-screen) {
+.lb-call-float.is-normal:not(.is-video):not(.is-compact):not(.is-fullscreen):has(.lb-voice-out-screen),
+.lb-call-float.is-normal:not(.is-video):not(.is-compact):not(.is-fullscreen):has(.lb-voice-in-screen),
+.lb-call-float.is-normal:not(.is-video):not(.is-compact):not(.is-fullscreen):has(.lb-video-ring-screen),
+.lb-call-float.is-normal:not(.is-video):not(.is-compact):not(.is-fullscreen):has(.lb-voice-connected-screen) {
   min-width: min(24rem, calc(100vw - 1.25rem));
   min-height: min(44rem, calc(100dvh - 1.25rem));
   max-width: min(26rem, calc(100vw - 1.25rem));
@@ -13775,9 +13782,9 @@ a.lb-entity:active,
   box-shadow: 0 0 0 1px rgba(192, 132, 252, 0.45);
 }
 
-.lb-call-float.is-normal:not(.is-video):not(.is-compact):has(.lb-voice-connected-screen),
-.lb-call-float.is-voice:not(.is-compact):has(.lb-voice-call-session),
-.lb-call-float.is-voice:not(.is-compact):has(.lb-voice-connected-screen) {
+.lb-call-float.is-normal:not(.is-video):not(.is-compact):not(.is-fullscreen):has(.lb-voice-connected-screen),
+.lb-call-float.is-voice:not(.is-compact):not(.is-fullscreen):has(.lb-voice-call-session),
+.lb-call-float.is-voice:not(.is-compact):not(.is-fullscreen):has(.lb-voice-connected-screen) {
   min-width: min(24rem, calc(100vw - 1.25rem));
   min-height: min(40rem, calc(100dvh - 2.5rem));
   max-width: min(24.5rem, calc(100vw - 1.25rem));
@@ -13788,6 +13795,15 @@ a.lb-entity:active,
   width: min(24.5rem, calc(100vw - 1.25rem));
   min-width: min(24rem, calc(100vw - 1.25rem));
   min-height: min(40rem, calc(100dvh - 2.5rem));
+}
+
+.lb-call-float.is-fullscreen > .lb-call-expanded-slot,
+.lb-call-float.is-fullscreen > .lb-call-expanded-slot:has(.lb-voice-connected-screen) {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
 }
 
 .lb-call-float.is-maximized:not(.is-compact) .lb-voice-connected-screen {
@@ -20477,6 +20493,12 @@ html[data-lb-theme='light'] .lb-loc-scene {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: auto;
   min-width: 0;
   min-height: 0;
   max-width: none;

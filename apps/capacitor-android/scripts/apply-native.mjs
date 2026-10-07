@@ -101,3 +101,14 @@ function patchManifest(path) {
 
 if (existsSync(manifestPath)) patchManifest(manifestPath);
 else console.warn(`[apply-native] No existe ${manifestPath}; permisos sin aplicar.`);
+
+// Play (protección automática) rechaza bundles con minSdk 23 o menor.
+const variablesPath = join(root, 'android', 'variables.gradle');
+if (existsSync(variablesPath)) {
+  const gradle = readFileSync(variablesPath, 'utf8');
+  const next = gradle.replace(/minSdkVersion\s*=\s*\d+/, 'minSdkVersion = 24');
+  if (next !== gradle) {
+    writeFileSync(variablesPath, next);
+    console.log('[apply-native] minSdkVersion = 24 (Play exige 24 o superior).');
+  }
+}
