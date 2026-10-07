@@ -19799,7 +19799,7 @@ body:has(> .lb-explore-plaza__sheet) .lb-explore-view .lb-video-duration-bar {
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.72) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.84) 100%);
   border-color: rgba(15, 23, 42, 0.12);
   box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.12);
   color: #0f172a;
@@ -19821,11 +19821,11 @@ html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__text {
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__name,
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__close {
-  color: #334155;
+  color: #1e293b;
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__muted {
-  color: #64748b;
+  color: #475569;
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__flag {
@@ -19850,11 +19850,28 @@ html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__quote {
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__reply {
-  color: #0e7490;
+  color: var(--lb-accent-text);
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__login {
-  color: #0e7490;
+  color: var(--lb-accent-text);
+}
+
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__replying {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__replying p {
+  color: #334155;
+}
+
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__replying p > span:first-child {
+  color: var(--lb-accent-text);
+}
+
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__replying button {
+  color: #334155;
 }
 
 @media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
