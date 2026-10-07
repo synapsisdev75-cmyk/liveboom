@@ -113,6 +113,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Versión publicada en Play Store / App Store: la app avisa a quien tenga una anterior.
+    match /config/appUpdate {
+      allow read: if true;
+      allow create, update: if isOwner()
+        && hasValidAdminSession()
+        && request.resource.data.android is map
+        && request.resource.data.ios is map
+        && request.resource.data.android.latestBuild is int
+        && request.resource.data.android.minBuild is int
+        && request.resource.data.ios.latestBuild is int
+        && request.resource.data.ios.minBuild is int
+        && request.resource.data.android.storeUrl.matches('https://.*')
+        && request.resource.data.ios.storeUrl.matches('https://.*');
+      allow delete: if false;
+    }
+
     match /config/chatThemes {
       allow read: if true;
       allow create, update: if hasCapability('messages')

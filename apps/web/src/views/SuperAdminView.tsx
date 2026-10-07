@@ -13,6 +13,7 @@ import { CommunityHeaderEditor } from '../components/admin/CommunityHeaderEditor
 import { AdminDelegatePanel } from '../components/admin/AdminDelegatePanel';
 import { AdminChangeRequestsPanel } from '../components/admin/AdminChangeRequestsPanel';
 import { AdminChatThemesPanel } from '../components/admin/AdminChatThemesPanel';
+import { AdminAppUpdatePanel } from '../components/admin/AdminAppUpdatePanel';
 import {
   hasSuperAdminCapability,
   isOwnerEmail,
@@ -48,6 +49,7 @@ type AdminTab =
   | 'requests'
   | 'withdrawals'
   | 'verifications'
+  | 'appUpdate'
   | 'security';
 
 const TAB_CAPABILITY: Partial<Record<AdminTab, SuperAdminCapability>> = {
@@ -78,6 +80,7 @@ const ALL_TABS: AdminTab[] = [
   'requests',
   'withdrawals',
   'verifications',
+  'appUpdate',
   'security',
 ];
 
@@ -172,7 +175,7 @@ export function SuperAdminView() {
 
   const tabAllowed = useCallback(
     (id: AdminTab) => {
-      if (id === 'users' || id === 'delegate' || id === 'security') return owner;
+      if (id === 'users' || id === 'delegate' || id === 'appUpdate' || id === 'security') return owner;
       const cap = TAB_CAPABILITY[id];
       return cap ? can(cap) : false;
     },
@@ -357,6 +360,7 @@ export function SuperAdminView() {
             ...(can('requests') ? [{ id: 'requests' as const, label: 'Solicitudes' }] : []),
             ...(can('withdrawals') ? [{ id: 'withdrawals' as const, label: 'Solicitud de retiros' }] : []),
             ...(can('verification') ? [{ id: 'verifications' as const, label: 'Verificación de retiros' }] : []),
+            ...(owner ? [{ id: 'appUpdate' as const, label: 'Actualización app' }] : []),
             ...(owner ? [{ id: 'security' as const, label: 'Seguridad' }] : []),
           ] as { id: AdminTab; label: string }[]
         ).map(({ id, label }) => (
@@ -393,6 +397,7 @@ export function SuperAdminView() {
       {tab === 'requests' && can('requests') ? <AdminChangeRequestsPanel /> : null}
       {tab === 'withdrawals' && can('withdrawals') ? <AdminWithdrawalsPanel /> : null}
       {tab === 'verifications' && can('verification') ? <AdminVerificationPanel /> : null}
+      {tab === 'appUpdate' && owner ? <AdminAppUpdatePanel /> : null}
       {tab === 'security' && owner ? <AdminVaultSecurityPanel /> : null}
 
       {tab === 'levels' && can('levels') ? (

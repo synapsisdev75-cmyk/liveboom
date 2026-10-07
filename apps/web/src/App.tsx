@@ -19,6 +19,7 @@ import { GlobalBoomAnimationOverlay } from './components/global/GlobalBoomAnimat
 import { BootSplash } from './components/brand/BootSplash';
 import { LiveLocationIndicator } from './components/location/LiveLocationIndicator';
 import { PublishProgressPill } from './components/global/PublishProgressPill';
+import { AppUpdatePrompt } from './components/global/AppUpdatePrompt';
 import { flushPendingShare, installSharedLinkOpener } from './lib/openSharedLink';
 import { installShareIncomingListener, peekPendingIncomingShare, SHARE_INCOMING_EVENT } from './lib/shareIncoming';
 
@@ -285,6 +286,7 @@ export default function App() {
         <CallOverlay />
       </Suspense>
       <CookieBanner />
+      <AppUpdatePrompt />
     </BrowserRouter>
     </ThemeProvider>
   );
