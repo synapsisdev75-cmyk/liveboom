@@ -12319,13 +12319,13 @@ a.lb-entity:active,
   flex-direction: column;
 }
 
-.lb-call-float.is-voice:not(.is-compact) {
+.lb-call-float.is-voice:not(.is-compact):not(.is-maximized):not(.is-fullscreen) {
   width: min(22.5rem, calc(100vw - 1.25rem));
   height: auto;
   max-width: min(22.5rem, calc(100vw - 1.25rem));
 }
 
-.lb-call-float.is-voice .lb-call-expanded-slot:has(.lb-voice-call-session),
+.lb-call-float.is-voice:not(.is-maximized):not(.is-fullscreen) .lb-call-expanded-slot:has(.lb-voice-call-session),
 .lb-call-expanded-slot:has(.lb-voice-call-session) {
   width: min(22.5rem, calc(100vw - 1.25rem));
   min-width: min(22rem, calc(100vw - 1.25rem));
@@ -20695,4 +20695,46 @@ html[data-lb-theme='light'] .lb-loc-scene {
     width: 0;
     height: 0;
   }
+}
+
+/* Llamada de voz contestada: el cajón se llena de borde a borde. */
+.lb-call-float.is-maximized.is-voice:not(.is-compact):not(.is-parked),
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact):not(.is-parked),
+.lb-call-float.is-maximized.is-voice:not(.is-compact):has(.lb-voice-connected-screen),
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact):has(.lb-voice-call-session) {
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  max-height: none;
+}
+
+.lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-call-expanded-slot,
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-call-expanded-slot,
+.lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-voice-call-session,
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-voice-call-session,
+.lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-voice-live-slot,
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-voice-live-slot,
+.lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-voice-lk,
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-voice-lk,
+.lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-call-stage-keep.is-connected,
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-call-stage-keep.is-connected,
+.lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-voice-connected-screen,
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-voice-connected-screen {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  border-radius: 0;
 }
