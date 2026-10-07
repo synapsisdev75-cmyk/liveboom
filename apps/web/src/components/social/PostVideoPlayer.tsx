@@ -5,6 +5,8 @@ import {
   MessageCircle,
   Pause,
   Play,
+  RotateCcw,
+  RotateCw,
   Volume2,
   VolumeX,
   X,
@@ -19,6 +21,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -182,16 +185,121 @@ type Props = {
   durationBar?: boolean;
 };
 
-function VideoDurationBar({ progress, insetSafe }: { progress: number; insetSafe?: boolean }) {
+function formatMediaClock(sec: number) {
+  const total = Math.max(0, Math.floor(Number.isFinite(sec) ? sec : 0));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function VideoDurationBar({
+  progress,
+  currentSec,
+  durationSec,
+  insetSafe,
+  interactive,
+  onSeek,
+}: {
+  progress: number;
+  currentSec: number;
+  durationSec: number;
+  insetSafe?: boolean;
+  interactive?: boolean;
+  onSeek?: (ratio: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef(false);
   const pct = `${Math.min(100, Math.max(0, progress * 100))}%`;
+  const known = durationSec > 0;
+
+  const ratioFromX = (clientX: number) => {
+    const node = trackRef.current;
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  };
+
+  const seekFromPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const ratio = ratioFromX(event.clientX);
+    if (ratio != null) onSeek?.(ratio);
+  };
+
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 z-30"
-      style={{ bottom: insetSafe ? 'var(--lb-safe-bottom, 0px)' : 0 }}
-      aria-hidden
+      className={`absolute inset-x-0 z-30 px-3 ${interactive ? '' : 'pointer-events-none'}`}
+      style={{ bottom: insetSafe ? 'max(0.35rem, var(--lb-safe-bottom, 0px))' : '0.2rem' }}
     >
-      <div className="h-1 w-full bg-white/30">
-        <div className="h-full bg-white" style={{ width: pct }} />
+      {interactive && known ? (
+        <p className="pointer-events-none mb-0.5 text-[13px] font-semibold tabular-nums text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+          {formatMediaClock(currentSec)} / {formatMediaClock(durationSec)}
+        </p>
+      ) : null}
+      <div
+        ref={trackRef}
+        role={interactive ? 'slider' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        aria-label={interactive ? 'Duración del video' : undefined}
+        aria-valuemin={interactive ? 0 : undefined}
+        aria-valuemax={interactive ? Math.max(0, Math.round(durationSec)) : undefined}
+        aria-valuenow={interactive ? Math.max(0, Math.round(currentSec)) : undefined}
+        aria-hidden={interactive ? undefined : true}
+        className={`relative flex w-full items-end ${interactive ? 'h-11 cursor-pointer touch-none pb-1' : 'h-1'}`}
+        onPointerDown={
+          interactive
+            ? (event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                dragRef.current = true;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                seekFromPointer(event);
+              }
+            : undefined
+        }
+        onPointerMove={
+          interactive
+            ? (event) => {
+                if (!dragRef.current) return;
+                event.stopPropagation();
+                seekFromPointer(event);
+              }
+            : undefined
+        }
+        onPointerUp={
+          interactive
+            ? (event) => {
+                dragRef.current = false;
+                event.stopPropagation();
+              }
+            : undefined
+        }
+        onPointerCancel={interactive ? () => { dragRef.current = false; } : undefined}
+        onKeyDown={
+          interactive
+            ? (event) => {
+                const step = durationSec > 0 ? 10 / durationSec : 0.02;
+                if (event.key === 'ArrowRight') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSeek?.(Math.min(1, progress + step));
+                } else if (event.key === 'ArrowLeft') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSeek?.(Math.max(0, progress - step));
+                }
+              }
+            : undefined
+        }
+      >
+        <div className="relative h-1 w-full rounded-full bg-white/35">
+          <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: pct }} />
+          {interactive ? (
+            <div
+              className="absolute top-1/2 h-3.5 w-3.5 rounded-full bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+              style={{ left: pct, transform: 'translate(-50%, -50%)' }}
+            />
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -302,6 +410,7 @@ export function PostVideoPlayer({
   const [deviceLandscape, setDeviceLandscape] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const clipPreviewRef = useRef<HTMLVideoElement>(null);
   const posterCapturedRef = useRef(false);
   const wheelLockRef = useRef(0);
   const gestureLockRef = useRef(false);
@@ -340,6 +449,8 @@ export function PostVideoPlayer({
   }, []);
   const [commentCount, setCommentCount] = useState(0);
   const [storyProgress, setStoryProgress] = useState(0);
+  const [knownDuration, setKnownDuration] = useState(0);
+  const [userPaused, setUserPaused] = useState(false);
   const [seekHint, setSeekHint] = useState<string | null>(null);
   const [playbackFlash, setPlaybackFlash] = useState<'play' | 'pause' | null>(null);
   const playbackFlashTimerRef = useRef<number | null>(null);
@@ -427,6 +538,8 @@ export function PostVideoPlayer({
 
   useEffect(() => {
     setStoryProgress(0);
+    setKnownDuration(0);
+    setUserPaused(false);
     setCommentsPanelOpen(false);
     setGiftsOpen(false);
     setSeekHint(null);
@@ -449,6 +562,7 @@ export function PostVideoPlayer({
               : 0;
         if (dur > 0) {
           setStoryProgress(Math.min(1, video.currentTime / dur));
+          setKnownDuration((prev) => (Math.abs(prev - dur) > 0.25 ? dur : prev));
         }
       }
       raf = window.requestAnimationFrame(tick);
@@ -607,7 +721,7 @@ export function PostVideoPlayer({
     [flashPlayback],
   );
 
-  const seekExpanded = useCallback((deltaSec: number) => {
+  const seekExpanded = useCallback((deltaSec: number, keepPause = false) => {
     const video = videoRef.current;
     if (!video) return;
     const duration =
@@ -615,9 +729,51 @@ export function PostVideoPlayer({
     const next = Math.max(0, Math.min(duration, video.currentTime + deltaSec));
     if (!Number.isFinite(next)) return;
     video.currentTime = next;
+    if (Number.isFinite(duration) && duration > 0) {
+      setStoryProgress(Math.min(1, next / duration));
+      setKnownDuration(duration);
+    }
     setSeekHint(deltaSec < 0 ? `-${SEEK_STEP_SEC}s` : `+${SEEK_STEP_SEC}s`);
-    if (video.paused) void video.play().catch(() => undefined);
+    if (!keepPause && video.paused) void video.play().catch(() => undefined);
   }, []);
+
+  const seekToRatio = useCallback((ratio: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const reported = video.duration;
+    const dur =
+      Number.isFinite(reported) && reported > 0
+        ? reported
+        : Number(durationSecProp) > 0
+          ? Number(durationSecProp)
+          : 0;
+    if (!(dur > 0)) return;
+    const next = Math.max(0, Math.min(dur, ratio * dur));
+    video.currentTime = next;
+    setStoryProgress(Math.min(1, next / dur));
+    setKnownDuration(dur);
+  }, [durationSecProp]);
+
+  useEffect(() => {
+    if (!durationBar || !userPaused) return;
+    const main = videoRef.current;
+    const preview = clipPreviewRef.current;
+    if (!main || !preview) return;
+    const sync = () => {
+      const time = main.currentTime;
+      if (!Number.isFinite(time)) return;
+      if (Math.abs((preview.currentTime || 0) - time) > 0.18) {
+        try {
+          preview.currentTime = time;
+        } catch {
+          /* el corto aún no tiene metadata */
+        }
+      }
+    };
+    sync();
+    main.addEventListener('seeked', sync);
+    return () => main.removeEventListener('seeked', sync);
+  }, [durationBar, userPaused, storyProgress, src]);
 
   const capturePlaybackSnapshot = useCallback(() => {
     const video = videoRef.current;
@@ -760,7 +916,7 @@ export function PostVideoPlayer({
     (info: ImmersivePointerGesture) => {
       if (storyHeld || info.startedOnControl) return;
       if (info.isTap) {
-        if (itemSideNav) return;
+        if (itemSideNav && !durationBar) return;
         toggleExpandedPlayback();
         return;
       }
@@ -785,6 +941,7 @@ export function PostVideoPlayer({
     [
       storyHeld,
       itemSideNav,
+      durationBar,
       userNavigation,
       reelNavigation,
       toggleExpandedPlayback,
@@ -899,6 +1056,7 @@ export function PostVideoPlayer({
           if (video.videoWidth > 0 && video.videoHeight > 0) {
             setMediaSize({ width: video.videoWidth, height: video.videoHeight });
           }
+          if (Number.isFinite(video.duration) && video.duration > 0) setKnownDuration(video.duration);
         }}
         onLoadedData={() => {
           tryCapturePoster();
@@ -908,12 +1066,19 @@ export function PostVideoPlayer({
           }
         }}
         onPlaying={() => {
+          setUserPaused(false);
           setFrameReady(true);
           if (firstFrameSrcRef.current !== src) {
             firstFrameSrcRef.current = src;
             onFirstFrameRef.current?.();
           }
         }}
+        onPause={() => {
+          const video = videoRef.current;
+          if (!video || video.ended || !frameReady) return;
+          setUserPaused(true);
+        }}
+        onPlay={() => setUserPaused(false)}
         onTimeUpdate={(event) => {
           if (!frameReady && event.currentTarget.currentTime > 0.01) {
             setFrameReady(true);
@@ -937,7 +1102,9 @@ export function PostVideoPlayer({
           reelNavigation.onNext();
         }}
       />
-      {durationBar && !expanded && !overlayOnly ? <VideoDurationBar progress={storyProgress} /> : null}
+      {durationBar && !expanded && !overlayOnly ? (
+        <VideoDurationBar progress={storyProgress} currentSec={0} durationSec={0} />
+      ) : null}
     </div>
   );
 
@@ -1047,6 +1214,64 @@ export function PostVideoPlayer({
                 ) : null}
               </>
             )}
+            {durationBar && userPaused && !storyHeld && frameReady ? (
+              <>
+                <video
+                  ref={clipPreviewRef}
+                  src={src}
+                  muted
+                  playsInline
+                  preload="auto"
+                  className="pointer-events-none absolute bottom-[22%] left-3 z-[8] aspect-[3/4] w-[min(28%,7.25rem)] rounded-md object-cover shadow-[0_8px_24px_rgba(0,0,0,0.45)] ring-1 ring-white/80"
+                />
+                <div className="pointer-events-none absolute inset-0 z-[9] grid place-items-center">
+                  <div className="pointer-events-auto flex items-center gap-[clamp(0.85rem,5vw,1.6rem)]">
+                    <button
+                      type="button"
+                      className="grid h-11 w-11 place-items-center rounded-full bg-black/50 text-white"
+                      aria-label="Atrasar 10 segundos"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        seekExpanded(-SEEK_STEP_SEC, true);
+                      }}
+                    >
+                      <span className="relative grid place-items-center">
+                        <RotateCcw size={26} strokeWidth={1.75} />
+                        <span className="absolute text-[9px] font-bold leading-none">10</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="grid h-14 w-14 place-items-center rounded-full bg-white text-zinc-950 shadow-lg"
+                      aria-label="Reproducir"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleExpandedPlayback();
+                      }}
+                    >
+                      <Play size={28} fill="currentColor" className="ml-0.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="grid h-11 w-11 place-items-center rounded-full bg-black/50 text-white"
+                      aria-label="Adelantar 10 segundos"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        seekExpanded(SEEK_STEP_SEC, true);
+                      }}
+                    >
+                      <span className="relative grid place-items-center">
+                        <RotateCw size={26} strokeWidth={1.75} />
+                        <span className="absolute text-[9px] font-bold leading-none">10</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : null}
             </>
           }
           sideChrome={
@@ -1281,7 +1506,16 @@ export function PostVideoPlayer({
           </div>
           ) : null}
         </div>
-        {durationBar ? <VideoDurationBar progress={storyProgress} insetSafe /> : null}
+        {durationBar ? (
+          <VideoDurationBar
+            progress={storyProgress}
+            currentSec={knownDuration > 0 ? storyProgress * knownDuration : 0}
+            durationSec={knownDuration}
+            insetSafe
+            interactive
+            onSeek={seekToRatio}
+          />
+        ) : null}
       </div>
     ) : null;
 
