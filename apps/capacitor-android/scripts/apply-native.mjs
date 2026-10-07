@@ -99,8 +99,48 @@ function patchManifest(path) {
   console.log('[apply-native] AndroidManifest: permisos mínimos aplicados (ver PERMISOS-ANDROID.md).');
 }
 
-if (existsSync(manifestPath)) patchManifest(manifestPath);
-else console.warn(`[apply-native] No existe ${manifestPath}; permisos sin aplicar.`);
+/**
+ * Enlaces que abren la app instalada en vez del navegador:
+ * - https://(www.)liveboomapp.com/s/<id> (publicación compartida), verificado con /.well-known/assetlinks.json.
+ * - liveboom://… (vuelta de la billetera y `liveboom://s/<id>` desde la página de compartir).
+ * Solo /s/: el resto del sitio (p. ej. «Continuar en el navegador») sigue abriendo en el navegador.
+ */
+const LINKS_START = '<!-- liveboom:links:start -->';
+const LINKS_END = '<!-- liveboom:links:end -->';
+const LINK_FILTERS = [
+  '<intent-filter android:autoVerify="true">',
+  '    <action android:name="android.intent.action.VIEW" />',
+  '    <category android:name="android.intent.category.DEFAULT" />',
+  '    <category android:name="android.intent.category.BROWSABLE" />',
+  '    <data android:scheme="https" android:host="liveboomapp.com" android:pathPrefix="/s/" />',
+  '    <data android:scheme="https" android:host="www.liveboomapp.com" android:pathPrefix="/s/" />',
+  '</intent-filter>',
+  '<intent-filter>',
+  '    <action android:name="android.intent.action.VIEW" />',
+  '    <category android:name="android.intent.category.DEFAULT" />',
+  '    <category android:name="android.intent.category.BROWSABLE" />',
+  '    <data android:scheme="liveboom" />',
+  '</intent-filter>',
+];
+
+function patchLinkFilters(path) {
+  let xml = readFileSync(path, 'utf8');
+  xml = xml.replace(new RegExp(`\\s*${esc(LINKS_START)}[\\s\\S]*?${esc(LINKS_END)}`), '');
+  const activity = /(<activity\b[^>]*android:name="[^"]*MainActivity"[\s\S]*?)(\n?\s*<\/activity>)/;
+  if (!activity.test(xml)) {
+    console.warn('[apply-native] AndroidManifest sin MainActivity; enlaces sin aplicar.');
+    return;
+  }
+  const block = `\n            ${LINKS_START}\n${LINK_FILTERS.map((line) => `            ${line}`).join('\n')}\n            ${LINKS_END}`;
+  xml = xml.replace(activity, `$1${block}$2`);
+  writeFileSync(path, xml);
+  console.log('[apply-native] AndroidManifest: enlaces de liveboomapp.com/s/ y liveboom:// abren la app.');
+}
+
+if (existsSync(manifestPath)) {
+  patchManifest(manifestPath);
+  patchLinkFilters(manifestPath);
+} else console.warn(`[apply-native] No existe ${manifestPath}; permisos sin aplicar.`);
 
 // Play (protección automática) rechaza bundles con minSdk 23 o menor.
 const variablesPath = join(root, 'android', 'variables.gradle');

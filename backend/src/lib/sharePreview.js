@@ -231,18 +231,44 @@ function browserIntentUrl(webUrl) {
   );
 }
 
+/**
+ * Abre la publicación en la app LiveBoom instalada (`liveboom://s/<id>`, ver apps/web/src/lib/openSharedLink.ts).
+ * Si la app no está instalada, Android carga `fallbackUrl`.
+ */
+function appIntentUrl(postId, fallbackUrl) {
+  return (
+    'intent://s/' +
+    encodeURIComponent(postId) +
+    '#Intent;scheme=liveboom;package=com.liveboom.app;S.browser_fallback_url=' +
+    encodeURIComponent(fallbackUrl) +
+    ';end'
+  );
+}
+
+/** Vuelta del intento de abrir la app: no está instalada, se muestra la página sin reintentar. */
+function shareAppMissing(rawUrl) {
+  return /[?&]app=0(?:&|#|$)/.test(String(rawUrl || ''));
+}
+
 /** Ficha de LiveBoom en la app de Google Play; si no está la app de Play, la ficha web. */
 const PLAY_STORE_INTENT =
   'intent://details?id=com.liveboom.app#Intent;scheme=market;package=com.android.vending;S.browser_fallback_url=' +
   encodeURIComponent(PLAY_STORE_URL) +
   ';end';
 
-/** Android: vista de la publicación + descargar la app en Google Play o seguir en el navegador. */
-function renderAndroidChoiceHtml({ preview, webUrl, imageUrl, inApp = false }) {
+/**
+ * Android: si la app está instalada se abre ahí la publicación; si no, vista de la publicación +
+ * descargar la app en Google Play o seguir en el navegador.
+ * `appUrl`: intent a la app (vacío cuando ya se sabe que no está instalada).
+ * `autoOpen`: navegador normal (Chrome, pestaña de WhatsApp): intenta abrir la app al cargar.
+ */
+function renderAndroidChoiceHtml({ preview, webUrl, imageUrl, inApp = false, appUrl = '', autoOpen = false }) {
   const title = escapeHtml(preview.title);
   const caption = escapeHtml(preview.description);
   const who = escapeHtml(`@${preview.username}`);
   const safeWeb = escapeHtml(webUrl);
+  const openAppScript =
+    appUrl && autoOpen ? `<script>window.location.replace(${JSON.stringify(appUrl)});</script>` : '';
   const continueScript = inApp
     ? `<script>
       (function () {
@@ -334,11 +360,21 @@ function renderAndroidChoiceHtml({ preview, webUrl, imageUrl, inApp = false }) {
         <div class="lb-who">${who} en LiveBoom</div>
         ${caption ? `<p class="lb-caption">${caption}</p>` : ''}
       </div>
-      <a class="lb-btn lb-btn--primary" href="${escapeHtml(PLAY_STORE_INTENT)}">Descargar la app en Google Play</a>
+      ${
+        appUrl
+          ? `<a class="lb-btn lb-btn--primary" href="${escapeHtml(appUrl)}">Abrir en la app LiveBoom</a>
+      <a class="lb-btn lb-btn--secondary" href="${escapeHtml(PLAY_STORE_INTENT)}">Descargar la app en Google Play</a>`
+          : `<a class="lb-btn lb-btn--primary" href="${escapeHtml(PLAY_STORE_INTENT)}">Descargar la app en Google Play</a>`
+      }
       <a class="lb-btn lb-btn--secondary" id="lb-web" href="${safeWeb}">Continuar en el navegador</a>
-      <p class="lb-hint">Si ya tienes LiveBoom instalada, Google Play te mostrará «Abrir».</p>
+      <p class="lb-hint">${
+        appUrl
+          ? 'Si tienes LiveBoom instalada, la publicación se abre en la app.'
+          : 'Si ya tienes LiveBoom instalada, Google Play te mostrará «Abrir».'
+      }</p>
     </main>
     ${continueScript}
+    ${openAppScript}
   </body>
 </html>`;
 }
@@ -454,12 +490,22 @@ async function handleSharePreview(req, res) {
   }
   const kind = shareClientKind(ua);
   if (kind === 'android' || kind === 'android-inapp') {
+    const inApp = kind === 'android-inapp';
+    const appUrl = shareAppMissing(req.originalUrl || req.url) ? '' : appIntentUrl(postId, `${pageUrl}?app=0`);
     res
       .status(200)
       .set('Content-Type', 'text/html; charset=utf-8')
       .set('Cache-Control', 'no-store')
       .send(
-        renderAndroidChoiceHtml({ preview, webUrl, imageUrl: ogImage, inApp: kind === 'android-inapp' }),
+        renderAndroidChoiceHtml({
+          preview,
+          webUrl,
+          imageUrl: ogImage,
+          inApp,
+          appUrl,
+          // Dentro de Instagram/Facebook/TikTok un intent sin toque puede dejar una página de error.
+          autoOpen: !inApp,
+        }),
       );
     return;
   }
@@ -484,5 +530,7 @@ module.exports = {
   renderShareOgHtml,
   renderAndroidChoiceHtml,
   browserIntentUrl,
+  appIntentUrl,
+  shareAppMissing,
   handleSharePreview,
 };

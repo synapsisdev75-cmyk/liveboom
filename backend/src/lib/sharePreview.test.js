@@ -8,6 +8,8 @@ const {
   renderShareOgHtml,
   renderAndroidChoiceHtml,
   browserIntentUrl,
+  appIntentUrl,
+  shareAppMissing,
   shareImageUrl,
   isShareImagePath,
   webPostPath,
@@ -58,6 +60,36 @@ test('Android: Google Play o seguir en el navegador; dentro de Instagram sale al
     webUrl: 'https://liveboomapp.com/u/yemdups?post=abc',
   });
   assert.match(og, /Ver publicación en LiveBoom/);
+});
+
+test('Android con la app instalada: abre la publicación en la app; si no está, vuelve sin reintentar', () => {
+  const appUrl = appIntentUrl('abc', 'https://liveboomapp.com/s/abc?app=0');
+  assert.equal(
+    appUrl,
+    `intent://s/abc#Intent;scheme=liveboom;package=com.liveboom.app;S.browser_fallback_url=${encodeURIComponent(
+      'https://liveboomapp.com/s/abc?app=0',
+    )};end`,
+  );
+  const webUrl = 'https://liveboomapp.com/u/yemdups?post=abc';
+  const preview = previewFromPost({ username: 'yemdups', visibility: 'public', type: 'photo' });
+
+  const browser = renderAndroidChoiceHtml({ preview, webUrl, imageUrl: 'x', appUrl, autoOpen: true });
+  assert.match(browser, /window\.location\.replace\("intent:\/\/s\/abc#Intent;scheme=liveboom;package=com\.liveboom\.app;/);
+  assert.match(browser, /Abrir en la app LiveBoom/);
+  assert.match(browser, /scheme=market;package=com\.android\.vending/);
+  assert.match(browser, /Continuar en el navegador/);
+
+  const inApp = renderAndroidChoiceHtml({ preview, webUrl, imageUrl: 'x', inApp: true, appUrl, autoOpen: false });
+  assert.match(inApp, /Abrir en la app LiveBoom/);
+  assert.doesNotMatch(inApp, /window\.location\.replace\("intent:\/\/s\//);
+
+  const missing = renderAndroidChoiceHtml({ preview, webUrl, imageUrl: 'x', appUrl: '', autoOpen: true });
+  assert.doesNotMatch(missing, /scheme=liveboom/);
+  assert.doesNotMatch(missing, /Abrir en la app/);
+
+  assert.equal(shareAppMissing('/s/abc?app=0'), true);
+  assert.equal(shareAppMissing('/s/abc'), false);
+  assert.equal(shareAppMissing('/s/abc?app=01'), false);
 });
 
 test('WhatsApp recibe la imagen grande 1200×630 generada', () => {
