@@ -426,15 +426,7 @@ function PhoneChatWindow({
   return createPortal(
     <div
       className="lb-phone-chat-window lb-phone-chat-window--sheet"
-      style={{
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: '100%',
-        height: '100%',
-        zIndex: 90 + index,
-      }}
+      style={{ zIndex: 90 + index }}
     >
       <Suspense fallback={null}>
         <InternalChatPanel
