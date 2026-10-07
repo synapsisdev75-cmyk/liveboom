@@ -5,7 +5,6 @@ import {
   Globe,
   Link2,
   Lock,
-  MoreHorizontal,
   Users,
   X,
 } from 'lucide-react';
@@ -15,7 +14,7 @@ import { Link } from 'react-router-dom';
 import { listenMyGroups, sendGroupMessage, type LiveGroup } from '../../lib/groupsFirestore';
 import { POST_EMOJI_SIZE, emojiTokensToUnicode } from '../../lib/liveboomEmojis';
 import { profileHref } from '../../lib/profileFirestore';
-import { buildPostShareUrl, shareContent, type ShareMediaType } from '../../lib/shareContent';
+import { buildPostShareUrl, type ShareMediaType } from '../../lib/shareContent';
 import { createRepost, getPostById, type FsPost } from '../../lib/socialFirestore';
 import { useBodyScrollLock } from '../../lib/useBodyScrollLock';
 import { useAuthStore } from '../../store/authStore';
@@ -27,7 +26,7 @@ import { SendViaLiveBoom } from './SendViaLiveBoom';
 
 export type ShareVisibility = 'public' | 'friends' | 'private';
 
-export type ShareDestinationId = 'whatsapp' | 'copy' | 'groups' | 'x' | 'telegram' | 'more';
+export type ShareDestinationId = 'whatsapp' | 'copy' | 'groups' | 'x' | 'telegram';
 
 /** Destinos visibles. Añadir aquí nuevas opciones externas o internas. */
 export const SHARE_DESTINATIONS: Array<{
@@ -40,7 +39,6 @@ export const SHARE_DESTINATIONS: Array<{
   { id: 'groups', label: 'Grupo', group: 'internal' },
   { id: 'x', label: 'X', group: 'external' },
   { id: 'telegram', label: 'Telegram', group: 'external' },
-  { id: 'more', label: 'Más', group: 'external' },
 ];
 
 const PRIVACY_OPTIONS: Array<{
@@ -270,15 +268,6 @@ export function ShareModal({
     }
   }
 
-  async function handleMore() {
-    const result = await shareContent({ url: shareUrl, title, text: externalText, mediaUrl, mediaType });
-    if (result === 'copied') {
-      setCopied(true);
-      onCopied?.();
-      window.setTimeout(() => setCopied(false), 1800);
-    }
-  }
-
   async function handleGroup(group: LiveGroup) {
     if (!profile) {
       setError('Inicia sesión para compartir en un grupo');
@@ -327,10 +316,6 @@ export function ShareModal({
       params.set('url', shareUrl);
       params.set('text', externalText || 'Mira esto en LiveBoom');
       openExternal(`https://t.me/share/url?${params.toString()}`);
-      return;
-    }
-    if (id === 'more') {
-      void handleMore();
     }
   }
 
@@ -341,8 +326,7 @@ export function ShareModal({
     if (id === 'copy') return copied ? <Check size={18} className="text-cyan-300" /> : <Copy size={18} />;
     if (id === 'groups') return <Users size={18} className="text-cyan-300" />;
     if (id === 'x') return <XLogo />;
-    if (id === 'telegram') return <span className="text-sky-400"><TelegramIcon /></span>;
-    return <MoreHorizontal size={18} />;
+    return <span className="text-sky-400"><TelegramIcon /></span>;
   };
 
   return createPortal(
@@ -514,9 +498,7 @@ export function ShareModal({
                         ? t('share.copyLink')
                         : item.id === 'groups'
                           ? t('share.group')
-                          : item.id === 'more'
-                            ? t('common.more')
-                            : item.label
+                          : item.label
                   }
                   active={item.id === 'groups' && showGroups}
                   onClick={() => onDestination(item.id)}
