@@ -243,7 +243,7 @@ function VideoDurationBar({
 
   return (
     <div
-      className={`absolute inset-x-0 z-30 ${interactive ? '' : 'pointer-events-none'}`}
+      className={`lb-video-duration-bar absolute inset-x-0 z-30 ${interactive ? '' : 'pointer-events-none'}`}
       style={{
         bottom: bottomGap,
         paddingLeft: 'max(0.75rem, var(--lb-safe-left, 0px))',
@@ -481,6 +481,8 @@ export function PostVideoPlayer({
   const railSheetOpenRef = useRef(railSheetOpen);
   railSheetOpenRef.current = railSheetOpen;
   const resumeAfterSheetRef = useRef(false);
+  /** src que el usuario pausó: ningún arranque automático lo reanuda hasta que él le dé play. */
+  const heldPauseSrcRef = useRef<string | null>(null);
 
   const closeExpandRef = useRef<() => void>(() => undefined);
   useBackLayer(expanded && !overlayOnly, () => closeExpandRef.current());
@@ -561,6 +563,7 @@ export function PostVideoPlayer({
       const video = videoRef.current;
       if (!video) return;
       window.setTimeout(() => {
+        if (heldPauseSrcRef.current === src) return;
         void video.play().catch(() => undefined);
       }, 120);
     };
@@ -621,6 +624,7 @@ export function PostVideoPlayer({
       video.pause();
       return;
     }
+    if (heldPauseSrcRef.current === src) return;
     void video.play().catch(() => undefined);
   }, [storyHeld, storyMode, src, postId]);
 
@@ -717,6 +721,7 @@ export function PostVideoPlayer({
     const bindGen = exploreNavCurrentGen();
     const kick = () => {
       if (cancelled) return;
+      if (heldPauseSrcRef.current === src) return;
       if (fastNav && !exploreNavIsCurrent(bindGen)) return;
       if (railSheetOpenRef.current && !fastNav) return;
       // canplay/canplaythrough vuelven a llegar tras rebuffer: respetar el sonido elegido.
@@ -758,14 +763,18 @@ export function PostVideoPlayer({
       const el = videoRef.current;
       if (!el) return;
       if (el.paused) {
+        heldPauseSrcRef.current = null;
+        delete el.dataset.lbHoldPause;
         void el.play().catch(() => undefined);
         flashPlayback('play');
       } else {
+        heldPauseSrcRef.current = src;
+        el.dataset.lbHoldPause = src;
         el.pause();
         flashPlayback('pause');
       }
     },
-    [flashPlayback],
+    [flashPlayback, src],
   );
 
   const seekExpanded = useCallback((deltaSec: number, keepPause = false) => {
@@ -1257,7 +1266,11 @@ export function PostVideoPlayer({
           }
           setUserPaused(true);
         }}
-        onPlay={() => setUserPaused(false)}
+        onPlay={(event) => {
+          setUserPaused(false);
+          heldPauseSrcRef.current = null;
+          delete event.currentTarget.dataset.lbHoldPause;
+        }}
         onTimeUpdate={(event) => {
           if (!frameReady && event.currentTarget.currentTime > 0.01) {
             setFrameReady(true);

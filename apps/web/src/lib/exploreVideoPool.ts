@@ -241,7 +241,8 @@ export function exploreNavBindPlayer(video: HTMLVideoElement, url: string, gen: 
   }
 
   // Arranque inmediato (muted) para evitar el botón play nativo del WebView Android.
-  if (video.paused) {
+  // Si el usuario pausó este mismo video, se queda en pausa hasta que él le dé play.
+  if (video.paused && video.dataset.lbHoldPause !== url) {
     void playExploreVideo(video);
   }
 }

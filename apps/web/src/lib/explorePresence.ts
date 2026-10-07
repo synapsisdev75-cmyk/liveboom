@@ -67,13 +67,34 @@ export type PlazaMessage = {
   textStyleRanges: TextStyleRange[];
   /** Últimos instantes antes de borrarse (para desvanecerlo). */
   leaving: boolean;
+  replyTo: PlazaReplyRef | null;
+};
+
+/** Mensaje al que se responde (copia corta: el original se borra a los 3 min). */
+export type PlazaReplyRef = {
+  id: string;
+  name: string;
+  text: string;
 };
 
 export type PlazaMessageExtras = {
   media?: PostCommentMedia | null;
   textStyle?: PostTextStyle | null;
   textStyleRanges?: TextStyleRange[];
+  replyTo?: PlazaReplyRef | null;
 };
+
+const PLAZA_REPLY_TEXT_MAX = 120;
+
+function plazaReplyOf(data: Record<string, unknown>): PlazaReplyRef | null {
+  const id = typeof data.replyToId === 'string' ? data.replyToId.trim().slice(0, 64) : '';
+  if (!id) return null;
+  return {
+    id,
+    name: typeof data.replyToName === 'string' ? data.replyToName.trim().slice(0, 80) : '',
+    text: typeof data.replyToText === 'string' ? data.replyToText.trim().slice(0, PLAZA_REPLY_TEXT_MAX) : '',
+  };
+}
 
 const PLAZA_MEDIA_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'gif', 'sticker']);
 
@@ -278,6 +299,7 @@ export function listenPlazaMessages(
             textStyle: text ? parsePostTextStyle(data.textStyle) : null,
             textStyleRanges: text ? parseTextStyleRanges(data.textStyleRanges, text.length) : [],
             leaving: false,
+            replyTo: plazaReplyOf(data),
           });
           if (!expiresAt.has(item.id)) expiresAt.set(item.id, plazaMessageExpiresAt(now, createdAtMs, primed));
         }
@@ -325,6 +347,7 @@ export async function sendPlazaMessage(
   const textStyle = clean ? parsePostTextStyle(extras?.textStyle) : null;
   const textStyleRanges = clean ? textStyleRangesForTrimmed(text, extras?.textStyleRanges, 280) : [];
   const mediaPreviewUrl = mediaType ? mediaUrlOf(extras?.media?.mediaPreviewUrl) : null;
+  const reply = extras?.replyTo?.id ? extras.replyTo : null;
   const ref = doc(collection(db, 'explorePlaza', postId, 'messages'));
   await setDoc(ref, {
     fromUid: profile.uid,
@@ -338,6 +361,13 @@ export async function sendPlazaMessage(
     ...(mediaPreviewUrl ? { mediaPreviewUrl } : {}),
     ...(textStyle ? { textStyle } : {}),
     ...(textStyleRanges.length ? { textStyleRanges } : {}),
+    ...(reply
+      ? {
+          replyToId: reply.id.slice(0, 64),
+          replyToName: reply.name.slice(0, 80),
+          replyToText: reply.text.slice(0, PLAZA_REPLY_TEXT_MAX),
+        }
+      : {}),
     createdAt: serverTimestamp(),
   });
 }

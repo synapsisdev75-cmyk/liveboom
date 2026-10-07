@@ -1,4 +1,4 @@
-import { Radio, Info, MessagesSquare } from 'lucide-react';
+import { Radio, Info, MessagesSquare, Reply, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
@@ -10,6 +10,7 @@ import { ReelGiftControls } from './ReelGiftControls';
 import { CommentMediaThumb } from '../social/CommentMediaThumb';
 import { CommentMediaViewer, type CommentMediaViewerItem } from '../social/CommentMediaViewer';
 import { EmojiText } from '../social/EmojiText';
+import type { EmojiInputHandle } from '../social/EmojiInput';
 import { StyledText } from '../social/StyledText';
 import { useBackLayer } from '../../lib/backLayer';
 import { COMMENT_EMOJI_SIZE } from '../../lib/liveboomEmojis';
@@ -33,6 +34,7 @@ import {
   sendPlazaMessage,
   startExploreHeartbeat,
   type PlazaMessage,
+  type PlazaReplyRef,
   type PlazaViewer,
 } from '../../lib/explorePresence';
 import { useAuthStore } from '../../store/authStore';
@@ -115,10 +117,23 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
   const [goingLive, setGoingLive] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportContext, setReportContext] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<PlazaReplyRef | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const arrivedRef = useRef<Map<string, number>>(new Map());
   const seededRef = useRef(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<EmojiInputHandle>(null);
+
+  useEffect(() => setReplyTo(null), [postId]);
+
+  function startReply(message: PlazaMessage) {
+    setReplyTo({
+      id: message.id,
+      name: message.displayName || message.username,
+      text: message.text || `[${plazaMediaLabel(message.mediaType)}]`,
+    });
+    composerRef.current?.focus();
+  }
   const autoOpenRef = useRef(autoOpenThread);
   autoOpenRef.current = autoOpenThread;
 
@@ -279,9 +294,10 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
         },
         text,
         'text',
-        { media, textStyle, textStyleRanges },
+        { media, textStyle, textStyleRanges, replyTo },
       );
       setDraft('');
+      setReplyTo(null);
       void notifyCreatorPlazaMessage({
         postId,
         authorUid,
@@ -488,6 +504,17 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                     <p className="lb-explore-plaza__name truncate text-[11px] font-semibold text-white/80">
                       {message.displayName || message.username}
                     </p>
+                    {message.replyTo ? (
+                      <p className="lb-explore-plaza__quote mt-0.5 line-clamp-2 border-l-2 border-cyan-300/70 pl-2 text-[11px] leading-snug text-white/75">
+                        <span className="font-semibold">{message.replyTo.name}</span>
+                        {message.replyTo.text ? (
+                          <>
+                            {': '}
+                            <EmojiText text={message.replyTo.text} size={14} />
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
                     {message.text ? (
                       <p
                         className={`lb-explore-plaza__text break-words text-sm leading-snug text-white ${
@@ -520,6 +547,17 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                         />
                       </div>
                     ) : null}
+                    {profile?.firebaseUid && message.fromUid !== profile.firebaseUid ? (
+                      <button
+                        type="button"
+                        className="lb-explore-plaza__reply -mb-2 -ml-2 inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-cyan-200"
+                        aria-label={`Responder a ${message.displayName || message.username}`}
+                        onClick={() => startReply(message)}
+                      >
+                        <Reply size={13} aria-hidden />
+                        Responder
+                      </button>
+                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -542,7 +580,30 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
           {profile?.firebaseUid ? (
             <div className="lb-explore-plaza__composer mt-2 min-w-0">
               {sendError ? <p className="lb-explore-plaza__error mb-1 text-[11px] text-rose-300">{sendError}</p> : null}
+              {replyTo ? (
+                <div className="lb-explore-plaza__replying mb-1 flex min-w-0 items-center gap-2 rounded-xl border-l-2 border-cyan-300 bg-black/45 pl-2.5">
+                  <p className="min-w-0 flex-1 truncate py-1 text-[11px] leading-snug text-white/85">
+                    <span className="font-semibold text-cyan-200">Respondiendo a {replyTo.name}</span>
+                    {replyTo.text ? (
+                      <>
+                        {': '}
+                        <EmojiText text={replyTo.text} size={14} />
+                      </>
+                    ) : null}
+                  </p>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-white/75"
+                    aria-label="Cancelar respuesta"
+                    title="Cancelar respuesta"
+                    onClick={() => setReplyTo(null)}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : null}
               <CommentComposerBar
+                ref={composerRef}
                 value={draft}
                 onChange={setDraft}
                 onPublish={publishThread}

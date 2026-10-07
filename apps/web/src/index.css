@@ -19716,9 +19716,24 @@ html[data-lb-theme='light'] .lb-comment-bar__gift {
   max-height: min(70dvh, 28rem);
   padding: 0.85rem max(0.85rem, var(--lb-safe-right)) max(0.85rem, var(--lb-safe-bottom)) max(0.85rem, var(--lb-safe-left));
   border-radius: 1.25rem 1.25rem 0 0;
-  background: rgba(10, 11, 16, 0.94);
+  background: linear-gradient(180deg, rgba(10, 11, 16, 0.28) 0%, rgba(10, 11, 16, 0.5) 100%);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.18);
+}
+
+/* Con el chat abierto (transparente), la barra de tiempo del video pausado no se cruza con el texto. */
+body:has(> .lb-explore-plaza__sheet) .lb-explore-view .lb-video-duration-bar {
+  visibility: hidden;
+}
+
+/* Fondo transparente: el video se ve detrás; la sombra mantiene el texto legible. */
+.lb-explore-plaza__sheet .lb-explore-plaza__title,
+.lb-explore-plaza__sheet .lb-explore-plaza__name,
+.lb-explore-plaza__sheet .lb-explore-plaza__text,
+.lb-explore-plaza__sheet .lb-explore-plaza__muted,
+.lb-explore-plaza__sheet .lb-explore-plaza__quote,
+.lb-explore-plaza__sheet .lb-explore-plaza__reply {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 .lb-explore-plaza__log {
@@ -19759,10 +19774,19 @@ html[data-lb-theme='light'] .lb-comment-bar__gift {
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet {
-  background: #fff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.72) 100%);
   border-color: rgba(15, 23, 42, 0.12);
-  box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.12);
   color: #0f172a;
+}
+
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__title,
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__name,
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__text,
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__muted,
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__quote,
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__reply {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__title,
@@ -19794,6 +19818,14 @@ html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__live-lab
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__error {
   color: #be123c;
+}
+
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__quote {
+  color: #334155;
+}
+
+html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__reply {
+  color: #0e7490;
 }
 
 html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__login {
