@@ -89,6 +89,7 @@ function postToReel(post: SocialPost): ReelFeedItem {
     caption: post.caption || 'Video',
     mediaUrl: post.mediaUrl ?? '',
     mediaType: 'video',
+    thumbUrl: post.thumbUrl ?? null,
     sharedFromPostId: post.sharedFromPostId,
     sharedFromAuthorUid: post.sharedFromAuthorUid,
     sharedFromUsername: post.sharedFromUsername,
@@ -1101,6 +1102,7 @@ export function UserProfileView() {
           initialIndex={profileViewerIndex}
           collapsibleCaption
           durationBar
+          chainSwipe
           onClose={() => setExpandVideoId(null)}
         />
       ) : null}

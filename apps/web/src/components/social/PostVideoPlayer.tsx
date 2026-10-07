@@ -128,11 +128,17 @@ type Props = {
   overlayOnly?: boolean;
   /** Modo feed de reels: comentarios desplazables + deslizar vertical. */
   /** Si se define, el padre abre su propio visor fullscreen (p. ej. ReelFeedViewer en perfil). */
-  onRequestExpand?: () => void;
+  onRequestExpand?: (info: { time: number }) => void;
+  /** Visor: segundo inicial (continuar donde iba la tarjeta). */
+  startAtSec?: number;
+  /** Visor de Publicaciones de Inicio: contain + blur (sin recortar) también con overlayOnly. */
+  containFill?: boolean;
   reelFeed?: boolean;
   reelNavigation?: {
     onNext: () => void;
     onPrev: () => void;
+    /** Deslizar encadenado (iOS): vista previa del anterior/siguiente que sigue al dedo. */
+    chain?: { prev?: ReactNode | null; next?: ReactNode | null };
   };
   reelPosition?: { current: number; total: number };
   /** Flash Boom / Boom Clip: swipe horizontal para cambiar de usuario. */
@@ -337,6 +343,9 @@ function VideoDurationBar({
 }
 
 const SEEK_STEP_SEC = 10;
+const CHAIN_COMMIT_MS = 300;
+const CHAIN_SPRING_MS = 220;
+const CHAIN_EASE = 'cubic-bezier(0.22, 0.8, 0.24, 1)';
 /** Publicación expandida: el ícono sigue al <video> vía volumechange, sin mute compartido. */
 const SOUND_FALLBACK_LOCAL = { onBlocked: () => undefined, onUnlocked: () => undefined };
 
@@ -393,6 +402,8 @@ export function PostVideoPlayer({
   onCloseExpand,
   onExpandChange,
   onRequestExpand,
+  startAtSec,
+  containFill = false,
   overlayOnly = false,
   reelFeed = false,
   reelNavigation,
@@ -449,7 +460,7 @@ export function PostVideoPlayer({
   onFirstFrameRef.current = onFirstFrame;
   const firstFrameSrcRef = useRef('');
   const playbackSnapshotRef = useRef({
-    time: 0,
+    time: startAtSec && startAtSec > 0 ? startAtSec : 0,
     playing: false,
     muted: true,
     volume: 1,
@@ -914,7 +925,7 @@ export function PostVideoPlayer({
     event?.stopPropagation();
     event?.preventDefault();
     if (onRequestExpand) {
-      onRequestExpand();
+      onRequestExpand({ time: videoRef.current?.currentTime ?? 0 });
       return;
     }
     capturePlaybackSnapshot();
@@ -947,10 +958,101 @@ export function PostVideoPlayer({
     }, 80);
   }, []);
 
+  const chain = !embedded && reelNavigation?.chain ? reelNavigation.chain : null;
+  const chainShellRef = useRef<HTMLDivElement | null>(null);
+  const chainPrevRef = useRef<HTMLDivElement | null>(null);
+  const chainNextRef = useRef<HTMLDivElement | null>(null);
+  const chainBusyRef = useRef(false);
+  const chainFrameRef = useRef(0);
+  const chainTimerRef = useRef(0);
+  const chainDragRef = useRef<Array<{ y: number; t: number }> | null>(null);
+
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(chainFrameRef.current);
+      window.clearTimeout(chainTimerRef.current);
+    },
+    [],
+  );
+
+  /** offset: desplazamiento vertical del video actual (px o %); los vecinos lo siguen pegados. */
+  const applyChain = useCallback((offset: string, ms = 0) => {
+    const transition = ms > 0 ? `transform ${ms}ms ${CHAIN_EASE}` : 'none';
+    const resting = offset === '0px';
+    const shell = chainShellRef.current;
+    if (shell) {
+      shell.style.transition = transition;
+      // Sin transform en reposo: un transform permanente cambia el contenedor de los `fixed` internos.
+      shell.style.transform = resting ? '' : `translate3d(0, ${offset}, 0)`;
+    }
+    const prev = chainPrevRef.current;
+    if (prev) {
+      prev.style.transition = transition;
+      prev.style.transform = `translate3d(0, calc(-100% + ${offset}), 0)`;
+    }
+    const next = chainNextRef.current;
+    if (next) {
+      next.style.transition = transition;
+      next.style.transform = `translate3d(0, calc(100% + ${offset}), 0)`;
+    }
+  }, []);
+
+  const resetChainDrag = useCallback(() => {
+    cancelAnimationFrame(chainFrameRef.current);
+    if (!chainDragRef.current) return;
+    chainDragRef.current = null;
+    applyChain('0px', CHAIN_SPRING_MS);
+  }, [applyChain]);
+
+  const handlePointerDrag = useCallback(
+    (info: { dx: number; dy: number; axis: 'horizontal' | 'vertical' }) => {
+      if (!chain || storyHeld || chainBusyRef.current || info.axis !== 'vertical') return;
+      const hasTarget = info.dy < 0 ? Boolean(chain.next) : Boolean(chain.prev);
+      const offset = hasTarget ? info.dy : info.dy * 0.28;
+      const samples = chainDragRef.current ?? [];
+      samples.push({ y: info.dy, t: performance.now() });
+      if (samples.length > 6) samples.shift();
+      chainDragRef.current = samples;
+      cancelAnimationFrame(chainFrameRef.current);
+      chainFrameRef.current = requestAnimationFrame(() => applyChain(`${offset}px`));
+    },
+    [chain, storyHeld, applyChain],
+  );
+
+  const chainNavigate = useCallback(
+    (dir: 'next' | 'prev') => {
+      if (!reelNavigation) return;
+      const go = dir === 'next' ? reelNavigation.onNext : reelNavigation.onPrev;
+      const target = chain ? (dir === 'next' ? chain.next : chain.prev) : null;
+      if (!target) {
+        resetChainDrag();
+        go();
+        return;
+      }
+      if (chainBusyRef.current) return;
+      chainBusyRef.current = true;
+      cancelAnimationFrame(chainFrameRef.current);
+      chainDragRef.current = null;
+      applyChain(dir === 'next' ? '-100%' : '100%', CHAIN_COMMIT_MS);
+      window.clearTimeout(chainTimerRef.current);
+      chainTimerRef.current = window.setTimeout(() => {
+        chainBusyRef.current = false;
+        go();
+        // Si el visor no se remonta (misma key), vuelve a reposo tras el render.
+        chainFrameRef.current = requestAnimationFrame(() => applyChain('0px'));
+      }, CHAIN_COMMIT_MS);
+    },
+    [reelNavigation, chain, applyChain, resetChainDrag],
+  );
+
   const handlePointerGesture = useCallback(
     (info: ImmersivePointerGesture) => {
-      if (storyHeld || info.startedOnControl) return;
+      if (storyHeld || info.startedOnControl) {
+        resetChainDrag();
+        return;
+      }
       if (info.isTap) {
+        resetChainDrag();
         if (itemSideNav && !durationBar) return;
         toggleExpandedPlayback();
         return;
@@ -958,6 +1060,7 @@ export function PostVideoPlayer({
       const absX = Math.abs(info.dx);
       const absY = Math.abs(info.dy);
       if (info.axis === 'horizontal' && absX >= HORIZONTAL_SEEK_THRESHOLD_PX && absX > absY) {
+        resetChainDrag();
         lockGestureClicks();
         if (userNavigation) {
           if (info.dx < 0) userNavigation.onNextUser();
@@ -965,6 +1068,22 @@ export function PostVideoPlayer({
           return;
         }
         seekExpanded(info.dx < 0 ? -SEEK_STEP_SEC : SEEK_STEP_SEC);
+        return;
+      }
+      if (chain && reelNavigation && info.axis === 'vertical') {
+        const samples = chainDragRef.current ?? [];
+        const last = samples[samples.length - 1];
+        const first = samples.find((s) => last && last.t - s.t <= 100) ?? last;
+        const velocity =
+          first && last && last.t > first.t ? (last.y - first.y) / (last.t - first.t) : 0;
+        const flick =
+          absY >= 48 && Math.abs(velocity) > 0.35 && Math.sign(velocity) === Math.sign(info.dy);
+        if (absY > absX && (absY >= window.innerHeight * 0.2 || flick)) {
+          lockGestureClicks();
+          chainNavigate(info.dy < 0 ? 'next' : 'prev');
+        } else {
+          resetChainDrag();
+        }
         return;
       }
       if (info.axis === 'vertical' && reelNavigation && absY >= 48 && absY > absX) {
@@ -979,6 +1098,9 @@ export function PostVideoPlayer({
       durationBar,
       userNavigation,
       reelNavigation,
+      chain,
+      chainNavigate,
+      resetChainDrag,
       toggleExpandedPlayback,
       seekExpanded,
       lockGestureClicks,
@@ -987,14 +1109,18 @@ export function PostVideoPlayer({
 
   const handleWheelNavigate = useCallback((deltaY: number) => {
     if (!reelNavigation || storyHeld || Math.abs(deltaY) < STORY_WHEEL_MIN_DELTA) return;
-    if (storyMode) {
+    if (storyMode || chain) {
       const now = Date.now();
       if (now - wheelLockRef.current < STORY_WHEEL_COOLDOWN_MS) return;
       wheelLockRef.current = now;
     }
+    if (chain) {
+      chainNavigate(deltaY > 0 ? 'next' : 'prev');
+      return;
+    }
     if (deltaY > 0) reelNavigation.onNext();
     else reelNavigation.onPrev();
-  }, [reelNavigation, storyHeld, storyMode]);
+  }, [reelNavigation, storyHeld, storyMode, chain, chainNavigate]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -1008,17 +1134,19 @@ export function PostVideoPlayer({
       if (!reelNavigation) return;
       if (event.key === 'ArrowUp') {
         event.preventDefault();
-        if (storyMode) reelNavigation.onPrev();
+        if (chain) chainNavigate(storyMode ? 'prev' : 'next');
+        else if (storyMode) reelNavigation.onPrev();
         else reelNavigation.onNext();
       } else if (event.key === 'ArrowDown') {
         event.preventDefault();
-        if (storyMode) reelNavigation.onNext();
+        if (chain) chainNavigate(storyMode ? 'next' : 'prev');
+        else if (storyMode) reelNavigation.onNext();
         else reelNavigation.onPrev();
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [expanded, reelNavigation, storyMode, hideClose]);
+  }, [expanded, reelNavigation, storyMode, hideClose, chain, chainNavigate]);
 
   const stopCommentTouch = useCallback((event: React.TouchEvent | React.WheelEvent) => {
     event.stopPropagation();
@@ -1145,7 +1273,8 @@ export function PostVideoPlayer({
         onEnded={() => {
           if (!storyMode || storyHeld || !reelNavigation) return;
           setStoryProgress(1);
-          reelNavigation.onNext();
+          if (chain) chainNavigate('next');
+          else reelNavigation.onNext();
         }}
       />
       {durationBar && userPaused && frameReady && !expanded && !overlayOnly ? (
@@ -1168,11 +1297,13 @@ export function PostVideoPlayer({
   const parkRailAtDeviceEdge = deviceLandscape;
   const expandedRailLayout = useLandscapeAside ? 'aside' : 'corner';
   /** Publicaciones (feed): contain en fullscreen; Explorar/clips mantienen auto. */
-  const publicationFillMode = !overlayOnly && !immersiveLandscapeLayout ? 'contain' : 'auto';
+  const publicationFillMode =
+    containFill || (!overlayOnly && !immersiveLandscapeLayout) ? 'contain' : 'auto';
 
   const expandedChrome =
     expanded && (embedded || typeof document !== 'undefined') ? (
       <div
+        ref={chainShellRef}
         className={`${
           embedded ? 'absolute inset-0 z-10' : 'fixed inset-0 z-[100] h-[100dvh] max-h-[100dvh]'
         } overflow-hidden overscroll-none bg-black`}
@@ -1194,6 +1325,7 @@ export function PostVideoPlayer({
             actionRail: 56,
           }}
           onPointerGesture={handlePointerGesture}
+          onPointerDrag={chain ? handlePointerDrag : undefined}
           onWheel={reelNavigation ? handleWheelNavigate : undefined}
           mediaOverlay={
             <>
@@ -1570,6 +1702,37 @@ export function PostVideoPlayer({
       </div>
     ) : null;
 
+  const chainPeekClass =
+    'pointer-events-none fixed inset-0 z-[100] h-[100dvh] max-h-[100dvh] overflow-hidden bg-black';
+  const chainedChrome =
+    expandedChrome && chain && !embedded ? (
+      <>
+        {chain.prev ? (
+          <div
+            ref={chainPrevRef}
+            aria-hidden
+            className={chainPeekClass}
+            style={{ transform: 'translate3d(0, -100%, 0)' }}
+          >
+            {chain.prev}
+          </div>
+        ) : null}
+        {expandedChrome}
+        {chain.next ? (
+          <div
+            ref={chainNextRef}
+            aria-hidden
+            className={chainPeekClass}
+            style={{ transform: 'translate3d(0, 100%, 0)' }}
+          >
+            {chain.next}
+          </div>
+        ) : null}
+      </>
+    ) : (
+      expandedChrome
+    );
+
   return (
     <>
       {overlayOnly ? (
@@ -1578,7 +1741,7 @@ export function PostVideoPlayer({
             {expandedChrome}
           </div>
         ) : (
-          expandedChrome
+          chainedChrome
         )
       ) : (
         <>
@@ -1610,7 +1773,7 @@ export function PostVideoPlayer({
             ) : null}
           </div>
           {expanded && typeof document !== 'undefined'
-            ? createPortal(expandedChrome, document.body)
+            ? createPortal(chainedChrome, document.body)
             : null}
         </>
       )}

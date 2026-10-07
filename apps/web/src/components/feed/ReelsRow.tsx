@@ -404,6 +404,7 @@ export function ReelsRow({
           collapsibleCaption
           hideMediaInfo={mode === 'reels'}
           durationBar={mode === 'reels'}
+          chainSwipe={mode === 'reels'}
           onClose={() => setViewerReels(null)}
         />
       ) : null}

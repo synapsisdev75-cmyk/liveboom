@@ -39,6 +39,8 @@ type Props = {
   onSwipeEnd?: (x: number, y: number) => void;
   /** Pointer unificado (touch/mouse/lápiz) con eje bloqueado. */
   onPointerGesture?: (info: ImmersivePointerGesture) => void;
+  /** Arrastre en vivo (tras bloquear eje), antes de soltar. Opcional: deslizar encadenado. */
+  onPointerDrag?: (info: { dx: number; dy: number; axis: 'horizontal' | 'vertical' }) => void;
   onWheel?: (deltaY: number) => void;
   children: ReactNode;
   /** Controles superpuestos (seek zones, etc.) */
@@ -83,6 +85,7 @@ export function ImmersiveMediaStage({
   onSwipeStart,
   onSwipeEnd,
   onPointerGesture,
+  onPointerDrag,
   onWheel,
   children,
   mediaOverlay,
@@ -354,6 +357,7 @@ export function ImmersiveMediaStage({
             }
           }
           if (gesture.axis === 'horizontal') event.preventDefault();
+          if (!gesture.onControl) onPointerDrag?.({ dx, dy, axis: gesture.axis });
         }}
         onPointerUp={endPointerGesture}
         onPointerCancel={endPointerGesture}

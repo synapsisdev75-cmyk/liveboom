@@ -131,15 +131,43 @@ function timeAgo(iso: string) {
   return `${Math.floor(h / 24)}d`;
 }
 
+/** Video de publicación que entra al visor encadenado (un solo video, sin repost). */
+function isChainPublicationVideo(post: SocialPost) {
+  return (
+    post.type === 'video' &&
+    Boolean(post.mediaUrl) &&
+    !isRepostPost(post) &&
+    postVideoUrls(post).length === 1
+  );
+}
+
+function publicationVideoReel(post: SocialPost): ReelFeedItem {
+  return {
+    id: post.id,
+    username: post.authorUsername,
+    authorUid: post.authorUid ?? '',
+    caption: post.caption || 'Video',
+    mediaUrl: post.mediaUrl ?? '',
+    mediaType: 'video',
+    thumbUrl: post.thumbUrl ?? null,
+    durationSec: post.durationSec ?? null,
+    overlays: post.overlays,
+    textStyle: post.textStyle ?? null,
+    textStyleRanges: post.textStyleRanges,
+  };
+}
+
 /** Post destacado: video con autoplay + comentarios directos. */
 function FeaturedFeedCard({
   post,
   live,
   onEdit,
+  onOpenVideo,
 }: {
   post: SocialPost;
   live: ActiveLiveFeedItem | null;
   onEdit?: (post: SocialPost) => void;
+  onOpenVideo?: (post: SocialPost, time: number) => void;
 }) {
   const profile = useAuthStore((state) => state.profile);
   if (isRepostPost(post)) {
@@ -153,17 +181,19 @@ function FeaturedFeedCard({
       />
     );
   }
-  return <HomePublicationCard post={post} live={live} onEdit={onEdit} />;
+  return <HomePublicationCard post={post} live={live} onEdit={onEdit} onOpenVideo={onOpenVideo} />;
 }
 
 function HomePublicationCard({
   post,
   live,
   onEdit,
+  onOpenVideo,
 }: {
   post: SocialPost;
   live: ActiveLiveFeedItem | null;
   onEdit?: (post: SocialPost) => void;
+  onOpenVideo?: (post: SocialPost, time: number) => void;
 }) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
@@ -290,6 +320,11 @@ function HomePublicationCard({
             publicationCaption
             overlays={videoIndex === 0 ? post.overlays : undefined}
             durationBar
+            onRequestExpand={
+              onOpenVideo && isChainPublicationVideo(post)
+                ? ({ time }) => onOpenVideo(post, time)
+                : undefined
+            }
           />
             )}
           />
@@ -450,8 +485,17 @@ export function HomeView() {
     storyMode: boolean;
   } | null>(null);
 
+  const [pubVideoViewer, setPubVideoViewer] = useState<{
+    reels: ReelFeedItem[];
+    index: number;
+    startSec: number;
+  } | null>(null);
+
   useEffect(() => {
-    const onHome = () => setFlashViewer(null);
+    const onHome = () => {
+      setFlashViewer(null);
+      setPubVideoViewer(null);
+    };
     window.addEventListener(GO_HOME_EVENT, onHome);
     return () => window.removeEventListener(GO_HOME_EVENT, onHome);
   }, []);
@@ -605,6 +649,19 @@ export function HomeView() {
     () => visibleIds.map((id) => feedById.get(id)).filter((post): post is SocialPost => Boolean(post)),
     [visibleIds, feedById],
   );
+
+  const visiblePostsRef = useRef(visiblePosts);
+  visiblePostsRef.current = visiblePosts;
+
+  const openPublicationVideo = useCallback((post: SocialPost, time: number) => {
+    const list = visiblePostsRef.current.filter(isChainPublicationVideo).map(publicationVideoReel);
+    const index = list.findIndex((item) => item.id === post.id);
+    setPubVideoViewer(
+      index >= 0
+        ? { reels: list, index, startSec: time }
+        : { reels: [publicationVideoReel(post)], index: 0, startSec: time },
+    );
+  }, []);
 
   const canLoadMore = rankedPosts.some((post) => !visibleIds.includes(post.id));
   const rankedRef = useRef(rankedPosts);
@@ -882,6 +939,7 @@ export function HomeView() {
                 post={featured}
                 live={liveForFeatured}
                 onEdit={setEditingPost}
+                onOpenVideo={openPublicationVideo}
               />
             ) : tab === 'siguiendo' ? (
               <div className="lb-panel rounded-2xl px-4 py-10 text-center text-sm text-zinc-500">
@@ -911,6 +969,7 @@ export function HomeView() {
                   post={post}
                   live={live ?? null}
                   onEdit={setEditingPost}
+                  onOpenVideo={openPublicationVideo}
                 />
                 {index % SPONSORED_EVERY === SPONSORED_EVERY - 1 ? (
                   <SponsoredFeedSlot surface="inicio" />
@@ -945,6 +1004,20 @@ export function HomeView() {
           collapsibleCaption
           durationBar={!flashViewer.storyMode}
           onClose={() => setFlashViewer(null)}
+        />
+      ) : null}
+
+      {pubVideoViewer ? (
+        <ReelFeedViewer
+          reels={pubVideoViewer.reels}
+          initialIndex={pubVideoViewer.index}
+          initialStartSec={pubVideoViewer.startSec}
+          immersiveLandscapeLayout={false}
+          containMedia
+          collapsibleCaption
+          durationBar
+          chainSwipe
+          onClose={() => setPubVideoViewer(null)}
         />
       ) : null}
 

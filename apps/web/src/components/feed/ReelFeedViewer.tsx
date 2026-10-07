@@ -26,6 +26,7 @@ import {
   exploreNavRelease,
 } from '../../lib/exploreVideoPool';
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
+import { isTouchPortraitViewport } from '../../responsive/viewport';
 import { enterExploreWithSound } from '../../lib/exploreFeedMute';
 
 export type ReelFeedItem = {
@@ -77,7 +78,46 @@ type Props = {
   hideMediaInfo?: boolean;
   /** Barra de avance del video. No usarla en Flash Boom. */
   durationBar?: boolean;
+  /** Boom Clip / Publicaciones: deslizar encadenado (el siguiente video sigue al dedo). */
+  chainSwipe?: boolean;
+  /** Segundo inicial del primer video (continuar desde la tarjeta del feed). */
+  initialStartSec?: number;
+  /** Publicaciones de Inicio: video completo (contain + blur), sin recorte en móvil vertical. */
+  containMedia?: boolean;
 };
+
+/** Igual que ImmersiveMediaStage en modo `auto`: celular/tablet en vertical llena la pantalla. */
+function chainPeekCovers(containMedia: boolean) {
+  if (containMedia || typeof window === 'undefined') return false;
+  const portrait = window.matchMedia('(orientation: portrait)').matches;
+  return portrait && (window.innerWidth < 1024 || isTouchPortraitViewport());
+}
+
+function ReelChainPeek({ item, cover }: { item: ReelFeedItem; cover: boolean }) {
+  const fit = cover ? 'object-cover' : 'object-contain';
+  const still = item.mediaType === 'photo' ? item.mediaUrl : item.thumbUrl;
+  if (still) {
+    return (
+      <img
+        src={still}
+        alt=""
+        className={`h-full w-full ${fit}`}
+        draggable={false}
+        decoding="async"
+      />
+    );
+  }
+  return (
+    <video
+      src={`${item.mediaUrl}#t=0.1`}
+      poster={TRANSPARENT_VIDEO_POSTER}
+      className={`h-full w-full ${fit}`}
+      muted
+      playsInline
+      preload="auto"
+    />
+  );
+}
 
 export function ReelFeedViewer({
   reels,
@@ -94,6 +134,9 @@ export function ReelFeedViewer({
   railExtra = null,
   hideMediaInfo = false,
   durationBar = false,
+  chainSwipe = false,
+  initialStartSec,
+  containMedia = false,
 }: Props) {
   useBodyScrollLock(!embedded);
   useBackLayer(!embedded, onClose);
@@ -113,6 +156,15 @@ export function ReelFeedViewer({
   const [busy, setBusy] = useState(false);
 
   const reel = reels[index];
+  const [startOnce, setStartOnce] = useState(() => {
+    const first = reels[Math.min(Math.max(initialIndex, 0), Math.max(reels.length - 1, 0))];
+    return first && initialStartSec && initialStartSec > 0
+      ? { id: first.id, sec: initialStartSec }
+      : null;
+  });
+  useEffect(() => {
+    if (startOnce && reel && reel.id !== startOnce.id) setStartOnce(null);
+  }, [startOnce, reel]);
   const originId = reel ? reel.sharedFromPostId || reel.id : '';
   const originUid = reel ? reel.sharedFromAuthorUid || reel.authorUid : '';
   const originUsername = reel ? reel.sharedFromUsername || reel.username : '';
@@ -337,6 +389,9 @@ export function ReelFeedViewer({
   }
 
   const userNavigation = storyMode ? { onNextUser: goNextUser, onPrevUser: goPrevUser } : undefined;
+  const prevReel = index > 0 ? reels[index - 1] : undefined;
+  const nextReel = reels[index + 1];
+  const peekCover = chainSwipe ? chainPeekCovers(containMedia) : false;
 
   const player = (
     <>
@@ -391,7 +446,17 @@ export function ReelFeedViewer({
           embedded={embedded}
           hideClose={embedded}
           contentBadge={reel.contentBadge}
-          reelNavigation={{ onNext: goNext, onPrev: goPrev }}
+          reelNavigation={{
+            onNext: goNext,
+            onPrev: goPrev,
+            chain:
+              chainSwipe && !embedded && !exploreFastNav
+                ? {
+                    prev: prevReel ? <ReelChainPeek item={prevReel} cover={peekCover} /> : null,
+                    next: nextReel ? <ReelChainPeek item={nextReel} cover={peekCover} /> : null,
+                  }
+                : undefined,
+          }}
           userNavigation={userNavigation}
           reelPosition={storyPosition}
           storyMode={storyMode}
@@ -406,10 +471,16 @@ export function ReelFeedViewer({
           originalHref={originHref}
           overlays={reel.overlays}
           posterUrl={
-            exploreFastNav ? reel.thumbUrl || TRANSPARENT_VIDEO_POSTER : undefined
+            exploreFastNav
+              ? reel.thumbUrl || TRANSPARENT_VIDEO_POSTER
+              : chainSwipe
+                ? reel.thumbUrl || undefined
+                : undefined
           }
           mediaWidth={exploreFastNav ? reel.mediaWidth || undefined : undefined}
           mediaHeight={exploreFastNav ? reel.mediaHeight || undefined : undefined}
+          startAtSec={startOnce?.id === reel.id ? startOnce.sec : undefined}
+          containFill={containMedia}
           skipRemoteAspectProbe={exploreFastNav}
           fastNav={exploreFastNav}
           fastNavPrevUrl={explorePrevUrl}
