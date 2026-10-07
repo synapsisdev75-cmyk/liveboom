@@ -19712,6 +19712,22 @@ a.lb-entity:active,
   max-height: min(42dvh, 16rem);
 }
 
+/* El botón de cámara está a la izquierda de un panel estrecho: el menú ocupa el ancho del composer. */
+.lb-explore-plaza__composer {
+  position: relative;
+}
+
+.lb-explore-plaza__composer .lb-comment-bar__media-wrap {
+  position: static;
+}
+
+.lb-explore-plaza__composer .lb-comment-bar__menu {
+  left: 0;
+  right: 0;
+  width: auto;
+  max-width: 22rem;
+}
+
 html[data-lb-theme='light'] .lb-explore-plaza__sheet {
   background: #fff;
   border-color: rgba(15, 23, 42, 0.12);
