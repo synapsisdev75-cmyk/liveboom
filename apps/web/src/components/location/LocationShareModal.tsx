@@ -265,7 +265,7 @@ export function LocationShareModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[140] flex items-end justify-center bg-[rgba(0,0,0,0.55)] p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      className="lb-location-share-layer fixed inset-0 z-[140] flex items-end justify-center bg-[rgba(0,0,0,0.55)] p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
       role="presentation"
     >

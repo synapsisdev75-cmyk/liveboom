@@ -37,6 +37,7 @@ const MSG_OUTSIDE_KEEP_SEL = [
   '.lb-msg-overlay',
   '.lb-gift-catalog-layer',
   '.lb-chat-attach-menu',
+  '.lb-location-share-layer',
   '.lb-camera-capture',
   '.lb-cts',
   '.lb-cbe',
