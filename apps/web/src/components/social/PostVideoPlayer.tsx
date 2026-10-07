@@ -231,16 +231,24 @@ function VideoDurationBar({
     if (ratio != null) onSeek?.(ratio);
   };
 
+  const bottomGap = insetSafe
+    ? 'calc(var(--lb-safe-bottom, 0px) + clamp(0.9rem, 2.6dvh, 1.45rem))'
+    : 'clamp(0.45rem, 1.5dvh, 0.8rem)';
+
   return (
     <div
-      className={`absolute inset-x-0 z-30 px-3 ${interactive ? '' : 'pointer-events-none'}`}
-      style={{ bottom: insetSafe ? 'max(0px, var(--lb-safe-bottom, 0px))' : '0px' }}
+      className={`absolute inset-x-0 z-30 ${interactive ? '' : 'pointer-events-none'}`}
+      style={{
+        bottom: bottomGap,
+        paddingLeft: 'max(0.75rem, var(--lb-safe-left, 0px))',
+        paddingRight: 'max(0.75rem, var(--lb-safe-right, 0px))',
+      }}
     >
       <div className="relative w-full">
       {previewSrc ? (
         <div
-          className="pointer-events-none absolute bottom-full z-[8] mb-1 aspect-[3/4] w-[4.75rem] overflow-hidden rounded-md bg-black shadow-[0_8px_24px_rgba(0,0,0,0.45)] ring-1 ring-white/80"
-          style={{ left: `clamp(0px, calc(${pct} - 2.375rem), calc(100% - 4.75rem))` }}
+          className="pointer-events-none absolute bottom-full z-[8] mb-1 aspect-[3/4] w-[clamp(3.25rem,14vw,4.75rem)] overflow-hidden rounded-md bg-black shadow-[0_8px_24px_rgba(0,0,0,0.45)] ring-1 ring-white/80"
+          style={{ left: `clamp(0px, calc(${pct} - clamp(1.625rem, 7vw, 2.375rem)), calc(100% - clamp(3.25rem, 14vw, 4.75rem)))` }}
         >
           <video
             ref={previewRef}
@@ -1426,7 +1434,12 @@ export function PostVideoPlayer({
                 ? 'pb-[max(0.75rem,var(--lb-safe-bottom))] pl-[4.25rem] sm:pl-[4.75rem] lg:pl-3'
                 : 'pb-[max(0.75rem,var(--lb-safe-bottom))] pl-[3.5rem]'
             }`}
-            style={{ paddingRight: 'max(0.75rem, env(safe-area-inset-right))' }}
+            style={{
+              paddingRight: 'max(0.75rem, var(--lb-safe-right, 0px))',
+              ...(durationBar && userPaused && frameReady && !storyHeld
+                ? { paddingBottom: 'calc(var(--lb-safe-bottom, 0px) + clamp(3.2rem, 8dvh, 4.25rem))' }
+                : null),
+            }}
           >
             <div className="pointer-events-auto space-y-2">
             {hideOverlayInfo ? null : (
