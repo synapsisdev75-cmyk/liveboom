@@ -537,6 +537,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                           previewUrl={message.mediaType === 'gif' ? null : message.mediaPreviewUrl}
                           kind={message.mediaType}
                           size="thread"
+                          inlinePlay
                           onOpen={() =>
                             setMediaViewer({
                               url: message.mediaUrl!,

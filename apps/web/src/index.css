@@ -9847,6 +9847,18 @@ html[data-lb-theme='light'] .lb-comment-bar__gift {
   transform: translate(-50%, -50%);
 }
 
+.lb-comment-thumb__play {
+  transition: opacity 0.2s ease;
+}
+
+.lb-comment-thumb__play.is-playing {
+  opacity: 0;
+}
+
+.lb-comment-thumb:hover .lb-comment-thumb__play.is-playing {
+  opacity: 0.85;
+}
+
 .lb-comment-thumb--preview .lb-comment-thumb__play {
   width: 1.05rem;
   height: 1.05rem;
