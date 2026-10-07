@@ -200,7 +200,7 @@ export function CommentMediaThumb({
       ) : canOpen ? (
         <button
           type="button"
-          className="lb-comment-thumb__open"
+          className={`lb-comment-thumb__open ${playsInline ? 'lb-comment-thumb__open--inline' : ''}`}
           aria-label={playsInline ? (playing ? 'Pausar video' : 'Reproducir video') : `Abrir ${label}`}
           onClick={(event) => {
             event.preventDefault();

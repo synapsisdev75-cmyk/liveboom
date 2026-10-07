@@ -9909,6 +9909,10 @@ html[data-lb-theme='light'] .lb-comment-bar__gift {
   cursor: zoom-in;
 }
 
+.lb-comment-thumb__open--inline {
+  cursor: pointer;
+}
+
 .lb-comment-thumb__remove {
   top: 0.28rem;
   right: 0.28rem;
