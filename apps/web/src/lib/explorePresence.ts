@@ -78,8 +78,9 @@ function plainPlazaText(text: string): string {
   return text.replace(/\u200b/g, '').trim();
 }
 
-function httpUrl(value: unknown): string | null {
-  return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : null;
+/** http(s) o ruta propia del sitio (`/stickers/...`); los stickers del catálogo son rutas relativas. */
+function mediaUrlOf(value: unknown): string | null {
+  return typeof value === 'string' && /^(https?:\/\/|\/(?!\/))/i.test(value) ? value : null;
 }
 
 export function plazaMediaLabel(type: PostCommentMediaType | null): string {
@@ -234,7 +235,7 @@ export function listenPlazaMessages(
           if (createdAtMs <= 0 || now - createdAtMs > EXPLORE_PLAZA_TTL_MS) continue;
           const rawText = String(data.text || '').trim();
           const text = plainPlazaText(rawText) ? rawText : '';
-          const mediaUrl = httpUrl(data.mediaUrl);
+          const mediaUrl = mediaUrlOf(data.mediaUrl);
           const mediaType =
             mediaUrl && PLAZA_MEDIA_TYPES.has(String(data.mediaType))
               ? (String(data.mediaType) as PostCommentMediaType)
@@ -251,7 +252,7 @@ export function listenPlazaMessages(
             createdAtMs,
             mediaUrl: mediaType ? mediaUrl : null,
             mediaType,
-            mediaPreviewUrl: mediaType ? httpUrl(data.mediaPreviewUrl) : null,
+            mediaPreviewUrl: mediaType ? mediaUrlOf(data.mediaPreviewUrl) : null,
             textStyle: text ? parsePostTextStyle(data.textStyle) : null,
             textStyleRanges: text ? parseTextStyleRanges(data.textStyleRanges, text.length) : [],
           });
@@ -289,13 +290,13 @@ export async function sendPlazaMessage(
   extras?: PlazaMessageExtras,
 ): Promise<void> {
   const clean = plainPlazaText(text) ? text.trim().slice(0, 280) : '';
-  const mediaUrl = httpUrl(extras?.media?.mediaUrl);
+  const mediaUrl = mediaUrlOf(extras?.media?.mediaUrl);
   const mediaType =
     mediaUrl && extras?.media && PLAZA_MEDIA_TYPES.has(extras.media.mediaType) ? extras.media.mediaType : null;
   if (!clean && !mediaType) return;
   const textStyle = clean ? parsePostTextStyle(extras?.textStyle) : null;
   const textStyleRanges = clean ? textStyleRangesForTrimmed(text, extras?.textStyleRanges, 280) : [];
-  const mediaPreviewUrl = mediaType ? httpUrl(extras?.media?.mediaPreviewUrl) : null;
+  const mediaPreviewUrl = mediaType ? mediaUrlOf(extras?.media?.mediaPreviewUrl) : null;
   const ref = doc(collection(db, 'explorePlaza', postId, 'messages'));
   await setDoc(ref, {
     fromUid: profile.uid,
