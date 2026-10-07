@@ -1,6 +1,7 @@
 import { Maximize2, Minimize2, X } from 'lucide-react';
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -58,6 +59,24 @@ export function clearFloatingCallPosition() {
   sessionPos = null;
   sessionSize = null;
   expandedPos = null;
+}
+
+/** PC/laptop (mouse o trackpad): la llamada expandida ocupa el cajón del chat, a la derecha. */
+const PC_DOCK_QUERY = '(min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none)';
+const PC_DOCK_WIDTH = 'clamp(15.625rem, 34vw, 24.375rem)';
+
+function usePcDock() {
+  const [match, setMatch] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(PC_DOCK_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(PC_DOCK_QUERY);
+    const update = () => setMatch(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return match;
 }
 
 function viewBox() {
@@ -269,6 +288,7 @@ export function FloatingCallFrame({
 }) {
   const fullscreen = fullscreenProp && !compact && !parked;
   const maximized = maximizedProp || fullscreen;
+  const docked = usePcDock() && fullscreen;
   const frameRef = useRef<HTMLDivElement>(null);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
@@ -505,7 +525,7 @@ export function FloatingCallFrame({
         ref={frameRef}
         className={`lb-call-float${compact ? ' is-compact' : ' is-normal'}${video ? ' is-video' : ' is-voice'}${
           maximized ? ' is-maximized' : ''
-        }${fullscreen ? ' is-fullscreen' : ''}${incoming ? ' is-incoming' : ''}${parked ? ' is-parked' : ''}${parked || pos ? '' : ' is-measure'}`}
+        }${fullscreen ? ' is-fullscreen' : ''}${docked ? ' is-docked' : ''}${incoming ? ' is-incoming' : ''}${parked ? ' is-parked' : ''}${parked || pos ? '' : ' is-measure'}`}
         style={
           parked
             ? undefined
@@ -513,11 +533,11 @@ export function FloatingCallFrame({
                 ...(pos ? { left: pos.x, top: pos.y } : null),
                 ...(fullscreen
                   ? {
-                      left: 0,
+                      left: docked ? 'auto' : 0,
                       top: 0,
                       right: 0,
                       bottom: 0,
-                      width: '100%',
+                      width: docked ? PC_DOCK_WIDTH : '100%',
                       height: '100%',
                       maxWidth: 'none',
                       maxHeight: 'none',

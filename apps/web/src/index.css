@@ -20710,6 +20710,13 @@ html[data-lb-theme='light'] .lb-loc-scene {
   }
 }
 
+/* PC: la llamada expandida ocupa el cajón del chat (derecha); sus capas fijas quedan dentro del cajón. */
+.lb-call-float-root > .lb-call-float.is-fullscreen.is-docked.is-maximized:not(.is-compact):not(.is-parked) {
+  contain: layout paint;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.45);
+}
+
 /* Pantallas táctiles (celular / tablet Android o iOS): se desplaza con el dedo, sin barras de scroll. */
 @media (hover: none) and (pointer: coarse) {
   :root,
