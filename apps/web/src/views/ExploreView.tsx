@@ -485,6 +485,7 @@ export function ExploreView() {
           embedded
           immersiveLandscapeLayout
           exploreFastNav
+          durationBar
           onIndexChange={onIndexChange}
           plaza={
             activeId && postsById.get(activeId) ? (

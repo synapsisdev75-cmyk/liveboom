@@ -178,7 +178,24 @@ type Props = {
   railExtra?: ReactNode;
   /** Sin etiqueta de contenido, @autor ni descripción sobre el video (visor de Boom Clip). */
   hideOverlayInfo?: boolean;
+  /** Barra de avance del video. Explorar, Publicaciones y Boom Clip. Flash Boom no la usa. */
+  durationBar?: boolean;
 };
+
+function VideoDurationBar({ progress, insetSafe }: { progress: number; insetSafe?: boolean }) {
+  const pct = `${Math.min(100, Math.max(0, progress * 100))}%`;
+  return (
+    <div
+      className="pointer-events-none absolute inset-x-0 z-30"
+      style={{ bottom: insetSafe ? 'var(--lb-safe-bottom, 0px)' : 0 }}
+      aria-hidden
+    >
+      <div className="h-1 w-full bg-white/30">
+        <div className="h-full bg-white" style={{ width: pct }} />
+      </div>
+    </div>
+  );
+}
 
 const SEEK_STEP_SEC = 10;
 /** Publicación expandida: el ícono sigue al <video> vía volumechange, sin mute compartido. */
@@ -266,6 +283,7 @@ export function PostVideoPlayer({
   onFirstFrame,
   railExtra = null,
   hideOverlayInfo = false,
+  durationBar = false,
 }: Props) {
   const t = useT();
   const reactId = useId();
@@ -415,7 +433,7 @@ export function PostVideoPlayer({
   }, [postId, src]);
 
   useEffect(() => {
-    if (!storyMode) return;
+    if (!storyMode && !durationBar) return;
     const video = videoRef.current;
     if (!video) return;
 
@@ -437,7 +455,7 @@ export function PostVideoPlayer({
     };
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [storyMode, src, postId, durationSecProp]);
+  }, [storyMode, durationBar, src, postId, durationSecProp]);
 
   useEffect(() => {
     if (!storyMode) return;
@@ -919,6 +937,7 @@ export function PostVideoPlayer({
           reelNavigation.onNext();
         }}
       />
+      {durationBar && !expanded && !overlayOnly ? <VideoDurationBar progress={storyProgress} /> : null}
     </div>
   );
 
@@ -1262,6 +1281,7 @@ export function PostVideoPlayer({
           </div>
           ) : null}
         </div>
+        {durationBar ? <VideoDurationBar progress={storyProgress} insetSafe /> : null}
       </div>
     ) : null;
 

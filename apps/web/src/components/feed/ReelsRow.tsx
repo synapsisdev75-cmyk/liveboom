@@ -403,6 +403,7 @@ export function ReelsRow({
           immersiveLandscapeLayout
           collapsibleCaption
           hideMediaInfo={mode === 'reels'}
+          durationBar={mode === 'reels'}
           onClose={() => setViewerReels(null)}
         />
       ) : null}

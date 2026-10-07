@@ -216,6 +216,7 @@ function OriginalPostEmbed({
               posterUrl={origin.thumbUrl}
               publicationCaption
               overlays={origin.overlays}
+              durationBar
             />
           ) : postPhotoUrls(origin).length > 1 ? (
             <PostMediaCarousel

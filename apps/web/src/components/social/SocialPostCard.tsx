@@ -716,6 +716,7 @@ function StandardPostCard({
           onExpandChange={setMediaExpanded}
           publicationCaption
           overlays={post.overlays}
+          durationBar
         />
         </div>
       ) : null}

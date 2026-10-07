@@ -75,6 +75,8 @@ type Props = {
   railExtra?: ReactNode;
   /** Visor de Boom Clip: sin etiqueta, @autor ni descripción sobre el video. */
   hideMediaInfo?: boolean;
+  /** Barra de avance del video. No usarla en Flash Boom. */
+  durationBar?: boolean;
 };
 
 export function ReelFeedViewer({
@@ -91,6 +93,7 @@ export function ReelFeedViewer({
   plaza = null,
   railExtra = null,
   hideMediaInfo = false,
+  durationBar = false,
 }: Props) {
   useBodyScrollLock(!embedded);
   useBackLayer(!embedded, onClose);
@@ -393,6 +396,7 @@ export function ReelFeedViewer({
           reelPosition={storyPosition}
           storyMode={storyMode}
           itemSideNav={storyMode}
+          durationBar={durationBar}
           durationSec={reel.durationSec}
           onCloseExpand={onClose}
           immersiveLandscapeLayout={immersiveLandscapeLayout}

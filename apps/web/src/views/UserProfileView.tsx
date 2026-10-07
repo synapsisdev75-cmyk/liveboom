@@ -1100,6 +1100,7 @@ export function UserProfileView() {
           reels={profileVideoPosts.map(postToReel)}
           initialIndex={profileViewerIndex}
           collapsibleCaption
+          durationBar
           onClose={() => setExpandVideoId(null)}
         />
       ) : null}

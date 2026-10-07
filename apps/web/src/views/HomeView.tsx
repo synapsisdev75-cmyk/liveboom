@@ -285,6 +285,7 @@ function HomePublicationCard({
             posterUrl={post.thumbUrl}
             publicationCaption
             overlays={post.overlays}
+            durationBar
           />
         </div>
       ) : postPhotoUrls(post).length > 1 ? (
@@ -936,6 +937,7 @@ export function HomeView() {
           storyMode={flashViewer.storyMode}
           immersiveLandscapeLayout={flashViewer.storyMode}
           collapsibleCaption
+          durationBar={!flashViewer.storyMode}
           onClose={() => setFlashViewer(null)}
         />
       ) : null}
