@@ -333,7 +333,7 @@ export function MessagesSideRail() {
   }
 
   return (
-    <aside className="lb-side-rail lb-side-rail--sheet lb-msg-side-rail chat-scroll hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[min(28%,20rem)] min-w-[240px] max-w-[20rem] shrink-0 flex-col overflow-hidden border-l border-white/5 bg-zinc-950/95 backdrop-blur-xl lg:flex lg:min-w-[250px] lg:max-w-[19rem]">
+    <aside className="lb-side-rail lb-side-rail--sheet lb-msg-side-rail chat-scroll hidden h-[var(--lb-vv-height,100dvh)] max-h-[var(--lb-vv-height,100dvh)] w-[clamp(15.625rem,34vw,24.375rem)] shrink-0 flex-col overflow-hidden border-l border-white/5 bg-zinc-950/95 backdrop-blur-xl lg:flex">
       <MessagesChatListPanel
         embedded
         onClose={close}
