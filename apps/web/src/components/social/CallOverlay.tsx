@@ -1837,52 +1837,32 @@ function VideoCallStage({
     };
   }
 
-  function snapPipCorner(x: number, y: number) {
-    const stage = stageRef.current;
-    const node = pipRef.current;
-    if (!stage || !node) return clampPipPos(x, y);
-    const pad = 8;
-    const maxX = Math.max(pad, stage.clientWidth - node.offsetWidth - pad);
-    const maxY = Math.max(pad, stage.clientHeight - node.offsetHeight - pad);
-    const corners = [
-      { x: pad, y: pad },
-      { x: maxX, y: pad },
-      { x: pad, y: maxY },
-      { x: maxX, y: maxY },
-    ];
-    let bestX = maxX;
-    let bestY = pad;
-    let bestD = Infinity;
-    for (const corner of corners) {
-      const d = (corner.x - x) ** 2 + (corner.y - y) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        bestX = corner.x;
-        bestY = corner.y;
-      }
-    }
-    return { x: bestX, y: bestY };
-  }
-
   useLayoutEffect(() => {
     if (minimized) return;
-    try {
-      const stage = stageRef.current;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const place = () => {
       const node = pipRef.current;
-      if (!stage || !node) return;
+      const box = stageRef.current;
+      if (!node || !box || box.clientWidth < 48 || box.clientHeight < 48) return;
+      const pad = 8;
+      const maxX = Math.max(pad, box.clientWidth - node.offsetWidth - pad);
+      const maxY = Math.max(pad, box.clientHeight - node.offsetHeight - pad);
       setPip((prev) => {
         if (!pipReady.current) {
           pipReady.current = true;
-          return {
-            x: Math.max(8, stage.clientWidth - node.offsetWidth - 8),
-            y: Math.max(8, stage.clientHeight - node.offsetHeight - 8),
-          };
+          return { x: maxX, y: pad };
         }
-        return clampPipPos(prev.x, prev.y);
+        return {
+          x: Math.min(Math.max(prev.x, pad), maxX),
+          y: Math.min(Math.max(prev.y, pad), maxY),
+        };
       });
-    } catch (error) {
-      console.warn('[VIDEO CALL] pip layout', error);
-    }
+    };
+    place();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(place) : null;
+    ro?.observe(stage);
+    return () => ro?.disconnect();
   }, [minimized, maximized]);
 
   useEffect(() => {
@@ -2451,14 +2431,18 @@ function VideoCallStage({
         <div
           ref={pipRef}
           className={`lb-call-video-local${camOn ? '' : ' is-off'}`}
-          style={{ left: pip.x, top: pip.y }}
+          data-no-drag
+          style={{ left: pip.x, top: pip.y, right: 'auto', bottom: 'auto' }}
           onPointerDown={(event) => {
+            if (event.button != null && event.button !== 0) return;
             event.stopPropagation();
+            event.preventDefault();
             pipDrag.current = { x: event.clientX, y: event.clientY, ox: pip.x, oy: pip.y };
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerMove={(event) => {
             if (!pipDrag.current) return;
+            event.stopPropagation();
             setPip(
               clampPipPos(
                 pipDrag.current.ox + event.clientX - pipDrag.current.x,
@@ -2466,10 +2450,17 @@ function VideoCallStage({
               ),
             );
           }}
-          onPointerUp={() => {
-            if (pipDrag.current) {
-              setPip((prev) => snapPipCorner(prev.x, prev.y));
-            }
+          onPointerUp={(event) => {
+            if (!pipDrag.current) return;
+            event.stopPropagation();
+            const next = clampPipPos(
+              pipDrag.current.ox + event.clientX - pipDrag.current.x,
+              pipDrag.current.oy + event.clientY - pipDrag.current.y,
+            );
+            pipDrag.current = null;
+            setPip(next);
+          }}
+          onPointerCancel={() => {
             pipDrag.current = null;
           }}
         >
