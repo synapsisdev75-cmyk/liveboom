@@ -228,10 +228,10 @@ function VideoDurationBar({
   return (
     <div
       className={`absolute inset-x-0 z-30 px-3 ${interactive ? '' : 'pointer-events-none'}`}
-      style={{ bottom: insetSafe ? 'max(0.35rem, var(--lb-safe-bottom, 0px))' : '0.2rem' }}
+      style={{ bottom: insetSafe ? 'max(0px, var(--lb-safe-bottom, 0px))' : '0px' }}
     >
       {interactive && known ? (
-        <p className="pointer-events-none mb-0.5 text-[13px] font-semibold tabular-nums text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+        <p className="pointer-events-none text-[12px] font-semibold leading-none tabular-nums text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
           {formatMediaClock(currentSec)} / {formatMediaClock(durationSec)}
         </p>
       ) : null}
@@ -244,7 +244,7 @@ function VideoDurationBar({
         aria-valuemax={interactive ? Math.max(0, Math.round(durationSec)) : undefined}
         aria-valuenow={interactive ? Math.max(0, Math.round(currentSec)) : undefined}
         aria-hidden={interactive ? undefined : true}
-        className={`relative flex w-full items-end ${interactive ? 'h-11 cursor-pointer touch-none pb-1' : 'h-1'}`}
+        className={`relative flex w-full items-center ${interactive ? 'mt-1 h-5 cursor-pointer touch-none' : 'h-1'}`}
         onPointerDown={
           interactive
             ? (event) => {
@@ -1076,6 +1076,17 @@ export function PostVideoPlayer({
         onPause={() => {
           const video = videoRef.current;
           if (!video || video.ended || !frameReady) return;
+          const reported = video.duration;
+          const dur =
+            Number.isFinite(reported) && reported > 0
+              ? reported
+              : Number(durationSecProp) > 0
+                ? Number(durationSecProp)
+                : 0;
+          if (dur > 0) {
+            setStoryProgress(Math.min(1, video.currentTime / dur));
+            setKnownDuration(dur);
+          }
           setUserPaused(true);
         }}
         onPlay={() => setUserPaused(false)}
@@ -1102,8 +1113,14 @@ export function PostVideoPlayer({
           reelNavigation.onNext();
         }}
       />
-      {durationBar && !expanded && !overlayOnly ? (
-        <VideoDurationBar progress={storyProgress} currentSec={0} durationSec={0} />
+      {durationBar && userPaused && frameReady && !expanded && !overlayOnly ? (
+        <VideoDurationBar
+          progress={storyProgress}
+          currentSec={knownDuration > 0 ? storyProgress * knownDuration : 0}
+          durationSec={knownDuration}
+          interactive
+          onSeek={seekToRatio}
+        />
       ) : null}
     </div>
   );
@@ -1506,7 +1523,7 @@ export function PostVideoPlayer({
           </div>
           ) : null}
         </div>
-        {durationBar ? (
+        {durationBar && userPaused && frameReady && !storyHeld ? (
           <VideoDurationBar
             progress={storyProgress}
             currentSec={knownDuration > 0 ? storyProgress * knownDuration : 0}
