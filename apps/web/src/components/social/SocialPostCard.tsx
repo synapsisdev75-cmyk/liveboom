@@ -22,6 +22,7 @@ import { PostViewsIndicator } from './PostViewsIndicator';
 import { buildPostShareUrl } from '../../lib/shareContent';
 import { PostPhotoViewer } from './PostPhotoViewer';
 import { PostMediaCarousel } from './PostMediaCarousel';
+import { PostVideoCarousel, postVideoUrls } from './PostVideoCarousel';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 import { postPhotoUrls } from '../../lib/mediaFrame';
 import { POST_EMOJI_SIZE } from '../../lib/liveboomEmojis';
@@ -690,8 +691,11 @@ function StandardPostCard({
           {post.reconstruction3d ? (
             <Reconstruction3DBadge className="absolute left-2 top-2 z-[4]" compact />
           ) : null}
+          <PostVideoCarousel
+            sources={postVideoUrls(post)}
+            renderVideo={(videoSrc, videoIndex) => (
           <PostVideoPlayer
-          src={post.mediaUrl}
+          src={videoSrc}
           postId={post.id}
           authorUid={post.authorUid}
           authorUsername={post.authorUsername}
@@ -710,14 +714,16 @@ function StandardPostCard({
           onDelete={onDelete}
           canEdit={canEdit}
           onEdit={onEdit}
-          startExpanded={onVideoExpand ? false : startVideoExpanded}
+          startExpanded={onVideoExpand || videoIndex > 0 ? false : startVideoExpanded}
           onRequestExpand={onVideoExpand}
           onCloseExpand={onCloseVideoExpand}
           onExpandChange={setMediaExpanded}
           publicationCaption
-          overlays={post.overlays}
+          overlays={videoIndex === 0 ? post.overlays : undefined}
           durationBar
         />
+            )}
+          />
         </div>
       ) : null}
       {post.type === 'text' || isTextOnlyPost(post) ? (

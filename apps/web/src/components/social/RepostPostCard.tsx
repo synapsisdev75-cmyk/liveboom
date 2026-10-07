@@ -23,6 +23,7 @@ import { PostReactionButtons } from './PostReactionButtons';
 import { PostMediaCarousel } from './PostMediaCarousel';
 import { PostPhotoViewer } from './PostPhotoViewer';
 import { PostComments, PostVideoPlayer } from './PostVideoPlayer';
+import { PostVideoCarousel, postVideoUrls } from './PostVideoCarousel';
 import { PublicationCaption } from './PublicationCaption';
 import { ShareContentButton } from './ShareContentButton';
 import { PostViewsIndicator } from './PostViewsIndicator';
@@ -198,8 +199,11 @@ function OriginalPostEmbed({
               <EmojiText text={origin.caption || ''} size={POST_EMOJI_SIZE} />
             </Link>
           ) : origin.mediaUrl && origin.type === 'video' ? (
+            <PostVideoCarousel
+              sources={postVideoUrls(origin)}
+              renderVideo={(videoSrc, videoIndex) => (
             <PostVideoPlayer
-              src={origin.mediaUrl}
+              src={videoSrc}
               postId={origin.id}
               authorUid={origin.authorUid}
               authorUsername={origin.username}
@@ -211,12 +215,14 @@ function OriginalPostEmbed({
               dislikers={dislikers}
               busy={busy}
               onReact={(r) => void react(r)}
-              mediaWidth={origin.mediaWidth}
-              mediaHeight={origin.mediaHeight}
-              posterUrl={origin.thumbUrl}
+              mediaWidth={videoIndex === 0 ? origin.mediaWidth : undefined}
+              mediaHeight={videoIndex === 0 ? origin.mediaHeight : undefined}
+              posterUrl={videoIndex === 0 ? origin.thumbUrl : undefined}
               publicationCaption
-              overlays={origin.overlays}
+              overlays={videoIndex === 0 ? origin.overlays : undefined}
               durationBar
+            />
+              )}
             />
           ) : postPhotoUrls(origin).length > 1 ? (
             <PostMediaCarousel

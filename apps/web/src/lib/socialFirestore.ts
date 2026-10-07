@@ -3226,6 +3226,8 @@ export async function createPost(input: {
   caption: string;
   mediaFile?: File | Blob | null;
   mediaFiles?: File[];
+  /** Publicación de video: hasta 2 videos más tras `mediaFile` (se guardan en `mediaUrls`). */
+  extraVideoFiles?: Array<File | Blob>;
   mediaUrl?: string | null;
   visibility?: 'public' | 'friends' | 'private' | 'circle';
   postFormat?: 'story' | 'post';
@@ -3315,6 +3317,9 @@ export async function createPost(input: {
       storagePath = uploadedList[0]?.storagePath ?? null;
     } else if (input.mediaFile) {
       const mediaToUpload = input.mediaFile;
+      const extraVideos =
+        input.type === 'video' && !isStory && !isBoomClip ? (input.extraVideoFiles || []).slice(0, 2) : [];
+      const totalParts = 1 + extraVideos.length;
       const fileName =
         mediaToUpload instanceof File && mediaToUpload.name
           ? mediaToUpload.name
@@ -3337,7 +3342,10 @@ export async function createPost(input: {
           : Promise.resolve(null);
       const [uploaded, clipExtras] = await Promise.all([
         uploadUserMedia(input.authorUid, mediaToUpload, fileName, visibility, storageKind, {
-          onProgress: input.onUploadProgress,
+          onProgress:
+            totalParts > 1 && input.onUploadProgress
+              ? (fraction) => input.onUploadProgress?.(Math.min(1, fraction) / totalParts)
+              : input.onUploadProgress,
           signal: input.signal,
         }),
         clipExtrasPromise,
@@ -3345,6 +3353,30 @@ export async function createPost(input: {
       if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       mediaUrl = uploaded.url;
       storagePath = uploaded.storagePath;
+      if (extraVideos.length) {
+        const extraUrls: string[] = [];
+        for (let index = 0; index < extraVideos.length; index += 1) {
+          const extra = extraVideos[index]!;
+          const extraName =
+            extra instanceof File && extra.name ? extra.name : `clip_${index + 2}.mp4`;
+          const extraUploaded = await uploadUserMedia(
+            input.authorUid,
+            extra,
+            extraName,
+            visibility,
+            storageKind,
+            {
+              onProgress: input.onUploadProgress
+                ? (fraction) => input.onUploadProgress?.((index + 1 + Math.min(1, fraction)) / totalParts)
+                : undefined,
+              signal: input.signal,
+            },
+          );
+          if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+          extraUrls.push(extraUploaded.url);
+        }
+        mediaUrls = [uploaded.url, ...extraUrls];
+      }
       if (clipExtras) {
         mediaWidth = clipExtras.width;
         mediaHeight = clipExtras.height;
@@ -3675,6 +3707,7 @@ export async function updatePost(input: {
       }
       mediaUrl = urls[0] ?? null;
       if (input.type === 'photo' && urls.length > 1) mediaUrls = urls;
+      else if (input.type === 'video' && urls.length > 1) mediaUrls = urls.slice(0, 3);
     }
   }
 

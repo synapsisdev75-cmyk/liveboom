@@ -23,6 +23,7 @@ import { NotificationBell } from '../components/social/NotificationBell';
 import { MessagesQuickMenu } from '../components/social/MessagesQuickMenu';
 import { PostReactionButtons } from '../components/social/PostReactionButtons';
 import { PostComments, PostVideoPlayer } from '../components/social/PostVideoPlayer';
+import { PostVideoCarousel, postVideoUrls } from '../components/social/PostVideoCarousel';
 import { ShareContentButton } from '../components/social/ShareContentButton';
 import { PostViewsIndicator } from '../components/social/PostViewsIndicator';
 import { PostReceivedGiftsButton } from '../components/social/PostReceivedGiftsButton';
@@ -267,8 +268,11 @@ function HomePublicationCard({
         </div>
       ) : post.mediaUrl && post.type === 'video' ? (
         <div className="mt-3">
+          <PostVideoCarousel
+            sources={postVideoUrls(post)}
+            renderVideo={(videoSrc, videoIndex) => (
           <PostVideoPlayer
-            src={post.mediaUrl}
+            src={videoSrc}
             postId={post.id}
             authorUid={post.authorUid}
             authorUsername={post.authorUsername}
@@ -280,12 +284,14 @@ function HomePublicationCard({
             dislikers={dislikers}
             busy={busy}
             onReact={(r) => void react(r)}
-            mediaWidth={post.mediaWidth}
-            mediaHeight={post.mediaHeight}
-            posterUrl={post.thumbUrl}
+            mediaWidth={videoIndex === 0 ? post.mediaWidth : undefined}
+            mediaHeight={videoIndex === 0 ? post.mediaHeight : undefined}
+            posterUrl={videoIndex === 0 ? post.thumbUrl : undefined}
             publicationCaption
-            overlays={post.overlays}
+            overlays={videoIndex === 0 ? post.overlays : undefined}
             durationBar
+          />
+            )}
           />
         </div>
       ) : postPhotoUrls(post).length > 1 ? (

@@ -90,6 +90,8 @@ function revokeLocalUrl(url: string | null | undefined) {
   if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
 }
 
+const PUBLICATION_VIDEO_MAX = 3;
+
 type Props = {
   username: string;
   onCreated?: (post: SocialPost) => void;
@@ -182,6 +184,9 @@ export function CreatePostModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [albumUrls, setAlbumUrls] = useState<string[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
+  /** Publicación: videos 2 y 3 (el 1 es `mediaFile` / `previewUrl`, con recorte, música y stickers). */
+  const [extraVideos, setExtraVideos] = useState<Array<{ url: string; file: File | null }>>([]);
+  const [videoSlide, setVideoSlide] = useState(0);
   const [editMenuOpen, setEditMenuOpen] = useState(false);
   const videoDurationSecRef = useRef(0);
   const mediaPickGenRef = useRef(0);
@@ -225,6 +230,7 @@ export function CreatePostModal({
   const editBaselineRef = useRef('');
   const galleryPhotoRef = useRef<HTMLInputElement>(null);
   const galleryVideoRef = useRef<HTMLInputElement>(null);
+  const galleryExtraVideoRef = useRef<HTMLInputElement>(null);
   const galleryMixedRef = useRef<HTMLInputElement>(null);
   const galleryAppendRef = useRef<HTMLInputElement>(null);
   const mediaMenuRef = useRef<HTMLDivElement>(null);
@@ -249,6 +255,7 @@ export function CreatePostModal({
       gif: gifAttach?.url || null,
       overlays,
       photoEdits,
+      extraVideos: extraVideos.map((item) => item.url),
     });
   }
 
@@ -264,6 +271,7 @@ export function CreatePostModal({
       caption.trim() ||
         mediaFile ||
         mediaFiles.length ||
+        extraVideos.length ||
         gifAttach ||
         overlays.length ||
         selectedMusic,
@@ -349,6 +357,12 @@ export function CreatePostModal({
     let nextAlbum: string[] = [];
     let nextPreview: string | null = null;
     let nextGif: string | null = null;
+    const nextExtraVideos =
+      post.type === 'video' && !post.postFormat && post.mediaUrls && post.mediaUrls.length > 1
+        ? post.mediaUrls.slice(1, PUBLICATION_VIDEO_MAX).filter(Boolean)
+        : [];
+    setExtraVideos(nextExtraVideos.map((url) => ({ url, file: null })));
+    setVideoSlide(0);
     setComposeTab('publication');
     setCaption(post.caption || '');
     setTextStyle(post.textStyle ?? DEFAULT_POST_TEXT_STYLE);
@@ -404,6 +418,7 @@ export function CreatePostModal({
       gif: nextGif,
       overlays: post.overlays || [],
       photoEdits: {},
+      extraVideos: nextExtraVideos,
     });
   }, [isEditMode, editPost?.id]);
 
@@ -465,6 +480,7 @@ export function CreatePostModal({
       if (url !== previewUrl) revokeLocalUrl(url);
     }
     if (trimUrl && !trimShared) revokeLocalUrl(trimUrl);
+    clearExtraVideos();
     mediaPickGenRef.current += 1;
     setCaption('');
     setTextStyle(DEFAULT_POST_TEXT_STYLE);
@@ -520,6 +536,92 @@ export function CreatePostModal({
     }
   }
 
+  useEffect(() => {
+    if (kind !== 'video' && extraVideos.length) clearExtraVideos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
+
+  function clearExtraVideos() {
+    for (const item of extraVideos) revokeLocalUrl(item.url);
+    setExtraVideos([]);
+    setVideoSlide(0);
+  }
+
+  function addExtraVideos(files: readonly File[], replace = false) {
+    const videos = files.filter((file) => mediaKindFromFile(file) === 'video' || isVideoFile(file));
+    if (!videos.length) {
+      if (!replace) setError('Archivo no compatible. Usa video (MP4, MOV, WebM).');
+      return;
+    }
+    const baseCount = replace ? 0 : extraVideos.length;
+    const room = PUBLICATION_VIDEO_MAX - 1 - baseCount;
+    if (room <= 0) {
+      setError(`Puedes añadir hasta ${PUBLICATION_VIDEO_MAX} videos en una publicación.`);
+      return;
+    }
+    const accepted = videos.slice(0, room);
+    setError(
+      videos.length > accepted.length
+        ? `Se usaron ${accepted.length + (replace ? 1 : 0)}. Máximo ${PUBLICATION_VIDEO_MAX} videos.`
+        : null,
+    );
+    if (replace) for (const item of extraVideos) revokeLocalUrl(item.url);
+    const added = accepted.map((file) => ({ url: URL.createObjectURL(file), file }));
+    setExtraVideos((current) => [...(replace ? [] : current), ...added].slice(0, PUBLICATION_VIDEO_MAX - 1));
+    setVideoSlide(replace ? 0 : baseCount + 1);
+  }
+
+  function onGalleryVideoChange(files: FileList | readonly File[] | null) {
+    const list = Array.from(files || []);
+    const first = list[0];
+    if (!first) return;
+    void onFileChange(first, 'video');
+    if (composeTab === 'publication' && list.length > 1) addExtraVideos(list.slice(1), true);
+  }
+
+  function openExtraVideoGallery() {
+    setError(null);
+    const target = galleryExtraVideoRef.current;
+    if (!target) return;
+    target.value = '';
+    target.click();
+  }
+
+  function removeExtraVideo(index: number) {
+    const item = extraVideos[index];
+    if (item) revokeLocalUrl(item.url);
+    setExtraVideos((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setVideoSlide(0);
+  }
+
+  /** Al quitar el video 1, el siguiente pasa a ser el principal (sin stickers/música del anterior). */
+  function promoteExtraVideo() {
+    const [next, ...rest] = extraVideos;
+    if (!next) return false;
+    setExtraVideos(rest);
+    setVideoSlide(0);
+    setOverlays([]);
+    setSelectedMusic(null);
+    setEditMenuOpen(false);
+    if (next.file) {
+      revokeLocalUrl(next.url);
+      void onFileChange(next.file, 'video');
+      return true;
+    }
+    mediaPickGenRef.current += 1;
+    revokeLocalUrl(previewUrl);
+    setTrimDraft(null);
+    setMediaFile(null);
+    setMediaFiles([]);
+    setAlbumUrls([next.url]);
+    setPreviewIndex(0);
+    setPreviewUrl(next.url);
+    videoDurationSecRef.current = 0;
+    setKind('video');
+    setError(null);
+    return true;
+  }
+
   function removeAttachedMedia() {
     mediaPickGenRef.current += 1;
     const trimUrl = trimDraft?.url;
@@ -529,6 +631,7 @@ export function CreatePostModal({
       if (url !== previewUrl) revokeLocalUrl(url);
     }
     if (trimUrl && !trimShared) revokeLocalUrl(trimUrl);
+    clearExtraVideos();
     setTrimDraft(null);
     setMediaFile(null);
     setMediaFiles([]);
@@ -931,6 +1034,10 @@ export function CreatePostModal({
       appendAlbumPhotos(files);
       return;
     }
+    if (composeTab === 'publication' && files.length > 1 && hasVideo && photos.length === 0) {
+      onGalleryVideoChange(files);
+      return;
+    }
     if (composeTab === 'publication' && files.length > 1) {
       void onMultiPhotoChange(files);
       return;
@@ -1027,6 +1134,8 @@ export function CreatePostModal({
   const slideCount = Math.max(albumUrls.length, previewSrc ? 1 : 0);
   const slideOverlays = overlays.filter((item) => (item.mediaIndex ?? 0) === previewIndex);
   const previewIsVideo = kind === 'video' && Boolean(previewUrl);
+  const showVideoSet = composeTab === 'publication' && previewIsVideo;
+  const stageExtraVideo = showVideoSet && videoSlide > 0 ? extraVideos[videoSlide - 1] ?? null : null;
   const currentEdit = photoEdits[previewIndex] ?? DEFAULT_PHOTO_EDIT;
   const photoStageOpen =
     photoEditOpen && !previewIsVideo && Boolean(mediaFile || gifAttach || (previewSrc && kind !== 'video'));
@@ -1501,6 +1610,39 @@ export function CreatePostModal({
         }
       }
       throwIfCanceled();
+      const extraVideoUploads: File[] = [];
+      const extraVideoSlots: Array<{ file?: File; url?: string }> = [];
+      if (publishKind === 'video' && !isBoomClip && !isFlashBoom && !reconReady && extraVideos.length) {
+        for (const item of extraVideos.slice(0, PUBLICATION_VIDEO_MAX - 1)) {
+          if (!item.file) {
+            if (/^https?:\/\//i.test(item.url)) extraVideoSlots.push({ url: item.url });
+            continue;
+          }
+          let extraFile: File = item.file;
+          let extraDurationSec = 0;
+          try {
+            extraDurationSec = await readVideoDurationSec(extraFile);
+          } catch {
+            extraDurationSec = extraFile.size > 800 ? 1 : 0;
+          }
+          if (extraDurationSec < 1 && extraFile.size <= 800) {
+            throw new Error('Cada video debe durar al menos 1 segundo.');
+          }
+          try {
+            const { remuxVideoFastStart, needsFastStartRemux } = await import('../../lib/videoTrim');
+            if (await needsFastStartRemux(extraFile, extraDurationSec)) {
+              extraFile = await remuxVideoFastStart(extraFile, signal, (p) =>
+                updatePublishJob(jobId, 'preparing', p * 100),
+              );
+            }
+          } catch {
+            /* Si el remux falla, se publica el original. */
+          }
+          throwIfCanceled();
+          extraVideoUploads.push(extraFile);
+          extraVideoSlots.push({ file: extraFile });
+        }
+      }
       updatePublishJob(jobId, uploadFile || albumForUpload.length ? 'uploading' : 'processing', 0);
 
       if (isEditMode && editPost?.id) {
@@ -1522,6 +1664,7 @@ export function CreatePostModal({
           );
         } else if (publishKind === 'video') {
           mediaSlots = uploadFile ? [{ file: uploadFile }] : previewUrl ? [{ url: previewUrl }] : [];
+          if (mediaSlots.length) mediaSlots = [...mediaSlots, ...extraVideoSlots];
         }
         const savedType =
           publishKind === 'text' && gifAttach && !mediaSlots.length ? 'photo' : publishKind;
@@ -1578,6 +1721,7 @@ export function CreatePostModal({
             : uploadFile,
         mediaFiles:
           publishKind === 'photo' && albumForUpload.length > 1 ? albumForUpload : undefined,
+        extraVideoFiles: extraVideoUploads.length ? extraVideoUploads : undefined,
         mediaUrl: !uploadFile && gifAttach ? gifAttach.url : undefined,
         visibility,
         postFormat: publishPostFormat,
@@ -1707,8 +1851,20 @@ export function CreatePostModal({
         ref={galleryVideoRef}
         type="file"
         accept="video/*"
+        multiple={composeTab === 'publication'}
         className="hidden"
-        onChange={(event) => void onFileChange(event.target.files?.[0] || null, 'video')}
+        onChange={(event) => onGalleryVideoChange(event.target.files)}
+      />
+      <input
+        ref={galleryExtraVideoRef}
+        type="file"
+        accept="video/*"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          addExtraVideos(Array.from(event.target.files || []));
+          event.target.value = '';
+        }}
       />
       <input
         ref={galleryMixedRef}
@@ -1890,7 +2046,8 @@ export function CreatePostModal({
                       >
                         {previewIsVideo ? (
                           <video
-                            src={previewSrc}
+                            key={stageExtraVideo?.url || previewSrc || undefined}
+                            src={stageExtraVideo?.url || previewSrc || undefined}
                             className="mx-auto max-h-[min(56dvh,28rem)] w-full object-contain"
                             autoPlay
                             muted
@@ -1940,14 +2097,17 @@ export function CreatePostModal({
                             }}
                           />
                         ) : null}
+                        {stageExtraVideo ? null : (
                         <MediaOverlayLayer
                           overlays={slideOverlays}
                           editable
                           onChange={setSlideOverlays}
                         />
+                        )}
                       </div>
                     </div>
                     <div className="absolute left-2 top-2 z-[6] flex max-w-[calc(100%-5.5rem)] flex-wrap items-center gap-1">
+                      {stageExtraVideo ? null : (
                 <button
                   type="button"
                         onClick={() => openGallery(composeTab === 'boomclip' ? 'video' : 'any')}
@@ -1955,9 +2115,18 @@ export function CreatePostModal({
                       >
                         Cambiar
                       </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => (slideCount > 1 ? removeCurrentSlide() : removeAttachedMedia())}
+                        onClick={() => {
+                          if (stageExtraVideo) {
+                            removeExtraVideo(videoSlide - 1);
+                            return;
+                          }
+                          if (showVideoSet && promoteExtraVideo()) return;
+                          if (slideCount > 1) removeCurrentSlide();
+                          else removeAttachedMedia();
+                        }}
                         className="inline-flex min-h-9 items-center gap-1 rounded-full border border-rose-400/40 bg-black/55 px-2.5 text-[11px] font-semibold text-rose-200 backdrop-blur-sm"
                       >
                         <Trash2 size={12} />
@@ -1987,6 +2156,7 @@ export function CreatePostModal({
                           </button>
                         </>
                       ) : null}
+                      {stageExtraVideo ? null : (
                       <button
                       type="button"
                       onClick={() => {
@@ -2002,6 +2172,7 @@ export function CreatePostModal({
                         <Wand2 size={13} />
                         Editar
                       </button>
+                      )}
                     </div>
                     {gifAttach && !mediaFile ? (
                       <button
@@ -2013,7 +2184,7 @@ export function CreatePostModal({
                         <X size={14} />
                       </button>
                     ) : null}
-                    {editMenuOpen && previewIsVideo ? (
+                    {editMenuOpen && previewIsVideo && !stageExtraVideo ? (
                       <div className="absolute right-2 top-12 z-[8] min-w-[10.5rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 shadow-xl backdrop-blur-md">
                         <button
                           type="button"
@@ -2135,6 +2306,52 @@ export function CreatePostModal({
                           </button>
                         </div>
                       ) : null}
+                    </div>
+                  ) : null}
+                  {showVideoSet ? (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                      {[previewSrc, ...extraVideos.map((item) => item.url)].map((url, index) =>
+                        url ? (
+                          <button
+                            key={`${url}-${index}`}
+                            type="button"
+                            onClick={() => {
+                              setEditMenuOpen(false);
+                              setVideoSlide(index);
+                            }}
+                            aria-label={`Video ${index + 1}`}
+                            aria-pressed={index === videoSlide}
+                            className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-black ${
+                              index === videoSlide ? 'border-fuchsia-400' : 'border-white/15'
+                            }`}
+                          >
+                            <video
+                              src={`${url}#t=0.1`}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="pointer-events-none h-full w-full object-cover"
+                            />
+                            <span className="absolute bottom-0.5 left-0.5 rounded bg-black/65 px-1 text-[9px] font-bold text-white">
+                              {index + 1}
+                            </span>
+                          </button>
+                        ) : null,
+                      )}
+                      {1 + extraVideos.length < PUBLICATION_VIDEO_MAX ? (
+                        <button
+                          type="button"
+                          onClick={openExtraVideoGallery}
+                          aria-label="Agregar video"
+                          className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-white/25 text-[9px] font-semibold text-zinc-400"
+                        >
+                          <Plus size={14} />
+                          Video
+                        </button>
+                      ) : null}
+                      <span className="shrink-0 text-[10px] font-semibold text-zinc-500">
+                        {1 + extraVideos.length}/{PUBLICATION_VIDEO_MAX}
+                      </span>
                     </div>
                   ) : null}
                 </div>
