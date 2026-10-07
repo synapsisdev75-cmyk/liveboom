@@ -5,7 +5,7 @@ const DEFAULT_IMAGE = `${SITE_ORIGIN}/brand/logo-clear.png`;
 const SHARE_IMAGE_W = 1200;
 const SHARE_IMAGE_H = 630;
 /** Subir si cambia el diseño de og.jpg para que WhatsApp/Facebook no usen la versión vieja. */
-const SHARE_IMAGE_LAYOUT = 'card-v1';
+const SHARE_IMAGE_LAYOUT = 'card-v2';
 
 function escapeHtml(value) {
   return String(value || '')

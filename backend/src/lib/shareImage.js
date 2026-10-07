@@ -5,6 +5,8 @@ const CARD_MAX_W = 1080;
 /** Fotos verticales/cuadradas: la tarjeta no baja de este ancho y se recorta la zona más llamativa. */
 const CARD_MIN_W = 720;
 const CARD_RADIUS = 28;
+/** 0 = arriba, 0.5 = centro. */
+const CROP_ANCHOR_Y = 0.25;
 /** WhatsApp descarta imágenes de vista previa muy pesadas. */
 const TARGET_MAX_BYTES = 290_000;
 const FETCH_HEADERS = {
@@ -47,6 +49,12 @@ function shareCardBox(aspect) {
     left: Math.round((IMAGE_W - width) / 2),
     top: Math.round((IMAGE_H - height) / 2),
   };
+}
+
+/** Recorte vertical anclado arriba: en fotos/selfies verticales las caras suelen estar en la parte alta. */
+function cropTop(scaledHeight, boxHeight) {
+  const spare = Math.max(0, scaledHeight - boxHeight);
+  return Math.round(spare * CROP_ANCHOR_Y);
 }
 
 function overlaySvg({ box, isVideo }) {
@@ -151,8 +159,17 @@ async function renderShareImage({ imageUrl, isVideo = false, brandOnly = false, 
   const mask = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${box.width}" height="${box.height}"><rect width="100%" height="100%" rx="${CARD_RADIUS}" fill="#fff"/></svg>`,
   );
-  const card = await sharp(flat)
-    .resize(box.width, box.height, { fit: 'cover', position: sharp.strategy.attention })
+  const scaled = await sharp(flat)
+    .resize({ width: box.width, height: box.height, fit: 'outside' })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+  const card = await sharp(scaled.data)
+    .extract({
+      left: Math.round((scaled.info.width - box.width) / 2),
+      top: cropTop(scaled.info.height, box.height),
+      width: box.width,
+      height: box.height,
+    })
     .composite([{ input: mask, blend: 'dest-in' }])
     .png()
     .toBuffer();
@@ -170,5 +187,6 @@ module.exports = {
   SHARE_IMAGE_W: IMAGE_W,
   SHARE_IMAGE_H: IMAGE_H,
   shareCardBox,
+  cropTop,
   renderShareImage,
 };

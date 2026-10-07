@@ -12,7 +12,7 @@ const {
   isShareImagePath,
   webPostPath,
 } = require('./sharePreview');
-const { shareCardBox } = require('./shareImage');
+const { shareCardBox, cropTop } = require('./shareImage');
 
 test('crawlers de redes se reconocen y el celular no', () => {
   assert.equal(isShareCrawler('WhatsApp/2.23.1'), true);
@@ -95,6 +95,9 @@ test('la tarjeta de la imagen: vertical se recorta a lo ancho, horizontal entra 
     assert.ok(box.left >= 0 && box.top >= 0);
     assert.ok(box.left + box.width <= 1200 && box.top + box.height <= 630);
   }
+  // Selfie 9:16 a 720 de ancho = 1280 de alto: se corta más abajo que arriba (las caras quedan).
+  assert.equal(cropTop(1280, 590), 173);
+  assert.equal(cropTop(590, 590), 0);
 });
 
 test('la vista previa usa el video público y no filtra uno privado', () => {
