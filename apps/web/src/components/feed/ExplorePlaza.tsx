@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { InAppFeedbackModal } from '../legal/InAppFeedbackModal';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CommentComposerBar, type CommentDraftAttachment } from '../social/CommentComposerBar';
+import { ReelGiftControls } from './ReelGiftControls';
 import { CommentMediaThumb } from '../social/CommentMediaThumb';
 import { CommentMediaViewer, type CommentMediaViewerItem } from '../social/CommentMediaViewer';
 import { EmojiText } from '../social/EmojiText';
@@ -551,6 +552,18 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                 onTextStyleChange={setTextStyle}
                 textStyleRanges={textStyleRanges}
                 onTextStyleRangesChange={setTextStyleRanges}
+                mediaMode="videoNote"
+                extraTool={
+                  authorUsername ? (
+                    <ReelGiftControls
+                      tool
+                      authorUsername={authorUsername}
+                      authorUid={authorUid}
+                      postId={postId}
+                      layoutContext="boom_clip"
+                    />
+                  ) : null
+                }
               />
             </div>
           ) : (

@@ -9636,6 +9636,19 @@ a.lb-entity:active,
   color: #c4b5fd;
 }
 
+.lb-comment-bar__gift {
+  color: #fbbf24;
+}
+
+.lb-comment-bar__gift:hover,
+.lb-comment-bar__gift.is-active {
+  color: #fcd34d;
+}
+
+html[data-lb-theme='light'] .lb-comment-bar__gift {
+  color: #d97706;
+}
+
 .lb-comment-bar__media-wrap {
   position: relative;
   flex-shrink: 0;

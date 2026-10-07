@@ -21,6 +21,8 @@ type Props = {
   postId: string;
   /** Fila compacta del feed (sin etiqueta debajo). */
   inline?: boolean;
+  /** Botón de herramienta de la barra de comentarios (solo icono). */
+  tool?: boolean;
   /** Flash Boom / Boom Clip: el visor congela la barra de tiempo. */
   onOpenChange?: (open: boolean) => void;
   /** Variante de colocación del regalo (Publicaciones / Clip / Flash). */
@@ -32,6 +34,7 @@ export function ReelGiftControls({
   authorUid,
   postId,
   inline = false,
+  tool = false,
   onOpenChange,
   layoutContext = 'publicaciones',
 }: Props) {
@@ -130,7 +133,7 @@ export function ReelGiftControls({
 
   return (
     <>
-      <div className={`relative flex items-center ${inline ? 'gap-0' : 'flex-col gap-1'}`}>
+      <div className={`relative flex items-center ${inline || tool ? 'gap-0' : 'flex-col gap-1'}`}>
         <button
           ref={triggerRef}
           type="button"
@@ -143,7 +146,9 @@ export function ReelGiftControls({
             setRechargeNeeded(null);
           }}
           className={
-            inline
+            tool
+              ? `lb-comment-bar__tool lb-comment-bar__gift ${openGifts ? 'is-active' : ''}`
+              : inline
               ? `lb-gift-action inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition disabled:opacity-45 ${
                   openGifts ? 'bg-white/10 text-amber-200' : 'text-amber-200 hover:bg-white/5'
                 }`
@@ -156,10 +161,10 @@ export function ReelGiftControls({
           aria-label={t('actions.gift')}
           title={isSelf ? t('actions.noSelfGift') : t('actions.sendGift')}
         >
-          <Gift size={inline ? 15 : 20} />
-          {inline ? t('actions.gift') : null}
+          <Gift size={tool ? 18 : inline ? 15 : 20} />
+          {inline && !tool ? t('actions.gift') : null}
         </button>
-        {!inline ? (
+        {!inline && !tool ? (
           <span className="text-[11px] font-bold text-white drop-shadow">{t('actions.gift')}</span>
         ) : null}
       </div>

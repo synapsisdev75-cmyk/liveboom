@@ -1,5 +1,5 @@
 import { Camera, Image, Send, Sticker, Video } from 'lucide-react';
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
 import type { ComposerGif } from '../../lib/composerGifs';
 import type { ComposerSticker } from '../../lib/composerStickers';
 import { insertEmojiToken } from '../../lib/liveboomEmojis';
@@ -57,6 +57,10 @@ type Props = {
   /** Estilo por fragmento seleccionado (requiere `ref` al campo). */
   textStyleRanges?: TextStyleRange[];
   onTextStyleRangesChange?: (ranges: TextStyleRange[]) => void;
+  /** `videoNote`: la cámara solo graba una nota de video (sin galería ni foto). */
+  mediaMode?: 'menu' | 'videoNote';
+  /** Si se pasa (aunque sea `null`), ocupa el lugar del botón GIF (p. ej. regalos en el chat del video). */
+  extraTool?: ReactNode;
 };
 
 export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function CommentComposerBar(
@@ -76,6 +80,8 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
     onTextStyleChange,
     textStyleRanges,
     onTextStyleRangesChange,
+    mediaMode = 'menu',
+    extraTool,
   },
   ref,
 ) {
@@ -329,6 +335,24 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
             }}
           />
 
+          {mediaMode === 'videoNote' ? (
+            <button
+              type="button"
+              className={`lb-comment-bar__tool ${cameraOpen ? 'is-active' : ''}`}
+              disabled={disabled || busy}
+              aria-label="Nota de video"
+              title="Nota de video"
+              onClick={() => {
+                setLocalError(null);
+                setGifOpen(false);
+                setStickerOpen(false);
+                setCameraMode('video');
+                setCameraOpen(true);
+              }}
+            >
+              <Video size={18} />
+            </button>
+          ) : (
           <div ref={menuRef} className="lb-comment-bar__media-wrap">
             <button
               type="button"
@@ -401,7 +425,9 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
               </div>
             ) : null}
           </div>
+          )}
 
+          {extraTool !== undefined ? extraTool : (
           <button
             type="button"
             className="lb-comment-bar__tool lb-comment-bar__gif"
@@ -418,6 +444,7 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           >
             GIF
           </button>
+          )}
 
           <button
             type="button"
@@ -473,8 +500,14 @@ export const CommentComposerBar = forwardRef<EmojiInputHandle, Props>(function C
           setCameraOpen(false);
           applyFile(file);
         }}
-        title={cameraMode === 'video' ? t('comments.recordVideo') : t('comments.takePhoto')}
-        allowPhoto
+        title={
+          mediaMode === 'videoNote'
+            ? 'Nota de video'
+            : cameraMode === 'video'
+              ? t('comments.recordVideo')
+              : t('comments.takePhoto')
+        }
+        allowPhoto={mediaMode !== 'videoNote'}
         defaultMode={cameraMode}
         maxDurationSec={COMMENT_VIDEO_MAX_SEC}
       />
