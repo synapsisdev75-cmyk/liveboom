@@ -677,6 +677,11 @@ export function PostVideoPlayer({
           }
         } else if (!expandedRef.current) {
           video.pause();
+          // Al pasar de largo en el feed se apaga el sonido; al volver sigue en silencio.
+          if (!video.muted) {
+            video.muted = true;
+            setMuted(true);
+          }
         }
       },
       { threshold: [0, 0.45, 0.75] },
