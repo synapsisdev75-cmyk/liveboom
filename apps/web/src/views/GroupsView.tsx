@@ -12,6 +12,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Sticker,
   Trophy,
   Users,
   Shield,
@@ -34,12 +35,21 @@ import {
   setGroupMemberRole,
   updateGroupPhoto,
   getGroupMemberPreviews,
+  type GroupGift,
+  type GroupMediaType,
   type GroupMember,
   type GroupMemberPreview,
   type GroupMessage,
   type GroupRole,
   type LiveGroup,
 } from '../lib/groupsFirestore';
+import type { ComposerGif } from '../lib/composerGifs';
+import type { ComposerSticker } from '../lib/composerStickers';
+import { findLiveGift } from '../lib/liveboomGifts';
+import { GifPickerSheet } from '../components/social/GifPickerSheet';
+import { StickerPickerSheet } from '../components/social/StickerPickerSheet';
+import { GroupGiftButton } from '../components/groups/GroupGiftButton';
+import { GiftVisual } from '../components/live/FloatingGift';
 import { uploadGroupChatMedia, uploadGroupCover } from '../lib/storage';
 import { CHAT_EMOJI_SIZE } from '../lib/liveboomEmojis';
 import { useAuthStore } from '../store/authStore';
@@ -58,6 +68,12 @@ import { TranslatedText } from '../components/i18n/TranslatedText';
 import { useT } from '../i18n';
 
 type Tab = 'descubrir' | 'mios' | 'invitaciones' | 'crear' | 'chat';
+
+/** Texto de respaldo de un adjunto: no se repite debajo de la imagen. */
+function isGroupMediaPlaceholder(msg: GroupMessage) {
+  if (msg.text === '📷 Foto' || msg.text === '🔗 Enlace') return true;
+  return Boolean(msg.mediaUrl) && (msg.text === 'GIF' || msg.text === 'Sticker');
+}
 
 const JOIN_BTN =
   'bg-[linear-gradient(to_right,#06B6D4,#8B5CF6)] text-white shadow-[0_4px_16px_rgba(6,182,212,0.25)]';
@@ -218,6 +234,8 @@ export function GroupsView() {
   const [note, setNote] = useState<string | null>(null);
   const [memberPreviews, setMemberPreviews] = useState<Record<string, GroupMemberPreview[]>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [gifOpen, setGifOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const featuredRef = useRef<HTMLDivElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -586,6 +604,39 @@ export function GroupsView() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function sendGroupExtra(text: string, extras?: { mediaUrl: string; mediaType: GroupMediaType } | { gift: GroupGift }) {
+    if (!profile || !activeId) return;
+    try {
+      await sendGroupMessage(activeId, {
+        fromUid: profile.firebaseUid,
+        username: profile.handle,
+        text,
+        ...extras,
+      });
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : 'No se pudo enviar');
+    }
+  }
+
+  function onPickGif(gif: ComposerGif) {
+    setGifOpen(false);
+    void sendGroupExtra('GIF', { mediaUrl: gif.url, mediaType: 'gif' });
+  }
+
+  function onPickSticker(sticker: ComposerSticker) {
+    setStickerOpen(false);
+    if (sticker.kind === 'text' && sticker.text) {
+      void sendGroupExtra(sticker.text);
+      return;
+    }
+    if (sticker.src) void sendGroupExtra('Sticker', { mediaUrl: sticker.src, mediaType: 'sticker' });
+  }
+
+  function onGroupGiftSent(gift: GroupGift, giftName: string) {
+    const mult = gift.multiplier > 1 ? ` x${gift.multiplier}` : '';
+    return sendGroupExtra(`🎁 ${giftName}${mult} para @${gift.toUsername}`, { gift });
   }
 
   function onShareLink() {
@@ -1172,6 +1223,26 @@ export function GroupsView() {
                                     className="mb-1 max-h-52 w-full rounded-xl object-cover"
                                   />
                                 </a>
+                              ) : msg.mediaType === 'gif' && msg.mediaUrl ? (
+                                <img
+                                  src={msg.mediaUrl}
+                                  alt="GIF"
+                                  loading="lazy"
+                                  className="mb-1 max-h-52 max-w-full rounded-xl object-contain"
+                                />
+                              ) : msg.mediaType === 'sticker' && msg.mediaUrl ? (
+                                <img
+                                  src={msg.mediaUrl}
+                                  alt="Sticker"
+                                  loading="lazy"
+                                  draggable={false}
+                                  className="mb-1 h-28 w-28 max-w-full object-contain drop-shadow-[0_4px_10px_rgba(0,0,0,0.45)]"
+                                />
+                              ) : null}
+                              {msg.gift ? (
+                                <span className="mb-1 flex justify-center drop-shadow-[0_4px_10px_rgba(0,0,0,0.45)]">
+                                  <GiftVisual gift={findLiveGift(msg.gift.giftId)} size={72} />
+                                </span>
                               ) : null}
                               {msg.linkUrl && parseSharedPostUrl(msg.linkUrl) ? (
                                 <SharedPostLinkCard postId={parseSharedPostUrl(msg.linkUrl)!} />
@@ -1185,7 +1256,7 @@ export function GroupsView() {
                                   {msg.linkUrl}
                                 </a>
                               ) : null}
-                              {msg.text && msg.text !== '📷 Foto' && msg.text !== '🔗 Enlace' ? (
+                              {msg.text && !isGroupMediaPlaceholder(msg) ? (
                                 <p
                                   className={`whitespace-pre-wrap break-words ${
                                     textStyleProps(msg.textStyle, msg.textStyleRanges).className
@@ -1211,7 +1282,7 @@ export function GroupsView() {
                     </div>
 
                     <form
-                      className="flex items-center gap-1 border-t border-white/10 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+                      className="@container border-t border-white/10 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
                       onSubmit={(e) => {
                         e.preventDefault();
                         void onSend();
@@ -1227,6 +1298,9 @@ export function GroupsView() {
                           e.target.value = '';
                         }}
                       />
+                      {/* Chat angosto: texto + enviar arriba y herramientas en una segunda fila. */}
+                      <div className="flex flex-wrap items-center gap-1">
+                      <div className="order-4 flex items-center gap-1 @lg:order-none">
                       <button
                         type="button"
                         disabled={busy}
@@ -1246,6 +1320,7 @@ export function GroupsView() {
                       >
                         <Link2 size={18} />
                       </button>
+                      </div>
                       <div
                         className={`contents ${textStyleProps(draftStyle, draftRanges).className}`}
                         style={textStyleProps(draftStyle, draftRanges).style}
@@ -1258,10 +1333,11 @@ export function GroupsView() {
                         emojiSize={CHAT_EMOJI_SIZE}
                         mirrorTextStyle={draftStyle}
                         mirrorTextStyleRanges={draftRanges}
-                        fieldClassName="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 focus-within:border-cyan-500"
+                        fieldClassName="order-1 h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-zinc-950 focus-within:border-cyan-500 @lg:order-none"
                         mirrorTextClassName="text-white"
                       />
                       </div>
+                      <div className="order-5 ml-auto flex items-center gap-1 @lg:order-none @lg:ml-0">
                       <TextStyleButton
                         variant="toolbar"
                         value={draftStyle}
@@ -1277,14 +1353,53 @@ export function GroupsView() {
                         onPick={(id) => draftInputRef.current?.insertToken(id)}
                       />
                       <button
+                        type="button"
+                        onClick={() => {
+                          setGifOpen(true);
+                          setStickerOpen(false);
+                        }}
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[11px] font-black tracking-wide text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
+                        aria-label="GIF"
+                        title="GIF"
+                      >
+                        GIF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStickerOpen(true);
+                          setGifOpen(false);
+                        }}
+                        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-zinc-400 hover:bg-white/5 hover:text-cyan-300"
+                        aria-label="Sticker"
+                        title="Sticker"
+                      >
+                        <Sticker size={18} />
+                      </button>
+                      <GroupGiftButton
+                        groupId={active.id}
+                        members={members}
+                        buttonClassName="grid h-10 w-10 shrink-0 place-items-center rounded-xl hover:bg-white/5"
+                        onSent={onGroupGiftSent}
+                      />
+                      </div>
+                      <button
                         type="submit"
                         disabled={busy || !draft.trim()}
-                        className="grid h-11 w-11 place-items-center rounded-xl bg-cyan-400 text-zinc-950 disabled:opacity-50"
+                        className="order-2 grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-cyan-400 text-zinc-950 disabled:opacity-50 @lg:order-none"
                         aria-label="Enviar"
                       >
                         <Send size={16} />
                       </button>
+                      <span className="order-3 h-0 basis-full @lg:hidden" aria-hidden />
+                      </div>
                     </form>
+                    <GifPickerSheet open={gifOpen} onClose={() => setGifOpen(false)} onPick={onPickGif} />
+                    <StickerPickerSheet
+                      open={stickerOpen}
+                      onClose={() => setStickerOpen(false)}
+                      onPick={onPickSticker}
+                    />
                   </>
                 )}
               </>

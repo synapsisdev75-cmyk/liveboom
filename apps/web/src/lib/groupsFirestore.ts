@@ -66,11 +66,36 @@ export type GroupMessage = {
   createdAtMs: number;
   sourceLang?: string | null;
   mediaUrl?: string | null;
-  mediaType?: 'image' | null;
+  mediaType?: GroupMediaType | null;
   linkUrl?: string | null;
   textStyle?: PostTextStyle | null;
   textStyleRanges?: TextStyleRange[];
+  gift?: GroupGift | null;
 };
+
+export type GroupMediaType = 'image' | 'gif' | 'sticker';
+
+/** Regalo enviado a un miembro desde el chat del grupo (el cobro ya se hizo por la API). */
+export type GroupGift = {
+  giftId: string;
+  toUid: string;
+  toUsername: string;
+  multiplier: 1 | 2 | 4 | 8;
+};
+
+const GROUP_MEDIA_TYPES: ReadonlySet<string> = new Set(['image', 'gif', 'sticker']);
+
+function parseGroupGift(data: Record<string, unknown>): GroupGift | null {
+  const giftId = typeof data.giftId === 'string' ? data.giftId.trim().slice(0, 80) : '';
+  if (!giftId) return null;
+  const mult = Number(data.giftMultiplier);
+  return {
+    giftId,
+    toUid: typeof data.giftToUid === 'string' ? data.giftToUid.slice(0, 128) : '',
+    toUsername: typeof data.giftToUsername === 'string' ? data.giftToUsername.slice(0, 40) : '',
+    multiplier: mult === 2 || mult === 4 || mult === 8 ? mult : 1,
+  };
+}
 
 function parseRole(value: unknown): GroupRole {
   if (value === 'owner' || value === 'admin') return value;
@@ -310,10 +335,11 @@ export function listenGroupMessages(
             createdAtMs: Number(data.createdAtMs || 0),
             sourceLang: typeof data.sourceLang === 'string' ? data.sourceLang : null,
             mediaUrl: typeof data.mediaUrl === 'string' ? data.mediaUrl : null,
-            mediaType: data.mediaType === 'image' ? 'image' : null,
+            mediaType: GROUP_MEDIA_TYPES.has(String(data.mediaType)) ? (data.mediaType as GroupMediaType) : null,
             linkUrl: typeof data.linkUrl === 'string' ? data.linkUrl : null,
             textStyle: parsePostTextStyle(data.textStyle),
             textStyleRanges: parseTextStyleRanges(data.textStyleRanges, String(data.text || '').length),
+            gift: parseGroupGift(data),
           };
         }),
       );
@@ -334,16 +360,17 @@ export async function sendGroupMessage(
     username: string;
     text: string;
     mediaUrl?: string | null;
-    mediaType?: 'image' | null;
+    mediaType?: GroupMediaType | null;
     linkUrl?: string | null;
     textStyle?: PostTextStyle | null;
     textStyleRanges?: TextStyleRange[];
+    gift?: GroupGift | null;
   },
 ) {
   const text = input.text.trim().slice(0, 2000);
   const linkUrl = (input.linkUrl || detectLink(text) || '').trim().slice(0, 2000) || null;
   const mediaUrl = input.mediaUrl?.trim() || null;
-  const mediaType = mediaUrl && input.mediaType === 'image' ? 'image' : null;
+  const mediaType = mediaUrl ? (input.mediaType && GROUP_MEDIA_TYPES.has(input.mediaType) ? input.mediaType : 'image') : null;
   if (!text && !mediaUrl && !linkUrl) return;
 
   const payload: Record<string, unknown> = {
@@ -363,6 +390,12 @@ export async function sendGroupMessage(
   if (textStyle) payload.textStyle = textStyle;
   const textStyleRanges = text ? textStyleRangesForTrimmed(input.text, input.textStyleRanges, 2000) : [];
   if (textStyleRanges.length) payload.textStyleRanges = textStyleRanges;
+  if (input.gift?.giftId) {
+    payload.giftId = input.gift.giftId;
+    payload.giftToUid = input.gift.toUid;
+    payload.giftToUsername = input.gift.toUsername;
+    payload.giftMultiplier = input.gift.multiplier;
+  }
 
   await addDoc(collection(db, 'groups', groupId, 'messages'), payload);
 }
