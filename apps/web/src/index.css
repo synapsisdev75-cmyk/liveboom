@@ -13844,7 +13844,7 @@ a.lb-entity:active,
 @media (max-width: 767px), (orientation: portrait) and (pointer: coarse) {
   .lb-voice-out-screen,
   .lb-voice-in-screen,
-  .lb-voice-connected-screen {
+  .lb-voice-connected-screen:not(.is-fill) {
     width: min(100%, calc(100vw - 0.75rem));
     min-height: min(40rem, calc(100dvh - 7.5rem - var(--lb-safe-top, 0px) - var(--lb-safe-bottom, 0px)));
     height: auto;
@@ -15475,7 +15475,7 @@ a.lb-entity:active,
   .lb-call-float:has(.lb-video-ring-screen),
   .lb-call-float.is-video:not(.is-compact):has(.lb-video-connected-screen),
   .lb-call-float:has(.lb-video-connected-screen),
-  .lb-call-float:has(.lb-voice-connected-screen) {
+  .lb-call-float:not(.is-fullscreen):has(.lb-voice-connected-screen) {
     width: min(100%, calc(100vw - 0.75rem));
     height: auto;
     max-width: min(100%, calc(100vw - 0.75rem));
@@ -20725,16 +20725,28 @@ html[data-lb-theme='light'] .lb-loc-scene {
 .lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-call-stage-keep.is-connected,
 .lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-call-stage-keep.is-connected,
 .lb-call-float.is-maximized.is-voice:not(.is-compact) .lb-voice-connected-screen,
-.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-voice-connected-screen {
+.lb-call-float.is-fullscreen.is-voice:not(.is-compact) .lb-voice-connected-screen,
+.lb-voice-connected-screen.is-fill {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   align-self: stretch;
+  position: fixed;
+  inset: 0;
+  z-index: 2;
   width: 100%;
   min-width: 0;
   max-width: none;
   height: 100%;
   min-height: 0;
   max-height: none;
+  margin: 0;
+  border: 0;
   border-radius: 0;
+  box-shadow: none;
+  padding:
+    var(--lb-safe-top, env(safe-area-inset-top, 0px))
+    var(--lb-safe-right, env(safe-area-inset-right, 0px))
+    var(--lb-safe-bottom, env(safe-area-inset-bottom, 0px))
+    var(--lb-safe-left, env(safe-area-inset-left, 0px));
 }

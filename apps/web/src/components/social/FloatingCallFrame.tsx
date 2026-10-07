@@ -512,7 +512,18 @@ export function FloatingCallFrame({
             : ({
                 ...(pos ? { left: pos.x, top: pos.y } : null),
                 ...(fullscreen
-                  ? { right: 0, bottom: 0, width: 'auto', height: 'auto', maxWidth: 'none' }
+                  ? {
+                      left: 0,
+                      top: 0,
+                      right: 0,
+                      bottom: 0,
+                      width: '100%',
+                      height: '100%',
+                      maxWidth: 'none',
+                      maxHeight: 'none',
+                      margin: 0,
+                      borderRadius: 0,
+                    }
                   : null),
                 ...(!fullscreen && (maximized || (canResize && manualSize)) && size
                   ? { width: size.w, height: size.h }

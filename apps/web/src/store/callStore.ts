@@ -344,9 +344,30 @@ export const useCallStore = create<CallState>((set, get) => ({
 
     let summary = buildSummary(durationSec, totalBlasts, rateBlasts, creatorValueCop, iAmReceiver);
 
-    // 1) Señal al peer YA (no bloquear el corte de LiveKit).
+    // 1) Señal al peer y aviso en el chat al instante (no esperar el cobro).
     if (chatId && !opts?.skipHistory) {
       void endPrivateCall(chatId, { callId, outcome, durationSec, endedAtMs }).catch(() => undefined);
+      if (me?.firebaseUid && callId) {
+        const peerUid = prev.peer?.uid || prev.incoming?.peer?.uid || null;
+        void postCallHistoryMessage(chatId, me.firebaseUid, {
+          callId,
+          video,
+          outcome,
+          durationSec,
+          giftName: summary?.giftName,
+          rateBlasts: summary?.rateBlasts,
+          blocksCharged: summary?.blocksCharged,
+          totalBlasts: summary?.totalBlasts,
+          blastSpent: summary && !summary.received ? summary.totalBlasts : undefined,
+          blastEarned: summary?.received ? summary.totalBlasts : undefined,
+          creatorValueCop: summary?.creatorValueCop,
+          callType,
+          peerUid,
+          senderName: me.displayName || null,
+          senderHandle: me.handle || null,
+          announce: true,
+        }).catch(() => undefined);
+      }
     }
 
     // 2) Cortar UI + LiveKit de inmediato (el peer recibe ParticipantDisconnected en tiempo real).
@@ -492,6 +513,7 @@ export const useCallStore = create<CallState>((set, get) => ({
             blastEarned: summary?.received ? summary.totalBlasts : undefined,
             creatorValueCop: summary?.creatorValueCop,
             callType,
+            announce: false,
           }).catch(() => undefined);
         }
 

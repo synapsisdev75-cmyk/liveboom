@@ -157,7 +157,7 @@ export function ConnectedVoiceCallScreen({
   }
 
   return (
-    <article className="lb-voice-connected-screen" data-call-drag>
+    <article className={`lb-voice-connected-screen${maximized ? ' is-fill' : ''}`} data-call-drag>
       <header className="lb-video-connected-head" data-call-drag>
         <div className="lb-video-connected-peer">
           <div className="lb-video-connected-peer__avatar">

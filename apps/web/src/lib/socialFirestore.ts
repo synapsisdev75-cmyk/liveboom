@@ -1701,6 +1701,11 @@ export async function postCallHistoryMessage(
     blastEarned?: number;
     creatorValueCop?: number;
     callType?: string;
+    peerUid?: string | null;
+    senderName?: string | null;
+    senderHandle?: string | null;
+    /** false: solo actualiza el mensaje, sin push ni badge. */
+    announce?: boolean;
   },
 ) {
   const id = `call_${String(input.callId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`;
@@ -1762,11 +1767,40 @@ export async function postCallHistoryMessage(
     { merge: true },
   );
 
-  await updateDoc(doc(db, 'chats', chatId), {
-    lastMessage: text,
-    lastAt: serverTimestamp(),
-    lastFromUid: fromUid,
-  }).catch(() => undefined);
+  const peerUid = String(input.peerUid || '').trim();
+  const announce = input.announce !== false && Boolean(peerUid) && peerUid !== fromUid;
+  if (input.announce === false) return;
+
+  if (announce) {
+    await updateDoc(doc(db, 'chats', chatId), {
+      lastMessage: text,
+      lastAt: serverTimestamp(),
+      lastFromUid: fromUid,
+      [`unread.${peerUid}`]: increment(1),
+    }).catch(() => undefined);
+    try {
+      const { enqueuePushNotify } = await import('./pushNotifications');
+      const handle = String(input.senderHandle || '').replace(/^@/, '');
+      enqueuePushNotify({
+        recipientUids: [peerUid],
+        title: input.senderName || (handle ? `@${handle}` : 'LiveBoom'),
+        body: text,
+        channel: 'calls',
+        type: 'call',
+        href: handle ? `/mensajes?con=${encodeURIComponent(handle)}` : '/mensajes',
+        chatId,
+        fromUid,
+      });
+    } catch {
+      /* push opcional */
+    }
+  } else {
+    await updateDoc(doc(db, 'chats', chatId), {
+      lastMessage: text,
+      lastAt: serverTimestamp(),
+      lastFromUid: fromUid,
+    }).catch(() => undefined);
+  }
 }
 
 export async function markMessagesDelivered(chatId: string, _viewerUid: string, messages: ChatMessage[]) {
