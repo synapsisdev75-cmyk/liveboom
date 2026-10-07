@@ -1,5 +1,5 @@
 import { Gift } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { sendLiveboomGift, validateCoinsBalance } from '../../lib/giftsFirestore';
 import type { GroupGift, GroupMember } from '../../lib/groupsFirestore';
@@ -23,6 +23,34 @@ type Props = {
   /** Publica el regalo en el chat del grupo (el cobro ya se hizo). */
   onSent: (gift: GroupGift, giftName: string) => Promise<void>;
 };
+
+/**
+ * En la confirmación, GiftCatalogLayer ajusta su alto al primer `[data-gift-panel="confirm"]`.
+ * Marcar este contenedor (antes que el de GiftBoxStrip) hace que cuente también la fila "Para @…".
+ * Debe montarse dentro del layer: su observador se registra antes y marca el contenedor a tiempo.
+ */
+function ConfirmMeasuredArea({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const sync = () => {
+      const confirming = Boolean(el.querySelector('[data-gift-panel="confirm"]'));
+      if (confirming === (el.dataset.giftPanel === 'confirm')) return;
+      if (confirming) el.dataset.giftPanel = 'confirm';
+      else delete el.dataset.giftPanel;
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-gift-panel'] });
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="flex min-h-0 flex-1 flex-col">
+      {children}
+    </div>
+  );
+}
 
 /** Caja de regalos del chat del grupo: se elige a qué miembro va y se cobra como regalo privado. */
 export function GroupGiftButton({ groupId, members, buttonClassName, onSent }: Props) {
@@ -137,6 +165,7 @@ export function GroupGiftButton({ groupId, members, buttonClassName, onSent }: P
 
       {open ? (
         <GiftCatalogLayer open={open} triggerRef={triggerRef} onClose={close}>
+          <ConfirmMeasuredArea>
           <div className="shrink-0 border-b px-3 pb-2 pt-2.5" style={{ borderColor: 'var(--lb-line)' }}>
             <p className="mb-1.5 text-[11px] font-semibold" style={{ color: 'var(--lb-text-muted)' }}>
               {recipient ? `Para @${recipient.username}` : 'Elige a quién le envías el regalo'}
@@ -184,6 +213,7 @@ export function GroupGiftButton({ groupId, members, buttonClassName, onSent }: P
               onClose={close}
             />
           </div>
+          </ConfirmMeasuredArea>
         </GiftCatalogLayer>
       ) : null}
 
