@@ -1,5 +1,5 @@
 import { Radio, Info, MessagesSquare, Reply, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { create } from 'zustand';
@@ -156,6 +156,25 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
   autoOpenRef.current = autoOpenThread;
 
   useBackLayer(threadOpen, () => setThreadOpen(false));
+
+  // El panel va en un portal al body: se alinea al borde derecho de la barra lateral (ancho variable).
+  const [sideInset, setSideInset] = useState(0);
+  useEffect(() => {
+    if (!threadOpen) return;
+    const aside = document.querySelector<HTMLElement>('aside.lb-sidebar');
+    const update = () => {
+      const rect = aside?.getBoundingClientRect();
+      setSideInset(rect && rect.width > 0 ? Math.max(0, Math.round(rect.right)) : 0);
+    };
+    update();
+    const observer = aside && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (aside) observer?.observe(aside);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [threadOpen]);
 
   useEffect(() => () => usePlazaUi.setState({ postId: null, viewers: 0, open: false }), []);
 
@@ -417,6 +436,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
         ? createPortal(
         <div
           className="lb-explore-plaza__sheet pointer-events-auto"
+          style={{ '--lb-plaza-side': `${sideInset}px` } as CSSProperties}
           role="dialog"
           aria-label="Chat del video"
         >

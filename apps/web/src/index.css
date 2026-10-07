@@ -19726,7 +19726,7 @@ html[data-lb-theme='light'] .lb-comment-bar__gift {
   z-index: 80;
   display: flex;
   flex-direction: column;
-  left: 0;
+  left: var(--lb-plaza-side, 0px);
   right: 0;
   bottom: 0;
   max-height: min(70dvh, 28rem);
@@ -19880,7 +19880,7 @@ html[data-lb-theme='light'] .lb-explore-plaza__sheet .lb-explore-plaza__replying
   }
 
   .lb-explore-plaza__sheet {
-    left: max(0.75rem, var(--lb-safe-left));
+    left: max(calc(var(--lb-plaza-side, 0px) + 0.75rem), var(--lb-safe-left));
     right: auto;
     top: max(4.5rem, var(--lb-safe-top));
     bottom: max(0.75rem, var(--lb-safe-bottom));
