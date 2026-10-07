@@ -23,6 +23,7 @@ import {
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
@@ -199,6 +200,8 @@ function VideoDurationBar({
   insetSafe,
   interactive,
   onSeek,
+  previewSrc,
+  previewRef,
 }: {
   progress: number;
   currentSec: number;
@@ -206,10 +209,13 @@ function VideoDurationBar({
   insetSafe?: boolean;
   interactive?: boolean;
   onSeek?: (ratio: number) => void;
+  previewSrc?: string | null;
+  previewRef?: RefObject<HTMLVideoElement | null>;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
-  const pct = `${Math.min(100, Math.max(0, progress * 100))}%`;
+  const ratio = Math.min(1, Math.max(0, progress));
+  const pct = `${ratio * 100}%`;
   const known = durationSec > 0;
 
   const ratioFromX = (clientX: number) => {
@@ -230,6 +236,22 @@ function VideoDurationBar({
       className={`absolute inset-x-0 z-30 px-3 ${interactive ? '' : 'pointer-events-none'}`}
       style={{ bottom: insetSafe ? 'max(0px, var(--lb-safe-bottom, 0px))' : '0px' }}
     >
+      <div className="relative w-full">
+      {previewSrc ? (
+        <div
+          className="pointer-events-none absolute bottom-full z-[8] mb-1 aspect-[3/4] w-[4.75rem] overflow-hidden rounded-md bg-black shadow-[0_8px_24px_rgba(0,0,0,0.45)] ring-1 ring-white/80"
+          style={{ left: `clamp(0px, calc(${pct} - 2.375rem), calc(100% - 4.75rem))` }}
+        >
+          <video
+            ref={previewRef}
+            src={previewSrc}
+            muted
+            playsInline
+            preload="auto"
+            className="h-full w-full object-cover"
+          />
+        </div>
+      ) : null}
       {interactive && known ? (
         <p className="pointer-events-none text-[12px] font-semibold leading-none tabular-nums text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
           {formatMediaClock(currentSec)} / {formatMediaClock(durationSec)}
@@ -300,6 +322,7 @@ function VideoDurationBar({
             />
           ) : null}
         </div>
+      </div>
       </div>
     </div>
   );
@@ -762,7 +785,7 @@ export function PostVideoPlayer({
     const sync = () => {
       const time = main.currentTime;
       if (!Number.isFinite(time)) return;
-      if (Math.abs((preview.currentTime || 0) - time) > 0.18) {
+      if (Math.abs((preview.currentTime || 0) - time) > 0.04) {
         try {
           preview.currentTime = time;
         } catch {
@@ -772,7 +795,11 @@ export function PostVideoPlayer({
     };
     sync();
     main.addEventListener('seeked', sync);
-    return () => main.removeEventListener('seeked', sync);
+    preview.addEventListener('loadedmetadata', sync);
+    return () => {
+      main.removeEventListener('seeked', sync);
+      preview.removeEventListener('loadedmetadata', sync);
+    };
   }, [durationBar, userPaused, storyProgress, src]);
 
   const capturePlaybackSnapshot = useCallback(() => {
@@ -1233,14 +1260,6 @@ export function PostVideoPlayer({
             )}
             {durationBar && userPaused && !storyHeld && frameReady ? (
               <>
-                <video
-                  ref={clipPreviewRef}
-                  src={src}
-                  muted
-                  playsInline
-                  preload="auto"
-                  className="pointer-events-none absolute bottom-[22%] left-3 z-[8] aspect-[3/4] w-[min(28%,7.25rem)] rounded-md object-cover shadow-[0_8px_24px_rgba(0,0,0,0.45)] ring-1 ring-white/80"
-                />
                 <div className="pointer-events-none absolute inset-0 z-[9] grid place-items-center">
                   <div className="pointer-events-auto flex items-center gap-[clamp(0.85rem,5vw,1.6rem)]">
                     <button
@@ -1531,6 +1550,8 @@ export function PostVideoPlayer({
             insetSafe
             interactive
             onSeek={seekToRatio}
+            previewSrc={src}
+            previewRef={clipPreviewRef}
           />
         ) : null}
       </div>
