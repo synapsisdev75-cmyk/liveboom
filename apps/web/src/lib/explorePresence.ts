@@ -75,6 +75,9 @@ export type PlazaReplyRef = {
   id: string;
   name: string;
   text: string;
+  mediaUrl?: string | null;
+  mediaType?: PostCommentMediaType | null;
+  mediaPreviewUrl?: string | null;
 };
 
 export type PlazaMessageExtras = {
@@ -89,10 +92,20 @@ const PLAZA_REPLY_TEXT_MAX = 120;
 function plazaReplyOf(data: Record<string, unknown>): PlazaReplyRef | null {
   const id = typeof data.replyToId === 'string' ? data.replyToId.trim().slice(0, 64) : '';
   if (!id) return null;
+  const mediaUrl = mediaUrlOf(data.replyToMediaUrl);
+  const mediaType =
+    mediaUrl && PLAZA_MEDIA_TYPES.has(String(data.replyToMediaType))
+      ? (String(data.replyToMediaType) as PostCommentMediaType)
+      : null;
+  const text = typeof data.replyToText === 'string' ? data.replyToText.trim().slice(0, PLAZA_REPLY_TEXT_MAX) : '';
   return {
     id,
     name: typeof data.replyToName === 'string' ? data.replyToName.trim().slice(0, 80) : '',
-    text: typeof data.replyToText === 'string' ? data.replyToText.trim().slice(0, PLAZA_REPLY_TEXT_MAX) : '',
+    // Con miniatura, el marcador "[Video]" (para versiones anteriores) sobra.
+    text: mediaType && text === `[${plazaMediaLabel(mediaType)}]` ? '' : text,
+    mediaUrl: mediaType ? mediaUrl : null,
+    mediaType,
+    mediaPreviewUrl: mediaType ? mediaUrlOf(data.replyToMediaPreviewUrl) : null,
   };
 }
 
@@ -348,6 +361,10 @@ export async function sendPlazaMessage(
   const textStyleRanges = clean ? textStyleRangesForTrimmed(text, extras?.textStyleRanges, 280) : [];
   const mediaPreviewUrl = mediaType ? mediaUrlOf(extras?.media?.mediaPreviewUrl) : null;
   const reply = extras?.replyTo?.id ? extras.replyTo : null;
+  const replyMediaUrl = reply ? mediaUrlOf(reply.mediaUrl) : null;
+  const replyMediaType =
+    replyMediaUrl && reply?.mediaType && PLAZA_MEDIA_TYPES.has(reply.mediaType) ? reply.mediaType : null;
+  const replyMediaPreviewUrl = replyMediaType ? mediaUrlOf(reply?.mediaPreviewUrl) : null;
   const ref = doc(collection(db, 'explorePlaza', postId, 'messages'));
   await setDoc(ref, {
     fromUid: profile.uid,
@@ -365,7 +382,17 @@ export async function sendPlazaMessage(
       ? {
           replyToId: reply.id.slice(0, 64),
           replyToName: reply.name.slice(0, 80),
-          replyToText: reply.text.slice(0, PLAZA_REPLY_TEXT_MAX),
+          replyToText: (reply.text || (replyMediaType ? `[${plazaMediaLabel(replyMediaType)}]` : '')).slice(
+            0,
+            PLAZA_REPLY_TEXT_MAX,
+          ),
+          ...(replyMediaType
+            ? {
+                replyToMediaUrl: replyMediaUrl,
+                replyToMediaType: replyMediaType,
+                ...(replyMediaPreviewUrl ? { replyToMediaPreviewUrl: replyMediaPreviewUrl } : {}),
+              }
+            : {}),
         }
       : {}),
     createdAt: serverTimestamp(),

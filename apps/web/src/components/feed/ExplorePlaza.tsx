@@ -48,6 +48,21 @@ const usePlazaUi = create<{ postId: string | null; viewers: number; open: boolea
   open: false,
 }));
 
+/** Miniatura del video/foto del mensaje citado. */
+function PlazaReplyMedia({ reply }: { reply: PlazaReplyRef }) {
+  if (!reply.mediaUrl || !reply.mediaType) return null;
+  return (
+    <span className="lb-explore-plaza__reply-media my-1 shrink-0">
+      <CommentMediaThumb
+        url={reply.mediaUrl}
+        previewUrl={reply.mediaType === 'gif' ? null : reply.mediaPreviewUrl}
+        kind={reply.mediaType}
+        size="preview"
+      />
+    </span>
+  );
+}
+
 function viewersLabel(count: number) {
   return count === 1 ? '1 en este video' : `${count} en este video`;
 }
@@ -130,7 +145,10 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
     setReplyTo({
       id: message.id,
       name: message.displayName || message.username,
-      text: message.text || `[${plazaMediaLabel(message.mediaType)}]`,
+      text: message.text || (message.mediaUrl ? '' : `[${plazaMediaLabel(message.mediaType)}]`),
+      mediaUrl: message.mediaUrl,
+      mediaType: message.mediaType,
+      mediaPreviewUrl: message.mediaPreviewUrl,
     });
     composerRef.current?.focus();
   }
@@ -505,15 +523,18 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                       {message.displayName || message.username}
                     </p>
                     {message.replyTo ? (
-                      <p className="lb-explore-plaza__quote mt-0.5 line-clamp-2 border-l-2 border-cyan-300/70 pl-2 text-[11px] leading-snug text-white/75">
-                        <span className="font-semibold">{message.replyTo.name}</span>
-                        {message.replyTo.text ? (
-                          <>
-                            {': '}
-                            <EmojiText text={message.replyTo.text} size={14} />
-                          </>
-                        ) : null}
-                      </p>
+                      <div className="lb-explore-plaza__quote mt-0.5 flex min-w-0 items-center gap-2 border-l-2 border-cyan-300/70 pl-2 text-[11px] leading-snug text-white/75">
+                        <PlazaReplyMedia reply={message.replyTo} />
+                        <p className="line-clamp-2 min-w-0 flex-1">
+                          <span className="font-semibold">{message.replyTo.name}</span>
+                          {message.replyTo.text ? (
+                            <>
+                              {': '}
+                              <EmojiText text={message.replyTo.text} size={14} />
+                            </>
+                          ) : null}
+                        </p>
+                      </div>
                     ) : null}
                     {message.text ? (
                       <p
@@ -583,6 +604,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
               {sendError ? <p className="lb-explore-plaza__error mb-1 text-[11px] text-rose-300">{sendError}</p> : null}
               {replyTo ? (
                 <div className="lb-explore-plaza__replying mb-1 flex min-w-0 items-center gap-2 rounded-xl border-l-2 border-cyan-300 bg-black/45 pl-2.5">
+                  <PlazaReplyMedia reply={replyTo} />
                   <p className="min-w-0 flex-1 truncate py-1 text-[11px] leading-snug text-white/85">
                     <span className="font-semibold text-cyan-200">Respondiendo a {replyTo.name}</span>
                     {replyTo.text ? (

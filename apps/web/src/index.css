@@ -19756,6 +19756,15 @@ body:has(> .lb-explore-plaza__sheet) .lb-explore-view .lb-video-duration-bar {
   max-height: min(42dvh, 16rem);
 }
 
+.lb-explore-plaza__reply-media {
+  display: flex;
+}
+
+.lb-explore-plaza__reply-media .lb-comment-thumb--preview {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
 .lb-explore-plaza__msg {
   transition:
     opacity 0.6s ease,
