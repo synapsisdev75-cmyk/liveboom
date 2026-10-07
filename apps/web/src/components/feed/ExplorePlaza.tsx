@@ -548,7 +548,7 @@ export function ExplorePlaza({ postId, authorUid, authorUsername, autoOpenThread
                         />
                       </div>
                     ) : null}
-                    {profile?.firebaseUid && message.fromUid !== profile.firebaseUid ? (
+                    {profile?.firebaseUid ? (
                       <button
                         type="button"
                         className="lb-explore-plaza__reply -mb-2 -ml-2 inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-cyan-200"
