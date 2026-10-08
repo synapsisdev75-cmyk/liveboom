@@ -29,3 +29,8 @@ export const microsoftProvider = new OAuthProvider('microsoft.com');
 microsoftProvider.setCustomParameters({ prompt: 'select_account' });
 microsoftProvider.addScope('email');
 microsoftProvider.addScope('profile');
+
+/** Apple Sign-In (Firebase provider `apple.com`). Requiere habilitarlo en Firebase Console. */
+export const appleProvider = new OAuthProvider('apple.com');
+appleProvider.addScope('email');
+appleProvider.addScope('name');

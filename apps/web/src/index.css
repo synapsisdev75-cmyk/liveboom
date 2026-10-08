@@ -2732,44 +2732,439 @@ html:has(.lb-legal-page) #root {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100dvh;
   height: 100dvh;
-  max-height: 100vh;
   max-height: 100dvh;
   box-sizing: border-box;
-  /* La zona de botones/gestos del celular queda fuera del área con scroll: nada pasa por debajo. */
-  padding-bottom: var(--lb-safe-bottom, 0px);
-  overflow: hidden;
-  overscroll-behavior: none;
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: #f4f4f5;
 }
 
-.lb-auth-top {
+.lb-auth-bg__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.lb-auth-bg__veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(4, 8, 20, 0.08), rgba(4, 8, 20, 0.32));
+  pointer-events: none;
+}
+
+.lb-auth-shell {
   position: relative;
-  z-index: 20;
-  flex-shrink: 0;
+  z-index: 10;
   display: flex;
-  justify-content: center;
+  min-height: 0;
+  flex: 1;
+  width: 100%;
+  max-width: min(100%, 96rem);
+  margin-inline: auto;
+  align-items: stretch;
+  gap: clamp(0.75rem, 2vw, 2rem);
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+  padding-inline: max(0.85rem, env(safe-area-inset-left, 0px)) max(0.85rem, env(safe-area-inset-right, 0px));
+  padding-bottom: 0.75rem;
+}
+
+.lb-auth-hero {
+  position: relative;
+  display: none;
+  min-width: 0;
+  flex: 1.55 1 0;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: visible;
+  padding: clamp(0.5rem, 1.5vw, 1rem) clamp(0.35rem, 1vw, 0.75rem);
+}
+
+.lb-auth-hero__copy {
+  position: relative;
+  z-index: 8;
+  max-width: min(100%, 24rem);
+  padding-top: 0.25rem;
+  pointer-events: none;
+}
+
+.lb-auth-hero__logo {
+  display: block;
+  width: min(100%, 15.5rem);
+  height: auto;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 18px rgba(255, 23, 136, 0.35))
+    drop-shadow(0 12px 28px rgba(0, 0, 0, 0.45));
+}
+
+.lb-auth-hero__tag,
+.lb-auth-card__tag {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  font-family: 'Montserrat', 'Plus Jakarta Sans', sans-serif;
+  font-size: clamp(0.82rem, 1.25vw, 0.95rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #fff;
+  text-shadow: 0 0 16px rgba(255, 255, 255, 0.25);
+}
+
+.lb-auth-hero__tag-sep {
+  font-style: normal;
+  font-weight: 800;
+}
+
+.lb-auth-hero__tag-sep--pink {
+  color: #ff4db8;
+  text-shadow: 0 0 10px rgba(255, 77, 184, 0.7);
+}
+
+.lb-auth-hero__tag-sep--cyan {
+  color: #22d3ee;
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.7);
+}
+
+.lb-auth-hero__headline {
+  display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  padding-top: max(0.35rem, var(--lb-safe-top, 0.35rem));
-  padding-bottom: 0.25rem;
-  padding-inline: max(0.75rem, var(--lb-safe-left, 0.75rem)) max(0.75rem, var(--lb-safe-right, 0.75rem));
+  margin: 1rem 0 0;
+  line-height: 0.92;
+  font-family: 'Caveat Brush', 'Segoe Print', 'Comic Sans MS', cursive;
+  transform: rotate(-4deg);
+  transform-origin: left center;
 }
 
-.lb-auth-top__logo {
-  display: flex;
-  justify-content: center;
-  width: min(100%, 32rem);
+.lb-auth-hero__line {
+  position: relative;
+  display: block;
+  font-size: clamp(2.15rem, 4vw, 3.35rem);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
-.lb-auth-top__logo img {
-  height: clamp(5rem, 16vh, 10rem) !important;
-  width: auto !important;
-  max-width: min(94vw, 28rem) !important;
+.lb-auth-hero__line--white {
+  color: #fff;
+  text-shadow:
+    0 2px 0 rgba(30, 8, 60, 0.5),
+    0 0 18px rgba(255, 255, 255, 0.28),
+    0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
-@media (max-height: 700px) and (orientation: landscape) {
-  .lb-auth-top__logo img {
-    height: clamp(3.5rem, 18vh, 5rem) !important;
+.lb-auth-hero__line--pink {
+  background: linear-gradient(180deg, #ff5ec8 0%, #ff2d8f 38%, #b026ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter:
+    drop-shadow(0 2px 0 rgba(90, 10, 90, 0.4))
+    drop-shadow(0 0 14px rgba(255, 45, 143, 0.55));
+}
+
+.lb-auth-hero__line--cyan {
+  background: linear-gradient(180deg, #67e8f9 0%, #22d3ee 35%, #2563eb 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter:
+    drop-shadow(0 2px 0 rgba(10, 40, 100, 0.4))
+    drop-shadow(0 0 14px rgba(34, 211, 238, 0.5));
+  padding-bottom: 0.2em;
+}
+
+.lb-auth-hero__brush {
+  position: absolute;
+  left: 4%;
+  right: 8%;
+  bottom: 0.05em;
+  display: block;
+  height: 0.18em;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #ff2d8f 12%, #ff4db8 50%, #ff2d8f 88%, transparent);
+  box-shadow: 0 0 10px rgba(255, 45, 143, 0.65);
+  transform: rotate(-2deg) scaleY(0.85);
+  pointer-events: none;
+}
+
+.lb-auth-stage {
+  position: absolute;
+  inset: -2% -2% -1% -2%;
+  z-index: 1;
+  width: auto;
+  height: auto;
+  margin: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.lb-auth-stage__floor-glow {
+  position: absolute;
+  left: 8%;
+  bottom: 0;
+  z-index: 1;
+  width: min(70%, 36rem);
+  height: 28%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 35% 50%, rgba(255, 23, 136, 0.35), transparent 55%),
+    radial-gradient(ellipse at 70% 55%, rgba(22, 191, 255, 0.28), transparent 58%);
+  filter: blur(18px);
+  opacity: 0.9;
+}
+
+.lb-auth-stage__pedestal {
+  position: absolute;
+  left: 2%;
+  bottom: 1%;
+  z-index: 2;
+  width: min(62%, 34rem);
+  height: auto;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 22px rgba(255, 0, 180, 0.35))
+    drop-shadow(0 0 28px rgba(22, 191, 255, 0.28));
+  animation: lb-auth-pedestal-glow 5.5s ease-in-out infinite;
+}
+
+.lb-auth-stage__mascot {
+  position: absolute;
+  left: 4%;
+  bottom: 10%;
+  z-index: 4;
+  width: min(34%, 14.5rem);
+  height: auto;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 0 16px rgba(255, 80, 160, 0.4))
+    drop-shadow(0 0 20px rgba(56, 189, 248, 0.28))
+    drop-shadow(0 18px 28px rgba(0, 0, 0, 0.55));
+  animation: lb-auth-float-soft 5.2s ease-in-out infinite;
+}
+
+.lb-auth-pc-fan {
+  position: absolute;
+  left: 26%;
+  bottom: 3%;
+  width: min(52%, 22rem);
+  max-height: min(68%, 30rem);
+  pointer-events: auto;
+}
+
+.lb-auth-stage__pc {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(68%, 30rem);
+  object-fit: contain;
+  object-position: bottom center;
+  filter:
+    drop-shadow(-12px 10px 16px rgba(255, 40, 160, 0.22))
+    drop-shadow(14px 12px 18px rgba(40, 190, 255, 0.2))
+    drop-shadow(0 24px 30px rgba(0, 0, 0, 0.5));
+}
+
+.lb-auth-pc-fan__card {
+  position: absolute;
+  left: 29%;
+  top: 4%;
+  z-index: 7;
+  width: 32%;
+  aspect-ratio: 3 / 4;
+  height: auto;
+  object-fit: cover;
+  border-radius: 0.7rem;
+  border: 2px solid rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 18px 32px rgba(0, 0, 0, 0.48),
+    0 0 16px rgba(255, 45, 160, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 22%, 0) scale(0.08);
+  transform-origin: 50% 100%;
+  transition:
+    transform 0.58s cubic-bezier(0.18, 0.88, 0.2, 1),
+    opacity 0.32s ease;
+}
+
+.lb-auth-pc-fan__card--2 {
+  transition-delay: 0.05s;
+}
+
+.lb-auth-pc-fan__card--3 {
+  transition-delay: 0.1s;
+}
+
+.lb-auth-pc-fan:hover .lb-auth-pc-fan__card {
+  opacity: 1;
+}
+
+.lb-auth-pc-fan:hover .lb-auth-pc-fan__card--1 {
+  transform: translate3d(-78%, -138%, 0) rotate(-15deg) scale(1);
+}
+
+.lb-auth-pc-fan:hover .lb-auth-pc-fan__card--2 {
+  transform: translate3d(8%, -198%, 0) rotate(-2deg) scale(1);
+}
+
+.lb-auth-pc-fan:hover .lb-auth-pc-fan__card--3 {
+  transform: translate3d(78%, -128%, 0) rotate(14deg) scale(1);
+}
+
+.lb-auth-stage__pc-glow {
+  position: absolute;
+  left: 28%;
+  bottom: 0;
+  z-index: 2;
+  width: min(42%, 18rem);
+  height: 16%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 28% 45%, rgba(255, 40, 160, 0.42), transparent 62%),
+    radial-gradient(ellipse at 74% 50%, rgba(40, 190, 255, 0.38), transparent 64%);
+  filter: blur(16px);
+  pointer-events: none;
+}
+
+.lb-auth-stage__phone {
+  position: absolute;
+  left: auto;
+  right: 0;
+  bottom: 2%;
+  z-index: 5;
+  width: auto;
+  height: min(76%, 36rem);
+  max-width: min(42%, 18.5rem);
+  object-fit: contain;
+  object-position: bottom center;
+  /* El mockup ya trae filo rosa/cian. Solo sombra de contacto y un poco de color del escenario. */
+  filter:
+    drop-shadow(-10px 8px 14px rgba(255, 40, 160, 0.22))
+    drop-shadow(12px 10px 16px rgba(40, 190, 255, 0.2))
+    drop-shadow(0 22px 28px rgba(0, 0, 0, 0.5));
+}
+
+.lb-auth-stage__phone-glow {
+  position: absolute;
+  right: 4%;
+  bottom: 0;
+  z-index: 4;
+  width: min(36%, 14rem);
+  height: 18%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(255, 40, 160, 0.45), transparent 62%),
+    radial-gradient(ellipse at 72% 50%, rgba(40, 190, 255, 0.4), transparent 64%);
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+.lb-auth-prop {
+  position: absolute;
+  z-index: 6;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  filter:
+    drop-shadow(0 0 12px rgba(255, 80, 180, 0.35))
+    drop-shadow(0 8px 16px rgba(0, 0, 0, 0.4));
+}
+
+.lb-auth-prop--gift {
+  left: 22%;
+  bottom: 5%;
+  width: min(13%, 5.2rem);
+  animation: lb-auth-float-soft 6s ease-in-out infinite;
+  filter:
+    drop-shadow(0 0 14px rgba(255, 23, 136, 0.45))
+    drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+}
+
+.lb-auth-prop--coin-a {
+  left: 60%;
+  top: 7%;
+  bottom: auto;
+  width: min(12%, 4.6rem);
+  animation: lb-auth-float-soft 4.8s ease-in-out infinite 0.4s;
+  filter:
+    drop-shadow(0 0 14px rgba(251, 191, 36, 0.6))
+    drop-shadow(0 10px 16px rgba(0, 0, 0, 0.45));
+}
+
+.lb-auth-prop--coin-b {
+  left: 75%;
+  top: 25%;
+  bottom: auto;
+  width: min(50%, 2.7rem);
+  animation: lb-auth-float-soft 5.6s ease-in-out infinite 0.9s;
+  filter:
+    drop-shadow(0 0 10px rgba(251, 191, 36, 0.5))
+    drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
+}
+
+.lb-auth-prop--heart-a {
+  right: 6%;
+  top: 16%;
+  width: min(9%, 3.5rem);
+  animation: lb-auth-float-soft 5s ease-in-out infinite 0.2s;
+  filter:
+    drop-shadow(0 0 14px rgba(255, 45, 143, 0.55))
+    drop-shadow(0 8px 14px rgba(0, 0, 0, 0.35));
+}
+
+.lb-auth-prop--heart-b {
+  right: 30%;
+  top: 30%;
+  width: min(6%, 2.35rem);
+  animation: lb-auth-float-soft 6.2s ease-in-out infinite 0.7s;
+  filter:
+    drop-shadow(0 0 12px rgba(255, 45, 143, 0.5))
+    drop-shadow(0 8px 14px rgba(0, 0, 0, 0.35));
+}
+
+.lb-auth-prop--star-a {
+  display: none;
+}
+
+.lb-auth-prop--star-b {
+  left: 34%;
+  top: 20%;
+  width: min(7%, 2.7rem);
+  animation: lb-auth-float-soft 4.6s ease-in-out infinite 0.5s;
+  filter:
+    drop-shadow(0 0 12px rgba(251, 191, 36, 0.45))
+    drop-shadow(0 0 10px rgba(56, 189, 248, 0.3));
+}
+
+@keyframes lb-auth-float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes lb-auth-pedestal-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 18px rgba(255, 0, 180, 0.2)) drop-shadow(0 0 14px rgba(22, 191, 255, 0.18));
+  }
+  50% {
+    filter: drop-shadow(0 0 28px rgba(255, 0, 180, 0.32)) drop-shadow(0 0 22px rgba(22, 191, 255, 0.28));
   }
 }
 
@@ -2777,71 +3172,492 @@ html:has(.lb-legal-page) #root {
   position: relative;
   z-index: 10;
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex: 1;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding: 0 1rem 0.55rem;
+  padding: 0.35rem 0 0.75rem;
+  animation: lb-auth-panel-in 0.45s ease-out;
 }
 
 .lb-auth-main::-webkit-scrollbar {
   display: none;
 }
 
-/* Centrado que no recorta arriba cuando la tarjeta es más alta que el espacio (scroll). */
-.lb-auth-main > * {
-  margin-block: auto;
+@keyframes lb-auth-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.lb-auth-card form {
-  margin-top: clamp(0.7rem, 1.8vh, 2rem);
+.lb-auth-top {
+  position: relative;
+  z-index: 20;
+  flex-shrink: 0;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 0.15rem;
+  padding-bottom: 0.35rem;
 }
 
-.lb-auth-tabs {
-  margin-bottom: clamp(0.6rem, 1.6vh, 1.25rem);
+.lb-auth-top--mobile {
+  /* El logo va dentro de la tarjeta (referencia); evita duplicarlo arriba en móvil. */
+  display: none;
 }
 
-.lb-auth-divider {
-  margin-block: clamp(0.6rem, 1.6vh, 1.25rem);
+.lb-auth-mobile-logo {
+  width: min(68vw, 12.5rem);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 22px rgba(236, 72, 153, 0.3));
 }
 
-.lb-auth-switch {
-  margin-top: clamp(0.6rem, 1.8vh, 1.5rem);
+.lb-auth-card-wrap {
+  width: 100%;
+  max-width: min(100%, 34rem);
+  max-height: 100%;
+  margin-block: 0;
+  padding: 1.15rem;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .lb-auth-card {
-  padding: clamp(1rem, 2.4vh, 1.75rem) clamp(1.1rem, 4vw, 1.75rem);
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: clamp(1.25rem, 2.8vw, 1.85rem);
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(165deg, #080c1c, #060a16) padding-box,
+    linear-gradient(120deg, rgba(255, 23, 136, 0.28), rgba(124, 58, 237, 0.18) 48%, rgba(22, 191, 255, 0.28)) border-box;
+  padding: clamp(0.95rem, 2.4vh, 1.65rem) clamp(1.05rem, 3.2vw, 1.75rem);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  text-align: center;
+}
+
+@property --lb-neon-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.lb-auth-card__glow,
+.lb-auth-card__ray {
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.lb-auth-card__glow {
+  inset: -8px;
+  z-index: -1;
+  filter: blur(5px);
+  opacity: 0.9;
+}
+
+.lb-auth-card__ray,
+.lb-auth-card__glow::before {
+  padding: 2px;
+  background: conic-gradient(
+    from var(--lb-neon-angle),
+    transparent 0deg 220deg,
+    rgba(255, 77, 184, 0.25) 252deg,
+    #ff4db8 274deg,
+    #fff 292deg,
+    #a78bfa 308deg,
+    #22d3ee 328deg,
+    transparent 352deg
+  );
+  animation: lb-auth-neon-spin 3.6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.lb-auth-card__ray {
+  inset: 0;
+  z-index: 4;
+}
+
+.lb-auth-card__glow::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: inherit;
+}
+
+@keyframes lb-auth-neon-spin {
+  to {
+    --lb-neon-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-auth-card__glow::before,
+  .lb-auth-card__ray::before {
+    animation: none;
+  }
+}
+
+.lb-auth-card__logo {
+  display: block;
+  width: min(52%, 9.5rem);
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 16px rgba(255, 23, 136, 0.25));
+}
+
+.lb-auth-card__tag {
+  justify-content: center;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+}
+
+.lb-auth-card__title {
+  margin: 0.55rem 0 0;
+  font-size: clamp(1.1rem, 2.2vw, 1.35rem);
+  font-weight: 800;
+  color: #fff;
+}
+
+.lb-auth-card__subtitle {
+  margin: 0.3rem 0 0;
+  font-size: clamp(0.8rem, 1.6vw, 0.92rem);
+  color: rgba(180, 190, 210, 0.9);
+}
+
+.lb-auth-card__form {
+  display: grid;
+  gap: clamp(0.5rem, 1.4vh, 0.75rem);
+  margin-top: clamp(0.75rem, 2vh, 1.15rem);
+  text-align: left;
+}
+
+.lb-auth-card__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.5rem;
+  gap: 0.55rem;
+}
+
+.lb-auth-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lb-auth-field {
+  position: relative;
+  display: flex;
+  min-height: clamp(2.75rem, 6.5vh, 3.25rem);
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(80, 160, 255, 0.35);
+  background: rgba(16, 24, 40, 0.92);
+  padding: 0 0.85rem;
+  color: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 14px rgba(22, 191, 255, 0.08);
+}
+
+.lb-auth-field:focus-within {
+  border-color: rgba(22, 191, 255, 0.65);
+  box-shadow: 0 0 18px rgba(166, 41, 255, 0.22);
+}
+
+.lb-auth-field__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.lb-auth-field__control {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.lb-auth-field__control:focus-visible {
+  outline: none;
+}
+
+.lb-auth-field__control::placeholder {
+  color: rgba(161, 161, 170, 0.95);
+}
+
+.lb-auth-field__eye {
+  display: grid;
+  width: 2.45rem;
+  height: 2.45rem;
+  flex-shrink: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.lb-auth-field__eye:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+.lb-auth-terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: rgba(212, 212, 216, 0.85);
+}
+
+.lb-auth-terms a {
+  color: #67e8f9;
+  text-decoration: underline;
+}
+
+.lb-auth-msg {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.lb-auth-msg--error {
+  color: #f472b6;
+}
+
+.lb-auth-msg--ok {
+  color: #67e8f9;
+}
+
+.lb-auth-cta {
+  display: inline-flex;
+  width: 100%;
+  min-height: clamp(2.85rem, 7vh, 3.5rem);
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(90deg, #ff1788 0%, #a629ff 50%, #16bfff 100%);
+  color: #fff;
+  font-size: clamp(0.92rem, 2vw, 1rem);
+  font-weight: 800;
+  box-shadow: 0 0 28px rgba(255, 23, 136, 0.35);
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.lb-auth-cta:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.lb-auth-cta:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+.lb-auth-cta:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.lb-auth-cta:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+.lb-auth-cta__spin {
+  animation: lb-auth-spin 0.8s linear infinite;
+}
+
+@keyframes lb-auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.lb-auth-forgot {
+  display: block;
+  width: 100%;
+  margin: -0.15rem 0 0.1rem;
+  border: 0;
+  background: transparent;
+  color: #38bdf8;
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: right;
+  text-decoration: none;
+}
+
+.lb-auth-forgot:hover {
+  text-decoration: underline;
+}
+
+.lb-auth-forgot:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+.lb-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: clamp(0.55rem, 1.6vh, 0.95rem) 0 clamp(0.45rem, 1.2vh, 0.75rem);
+  color: rgba(161, 161, 170, 0.95);
+  font-size: 0.78rem;
+}
+
+.lb-auth-divider span {
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+}
+
+.lb-auth-divider em {
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.lb-auth-social {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.lb-auth-social__btn {
+  display: flex;
+  min-height: clamp(2.65rem, 6.2vh, 3.05rem);
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0 0.55rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #fff;
+  color: #18181b;
+  font-size: clamp(0.72rem, 1.5vw, 0.82rem);
+  font-weight: 700;
+  line-height: 1.15;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.lb-auth-social__btn span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lb-auth-social__btn:hover:not(:disabled) {
+  filter: brightness(1.03);
+}
+
+.lb-auth-social__btn:disabled {
+  opacity: 0.6;
+}
+
+.lb-auth-social__btn:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+.lb-auth-hint {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  color: rgba(161, 161, 170, 0.95);
+}
+
+.lb-auth-create {
+  display: flex;
+  min-height: clamp(2.65rem, 6.2vh, 3.05rem);
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: clamp(0.5rem, 1.4vh, 0.8rem);
+  border-radius: 0.95rem;
+  border: 2px solid #16bfff;
+  background: transparent;
+  color: #fff;
+  font-size: clamp(0.86rem, 1.8vw, 0.94rem);
+  font-weight: 700;
+}
+
+.lb-auth-create:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.lb-auth-legal {
+  margin: clamp(0.65rem, 1.5vh, 0.95rem) 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: rgba(161, 161, 170, 0.95);
+}
+
+.lb-auth-legal a {
+  color: #67e8f9;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.lb-auth-legal a:hover {
+  text-decoration: underline;
 }
 
 .lb-auth-card > footer {
-  margin-top: clamp(0.5rem, 1.4vh, 1rem);
+  margin-top: clamp(0.55rem, 1.4vh, 0.85rem);
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(161, 161, 170, 0.92);
 }
 
-@media (max-height: 900px) {
-  .lb-auth-top__logo img {
-    height: clamp(4.5rem, 13vh, 7.5rem) !important;
-  }
+.lb-auth-card > footer a {
+  color: rgba(200, 210, 230, 0.92);
 }
 
-@media (max-height: 780px) {
-  .lb-auth-top__logo img {
-    height: clamp(3.5rem, 11vh, 5.5rem) !important;
-  }
-
-  .lb-auth-tagline {
-    display: none;
-  }
+.lb-auth-card > footer a:hover {
+  color: #67e8f9;
 }
 
 .lb-auth-lang {
   position: absolute;
-  top: max(0.55rem, var(--lb-safe-top, 0.55rem));
-  inset-inline-start: max(0.7rem, var(--lb-safe-left, 0.7rem));
+  top: max(0.55rem, env(safe-area-inset-top, 0.55rem));
+  inset-inline-end: max(0.7rem, env(safe-area-inset-right, 0.7rem));
+  inset-inline-start: auto;
   z-index: 40;
 }
 
@@ -2851,17 +3667,222 @@ html:has(.lb-legal-page) #root {
 
 .lb-auth-lang .lb-lang-menu {
   top: calc(100% + 0.35rem);
-  right: auto;
+  right: 0;
   bottom: auto;
-  left: 0;
-  inset-inline-start: 0;
-  inset-inline-end: auto;
+  left: auto;
+  inset-inline-start: auto;
+  inset-inline-end: 0;
   transform: none;
 }
 
 @media (max-height: 820px) {
-  .lb-auth-card {
-    padding: 1rem 1.15rem;
+  .lb-auth-card__logo {
+    width: min(42%, 7.25rem);
+  }
+
+  .lb-auth-mobile-logo {
+    width: min(52vw, 9.5rem);
+  }
+}
+
+@media (max-height: 700px) {
+  .lb-auth-card__logo {
+    width: min(36%, 6rem);
+  }
+
+  .lb-auth-card__subtitle {
+    font-size: 0.78rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .lb-auth-page {
+    overflow: hidden;
+  }
+
+  .lb-auth-shell {
+    align-items: stretch;
+    padding-block: 0.65rem;
+    min-height: 0;
+  }
+
+  .lb-auth-hero {
+    display: flex;
+    min-height: 0;
+  }
+
+  .lb-auth-top--mobile {
+    display: none;
+  }
+
+  .lb-auth-main {
+    flex: 0 1 clamp(20rem, 38vw, 34rem);
+    max-width: 34rem;
+    max-height: 100%;
+    justify-content: safe center;
+    align-self: stretch;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-inline: clamp(0.35rem, 1.2vw, 0.85rem);
+    padding-block: 0.25rem;
+  }
+
+  .lb-auth-card-wrap {
+    margin-block: 0;
+    width: 100%;
+    max-width: min(100%, 32rem);
+    max-height: 100%;
+  }
+
+  .lb-auth-card__logo {
+    display: block;
+  }
+}
+
+@media (max-width: 420px) {
+  .lb-auth-social {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1100px) {
+  .lb-auth-stage__phone {
+    height: min(80%, 38rem);
+    max-width: min(40%, 17.5rem);
+    right: 0;
+    bottom: 1%;
+  }
+
+  .lb-auth-pc-fan {
+    width: min(48%, 22rem);
+    max-height: min(66%, 30rem);
+    left: 30%;
+  }
+
+  .lb-auth-stage__mascot {
+    width: min(32%, 15rem);
+    left: 4%;
+    bottom: 9%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .lb-auth-stage__phone {
+    height: min(84%, 40rem);
+    max-width: min(38%, 18.5rem);
+    right: 1%;
+  }
+
+  .lb-auth-pc-fan {
+    width: min(50%, 23.5rem);
+    left: 32%;
+  }
+
+  .lb-auth-hero__line {
+    font-size: clamp(2.4rem, 4.2vw, 3.6rem);
+  }
+
+  .lb-auth-stage__pc {
+    width: min(54%, 24rem);
+    max-height: min(72%, 32rem);
+    left: 28%;
+  }
+}
+
+@media (min-width: 1440px) {
+  .lb-auth-hero__logo {
+    width: min(100%, 16.5rem);
+  }
+}
+
+@media (max-width: 767px) {
+  .lb-auth-shell {
+    flex-direction: column;
+  }
+
+  .lb-auth-hero {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) and (min-height: 780px) {
+  .lb-auth-hero {
+    display: flex;
+    order: 2;
+    flex: 0 0 auto;
+    min-height: 12rem;
+    max-height: 34vh;
+    padding-bottom: 0.25rem;
+  }
+
+  .lb-auth-hero__copy {
+    display: none;
+  }
+
+  .lb-auth-stage {
+    position: absolute;
+    inset: 0;
+  }
+
+  .lb-auth-stage__phone {
+    height: min(88%, 13rem);
+    max-width: min(34%, 7.5rem);
+    left: auto;
+    right: 4%;
+    bottom: 2%;
+  }
+
+  .lb-auth-pc-fan {
+    width: min(42%, 9.5rem);
+    max-height: min(70%, 11rem);
+    left: 34%;
+    bottom: 3%;
+  }
+
+  .lb-auth-pc-fan__card {
+    display: none;
+  }
+
+  .lb-auth-stage__mascot {
+    width: min(30%, 6.5rem);
+    bottom: 8%;
+  }
+
+  .lb-auth-prop--heart-a,
+  .lb-auth-prop--heart-b,
+  .lb-auth-prop--star-b {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+  .lb-auth-mobile-logo {
+    width: min(36vw, 8.5rem);
+  }
+
+  .lb-auth-hero {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-auth-stage__mascot,
+  .lb-auth-stage__pedestal,
+  .lb-auth-prop,
+  .lb-auth-main,
+  .lb-auth-cta__spin {
+    animation: none !important;
+  }
+
+  .lb-auth-pc-fan__card {
+    transition: none;
+  }
+}
+
+/* El shell no debe recortar brillos del hero */
+@media (min-width: 768px) {
+  .lb-auth-shell {
+    overflow: visible;
   }
 }
 

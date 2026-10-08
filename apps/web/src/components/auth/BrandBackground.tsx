@@ -2,23 +2,23 @@ type BrandBackgroundProps = {
   className?: string;
 };
 
-/** Video de marca a pantalla completa con overlay para integrarse al UI. */
+/** Fondo escenario LiveBoom (cover, sin deformar). */
 export function BrandBackground({ className = '' }: BrandBackgroundProps) {
   return (
-    <div className={`lb-brand-background pointer-events-none absolute inset-0 overflow-hidden ${className}`} data-lb-surface="dark">
-      <video
-        className="absolute inset-0 h-full w-full scale-110 object-cover opacity-[0.28] brightness-[0.45] contrast-125 saturate-[1.35] blur-[1.5px]"
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="auto"
-        aria-hidden="true"
-      >
-        <source src="/brand/logo-reveal.mp4" type="video/mp4" />
-      </video>
-      <div className="absolute inset-0 bg-boom-bg/82" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(0,240,255,0.14),_transparent_68%)]" />
+    <div
+      className={`lb-brand-background pointer-events-none absolute inset-0 overflow-hidden ${className}`}
+      data-lb-surface="dark"
+      aria-hidden="true"
+    >
+      <img
+        src="/assets/auth/background-liveboom.png"
+        alt=""
+        className="lb-auth-bg__img"
+        width={1024}
+        height={576}
+        decoding="async"
+      />
+      <div className="lb-auth-bg__veil" />
     </div>
   );
 }

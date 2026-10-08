@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
+import { useLocation } from 'react-router-dom';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { BrandBackground } from './BrandBackground';
-import { BrandVideo } from './BrandVideo';
-import { LegalFooter } from '../legal/LegalFooter';
+import { AuthVisualStage } from './AuthVisualStage';
+import { AuthLoginPanel } from './AuthLoginPanel';
 import { LanguageDropdown } from '../i18n/LanguageDropdown';
 import { ageFromBirthYear } from '../../lib/birthDate';
+import { auth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
 import { useT } from '../../i18n';
 
@@ -13,6 +14,10 @@ const currentYear = new Date().getFullYear();
 const minBirthYear = currentYear - 100;
 const maxBirthYear = currentYear - 18;
 
+/**
+ * Pantalla de acceso LiveBoom.
+ * Reutiliza authStore (Firebase email/Google/Apple) — no crea un segundo sistema.
+ */
 export function AuthScreen() {
   const t = useT();
   const location = useLocation();
@@ -20,19 +25,19 @@ export function AuthScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [birthYear, setBirthYear] = useState(String(maxBirthYear));
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
   const busy = useAuthStore((s) => s.busy);
   const error = useAuthStore((s) => s.error);
   const signInEmail = useAuthStore((s) => s.signInEmail);
   const signUpEmail = useAuthStore((s) => s.signUpEmail);
   const signInGoogle = useAuthStore((s) => s.signInGoogle);
-  const signInMicrosoft = useAuthStore((s) => s.signInMicrosoft);
-  /** Oculto hasta habilitar el proveedor Microsoft en Firebase Authentication. */
-  const showMicrosoft = false && !Capacitor.isNativePlatform();
+  const signInApple = useAuthStore((s) => s.signInApple);
+  const isEs = t.locale === 'es';
 
-  /** En registro valida términos y edad; devuelve el año o null si no pasa. En login devuelve undefined. */
   function socialBirthYear(): number | undefined | null {
     if (mode !== 'register') return undefined;
     if (!acceptedTerms) {
@@ -54,6 +59,7 @@ export function AuthScreen() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setLocalError(null);
+    setResetNotice(null);
     if (mode === 'register' && !acceptedTerms) {
       setLocalError(t('auth.mustAccept'));
       return;
@@ -67,12 +73,55 @@ export function AuthScreen() {
       setLocalError(t('auth.invalidBirthYear'));
       return;
     }
-    const age = ageFromBirthYear(year);
-    if (age < 18) {
+    if (ageFromBirthYear(year) < 18) {
       setLocalError(t('auth.mustBe18'));
       return;
     }
     await signUpEmail(name, email, password, year).catch(() => undefined);
+  }
+
+  async function onForgotPassword() {
+    setLocalError(null);
+    setResetNotice(null);
+    const value = email.trim();
+    if (!value) {
+      setLocalError(isEs ? 'Escribe tu correo para recuperar la contraseña.' : 'Enter your email to reset your password.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, value);
+      setResetNotice(
+        isEs
+          ? 'Te enviamos un enlace para restablecer la contraseña.'
+          : 'We sent you a password reset link.',
+      );
+    } catch {
+      setLocalError(isEs ? 'No se pudo enviar el correo. Revisa el email.' : 'Could not send the email. Check the address.');
+    }
+  }
+
+  async function onGoogle() {
+    setLocalError(null);
+    setResetNotice(null);
+    if (mode === 'register') {
+      const year = socialBirthYear();
+      if (year === null) return;
+      await signInGoogle(year).catch(() => undefined);
+      return;
+    }
+    await signInGoogle().catch(() => undefined);
+  }
+
+  async function onApple() {
+    setLocalError(null);
+    setResetNotice(null);
+    if (mode === 'register') {
+      const year = socialBirthYear();
+      if (year === null) return;
+      await signInApple(year).catch(() => undefined);
+      return;
+    }
+    await signInApple().catch(() => undefined);
   }
 
   return (
@@ -81,228 +130,69 @@ export function AuthScreen() {
       <div className="lb-auth-lang">
         <LanguageDropdown />
       </div>
-      <header className="lb-auth-top">
-        <div className="lb-auth-top__logo">
-          <BrandVideo />
-        </div>
-      </header>
 
-      <div className="lb-auth-main">
-        <div className="w-full max-w-md">
-        <div className="lb-auth-card rounded-3xl border border-white/10 bg-boom-panel/88 p-6 shadow-glow backdrop-blur-xl sm:p-8">
-          <div className="lb-auth-tabs grid grid-cols-2 gap-1 rounded-2xl bg-black/35 p-1">
-            <Link
-              to="/login"
-              className={`rounded-xl py-2 text-center text-sm font-bold ${
-                mode === 'login' ? 'bg-cyan-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              {t('auth.login')}
-            </Link>
-            <Link
-              to="/registro"
-              className={`rounded-xl py-2 text-center text-sm font-bold ${
-                mode === 'register' ? 'bg-cyan-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              {t('auth.register')}
-            </Link>
-          </div>
-          <h1 className="text-center text-xl font-bold text-white sm:text-2xl">
-            {mode === 'login' ? t('auth.enterTitle') : t('auth.createTitle')}
-          </h1>
-          <p className="lb-auth-tagline mt-2 text-center text-sm text-zinc-400">
-            {t('auth.tagline')}
-          </p>
+      <div className="lb-auth-shell">
+        <AuthVisualStage isEs={isEs} />
 
-          <form className="mt-8 space-y-3" onSubmit={(event) => void onSubmit(event)}>
-            {mode === 'register' ? (
-              <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] items-end gap-2">
-                <input
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t('auth.name')}
-                  aria-label={t('auth.name')}
-                  className="h-11 w-full min-w-0 rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-                />
-                <label className="block min-w-0 text-left text-xs text-zinc-400">
-                  <span className="block truncate">{t('auth.birthYear')}</span>
-                  <input
-                    required
-                    type="number"
-                    inputMode="numeric"
-                    min={minBirthYear}
-                    max={maxBirthYear}
-                    value={birthYear}
-                    onChange={(e) => setBirthYear(e.target.value)}
-                    className="mt-1 h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-                  />
-                </label>
-              </div>
-            ) : null}
-            <input
-              required
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder={t('auth.email')}
-              className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
+        <div className="lb-auth-main">
+          <header className="lb-auth-top lb-auth-top--mobile">
+            <img
+              src="/assets/auth/logo-liveboom.png"
+              alt="LiveBoom"
+              className="lb-auth-mobile-logo"
+              width={280}
+              height={180}
+              decoding="async"
             />
-            <input
-              required
-              type="password"
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={t('auth.password')}
-              className="h-11 w-full rounded-xl bg-black/40 px-4 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-zinc-500 focus:ring-boom-cyan/60"
-            />
-            {mode === 'register' ? (
-              <label className="flex items-start gap-2 text-left text-xs text-zinc-400">
-                <input
-                  type="checkbox"
-                  checked={acceptedTerms}
-                  onChange={(e) => setAcceptedTerms(e.target.checked)}
-                  className="mt-0.5 accent-boom-cyan"
-                />
-                <span>
-                  {t('auth.acceptPrefix')}{' '}
-                  <Link to="/legal/terminos" className="text-boom-cyan underline">
-                    {t('auth.terms')}
-                  </Link>
-                  , {t('auth.andTheMasculine')}{' '}
-                  <Link to="/legal/privacidad" className="text-boom-cyan underline">
-                    {t('auth.privacy')}
-                  </Link>{' '}
-                  {t('auth.andThe')}{' '}
-                  <Link to="/legal/cookies" className="text-boom-cyan underline">
-                    {t('auth.cookies')}
-                  </Link>
-                  .
-                </span>
-              </label>
-            ) : null}
-            {localError ? <p className="text-sm text-boom-fuchsia">{localError}</p> : null}
-            {error ? <p className="text-sm text-boom-fuchsia">{error}</p> : null}
-            <button
-              type="submit"
-              disabled={busy}
-              className="h-11 w-full rounded-xl bg-gradient-to-r from-boom-cyan to-boom-orange text-sm font-bold text-zinc-950 transition hover:brightness-110 disabled:opacity-60"
-            >
-              {busy ? t('auth.entering') : mode === 'login' ? t('auth.continue') : t('auth.createAccount')}
-            </button>
-          </form>
+          </header>
 
-          <div className="lb-auth-divider flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-            <span className="h-px flex-1 bg-white/10" />
-            {t('auth.or')}
-            <span className="h-px flex-1 bg-white/10" />
-          </div>
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              void (async () => {
-                setLocalError(null);
-                if (mode === 'register') {
-                  if (!acceptedTerms) {
-                    setLocalError(t('auth.mustAccept'));
-                    return;
-                  }
-                  const year = Number(birthYear);
-                  if (!Number.isFinite(year) || year < minBirthYear || year > maxBirthYear) {
-                    setLocalError(t('auth.invalidBirthYear'));
-                    return;
-                  }
-                  if (ageFromBirthYear(year) < 18) {
-                    setLocalError(t('auth.mustBe18'));
-                    return;
-                  }
-                  await signInGoogle(year).catch(() => undefined);
-                  return;
-                }
-                await signInGoogle().catch(() => undefined);
-              })();
+          <AuthLoginPanel
+            mode={mode}
+            isEs={isEs}
+            busy={busy}
+            name={name}
+            email={email}
+            password={password}
+            showPassword={showPassword}
+            birthYear={birthYear}
+            minBirthYear={minBirthYear}
+            maxBirthYear={maxBirthYear}
+            acceptedTerms={acceptedTerms}
+            localError={localError}
+            storeError={error}
+            resetNotice={resetNotice}
+            labels={{
+              name: t('auth.name'),
+              email: t('auth.email'),
+              password: t('auth.password'),
+              birthYear: t('auth.birthYear'),
+              entering: t('auth.entering'),
+              createAccount: t('auth.createAccount'),
+              continue: t('auth.continue'),
+              or: t('auth.or'),
+              google: t('auth.google'),
+              hasAccount: t('auth.hasAccount'),
+              acceptPrefix: t('auth.acceptPrefix'),
+              terms: t('auth.terms'),
+              andTheMasculine: t('auth.andTheMasculine'),
+              privacy: t('auth.privacy'),
+              andThe: t('auth.andThe'),
+              cookies: t('auth.cookies'),
+              googleBirthHint: t('auth.googleBirthHint'),
             }}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900"
-          >
-            <GoogleIcon />
-            {t('auth.google')}
-          </button>
-
-          {showMicrosoft ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setLocalError(null);
-                const year = socialBirthYear();
-                if (year === null) return;
-                void signInMicrosoft(year).catch(() => undefined);
-              }}
-              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-zinc-900 disabled:opacity-60"
-            >
-              <MicrosoftIcon />
-              {t.locale === 'es' ? 'Continuar con Microsoft' : 'Continue with Microsoft'}
-            </button>
-          ) : null}
-
-          {mode === 'register' ? (
-            <p className="mt-2 text-center text-[11px] text-zinc-500">
-              {t('auth.googleBirthHint')}
-            </p>
-          ) : null}
-
-          {mode === 'login' ? (
-            <Link to="/registro" className="lb-auth-switch block w-full text-center text-sm text-zinc-400 hover:text-white">
-              {t('auth.noAccount')}
-            </Link>
-          ) : (
-            <Link to="/login" className="lb-auth-switch block w-full text-center text-sm text-zinc-400 hover:text-white">
-              {t('auth.hasAccount')}
-            </Link>
-          )}
-
-          <LegalFooter compact />
-        </div>
+            onName={setName}
+            onEmail={setEmail}
+            onPassword={setPassword}
+            onTogglePassword={() => setShowPassword((v) => !v)}
+            onBirthYear={setBirthYear}
+            onAcceptedTerms={setAcceptedTerms}
+            onSubmit={(event) => void onSubmit(event)}
+            onForgotPassword={() => void onForgotPassword()}
+            onGoogle={() => void onGoogle()}
+            onApple={() => void onApple()}
+          />
         </div>
       </div>
     </div>
-  );
-}
-
-function MicrosoftIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-      <path fill="#F25022" d="M1 1h10.5v10.5H1z" />
-      <path fill="#7FBA00" d="M12.5 1H23v10.5H12.5z" />
-      <path fill="#00A4EF" d="M1 12.5h10.5V23H1z" />
-      <path fill="#FFB900" d="M12.5 12.5H23V23H12.5z" />
-    </svg>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.5v2.9h3.8c2.3-2.1 3.6-5.2 3.6-8.5z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-2.9c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.4v3.1C3.4 21.4 7.4 24 12 24z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.3 14.4c-.2-.7-.4-1.4-.4-2.4s.1-1.7.4-2.4V6.5H1.4C.5 8.2 0 10.1 0 12s.5 3.8 1.4 5.5l3.9-3.1z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.8c1.7 0 3.3.6 4.5 1.7l3.4-3.4C17.9 1.1 15.2 0 12 0 7.4 0 3.4 2.6 1.4 6.5l3.9 3.1C6.2 6.9 8.9 4.8 12 4.8z"
-      />
-    </svg>
   );
 }

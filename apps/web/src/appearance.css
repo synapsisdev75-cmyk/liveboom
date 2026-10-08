@@ -3285,16 +3285,43 @@ html[data-lb-theme='light'] .lb-liquid-nav__shell {
   filter: drop-shadow(0 -6px 18px rgba(24, 24, 27, 0.12));
 }
 
-/* Login/registro y legales: el video de marca sigue oscuro; la tarjeta sigue el tema. */
-html[data-lb-theme] .lb-auth-card {
-  background: color-mix(in srgb, var(--surface-primary) 92%, transparent);
-  border-color: var(--border-default);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-modal);
+/* Login/registro: identidad oscura LiveBoom fija (no hereda tarjeta blanca del tema claro). */
+html[data-lb-theme] .lb-auth-page .lb-auth-card,
+html[data-lb-theme='light'] .lb-auth-page .lb-auth-card {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(165deg, #080c1c, #060a16) padding-box,
+    linear-gradient(135deg, rgba(255, 23, 136, 0.28), rgba(125, 90, 255, 0.16) 48%, rgba(22, 191, 255, 0.28)) border-box;
+  color: #f4f4f5;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.35);
 }
 
-html[data-lb-theme='light'] .lb-auth-card {
-  background: var(--surface-primary);
+html[data-lb-theme] .lb-auth-page .lb-auth-card .text-white,
+html[data-lb-theme='light'] .lb-auth-page .lb-auth-card .text-white {
+  color: #fff;
+}
+
+html[data-lb-theme] .lb-auth-page .lb-auth-card input:not([type='checkbox']),
+html[data-lb-theme='light'] .lb-auth-page .lb-auth-card input:not([type='checkbox']) {
+  background: transparent;
+  color: #fff;
+  caret-color: #fff;
+  -webkit-text-fill-color: #fff;
+  box-shadow: none;
+}
+
+html[data-lb-theme] .lb-auth-page .lb-auth-card input:not([type='checkbox'])::placeholder,
+html[data-lb-theme='light'] .lb-auth-page .lb-auth-card input:not([type='checkbox'])::placeholder {
+  color: #a1a1aa;
+  -webkit-text-fill-color: #a1a1aa;
+}
+
+html[data-lb-theme] .lb-auth-page .lb-auth-social__btn,
+html[data-lb-theme='light'] .lb-auth-page .lb-auth-social__btn {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #fff;
+  color: #18181b;
+  box-shadow: none;
 }
 
 /* Cámara in-app (Flash Boom, publicaciones, collage, chat): sigue el tema claro. */

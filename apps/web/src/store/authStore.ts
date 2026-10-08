@@ -13,7 +13,7 @@ import {
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { auth, googleProvider, microsoftProvider } from '../lib/firebase';
+import { auth, appleProvider, googleProvider, microsoftProvider } from '../lib/firebase';
 import { api, getApiBase, postAuthSync, mapPostgresUser, type SessionUser } from '../lib/api';
 import {
   ensureFirestoreProfile,
@@ -73,6 +73,7 @@ type AuthState = {
   signInEmail: (email: string, password: string) => Promise<void>;
   signUpEmail: (name: string, email: string, password: string, birthYear: number) => Promise<void>;
   signInGoogle: (birthYear?: number) => Promise<void>;
+  signInApple: (birthYear?: number) => Promise<void>;
   signInMicrosoft: (birthYear?: number) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   /** Recarga el usuario; si ya verificó, abre la sesión y devuelve true. */
@@ -560,6 +561,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ firebaseUser: user, profile });
     } catch (error) {
       set({ error: mapAuthError(error) });
+      throw error;
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  signInApple: async (birthYear) => {
+    set({ busy: true, error: null });
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const message =
+          'Inicio con Apple en la app requiere configuración nativa (Apple Sign-In). Usa Google o correo por ahora.';
+        set({ error: message });
+        throw new Error(message);
+      }
+      const cred = await signInWithPopup(auth, appleProvider);
+      const user = cred.user;
+      if (birthYear && Number.isFinite(birthYear)) {
+        storePendingBirthYear(user.uid, birthYear);
+      }
+      const profile = await syncWithBackend(user);
+      set({ firebaseUser: user, profile });
+    } catch (error) {
+      const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+      if (code.includes('popup-closed') || code.includes('cancelled-popup')) {
+        set({ error: 'Se cerró la ventana de Apple.' });
+      } else if (code.includes('operation-not-allowed') || code.includes('auth/operation-not-allowed')) {
+        set({
+          error:
+            'Apple Sign-In aún no está habilitado en Firebase. Actívalo en Authentication → Sign-in method.',
+        });
+      } else if (!get().error) {
+        set({ error: mapAuthError(error) || 'No se pudo iniciar sesión con Apple.' });
+      }
       throw error;
     } finally {
       set({ busy: false });
