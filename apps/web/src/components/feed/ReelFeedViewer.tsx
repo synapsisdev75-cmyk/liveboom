@@ -2,6 +2,7 @@ import { useBackLayer } from '../../lib/backLayer';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   listenPostReactions,
   setPostReaction,
@@ -144,6 +145,8 @@ export function ReelFeedViewer({
   const [leaveViewerSound] = useState(() => (exploreFastNav ? null : enterExploreWithSound()));
   useEffect(() => leaveViewerSound ?? undefined, [leaveViewerSound]);
   const profile = useAuthStore((state) => state.profile);
+  const authReady = useAuthStore((state) => state.ready);
+  const navigate = useNavigate();
   const [index, setIndex] = useState(() =>
     Math.min(Math.max(initialIndex, 0), Math.max(reels.length - 1, 0)),
   );
@@ -311,7 +314,11 @@ export function ReelFeedViewer({
   if (!reel) return null;
 
   async function react(reaction: 'like' | 'dislike') {
-    if (!profile || !reel) return;
+    if (!authReady || !reel) return;
+    if (!profile) {
+      navigate('/login');
+      return;
+    }
     setBusy(true);
     try {
       await setPostReaction(

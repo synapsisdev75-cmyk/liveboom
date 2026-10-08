@@ -100,7 +100,7 @@ export function Sidebar() {
       </button>
       <button
         type="button"
-        onClick={() => void logout()}
+        onClick={() => void logout().then(() => { window.location.assign('/explorar'); })}
         className="mt-2 flex items-center justify-center gap-2 py-2 text-xs text-zinc-500 hover:text-white"
       >
         <LogOut size={12} />

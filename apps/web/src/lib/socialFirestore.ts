@@ -2331,10 +2331,6 @@ export function listenRecentPosts(onChange: (posts: FsPost[]) => void): Unsubscr
 
 /** Pool de videos públicos para Explorar. No altera listenRecentPosts (Inicio/Actividad). */
 export function listenExploreVideoPool(onChange: (posts: FsPost[]) => void): Unsubscribe {
-  if (!auth.currentUser) {
-    onChange([]);
-    return () => undefined;
-  }
   const q = query(
     collection(db, 'posts'),
     where('visibility', '==', 'public'),

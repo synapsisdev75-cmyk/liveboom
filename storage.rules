@@ -19,7 +19,8 @@ service firebase.storage {
         && firestore.exists(/databases/(default)/documents/users/$(userId)/followers/$(request.auth.uid));
     }
     function canReadPostFile(userId) {
-      return isOwner(userId)
+      return resource.metadata.visibility == 'public'
+        || isOwner(userId)
         || (
           signedIn()
           && resource.metadata.visibility == 'public'

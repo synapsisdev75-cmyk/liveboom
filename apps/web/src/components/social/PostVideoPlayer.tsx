@@ -26,7 +26,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   addPostComment,
   deletePostComment,
@@ -436,6 +436,9 @@ export function PostVideoPlayer({
   durationBar = false,
 }: Props) {
   const t = useT();
+  const navigate = useNavigate();
+  const profile = useAuthStore((state) => state.profile);
+  const authReady = useAuthStore((state) => state.ready);
   const reactId = useId();
   const playerId = `post-video-${postId}-${reactId}`;
   const isDesktop = useIsDesktop();
@@ -1483,7 +1486,14 @@ export function PostVideoPlayer({
               onReact={onReact}
               commentCount={commentCount}
               commentsOpen={commentsPanelOpen}
-              onToggleComments={() => setCommentsPanelOpen((value) => !value)}
+              onToggleComments={() => {
+                if (!authReady) return;
+                if (!profile) {
+                  navigate('/login');
+                  return;
+                }
+                setCommentsPanelOpen((value) => !value);
+              }}
               shareUrl={shareUrl}
               shareTitle={shareTitle}
               shareText={shareText}

@@ -155,34 +155,31 @@ export function ExploreView() {
   }, []);
 
   useEffect(() => {
+    if (!ready) return;
     if (!uid) {
-      setRawPosts([]);
-      setPoolReady(false);
       setFollowingUids(new Set());
-      setQueues(EMPTY_QUEUES);
-      setIndices(EMPTY_INDICES);
       setHistory({});
       setSessionSeen(new Set());
-      appliedStartRef.current = false;
-      visitedRef.current = { para_ti: false, virales: false, recientes: false };
-      return;
+    } else {
+      setHistory(readExploreHistory(uid));
+      setSessionSeen(readExploreSessionSeen(uid));
     }
-    setHistory(readExploreHistory(uid));
-    setSessionSeen(readExploreSessionSeen(uid));
     appliedStartRef.current = false;
     visitedRef.current = { para_ti: false, virales: false, recientes: false };
     const stopPool = listenExploreVideoPool((posts) => {
       setRawPosts(posts);
       setPoolReady(true);
     });
-    const stopFollowing = listenFollowing(uid, (users) => {
-      setFollowingUids(new Set(users.map((user) => user.uid).filter(Boolean)));
-    });
+    const stopFollowing = uid
+      ? listenFollowing(uid, (users) => {
+          setFollowingUids(new Set(users.map((user) => user.uid).filter(Boolean)));
+        })
+      : () => undefined;
     return () => {
       stopPool();
       stopFollowing();
     };
-  }, [uid]);
+  }, [uid, ready]);
 
   const eligible = useMemo(() => {
     const videos = rawPosts.filter(isExploreVideo);
@@ -360,9 +357,11 @@ export function ExploreView() {
         setIndices((state) =>
           state[currentTab] === latestIndex ? state : { ...state, [currentTab]: latestIndex },
         );
-        const nextSeen = markExploreSessionSeen(uid, latestId, sessionSeenRef.current);
-        sessionSeenRef.current = nextSeen;
-        setSessionSeen(nextSeen);
+        if (uid) {
+          const nextSeen = markExploreSessionSeen(uid, latestId, sessionSeenRef.current);
+          sessionSeenRef.current = nextSeen;
+          setSessionSeen(nextSeen);
+        }
         const next = new URLSearchParams(searchParams);
         if (next.get('v') !== latestId) next.delete('plaza');
         next.set('tab', currentTab);
@@ -393,19 +392,6 @@ export function ExploreView() {
   if (!ready) {
     return (
       <div className="grid h-full place-items-center bg-black text-sm text-zinc-500">Cargando…</div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="grid h-full place-items-center bg-zinc-950 px-4 text-center text-sm text-zinc-400">
-        <p className="lb-panel max-w-md rounded-2xl border px-6 py-8">
-          <Link to="/login" className="text-cyan-400 underline">
-            Inicia sesión
-          </Link>{' '}
-          para descubrir videos en Explorar.
-        </p>
-      </div>
     );
   }
 
@@ -467,10 +453,10 @@ export function ExploreView() {
           <div>
             <p className="text-sm text-zinc-400">Aún no hay videos públicos para descubrir.</p>
             <Link
-              to="/crear"
+              to={profile ? '/crear' : '/login'}
               className="mt-4 inline-flex min-h-10 items-center rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 px-5 text-sm font-bold text-white"
             >
-              Subir video
+              {profile ? 'Subir video' : 'Iniciar sesión'}
             </Link>
           </div>
         </div>

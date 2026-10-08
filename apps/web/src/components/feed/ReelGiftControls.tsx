@@ -1,6 +1,7 @@
 import { Gift } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { findLiveGift, sortedLiveboomGiftCatalog } from '../../lib/liveboomGifts';
 import { sendLiveboomGift } from '../../lib/giftsFirestore';
 import { addLevelXp } from '../../lib/profileFirestore';
@@ -40,6 +41,8 @@ export function ReelGiftControls({
 }: Props) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
+  const authReady = useAuthStore((state) => state.ready);
+  const navigate = useNavigate();
   const setCoins = useAuthStore((state) => state.setCoins);
   const coins = profile?.coinsBalance ?? 0;
 
@@ -141,6 +144,11 @@ export function ReelGiftControls({
           onClick={(event) => {
             event.stopPropagation();
             if (isSelf) return;
+            if (!authReady) return;
+            if (!profile) {
+              navigate('/login');
+              return;
+            }
             setOpenGifts((value) => !value);
             setGiftError(null);
             setRechargeNeeded(null);

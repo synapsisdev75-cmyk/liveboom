@@ -530,9 +530,9 @@ service cloud.firestore {
           || exists(/databases/$(database)/documents/users/$(authorUid)/followers/$(request.auth.uid));
       }
       function canReadPost() {
-        return signedIn() && (
+        return resource.data.visibility == 'public'
+          || (signedIn() && (
           resource.data.authorUid == request.auth.uid
-          || resource.data.visibility == 'public'
           || resource.data.visibility == null
           || (
             resource.data.visibility == 'friends'
@@ -545,7 +545,7 @@ service cloud.firestore {
             resource.data.visibility == 'circle'
             && isCircleViewer(resource.data.authorUid)
           )
-        );
+        ));
       }
 
       function loadedPost() {

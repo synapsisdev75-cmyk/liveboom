@@ -24,7 +24,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
 import { SignedOutAccountPanel } from '../components/account/SignedOutAccountPanel';
 import { InAppFeedbackModal } from '../components/legal/InAppFeedbackModal';
@@ -202,6 +202,7 @@ export function ProfileView() {
   const profile = useAuthStore((state) => state.profile);
   const setProfile = useAuthStore((state) => state.setProfile);
   const logout = useAuthStore((state) => state.logout);
+  const navigate = useNavigate();
   const setToast = useUiStore((state) => state.setToast);
   const [searchParams] = useSearchParams();
   const forceComplete = searchParams.get('completar') === '1' || !profile?.birthDate;
@@ -943,7 +944,7 @@ export function ProfileView() {
             icon={<LogOut size={18} />}
             title={t('settings.logOut')}
             subtitle={t('settings.logOutSub')}
-            onClick={() => void logout()}
+            onClick={() => void logout().then(() => navigate('/explorar'))}
           />
           <LanguageControl variant="row" />
           </div>

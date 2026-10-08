@@ -373,6 +373,13 @@ export function MainLayout() {
   const navigate = useNavigate();
   const onMessages = isMessagesPath(location.pathname);
   const onExplore = location.pathname.startsWith('/explorar');
+  const authReady = useAuthStore((state) => state.ready);
+  useEffect(() => {
+    if (!authReady || profile) return;
+    if (location.pathname === '/' || location.pathname === '/inicio') {
+      navigate('/explorar', { replace: true });
+    }
+  }, [authReady, profile, location.pathname, navigate]);
   const onProfilePage =
     location.pathname.startsWith('/u/') ||
     (location.pathname.startsWith('/perfil') && !location.pathname.startsWith('/perfil/editar'));
@@ -668,7 +675,7 @@ export function MainLayout() {
                 type="button"
                 onClick={() => {
                   setMenuOpen(false);
-                  void logout();
+                  void logout().then(() => navigate('/explorar'));
                 }}
                 className="mt-2 inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-fuchsia-400/40 text-xs font-semibold text-fuchsia-200"
               >

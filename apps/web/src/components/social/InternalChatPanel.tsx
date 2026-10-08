@@ -2149,7 +2149,10 @@ export function InternalChatPanel({
   if (!profile) {
     return (
       <section className="rounded-2xl border border-white/10 bg-zinc-900 p-4 text-sm text-zinc-400">
-        Inicia sesión para chatear.
+        <Link to="/login" className="font-semibold text-cyan-300 underline">
+          Inicia sesión
+        </Link>{' '}
+        para chatear.
       </section>
     );
   }

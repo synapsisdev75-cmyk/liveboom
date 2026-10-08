@@ -71,6 +71,9 @@ function viewersLabel(count: number) {
 export function ExplorePlazaRailButton({ postId }: { postId: string }) {
   const open = usePlazaUi((state) => state.open && state.postId === postId);
   const viewers = usePlazaUi((state) => (state.postId === postId ? state.viewers : 0));
+  const profile = useAuthStore((state) => state.profile);
+  const authReady = useAuthStore((state) => state.ready);
+  const navigate = useNavigate();
   return (
     <div className="relative flex flex-col items-center gap-[var(--lb-action-gap,0.2rem)]">
       <div className="relative">
@@ -78,6 +81,11 @@ export function ExplorePlazaRailButton({ postId }: { postId: string }) {
           type="button"
           onClick={(event) => {
             event.stopPropagation();
+            if (!authReady) return;
+            if (!profile) {
+              navigate('/login');
+              return;
+            }
             usePlazaUi.setState({ postId, open: !open });
           }}
           className={`lb-action-rail__btn grid place-items-center rounded-full shadow-lg backdrop-blur-sm transition ${
