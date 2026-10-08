@@ -2937,19 +2937,50 @@ html:has(.lb-legal-page) #root {
   animation: lb-auth-pedestal-glow 5.5s ease-in-out infinite;
 }
 
-.lb-auth-stage__mascot {
+.lb-auth-mascot {
   position: absolute;
   left: 4%;
   bottom: 10%;
   z-index: 4;
   width: min(34%, 14.5rem);
+  pointer-events: auto;
+  animation: lb-auth-float-soft 5.2s ease-in-out infinite;
+}
+
+.lb-auth-stage__mascot {
+  position: relative;
+  display: block;
+  width: 100%;
   height: auto;
   object-fit: contain;
   filter:
     drop-shadow(0 0 16px rgba(255, 80, 160, 0.4))
     drop-shadow(0 0 20px rgba(56, 189, 248, 0.28))
     drop-shadow(0 18px 28px rgba(0, 0, 0, 0.55));
-  animation: lb-auth-float-soft 5.2s ease-in-out infinite;
+}
+
+.lb-auth-mascot__fuse {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(2.55);
+  transform-origin: center center;
+  filter:
+    drop-shadow(0 0 16px rgba(255, 80, 160, 0.4))
+    drop-shadow(0 18px 28px rgba(0, 0, 0, 0.55));
+}
+
+.lb-auth-mascot:hover .lb-auth-mascot__fuse {
+  opacity: 1;
+}
+
+.lb-auth-mascot:hover .lb-auth-stage__mascot {
+  opacity: 0;
 }
 
 .lb-auth-pc-fan {
@@ -3759,7 +3790,7 @@ html:has(.lb-legal-page) #root {
     left: 30%;
   }
 
-  .lb-auth-stage__mascot {
+  .lb-auth-mascot {
     width: min(32%, 15rem);
     left: 4%;
     bottom: 9%;
@@ -3834,7 +3865,7 @@ html:has(.lb-legal-page) #root {
 
   .lb-auth-pc-fan {
     width: min(42%, 9.5rem);
-    max-height: min(70%, 11rem);
+    max-height: min(7% 11rem);
     left: 34%;
     bottom: 3%;
   }
@@ -3843,7 +3874,7 @@ html:has(.lb-legal-page) #root {
     display: none;
   }
 
-  .lb-auth-stage__mascot {
+  .lb-auth-mascot {
     width: min(30%, 6.5rem);
     bottom: 8%;
   }
@@ -3866,7 +3897,7 @@ html:has(.lb-legal-page) #root {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lb-auth-stage__mascot,
+  .lb-auth-mascot,
   .lb-auth-stage__pedestal,
   .lb-auth-prop,
   .lb-auth-main,

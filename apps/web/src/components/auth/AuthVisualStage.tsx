@@ -2,6 +2,18 @@ type AuthVisualStageProps = {
   isEs: boolean;
 };
 
+function playMascotFuse(video: HTMLVideoElement | null) {
+  if (!video || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  video.currentTime = 0;
+  void video.play();
+}
+
+function stopMascotFuse(video: HTMLVideoElement | null) {
+  if (!video) return;
+  video.pause();
+  video.currentTime = 0;
+}
+
 /** Zona promocional: logo, tipografía mockup, pedestal, mascota, PC, teléfono y props. */
 export function AuthVisualStage({ isEs }: AuthVisualStageProps) {
   return (
@@ -61,14 +73,28 @@ export function AuthVisualStage({ isEs }: AuthVisualStageProps) {
           height={343}
           decoding="async"
         />
-        <img
-          src="/assets/auth/mascot-bomb.png"
-          alt=""
-          className="lb-auth-stage__mascot"
-          width={776}
-          height={790}
-          decoding="async"
-        />
+        <div
+          className="lb-auth-mascot"
+          onMouseEnter={(event) => playMascotFuse(event.currentTarget.querySelector('video'))}
+          onMouseLeave={(event) => stopMascotFuse(event.currentTarget.querySelector('video'))}
+        >
+          <img
+            src="/assets/auth/mascot-bomb.png"
+            alt=""
+            className="lb-auth-stage__mascot"
+            width={776}
+            height={790}
+            decoding="async"
+          />
+          <video
+            className="lb-auth-mascot__fuse"
+            src="/assets/auth/mascot-fuse.webm"
+            muted
+            playsInline
+            loop
+            preload="metadata"
+          />
+        </div>
         <span className="lb-auth-stage__pc-glow" />
         <div className="lb-auth-pc-fan">
           <img
