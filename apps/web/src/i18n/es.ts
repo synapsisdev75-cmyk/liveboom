@@ -95,6 +95,12 @@ export const es = {
     logOut: 'Cerrar sesión',
     viewPublicProfile: 'Ver mi perfil público',
     signInToManage: 'para administrar tu cuenta.',
+    signedOutLead: 'Tu sesión está',
+    signedOutAccent: 'cerrada',
+    signedOutBody:
+      'Inicia sesión para administrar tu cuenta, acceder a tu perfil, billetera, seguridad y contenido de LiveBoom.',
+    signedOutNote: 'Puedes seguir explorando, pero algunas funciones estarán limitadas.',
+    signedOutSecurity: 'Seguridad',
     completeProfile: 'Completa tu @usuario y fecha de nacimiento, luego guarda los cambios.',
     referral: 'Programa de referidos',
     username: 'Nombre de usuario',

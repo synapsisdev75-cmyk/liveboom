@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DeleteAccountSection } from '../components/account/DeleteAccountSection';
+import { SignedOutAccountPanel } from '../components/account/SignedOutAccountPanel';
 import { InAppFeedbackModal } from '../components/legal/InAppFeedbackModal';
 import { CallSettingsPanel } from '../components/social/CallSettingsPanel';
 import { MyReelsPanel } from '../components/feed/MyReelsPanel';
@@ -579,14 +580,7 @@ export function ProfileView() {
   }
 
   if (!profile && !firebaseUser) {
-    return (
-      <div className="lb-panel rounded-2xl p-6 text-center text-sm text-zinc-400">
-          <Link to="/login" className="text-cyan-400 underline">
-            {t('common.signIn')}
-          </Link>{' '}
-          {t('settings.signInToManage')}
-      </div>
-    );
+    return <SignedOutAccountPanel />;
   }
 
   const emailVerified = Boolean(firebaseUser?.emailVerified);

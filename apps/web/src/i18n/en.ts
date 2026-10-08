@@ -97,6 +97,12 @@ export const en: Catalog = {
     logOut: 'Log out',
     viewPublicProfile: 'View my public profile',
     signInToManage: 'to manage your account.',
+    signedOutLead: 'Your session is',
+    signedOutAccent: 'closed',
+    signedOutBody:
+      'Sign in to manage your account and access your profile, wallet, security and LiveBoom content.',
+    signedOutNote: 'You can keep exploring, but some features will be limited.',
+    signedOutSecurity: 'Security',
     completeProfile: 'Complete your @username and date of birth, then save your changes.',
     referral: 'Referral program',
     username: 'Username',
