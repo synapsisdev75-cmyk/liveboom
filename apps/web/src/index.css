@@ -3836,63 +3836,98 @@ html:has(.lb-legal-page) #root {
   }
 }
 
-@media (max-width: 767px) and (min-height: 780px) {
+@media (max-width: 767px) and (orientation: portrait) {
+  .lb-auth-page {
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
   .lb-auth-hero {
+    display: none;
+  }
+
+  .lb-auth-shell {
+    height: 100%;
+    min-height: 0;
+    padding: 0.55rem 0.75rem 0.65rem;
+  }
+
+  .lb-auth-main {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: min(100%, 22rem);
+    max-height: 100%;
+    overflow: hidden;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .lb-auth-card-wrap {
     display: flex;
-    order: 2;
-    flex: 0 0 auto;
-    min-height: 12rem;
-    max-height: 34vh;
-    padding-bottom: 0.25rem;
+    align-items: center;
+    width: min(100%, 22rem);
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    margin-inline: auto;
+    overflow: hidden;
+    padding: 0.1rem;
   }
 
-  .lb-auth-hero__copy {
-    display: none;
+  .lb-auth-card {
+    width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    padding: clamp(0.5rem, 1.5dvh, 1rem) clamp(0.7rem, 3.2vw, 1.1rem);
   }
 
-  .lb-auth-stage {
-    position: absolute;
-    inset: 0;
+  .lb-auth-card__logo {
+    width: min(38%, 6.6rem);
   }
 
-  .lb-auth-stage__phone {
-    height: min(88%, 13rem);
-    max-width: min(34%, 7.5rem);
-    left: auto;
-    right: 4%;
-    bottom: 2%;
+  .lb-auth-card__title {
+    margin-top: 0.3rem;
+    font-size: clamp(0.98rem, 2.5dvh, 1.2rem);
   }
 
-  .lb-auth-pc-fan {
-    width: min(42%, 9.5rem);
-    max-height: min(7% 11rem);
-    left: 34%;
-    bottom: 3%;
+  .lb-auth-card__subtitle {
+    margin-top: 0.15rem;
+    font-size: clamp(0.7rem, 1.7dvh, 0.84rem);
   }
 
-  .lb-auth-pc-fan__card {
-    display: none;
+  .lb-auth-card__form {
+    gap: clamp(0.32rem, 1dvh, 0.55rem);
+    margin-top: clamp(0.4rem, 1.3dvh, 0.75rem);
   }
 
-  .lb-auth-mascot {
-    width: min(30%, 6.5rem);
-    bottom: 8%;
+  .lb-auth-field,
+  .lb-auth-cta,
+  .lb-auth-social__btn,
+  .lb-auth-create {
+    min-height: clamp(2.15rem, 5.2dvh, 2.85rem);
   }
 
-  .lb-auth-prop--heart-a,
-  .lb-auth-prop--heart-b,
-  .lb-auth-prop--star-b {
-    display: none;
+  .lb-auth-create {
+    margin-top: clamp(0.35rem, 1dvh, 0.6rem);
+  }
+
+  .lb-auth-legal,
+  .lb-auth-card > footer {
+    font-size: clamp(0.58rem, 1.35dvh, 0.72rem);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .lb-auth-social {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 767px) and (orientation: landscape) {
   .lb-auth-mobile-logo {
     width: min(36vw, 8.5rem);
-  }
-
-  .lb-auth-hero {
-    display: none;
   }
 }
 
@@ -3914,6 +3949,401 @@ html:has(.lb-legal-page) #root {
 @media (min-width: 768px) {
   .lb-auth-shell {
     overflow: visible;
+  }
+}
+
+/* Tablet vertical: solo la tarjeta de inicio de sesión. */
+@media (min-width: 768px) and (max-width: 1180px) and (orientation: portrait) {
+  .lb-auth-page {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .lb-auth-hero {
+    display: none;
+  }
+
+  .lb-auth-shell {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding-inline: 1.25rem;
+  }
+
+  .lb-auth-main {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: min(100%, 32rem);
+    max-height: 100%;
+    align-self: center;
+    overflow: hidden;
+    justify-content: center;
+    padding: 0.5rem 0;
+  }
+
+  .lb-auth-card-wrap {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    padding: 0.35rem 0.2rem;
+  }
+}
+
+/* Tablet horizontal estrecha: dos columnas, sin que el teléfono tape el formulario. */
+@media (min-width: 768px) and (max-width: 1099px) and (orientation: landscape) {
+  .lb-auth-hero {
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .lb-auth-stage {
+    overflow: hidden;
+  }
+
+  .lb-auth-shell {
+    overflow: hidden;
+  }
+
+  .lb-auth-main {
+    flex: 0 0 46%;
+    max-width: 26rem;
+    min-width: 0;
+  }
+
+  .lb-auth-card-wrap {
+    padding: 0.35rem 0.15rem;
+    min-width: 0;
+  }
+
+  .lb-auth-card {
+    min-width: 0;
+  }
+
+  .lb-auth-social__btn {
+    min-width: 0;
+    padding-inline: 0.35rem;
+    font-size: 0.72rem;
+  }
+
+  .lb-auth-hero__logo {
+    width: min(78%, 11rem);
+  }
+
+  .lb-auth-hero__line {
+    font-size: clamp(1.7rem, 3vw, 2.45rem);
+  }
+
+  .lb-auth-stage__phone {
+    height: min(68%, 20rem);
+    max-width: min(32%, 10rem);
+    right: 1%;
+  }
+
+  .lb-auth-pc-fan {
+    left: 22%;
+    width: min(44%, 15rem);
+    max-height: min(62%, 18rem);
+  }
+
+  .lb-auth-pc-fan__card,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card {
+    display: block;
+    opacity: 1;
+  }
+
+  .lb-auth-pc-fan__card--1,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card--1 {
+    transform: translate3d(-70%, -120%, 0) rotate(-14deg) scale(1);
+  }
+
+  .lb-auth-pc-fan__card--2,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card--2 {
+    transform: translate3d(4%, -155%, 0) rotate(-2deg) scale(1);
+  }
+
+  .lb-auth-pc-fan__card--3,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card--3 {
+    transform: translate3d(68%, -108%, 0) rotate(13deg) scale(1);
+  }
+
+  .lb-auth-mascot {
+    width: min(26%, 8.5rem);
+    left: 2%;
+    bottom: 8%;
+  }
+}
+
+/* Teléfono horizontal: escenario y tarjeta caben en la altura, sin recortar el formulario. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .lb-auth-page {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .lb-auth-shell {
+    flex-direction: row;
+    align-items: stretch;
+    height: 100%;
+    min-height: 0;
+    gap: 0.35rem;
+    overflow: hidden;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .lb-auth-hero {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    max-height: none;
+    overflow: hidden;
+    padding: 0.15rem;
+  }
+
+  .lb-auth-hero__logo {
+    width: min(52%, 8rem);
+  }
+
+  .lb-auth-hero__line {
+    font-size: clamp(1.25rem, 4.2vh, 1.85rem);
+  }
+
+  .lb-auth-hero__headline {
+    margin-top: 0.15rem;
+  }
+
+  .lb-auth-stage {
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .lb-auth-main {
+    flex: 0 0 auto;
+    width: clamp(13.5rem, 30vw, 16.25rem);
+    max-width: min(32%, 16.25rem);
+    min-width: 0;
+    height: auto;
+    max-height: calc(100dvh - 0.8rem);
+    align-self: center;
+    margin-inline-end: clamp(0.45rem, 2vw, 0.85rem);
+    overflow: hidden;
+    padding: 0.1rem 0;
+    justify-content: center;
+  }
+
+  .lb-auth-card-wrap {
+    height: auto;
+    max-height: 100%;
+    width: 100%;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .lb-auth-card {
+    max-height: 100%;
+    overflow: hidden;
+    padding: 0.18rem 0.5rem 0.2rem;
+  }
+
+  .lb-auth-card__logo {
+    width: min(30%, 3.4rem);
+  }
+
+  .lb-auth-card__title {
+    margin-top: 0.1rem;
+    font-size: 0.86rem;
+  }
+
+  .lb-auth-card__subtitle {
+    display: none;
+  }
+
+  .lb-auth-card__form {
+    gap: 0.18rem;
+    margin-top: 0.2rem;
+  }
+
+  .lb-auth-field,
+  .lb-auth-cta,
+  .lb-auth-social__btn,
+  .lb-auth-create {
+    min-height: 1.48rem;
+  }
+
+  .lb-auth-social {
+    grid-template-columns: auto auto;
+    justify-content: center;
+    gap: 0.65rem;
+  }
+
+  .lb-auth-social__btn {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0;
+    gap: 0;
+  }
+
+  .lb-auth-social__btn span {
+    display: none;
+  }
+
+  .lb-auth-social__btn svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .lb-auth-legal,
+  .lb-auth-card > footer {
+    font-size: 0.55rem;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .lb-auth-legal {
+    margin-top: 0.2rem;
+  }
+
+  .lb-auth-card > footer {
+    margin-top: 0.15rem;
+    padding-top: 0.2rem;
+  }
+
+  .lb-auth-stage__phone {
+    left: auto;
+    right: 0.35rem;
+    bottom: 0;
+    height: auto;
+    max-height: 90%;
+    width: auto;
+    max-width: min(26%, 7.4rem);
+    object-fit: contain;
+    object-position: bottom right;
+  }
+
+  .lb-auth-stage__phone-glow {
+    left: auto;
+    right: 1%;
+    width: min(18%, 5.5rem);
+  }
+
+  .lb-auth-pc-fan {
+    left: auto;
+    right: calc(min(26%, 7.4rem) + 1.85rem);
+    bottom: 0;
+    width: min(36%, 10rem);
+    max-height: 76%;
+  }
+
+  .lb-auth-prop--gift {
+    left: calc(min(15%, 4.2rem) + 0.45rem);
+    right: auto;
+    bottom: 1%;
+    width: min(12%, 3.2rem);
+    z-index: 7;
+  }
+
+  .lb-auth-create {
+    margin-top: 0.18rem;
+    font-size: 0.74rem;
+  }
+
+  .lb-auth-divider {
+    margin: 0.2rem 0;
+  }
+
+  .lb-auth-pc-fan__card,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card {
+    opacity: 1;
+    width: 34%;
+  }
+
+  .lb-auth-pc-fan__card--1,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card--1 {
+    transform: translate3d(-28%, -72%, 0) rotate(-12deg) scale(1);
+  }
+
+  .lb-auth-pc-fan__card--2,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card--2 {
+    transform: translate3d(6%, -96%, 0) rotate(-2deg) scale(1);
+  }
+
+  .lb-auth-pc-fan__card--3,
+  .lb-auth-pc-fan:hover .lb-auth-pc-fan__card--3 {
+    transform: translate3d(18%, -64%, 0) rotate(10deg) scale(1);
+  }
+
+  .lb-auth-mascot {
+    width: min(15%, 4.2rem);
+    left: 0;
+    right: auto;
+    bottom: 8%;
+    z-index: 8;
+  }
+
+  .lb-auth-stage__pedestal {
+    width: min(58%, 14rem);
+    left: 10%;
+    right: auto;
+    bottom: 0;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 400px) {
+  .lb-auth-card__logo {
+    width: min(22%, 2.4rem);
+  }
+
+  .lb-auth-card__title {
+    font-size: 0.78rem;
+  }
+
+  .lb-auth-card__form {
+    gap: 0.1rem;
+    margin-top: 0.1rem;
+  }
+
+  .lb-auth-field,
+  .lb-auth-cta,
+  .lb-auth-create {
+    min-height: 1.35rem;
+  }
+
+  .lb-auth-social__btn {
+    width: 2.4rem;
+    min-width: 2.4rem;
+    min-height: 2.4rem;
+  }
+
+  .lb-auth-divider {
+    margin: 0.08rem 0;
+  }
+
+  .lb-auth-legal {
+    margin-top: 0.1rem;
+  }
+
+  .lb-auth-legal,
+  .lb-auth-card > footer {
+    font-size: 0.48rem;
+    line-height: 1.12;
+  }
+
+  .lb-auth-card > footer {
+    margin-top: 0.1rem;
+    padding-top: 0.12rem;
+  }
+
+  .lb-auth-card > footer > div {
+    gap: 0.05rem 0.45rem;
   }
 }
 

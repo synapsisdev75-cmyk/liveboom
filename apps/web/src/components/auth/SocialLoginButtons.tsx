@@ -15,11 +15,23 @@ export function SocialLoginButtons({
 }: SocialLoginButtonsProps) {
   return (
     <div className="lb-auth-social">
-      <button type="button" disabled={busy} className="lb-auth-social__btn" onClick={onGoogle}>
+      <button
+        type="button"
+        disabled={busy}
+        className="lb-auth-social__btn"
+        aria-label={googleLabel}
+        onClick={onGoogle}
+      >
         <GoogleIcon />
         <span>{googleLabel}</span>
       </button>
-      <button type="button" disabled={busy} className="lb-auth-social__btn" onClick={onApple}>
+      <button
+        type="button"
+        disabled={busy}
+        className="lb-auth-social__btn"
+        aria-label={isEs ? 'Continuar con Apple' : 'Continue with Apple'}
+        onClick={onApple}
+      >
         <AppleIcon />
         <span>{isEs ? 'Continuar con Apple' : 'Continue with Apple'}</span>
       </button>
