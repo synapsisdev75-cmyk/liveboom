@@ -97,6 +97,12 @@ export const pt: Catalog = {
     logOut: 'Sair',
     viewPublicProfile: 'Ver meu perfil público',
     signInToManage: 'para gerenciar sua conta.',
+    signedOutLead: 'Sua sessão está',
+    signedOutAccent: 'encerrada',
+    signedOutBody:
+      'Entre para administrar sua conta e acessar perfil, carteira, segurança e o conteúdo do LiveBoom.',
+    signedOutNote: 'Você pode continuar explorando, mas algumas funções estarão limitadas.',
+    signedOutSecurity: 'Segurança',
     completeProfile: 'Complete seu @usuário e data de nascimento e salve as alterações.',
     referral: 'Programa de indicação',
     username: 'Nome de usuário',
