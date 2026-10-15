@@ -54,12 +54,12 @@ export function GiftStackedAlphaPanel() {
     <div className="lb-panel flex flex-wrap items-center gap-3 rounded-2xl px-4 py-3 text-sm">
       <Smartphone size={18} className="shrink-0 text-cyan-300" />
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-white">Versión iPhone / Safari (sin fondo)</p>
+        <p className="font-semibold text-white">Versión iPhone real (sin fondo)</p>
         <p className="text-xs text-zinc-400">
           {status
             ? done
-              ? `Lista para los ${status.total} regalos.`
-              : `${status.ready} de ${status.total} listas · ${status.pending} en proceso (el servidor las genera solo).`
+              ? `Lista para los ${status.total} regalos. Comprueba en un iPhone físico; el simulador no cuenta.`
+              : `${status.ready} de ${status.total} listas · ${status.pending} en proceso. Regenera los MP4 iPhone (el WebM de Android no se toca).`
             : 'Consultando…'}
         </p>
         {status?.failed.length ? (

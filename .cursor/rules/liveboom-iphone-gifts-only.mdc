@@ -1,0 +1,48 @@
+---
+description: Regalos en iPhone — solo dispositivo real; no tocar Android ni otros módulos
+alwaysApply: true
+---
+
+# LiveBoom: regalos iPhone (solo iPhone)
+
+Este trabajo es **exclusivo de iPhone / WebKit**. No autoriza cambios en Android, escritorio, editor de regalos, Publicaciones, Boom Clip, Flash Boom, LIVE 16:9, Explorar ni regalos de Android.
+
+## Experiencia real (no negociable)
+
+- El **simulador iOS / Safari de Mac no cuenta**. Ahí el WebM VP9 a veces muestra alfa (decoder de software). En un **iPhone físico** WebKit **no aplica** el alfa del WebM y pinta el fondo gris.
+- Comprobar siempre en **dispositivo real**. Si en el simulador se ve bien y en el iPhone no, el bug de iPhone sigue abierto.
+- Android y Chrome **ya están bien** con el WebM original. **No** reconvertir ni resubir esos WebM para este bug.
+
+## Qué hay que regenerar
+
+No se regeneran los originales ni el WebM de Android.
+
+Sí hay que regenerar **solo el MP4 compañero de iPhone** (stacked alpha: color arriba + máscara abajo, `media.stackedAlphaAsset`, archivos `*-ios2-*.mp4`):
+
+1. Desplegar **functions** con el encoder v2 (rgba antes de scale).
+2. Super Admin → Regalos → **Generar versión iPhone**, o esperar el cron `processGiftStackedAlphaQueue`.
+3. Probar el jaguar / cualquier regalo **en un iPhone real**.
+
+## Archivos permitidos (copiar / compilar solo esta sección)
+
+| Archivo | Rol |
+|---------|-----|
+| `apps/web/src/lib/stackedAlphaVideo.ts` | Detectar WebKit y componer alfa en WebGL |
+| `apps/web/src/lib/giftMedia.ts` | Elegir `stackedAlphaAsset` (sin token) |
+| `backend/src/lib/giftStackedAlpha.js` | Generar el MP4 iPhone |
+| `backend/src/routes/gifts.js` | Solo rutas `stacked-alpha/*` |
+| `apps/web/src/components/admin/GiftStackedAlphaPanel.tsx` | Botón “Generar versión iPhone” |
+| En `FloatingGift.tsx` | Solo `stackedSrc`, `STACKED_SOURCE_STYLE`, `webkit-playsinline` |
+
+En `FloatingGift.tsx` **no** tocar `animScale`, `auto169`, `immersive`, ambient, ni CSS 16:9.
+
+## Prohibido
+
+- `giftAlphaConvert` / editor Super Admin / `GiftCatalogPreview` / `giftContentBounds`
+- WebM de producción de Android
+- Publicaciones, Boom Clip, Flash Boom, LIVE sala, Explorar, chat (salvo el overlay de regalo iPhone)
+- “Arreglar” el simulador o Chrome para que imite el iPhone
+
+## Cursor en la Mac
+
+Si la tarea es transparencia de regalos en iPhone: **solo** los archivos de la tabla. Compilar/probar esa sección. No mezclar otros módulos. El criterio de listo es el **iPhone físico**, no el simulador.
