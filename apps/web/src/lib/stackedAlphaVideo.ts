@@ -5,11 +5,11 @@
  */
 
 let cachedNeed: boolean | null = null;
-let broken = false;
+const brokenUrls = new Set<string>();
 
-/** Si la versión stacked no carga (red / CORS), los siguientes regalos vuelven al WebM. */
-export function markStackedAlphaBroken() {
-  broken = true;
+/** Si un MP4 stacked falla (red / CORS), solo ese URL se descarta. El resto de regalos sigue. */
+export function markStackedAlphaBroken(url?: string) {
+  if (url) brokenUrls.add(url);
 }
 
 function isWebKitWithoutWebmAlpha(): boolean {
@@ -22,16 +22,6 @@ function isWebKitWithoutWebmAlpha(): boolean {
   return /Safari\//.test(ua) && /AppleWebKit\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS|Android/i.test(ua);
 }
 
-function webglAvailable(): boolean {
-  try {
-    const gl = document.createElement('canvas').getContext('webgl', { premultipliedAlpha: true });
-    gl?.getExtension('WEBGL_lose_context')?.loseContext();
-    return Boolean(gl);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Clave de caché propia para la petición CORS: los primeros MP4 se sirvieron sin CORS con
  * caché inmutable de 1 año, y el navegador reutilizaría esa copia sin cabeceras CORS.
@@ -42,10 +32,12 @@ export function stackedAlphaRequestUrl(url: string): string {
 }
 
 /** true en iPhone / iPad / Safari: usar la versión stacked alpha si el regalo la tiene. */
-export function needsStackedAlphaVideo(): boolean {
-  if (broken) return false;
+export function needsStackedAlphaVideo(url?: string): boolean {
+  if (url && brokenUrls.has(url)) return false;
   if (cachedNeed != null) return cachedNeed;
-  cachedNeed = typeof document !== 'undefined' && isWebKitWithoutWebmAlpha() && webglAvailable();
+  // WebGL se comprueba al componer; aquí solo decidimos la plataforma.
+  // Cachear `false` por un fallo puntual de WebGL dejaba iPhone en el WebM opaco.
+  cachedNeed = typeof document !== 'undefined' && isWebKitWithoutWebmAlpha();
   return cachedNeed;
 }
 
@@ -131,7 +123,9 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
       try {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
       } catch (error) {
-        if (error instanceof DOMException && error.name === 'SecurityError') markStackedAlphaBroken();
+        if (error instanceof DOMException && error.name === 'SecurityError') {
+          markStackedAlphaBroken(video.currentSrc || video.src);
+        }
         return false;
       }
       gl.uniform1f(uHalfTexel, 0.5 / vh);

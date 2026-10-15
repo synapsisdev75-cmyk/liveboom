@@ -258,6 +258,22 @@ try {
       console.log('[liveboom] gift alpha queue', stats);
     },
   );
+  module.exports.processGiftStackedAlphaQueue = onSchedule(
+    {
+      region: 'us-central1',
+      schedule: 'every 2 minutes',
+      memory: '4GiB',
+      timeoutSeconds: 300,
+      maxInstances: 1,
+      cpu: 2,
+      ephemeralStorage: '4GiB',
+    },
+    async () => {
+      const { processStackedAlphaQueue } = require('./src/lib/giftStackedAlpha');
+      const stats = await processStackedAlphaQueue({ deadlineMs: Date.now() + 240_000, limit: 6 });
+      if (stats?.processed) console.log('[liveboom] gift stacked alpha', stats);
+    },
+  );
   module.exports.expirePromoCampaigns = onSchedule(
     {
       region: 'us-central1',

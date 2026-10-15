@@ -27,7 +27,7 @@ import {
 } from './liveboomGifts';
 import { LEVEL_TROPHIES, LEVEL_TROPHY_COINS } from './levelTrophies';
 import { normalizeGiftLayout, serializeGiftLayout } from './giftLayout';
-import { normalizeGiftMedia, serializeGiftMedia } from './giftMedia';
+import { normalizeGiftMedia, preserveGiftStackedAlpha, serializeGiftMedia } from './giftMedia';
 
 export type GiftPlacement = 'live' | 'post' | 'boom_clip' | 'flashboom' | 'call' | 'chat';
 
@@ -223,7 +223,7 @@ export function mergeGiftsForConcurrentPublish(
   }
   for (const gift of localGifts) {
     if (!gift?.id || RETIRED_GIFT_IDS.has(gift.id)) continue;
-    byId.set(gift.id, gift);
+    byId.set(gift.id, preserveGiftStackedAlpha(byId.get(gift.id), gift));
   }
   return [...byId.values()];
 }

@@ -81,9 +81,39 @@ function sourceHttpUrl(src) {
   return null;
 }
 
+function giftAssetKey(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const noHash = raw.split('#')[0];
+  const encoded = noHash.match(/\/o\/([^?]+)/);
+  if (encoded && encoded[1]) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      return encoded[1];
+    }
+  }
+  const gs = noHash.match(/^gs:\/\/[^/]+\/(.+)$/);
+  if (gs && gs[1]) return gs[1];
+  return noHash.split('?')[0];
+}
+
+function sameGiftAsset(a, b) {
+  const left = giftAssetKey(a);
+  const right = giftAssetKey(b);
+  return Boolean(left && right && left === right);
+}
+
+/** v2: rgba antes de scale (v1 podía tirar el alfa y iPhone veía el fondo gris). */
 function stackedObjectPath(giftId, src) {
-  const hash = createHash('sha1').update(src).digest('hex').slice(0, 12);
-  return `config/gifts/${giftId}-ios-${hash}.mp4`;
+  const hash = createHash('sha1').update(`v2:${giftAssetKey(src) || src}`).digest('hex').slice(0, 12);
+  return `config/gifts/${giftId}-ios2-${hash}.mp4`;
+}
+
+function isCurrentStackedAsset(url, giftId, src) {
+  if (!url || !giftId || !src) return false;
+  const expected = stackedObjectPath(giftId, src);
+  return giftAssetKey(url) === expected || String(url).includes(`/${giftId}-ios2-`);
 }
 
 function runFfmpeg(bin, args, timeoutMs) {
@@ -126,19 +156,37 @@ function evenScaleFilter(width, height) {
   return `scale=${even(w)}:${even(h)}:flags=lanczos`;
 }
 
-async function encodeStacked(ffmpegPath, input, output) {
-  const probe = await probeFile(input);
-  const video = (probe.streams || []).find((s) => s.codec_type === 'video');
-  if (!video) throw new Error('El archivo no tiene video');
-  const codec = String(video.codec_name || '').toLowerCase();
-  const decoder = codec === 'vp9' ? ['-c:v', 'libvpx-vp9'] : codec === 'vp8' ? ['-c:v', 'libvpx'] : [];
-  const hasAudio = (probe.streams || []).some((s) => s.codec_type === 'audio');
-  const filter = [
-    `[0:v]${evenScaleFilter(video.width, video.height)},format=yuva420p,split[c][a]`,
+/**
+ * rgba ANTES de scale: swscale sobre yuv/yuva puede tirar el canal alfa y el MP4
+ * iPhone queda con el fondo gris del color (el síntoma de la captura).
+ */
+function buildStackedFilter(video, alphaVideo) {
+  const colorScale = evenScaleFilter(video.width, video.height);
+  if (alphaVideo) {
+    const maskScale = evenScaleFilter(alphaVideo.width || video.width, alphaVideo.height || video.height);
+    return [
+      `[0:v:0]format=rgba,${colorScale},format=yuv420p[cc]`,
+      `[0:v:1]${maskScale},format=gray[m]`,
+      '[cc][m]vstack=inputs=2,format=yuv420p[v]',
+    ].join(';');
+  }
+  return [
+    `[0:v]format=rgba,${colorScale},format=yuva420p,split[c][a]`,
     '[a]alphaextract[m]',
     '[c]format=yuv420p[cc]',
     '[cc][m]vstack=inputs=2,format=yuv420p[v]',
   ].join(';');
+}
+
+async function encodeStacked(ffmpegPath, input, output) {
+  const probe = await probeFile(input);
+  const videos = (probe.streams || []).filter((s) => s && s.codec_type === 'video');
+  const video = videos[0];
+  if (!video) throw new Error('El archivo no tiene video');
+  const codec = String(video.codec_name || '').toLowerCase();
+  const decoder = codec === 'vp9' ? ['-c:v', 'libvpx-vp9'] : codec === 'vp8' ? ['-c:v', 'libvpx'] : [];
+  const hasAudio = (probe.streams || []).some((s) => s.codec_type === 'audio');
+  const filter = buildStackedFilter(video, videos.length >= 2 ? videos[1] : null);
   const args = [
     '-v', 'error', '-y',
     ...decoder,
@@ -164,7 +212,7 @@ async function patchCatalog(db, giftId, src, url) {
     const snap = await tx.get(ref);
     const gifts = Array.isArray(snap.data()?.gifts) ? snap.data().gifts : [];
     const next = gifts.map((gift) => {
-      if (String(gift?.id || '') !== giftId || playbackSrcFor(gift) !== src) return gift;
+      if (String(gift?.id || '') !== giftId || !sameGiftAsset(playbackSrcFor(gift), src)) return gift;
       patched = true;
       const media = gift.media && typeof gift.media === 'object' ? gift.media : {};
       return { ...gift, media: { ...media, stackedAlphaAsset: url, stackedAlphaSource: src } };
@@ -176,10 +224,13 @@ async function patchCatalog(db, giftId, src, url) {
 
 function needsStacked(gift) {
   const src = playbackSrcFor(gift);
-  if (!safeGiftId(gift?.id) || !sourceHttpUrl(src)) return false;
+  const giftId = safeGiftId(gift?.id);
+  if (!giftId || !sourceHttpUrl(src)) return false;
   if (!/\.(webm|mov|mp4)(\?|$)/i.test(src.split('#')[0])) return false;
   const media = gift.media && typeof gift.media === 'object' ? gift.media : {};
-  return !(media.stackedAlphaAsset && media.stackedAlphaSource === src);
+  if (!media.stackedAlphaAsset) return true;
+  if (!sameGiftAsset(media.stackedAlphaSource, src)) return true;
+  return !isCurrentStackedAsset(media.stackedAlphaAsset, giftId, src);
 }
 
 async function buildOne({ ffmpegPath, bucket, db, gift }) {
@@ -313,6 +364,9 @@ module.exports = {
   stackedObjectPath,
   needsStacked,
   evenScaleFilter,
+  buildStackedFilter,
+  giftAssetKey,
+  sameGiftAsset,
   encodeStacked,
   processStackedAlphaQueue,
   stackedAlphaStatus,

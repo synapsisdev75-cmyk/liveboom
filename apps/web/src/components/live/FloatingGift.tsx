@@ -385,7 +385,7 @@ function GiftVideoBurst({
     const onLoadedMeta = () => syncSize();
     const onError = () => {
       console.warn('[gift-video] load failed', playSrc);
-      if (stacked) markStackedAlphaBroken();
+      if (stacked) markStackedAlphaBroken(playSrc);
       finish();
     };
 
@@ -659,9 +659,9 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
   if (globalAnim) return null;
 
   const videoSrc = giftPlaybackSrc(gift?.media, gift?.video);
-  const stackedSrc = needsStackedAlphaVideo()
-    ? stackedAlphaRequestUrl(giftStackedAlphaSrc(gift?.media, videoSrc))
-    : '';
+  const stackedCandidate = giftStackedAlphaSrc(gift?.media, videoSrc);
+  const stackedRequest = stackedCandidate ? stackedAlphaRequestUrl(stackedCandidate) : '';
+  const stackedSrc = stackedRequest && needsStackedAlphaVideo(stackedRequest) ? stackedRequest : '';
   const device = giftLayoutDeviceFromViewport();
   const variant =
     layoutContext && isGiftLayoutVariantId(layoutContext)
