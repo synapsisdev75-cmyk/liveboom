@@ -79,7 +79,7 @@ type Props = {
   hideMediaInfo?: boolean;
   /** Barra de avance del video. No usarla en Flash Boom. */
   durationBar?: boolean;
-  /** Boom Clip / Publicaciones: deslizar encadenado (el siguiente video sigue al dedo). */
+  /** Boom Clip / Publicaciones / Explorar: deslizar encadenado (el siguiente video sigue al dedo). */
   chainSwipe?: boolean;
   /** Segundo inicial del primer video (continuar desde la tarjeta del feed). */
   initialStartSec?: number;
@@ -457,7 +457,7 @@ export function ReelFeedViewer({
             onNext: goNext,
             onPrev: goPrev,
             chain:
-              chainSwipe && !embedded && !exploreFastNav
+              chainSwipe && (!embedded || exploreFastNav)
                 ? {
                     prev: prevReel ? <ReelChainPeek item={prevReel} cover={peekCover} /> : null,
                     next: nextReel ? <ReelChainPeek item={nextReel} cover={peekCover} /> : null,

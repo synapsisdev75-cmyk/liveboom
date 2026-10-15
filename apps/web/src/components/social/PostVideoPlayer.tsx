@@ -975,7 +975,7 @@ export function PostVideoPlayer({
     }, 80);
   }, []);
 
-  const chain = !embedded && reelNavigation?.chain ? reelNavigation.chain : null;
+  const chain = reelNavigation?.chain ?? null;
   const chainShellRef = useRef<HTMLDivElement | null>(null);
   const chainPrevRef = useRef<HTMLDivElement | null>(null);
   const chainNextRef = useRef<HTMLDivElement | null>(null);
@@ -1730,10 +1730,11 @@ export function PostVideoPlayer({
       </div>
     ) : null;
 
-  const chainPeekClass =
-    'pointer-events-none fixed inset-0 z-[100] h-[100dvh] max-h-[100dvh] overflow-hidden bg-black';
+  const chainPeekClass = embedded
+    ? 'pointer-events-none absolute inset-0 z-10 overflow-hidden bg-black'
+    : 'pointer-events-none fixed inset-0 z-[100] h-[100dvh] max-h-[100dvh] overflow-hidden bg-black';
   const chainedChrome =
-    expandedChrome && chain && !embedded ? (
+    expandedChrome && chain ? (
       <>
         {chain.prev ? (
           <div
@@ -1766,7 +1767,7 @@ export function PostVideoPlayer({
       {overlayOnly ? (
         embedded ? (
           <div ref={wrapRef} className="relative h-full w-full overflow-hidden bg-black">
-            {expandedChrome}
+            {chainedChrome}
           </div>
         ) : (
           chainedChrome

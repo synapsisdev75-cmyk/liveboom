@@ -471,6 +471,7 @@ export function ExploreView() {
           embedded
           immersiveLandscapeLayout
           exploreFastNav
+          chainSwipe
           durationBar
           onIndexChange={onIndexChange}
           plaza={
