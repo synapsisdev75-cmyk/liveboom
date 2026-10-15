@@ -26,6 +26,17 @@ export function VoiceCallWave() {
   );
 }
 
+/** Foto de quien llama a pantalla completa y difuminada, como la llamada entrante del iPhone. */
+export function CallerPoster({ src }: { src: string | null | undefined }) {
+  const url = String(src || '').trim();
+  if (!/^(https?:|data:image\/|blob:|\/)/i.test(url)) return null;
+  return (
+    <div className="lb-call-poster" aria-hidden>
+      <img src={url} alt="" draggable={false} />
+    </div>
+  );
+}
+
 export function VoiceCallAvatar({ person }: { person: RingPerson }) {
   return (
     <div className="lb-voice-out-avatar">
@@ -53,6 +64,7 @@ export function VoiceCallFrame({
   onMaximize,
   onClose,
   maximized,
+  posterSrc,
 }: {
   children: ReactNode;
   actions: ReactNode;
@@ -61,11 +73,14 @@ export function VoiceCallFrame({
   onMaximize?: () => void;
   onClose?: () => void;
   maximized?: boolean;
+  /** Foto de fondo difuminada (solo llamada entrante). */
+  posterSrc?: string | null;
 }) {
   const screen = variant === 'in' ? 'lb-voice-in-screen' : 'lb-voice-out-screen';
   const body = variant === 'in' ? 'lb-voice-in-screen__body' : 'lb-voice-out-screen__body';
   return (
     <article className={`lb-voice-card is-float lb-voice-ring-screen ${screen} is-${variant}`} data-call-kind="voice" data-call-drag>
+      {posterSrc ? <CallerPoster src={posterSrc} /> : null}
       <CallWinBar
         showLogo={false}
         onMinimize={onMinimize}

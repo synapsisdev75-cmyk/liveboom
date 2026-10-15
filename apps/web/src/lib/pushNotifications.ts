@@ -3,6 +3,7 @@ import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { api } from './api';
 import { isAppInForeground, shouldSuppressMobileChatTrayNotify } from './chatNotifyContext';
 import { db } from './firebase';
+import { hasNativeCallUi } from './nativeCallUi';
 import {
   isNativeAndroidApp,
   showNativeSystemNotification,
@@ -30,6 +31,7 @@ async function persistToken(uid: string, token: string): Promise<void> {
     {
       token,
       platform: Capacitor.getPlatform(),
+      callUi: hasNativeCallUi(),
       updatedAt: serverTimestamp(),
       updatedAtMs: Date.now(),
     },
@@ -116,6 +118,8 @@ export async function registerPushNotifications(uid: string | null | undefined):
       const data = (ev.data || {}) as Record<string, string>;
       const channel = channelFromData(data);
       if (channel !== 'calls' && isAppInForeground()) return;
+      // Dentro de la app la llamada entrante ya suena en pantalla.
+      if (data.type === 'call_incoming' && isAppInForeground()) return;
       if (
         channel === 'messages' &&
         shouldSuppressMobileChatTrayNotify({

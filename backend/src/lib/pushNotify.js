@@ -31,7 +31,7 @@ async function listTokensForUids(uids) {
           const token = String(doc.data()?.token || doc.id || '').trim();
           if (!token || token.length < 20) return;
           tokens.push(token);
-          tokenOwners.set(token, { uid, docId: doc.id });
+          tokenOwners.set(token, { uid, docId: doc.id, callUi: doc.data()?.callUi === true });
         });
       } catch (err) {
         console.warn('[push] list tokens', uid, err.message);
@@ -62,8 +62,17 @@ async function sendPushToUsers({
   channel = 'general',
   data = {},
   imageUrl = null,
+  tokenFilter = null,
 }) {
-  const { tokens, tokenOwners } = await listTokensForUids(recipientUids);
+  const listed = await listTokensForUids(recipientUids);
+  const { tokenOwners } = listed;
+  // La app con pantalla de llamada nativa ya avisa la llamada perdida con foto: sin duplicado.
+  const isCallLog = String(data?.type || '') === 'call';
+  const tokens = listed.tokens.filter((token) => {
+    const meta = tokenOwners.get(token);
+    if (isCallLog && meta?.callUi) return false;
+    return typeof tokenFilter === 'function' ? tokenFilter(meta || {}) : true;
+  });
   if (!tokens.length) {
     console.warn('[push] no FCM tokens for recipients', recipientUids.length);
     return { sent: 0, failed: 0, skipped: true, tokens: 0 };
@@ -154,5 +163,8 @@ async function sendPushToUsers({
 
 module.exports = {
   sendPushToUsers,
+  listTokensForUids,
+  deleteBadToken,
+  messaging,
   CHANNELS,
 };

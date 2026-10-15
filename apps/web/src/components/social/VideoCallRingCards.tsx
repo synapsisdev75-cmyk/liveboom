@@ -2,6 +2,7 @@ import { BadgeCheck, Mic, MicOff, PhoneOff, SwitchCamera, Video, Volume2, Volume
 import { useState } from 'react';
 import { UserAvatar } from '../profile/UserAvatar';
 import { CallWinBar } from './FloatingCallFrame';
+import { CallerPoster } from './VoiceCallRingParts';
 
 type Person = {
   name: string;
@@ -220,6 +221,7 @@ export function IncomingVideoCallCard({
 
   return (
     <article className="lb-video-ring-screen is-in" data-call-kind="video" data-call-drag>
+      <CallerPoster src={person.avatar} />
       <CallWinBar
         showLogo={false}
         onMinimize={onMinimize}

@@ -337,3 +337,26 @@ try {
 } catch (error) {
   console.warn('[liveboom] firestore trigger gift-bg no disponible:', error.message);
 }
+
+try {
+  const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+  module.exports.onPrivateCallChange = onDocumentWritten(
+    {
+      document: 'chats/{chatId}',
+      region: 'us-central1',
+      memory: '256MiB',
+      timeoutSeconds: 30,
+    },
+    async (event) => {
+      const before = event.data?.before?.data() || null;
+      const after = event.data?.after?.data() || null;
+      const ringBefore = before?.call?.status === 'ringing' ? String(before.call.id || '') : '';
+      const ringAfter = after?.call?.status === 'ringing' ? String(after.call.id || '') : '';
+      if (ringBefore === ringAfter) return;
+      const { handlePrivateCallChange } = require('./src/lib/callPush');
+      await handlePrivateCallChange(event.params.chatId, before, after);
+    },
+  );
+} catch (error) {
+  console.warn('[liveboom] firestore trigger llamadas no disponible:', error.message);
+}

@@ -1,11 +1,13 @@
 package com.liveboom.app;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.WindowManager;
 import android.webkit.PermissionRequest;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
@@ -16,12 +18,19 @@ import com.getcapacitor.BridgeWebChromeClient;
  */
 public class MainActivity extends BridgeActivity {
 
+    private static volatile boolean foreground = false;
+
+    static boolean isInForeground() {
+        return foreground;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(SystemInsetsPlugin.class);
         registerPlugin(AppPermissionsPlugin.class);
         registerPlugin(LiveMediaPlugin.class);
         registerPlugin(ShareIncomingPlugin.class);
+        registerPlugin(CallUiPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Android pinta un velo gris sobre la barra de botones en apps edge-to-edge;
@@ -68,5 +77,55 @@ public class MainActivity extends BridgeActivity {
                     }
                 }
             );
+
+        handleCallIntent(getIntent());
+        ShareIncomingPlugin.handleIntent(this, getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleCallIntent(intent);
+        ShareIncomingPlugin.handleIntent(this, intent);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        foreground = true;
+    }
+
+    @Override
+    public void onPause() {
+        foreground = false;
+        super.onPause();
+    }
+
+    /** Abierta desde la notificación de llamada: se muestra sobre el bloqueo y la web atiende la llamada. */
+    private void handleCallIntent(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(CallNotifications.EXTRA_CALL, false)) return;
+        String callId = intent.getStringExtra(CallNotifications.EXTRA_CALL_ID);
+        String action = intent.getStringExtra(CallNotifications.EXTRA_ACTION);
+        CallNotifications.cancelIncoming(this, callId);
+        if (!"open".equals(action)) showOverLockScreen(true);
+        CallUiPlugin.deliver(
+            callId,
+            intent.getStringExtra(CallNotifications.EXTRA_CHAT_ID),
+            action,
+            intent.getStringExtra(CallNotifications.EXTRA_HREF)
+        );
+        intent.removeExtra(CallNotifications.EXTRA_CALL);
+    }
+
+    void showOverLockScreen(boolean on) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(on);
+            setTurnScreenOn(on);
+        } else {
+            int flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+            if (on) getWindow().addFlags(flags);
+            else getWindow().clearFlags(flags);
+        }
     }
 }

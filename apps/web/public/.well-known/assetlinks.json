@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.liveboom.app",
       "sha256_cert_fingerprints": [
-        "80:F2:25:D7:5F:44:CB:40:D7:FB:C0:2C:2B:76:6F:D5:9A:26:34:78:2A:01:4A:1F:FA:B6:B2:6F:95:E0:44:4E"
+        "80:F2:25:D7:5F:44:CB:40:D7:FB:C0:2C:2B:76:6F:D5:9A:26:34:78:2A:01:4A:1F:FA:B6:B2:6F:95:E0:44:4E",
+        "6C:80:33:D7:CB:16:5C:68:D8:89:67:37:98:1F:A5:7D:86:34:05:A4:C8:D8:20:B2:52:5F:22:7C:7D:30:87:13"
       ]
     }
   }

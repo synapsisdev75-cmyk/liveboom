@@ -28,6 +28,7 @@ import {
   setCallAvailability,
 } from '../../lib/callAvailability';
 import { readCallSession, clearCallSession } from '../../lib/callSessionPersist';
+import { installNativeCallActions, NATIVE_CALL_ANSWER_EVENT, takeNativeCallAnswer } from '../../lib/nativeCallUi';
 import {
   callConnectUserMessage,
   classifyCallConnectError,
@@ -2684,7 +2685,7 @@ export function CallOverlay() {
       setCallViewMode('expanded', 'status-idle');
       setUiPhase('ringing', 'status-idle');
       setLivekitReady(false, 'status-idle');
-      void import('../../lib/systemNotifications').then((m) => m.clearIncomingCallSystem());
+      void import('../../lib/systemNotifications').then((m) => m.clearIncomingCallSystem({ callEnded: true }));
       return;
     }
     if (status === 'ringing-in' && uiPhaseRef.current !== 'connecting' && uiPhaseRef.current !== 'connected') {
@@ -3029,6 +3030,25 @@ export function CallOverlay() {
     }, 45_000);
     return () => window.clearTimeout(timer);
   }, [status, hangup, recovering]);
+
+  const acceptRef = useRef(accept);
+  acceptRef.current = accept;
+  const incomingCallId = incoming?.callId || '';
+
+  useEffect(() => {
+    installNativeCallActions();
+  }, []);
+
+  // «Contestar» tocado en la llamada nativa (teléfono bloqueado o app cerrada).
+  useEffect(() => {
+    if (status !== 'ringing-in' || !incomingCallId) return;
+    const tryAnswer = () => {
+      if (takeNativeCallAnswer(incomingCallId)) void acceptRef.current();
+    };
+    tryAnswer();
+    window.addEventListener(NATIVE_CALL_ANSWER_EVENT, tryAnswer);
+    return () => window.removeEventListener(NATIVE_CALL_ANSWER_EVENT, tryAnswer);
+  }, [status, incomingCallId]);
 
   async function accept() {
     if (!incoming || !profile || accepting) return;

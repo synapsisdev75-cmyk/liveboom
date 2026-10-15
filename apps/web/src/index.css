@@ -14513,6 +14513,39 @@ html[data-lb-theme='light'] .lb-comment-bar__gift {
     0 0 42px color-mix(in srgb, var(--accent-secondary) 18%, transparent);
 }
 
+.lb-voice-in-screen,
+.lb-video-ring-screen.is-in {
+  isolation: isolate;
+}
+
+.lb-voice-in-screen > .lb-call-poster,
+.lb-video-ring-screen.is-in > .lb-call-poster {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.lb-voice-in-screen > .lb-call-poster img,
+.lb-video-ring-screen.is-in > .lb-call-poster img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.3);
+  filter: blur(26px) saturate(1.2) brightness(0.6);
+}
+
+.lb-voice-in-screen > .lb-call-poster::after,
+.lb-video-ring-screen.is-in > .lb-call-poster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.12) 40%, rgba(0, 0, 0, 0.62) 100%);
+}
+
 .lb-voice-in-screen__body {
   display: flex;
   flex: 1 1 auto;

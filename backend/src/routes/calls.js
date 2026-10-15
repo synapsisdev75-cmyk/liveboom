@@ -17,6 +17,23 @@ const livekit = () => require('../lib/livekit');
 const { createUidRateLimit } = require('../lib/uidRateLimit');
 const callStartLimit = createUidRateLimit({ windowMs: 60_000, max: 30 });
 
+/** Botón «Rechazar» de la notificación de llamada (sin sesión: autorizado por firma). */
+router.post('/push-decline', async (req, res) => {
+  try {
+    const { declineFromPush } = require('../lib/callPush');
+    const result = await declineFromPush({
+      chatId: String(req.body?.chatId || '').trim(),
+      callId: String(req.body?.callId || '').trim(),
+      uid: String(req.body?.uid || '').trim(),
+      key: String(req.body?.key || '').trim(),
+    });
+    res.status(result.status).json({ ok: result.ok, changed: Boolean(result.changed) });
+  } catch (error) {
+    console.warn('[calls] push-decline', error.message);
+    res.status(500).json({ ok: false });
+  }
+});
+
 router.post('/start', requireAuth, async (req, res) => {
   const lk = livekit();
   if (typeof lk.livekitEnabled !== 'function' || !lk.livekitEnabled()) {

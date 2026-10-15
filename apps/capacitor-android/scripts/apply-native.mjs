@@ -1,7 +1,7 @@
 // Copia las clases nativas versionadas (native/*.java) al proyecto Android generado por Capacitor
 // y deja el AndroidManifest con el mínimo de permisos (ver PERMISOS-ANDROID.md).
-import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,6 +31,9 @@ const REQUIRED_PERMISSIONS = [
   // Android 12+ muestra "Aproximada / Precisa"; la WebView acepta solo aproximada.
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',
+  // Llamada entrante a pantalla completa con el teléfono bloqueado.
+  'android.permission.USE_FULL_SCREEN_INTENT',
+  'android.permission.VIBRATE',
 ];
 
 /**
@@ -121,6 +124,20 @@ const LINK_FILTERS = [
   '    <category android:name="android.intent.category.BROWSABLE" />',
   '    <data android:scheme="liveboom" />',
   '</intent-filter>',
+  // Menú «Compartir → LiveBoom» (ShareIncomingPlugin).
+  '<intent-filter>',
+  '    <action android:name="android.intent.action.SEND" />',
+  '    <category android:name="android.intent.category.DEFAULT" />',
+  '    <data android:mimeType="image/*" />',
+  '    <data android:mimeType="video/*" />',
+  '    <data android:mimeType="text/plain" />',
+  '</intent-filter>',
+  '<intent-filter>',
+  '    <action android:name="android.intent.action.SEND_MULTIPLE" />',
+  '    <category android:name="android.intent.category.DEFAULT" />',
+  '    <data android:mimeType="image/*" />',
+  '    <data android:mimeType="video/*" />',
+  '</intent-filter>',
 ];
 
 function patchLinkFilters(path) {
@@ -137,10 +154,70 @@ function patchLinkFilters(path) {
   console.log('[apply-native] AndroidManifest: enlaces de liveboomapp.com/s/ y liveboom:// abren la app.');
 }
 
+/**
+ * Push de llamadas: un solo servicio de FCM (LiveBoomMessagingService) muestra la llamada entrante
+ * con foto y deriva el resto al plugin de push de Capacitor; los servicios de los plugins se quitan
+ * para que Android no tenga dos receptores de MESSAGING_EVENT.
+ */
+const CALLS_START = '<!-- liveboom:calls:start -->';
+const CALLS_END = '<!-- liveboom:calls:end -->';
+const CALL_COMPONENTS = [
+  '<service android:name=".LiveBoomMessagingService" android:exported="false">',
+  '    <intent-filter>',
+  '        <action android:name="com.google.firebase.MESSAGING_EVENT" />',
+  '    </intent-filter>',
+  '</service>',
+  '<service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="remove" />',
+  '<service android:name="io.capawesome.capacitorjs.plugins.firebase.messaging.MessagingService" tools:node="remove" />',
+  '<receiver android:name=".CallActionReceiver" android:exported="false" />',
+];
+
+function patchCallComponents(path) {
+  let xml = readFileSync(path, 'utf8');
+  xml = xml.replace(new RegExp(`\\s*${esc(CALLS_START)}[\\s\\S]*?${esc(CALLS_END)}`), '');
+  if (!/<\/application>/.test(xml)) {
+    console.warn('[apply-native] AndroidManifest sin </application>; llamadas sin aplicar.');
+    return;
+  }
+  const block = `\n        ${CALLS_START}\n${CALL_COMPONENTS.map((line) => `        ${line}`).join('\n')}\n        ${CALLS_END}`;
+  xml = xml.replace(/(\n?\s*)<\/application>/, `${block}$1</application>`);
+  writeFileSync(path, xml);
+  console.log('[apply-native] AndroidManifest: llamada entrante a pantalla completa con foto.');
+}
+
 if (existsSync(manifestPath)) {
   patchManifest(manifestPath);
   patchLinkFilters(manifestPath);
+  patchCallComponents(manifestPath);
 } else console.warn(`[apply-native] No existe ${manifestPath}; permisos sin aplicar.`);
+
+/**
+ * Con `server.url` la app carga https://liveboomapp.com (se actualiza sola con cada deploy):
+ * el APK solo lleva la página sin conexión y los puentes de Capacitor.
+ */
+const KEEP_WITH_SERVER_URL = new Set(['index.html', 'offline.html', 'cordova.js', 'cordova_plugins.js', 'brand/icon-1024.png']);
+const publicDir = join(root, 'android', 'app', 'src', 'main', 'assets', 'public');
+const capConfig = JSON.parse(readFileSync(join(root, 'capacitor.config.json'), 'utf8'));
+
+function prunePublic(dir) {
+  let kept = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    const rel = relative(publicDir, full).split(sep).join('/');
+    if (entry.isDirectory()) {
+      const inner = rel === 'plugins' ? 1 : prunePublic(full);
+      if (inner === 0) rmSync(full, { recursive: true, force: true });
+      kept += inner;
+    } else if (KEEP_WITH_SERVER_URL.has(rel)) kept += 1;
+    else rmSync(full, { force: true });
+  }
+  return kept;
+}
+
+if (capConfig.server?.url && existsSync(publicDir)) {
+  prunePublic(publicDir);
+  console.log(`[apply-native] server.url=${capConfig.server.url}: APK con solo la página sin conexión.`);
+}
 
 // Play (protección automática) rechaza bundles con minSdk 23 o menor.
 const variablesPath = join(root, 'android', 'variables.gradle');

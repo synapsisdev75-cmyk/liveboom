@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>LiveBoom · Sin conexión</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0a0a0b;
+        color: #f4f4f5;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        box-sizing: border-box;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: max(1.5rem, env(safe-area-inset-top)) 1.5rem max(1.5rem, env(safe-area-inset-bottom));
+        text-align: center;
+      }
+      img {
+        width: min(7rem, 30vw);
+        height: auto;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.25rem;
+      }
+      p {
+        margin: 0;
+        max-width: 20rem;
+        color: #a1a1aa;
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+      button {
+        min-height: 2.75rem;
+        padding: 0 1.75rem;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #d946ef, #22d3ee);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="brand/icon-1024.png" alt="LiveBoom" />
+      <h1>Sin conexión</h1>
+      <p>LiveBoom necesita internet. Revisa tu conexión y vuelve a intentarlo.</p>
+      <button type="button" onclick="location.replace('https://liveboomapp.com/')">Reintentar</button>
+    </main>
+  </body>
+</html>

@@ -3,6 +3,9 @@
   "appName": "LiveBoom",
   "webDir": "../web/dist",
   "server": {
+    "url": "https://liveboomapp.com",
+    "cleartext": false,
+    "errorPath": "offline.html",
     "androidScheme": "https",
     "iosScheme": "https"
   },

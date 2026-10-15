@@ -17,6 +17,9 @@ export async function notifyIncomingCallSystem(input: {
   video: boolean;
 }): Promise<void> {
   if (!isNativeAndroidApp()) return;
+  // La app con pantalla de llamada nativa ya recibe la llamada con foto por push.
+  const { hasNativeCallUi } = await import('./nativeCallUi');
+  if (hasNativeCallUi()) return;
   const who = input.name || (input.username ? `@${input.username}` : 'Alguien');
   await showNativeSystemNotification({
     id: CALL_NOTIF_ID,
@@ -26,9 +29,11 @@ export async function notifyIncomingCallSystem(input: {
   });
 }
 
-export async function clearIncomingCallSystem(): Promise<void> {
+export async function clearIncomingCallSystem(opts: { callId?: string; callEnded?: boolean } = {}): Promise<void> {
   if (!isNativeAndroidApp()) return;
   await cancelNativeSystemNotification(CALL_NOTIF_ID);
+  const { endNativeIncomingCall } = await import('./nativeCallUi');
+  await endNativeIncomingCall({ callId: opts.callId, release: Boolean(opts.callEnded) });
 }
 
 export async function notifyPrivateMessageSystem(input: {

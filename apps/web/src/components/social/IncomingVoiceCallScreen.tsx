@@ -32,6 +32,7 @@ export function IncomingVoiceCallScreen({
   return (
     <VoiceCallFrame
       variant="in"
+      posterSrc={person.avatar}
       onMinimize={onMinimize}
       onMaximize={onMaximize}
       onClose={onClose}
