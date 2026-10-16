@@ -1388,6 +1388,18 @@ html[data-lb-theme='light'] .gift-box-item video {
   display: none !important;
 }
 
+/* Solo iPhone: fuente stacked para WebGL. No usar opacity:0 / 1px — el dispositivo no decodifica. */
+.lb-gift-stacked-source {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 16px;
+  height: 16px;
+  opacity: 0.02;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .lb-gift-burst-video--fill {
   width: auto;
   height: auto;

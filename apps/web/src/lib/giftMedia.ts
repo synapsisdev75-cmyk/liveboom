@@ -101,10 +101,64 @@ export function giftPlaybackSrc(media: GiftMediaInfo | undefined, video?: string
   return video || media?.originalAsset || '';
 }
 
+/**
+ * Clave estable del archivo (sin token ni query). El token de Storage cambia
+ * y iPhone dejaba de usar la versión transparente.
+ */
+export function giftAssetKey(url: string | null | undefined): string {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const noHash = raw.split('#')[0];
+  const encoded = noHash.match(/\/o\/([^?]+)/);
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      return encoded[1];
+    }
+  }
+  const gs = noHash.match(/^gs:\/\/[^/]+\/(.+)$/);
+  if (gs?.[1]) return gs[1];
+  return noHash.split('?')[0];
+}
+
+export function sameGiftAsset(a?: string | null, b?: string | null): boolean {
+  const left = giftAssetKey(a);
+  const right = giftAssetKey(b);
+  return Boolean(left && right && left === right);
+}
+
 /** Versión stacked alpha vigente para `playbackSrc`, o '' si falta o quedó vieja. */
 export function giftStackedAlphaSrc(media: GiftMediaInfo | undefined, playbackSrc: string): string {
   if (!media?.stackedAlphaAsset || !playbackSrc) return '';
-  return media.stackedAlphaSource === playbackSrc ? media.stackedAlphaAsset : '';
+  return sameGiftAsset(media.stackedAlphaSource, playbackSrc) ? media.stackedAlphaAsset : '';
+}
+
+/**
+ * Al publicar el catálogo el admin a veces no trae `stackedAlpha*` (lo escribe el
+ * servidor). Si el video no cambió, se conserva la versión iPhone remota.
+ */
+export function preserveGiftStackedAlpha<T extends { video?: string; media?: GiftMediaInfo }>(
+  remote: T | null | undefined,
+  local: T,
+): T {
+  if (!local) return local;
+  const localSrc = giftPlaybackSrc(local.media, local.video);
+  if (giftStackedAlphaSrc(local.media, localSrc)) return local;
+  const remoteMedia = remote?.media;
+  if (!remoteMedia?.stackedAlphaAsset) return local;
+  const remoteSrc = giftPlaybackSrc(remoteMedia, remote?.video);
+  if (!sameGiftAsset(localSrc, remoteSrc) && !sameGiftAsset(localSrc, remoteMedia.stackedAlphaSource)) {
+    return local;
+  }
+  return {
+    ...local,
+    media: {
+      ...(local.media || defaultGiftMedia()),
+      stackedAlphaAsset: remoteMedia.stackedAlphaAsset,
+      stackedAlphaSource: localSrc || remoteMedia.stackedAlphaSource || null,
+    },
+  };
 }
 
 export function giftPlaybackDurationMs(media: GiftMediaInfo | undefined, fallbackSec = 9): number {

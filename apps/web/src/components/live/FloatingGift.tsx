@@ -30,13 +30,19 @@ import {
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import { GiftComboBadge } from './GiftComboBadge';
 
-/** El video stacked solo alimenta al canvas WebGL; no se muestra. */
+/**
+ * iPhone real: opacity 0 + 1×1 no decodifica el video (el simulador sí).
+ * Queda en el árbol de render, tamaño mínimo, casi invisible; el canvas es lo que se ve.
+ */
 const STACKED_SOURCE_STYLE: CSSProperties = {
   position: 'absolute',
-  width: 1,
-  height: 1,
-  opacity: 0,
+  left: 0,
+  top: 0,
+  width: 16,
+  height: 16,
+  opacity: 0.02,
   pointerEvents: 'none',
+  zIndex: 0,
 };
 
 /** Fallback cuando el catálogo no trae width/height: todas las animaciones de regalo son 9:16. */
@@ -332,6 +338,8 @@ function GiftVideoBurst({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
 
     let durationTimer = 0;
     const capMs = durationMs && durationMs > 400 ? durationMs : 32_000;
@@ -385,7 +393,7 @@ function GiftVideoBurst({
     const onLoadedMeta = () => syncSize();
     const onError = () => {
       console.warn('[gift-video] load failed', playSrc);
-      if (stacked) markStackedAlphaBroken();
+      if (stacked) markStackedAlphaBroken(playSrc);
       finish();
     };
 
@@ -503,7 +511,7 @@ function GiftVideoBurst({
         <canvas
           ref={stackedCanvasRef}
           className={burstMediaClass}
-          style={burstMediaStyle}
+          style={{ ...burstMediaStyle, zIndex: 1 }}
           aria-hidden
         />
       ) : null}
@@ -659,9 +667,9 @@ export function FloatingGift({ giftId, senderName, left = 50, onComplete, lite, 
   if (globalAnim) return null;
 
   const videoSrc = giftPlaybackSrc(gift?.media, gift?.video);
-  const stackedSrc = needsStackedAlphaVideo()
-    ? stackedAlphaRequestUrl(giftStackedAlphaSrc(gift?.media, videoSrc))
-    : '';
+  const stackedCandidate = giftStackedAlphaSrc(gift?.media, videoSrc);
+  const stackedRequest = stackedCandidate ? stackedAlphaRequestUrl(stackedCandidate) : '';
+  const stackedSrc = stackedRequest && needsStackedAlphaVideo(stackedRequest) ? stackedRequest : '';
   const device = giftLayoutDeviceFromViewport();
   const variant =
     layoutContext && isGiftLayoutVariantId(layoutContext)
