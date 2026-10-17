@@ -87,11 +87,25 @@ public class MainActivity extends BridgeActivity {
 
 Luego recompila el APK/AAB normalmente (`npm run sync` + Android Studio).
 
+## Google Play
+
+- **Nombre del paquete (no se puede cambiar):** `com.liveboom.app`
+- Guía para rellenar Play Console: `docs/google-play.md`
+- Textos de la ficha: `store/listing-es.txt`
+
+```bash
+npm run build -w @liveboom/web
+cd apps/capacitor-android
+npx cap sync android
+npx cap open android
+```
+
+En Android Studio: **Build → Generate Signed App Bundle** (`.aab`). Sube primero a **prueba interna**.
+
 ## Notas
 
 - `webDir` apunta a `../web/dist` (ver `capacitor.config.json`).
-- App ID: `com.liveboom.app`
-- El menú móvil de LiveBoom (bottom nav) es el que se usa en el WebView; no hace falta otro menú nativo.
+- El menú móvil de Liveboom (bottom nav) es el que se usa en el WebView; no hace falta otro menú nativo.
 - Para apuntar a producción en vivo (sin rebuild local), puedes añadir temporalmente en `capacitor.config.json`:
 
 ```json
