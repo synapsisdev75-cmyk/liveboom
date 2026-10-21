@@ -39,10 +39,9 @@ export function AuthScreen() {
   const isEs = t.locale === 'es';
 
   function socialBirthYear(): number | undefined | null {
-    if (!acceptedTerms) {
-      setLocalError(t('auth.mustAccept'));
-      return null;
-    }
+    // Apple exige que “Iniciar sesión con Apple” abra al toque. El pie ya dice
+    // que al continuar se aceptan Términos. No bloquear el botón de Apple.
+    if (!acceptedTerms) setAcceptedTerms(true);
     if (mode !== 'register') return undefined;
     const year = Number(birthYear);
     if (!Number.isFinite(year) || year < minBirthYear || year > maxBirthYear) {
