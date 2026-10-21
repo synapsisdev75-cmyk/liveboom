@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { api } from './api';
 import { isAppInForeground, shouldSuppressMobileChatTrayNotify } from './chatNotifyContext';
@@ -6,6 +6,7 @@ import { db } from './firebase';
 import { hasNativeCallUi } from './nativeCallUi';
 import {
   isNativeAndroidApp,
+  isNativeIosApp,
   showNativeSystemNotification,
 } from './nativeLiveMedia';
 
@@ -78,10 +79,10 @@ async function ensureAndroidChannels(): Promise<void> {
 
 /**
  * Registra el dispositivo para push FCM (notificaciones con la app cerrada).
- * Solo Android Capacitor.
+ * Android e iPhone (Capacitor).
  */
 export async function registerPushNotifications(uid: string | null | undefined): Promise<void> {
-  if (!uid || !isNativeAndroidApp()) return;
+    if (!uid || !(isNativeAndroidApp() || isNativeIosApp())) return;
   if (registering) return;
   registering = true;
   try {
@@ -99,6 +100,10 @@ export async function registerPushNotifications(uid: string | null | undefined):
     await PushNotifications.addListener('registration', (ev) => {
       const token = String(ev.value || '').trim();
       if (!token) return;
+      if (isNativeIosApp()) {
+        void saveIosFcmToken(uid);
+        return;
+      }
       if (token === lastTokenSaved && registeredUid === uid) return;
       void persistToken(uid, token).catch((err) => {
         console.warn('[push] save token', err);
@@ -109,17 +114,16 @@ export async function registerPushNotifications(uid: string | null | undefined):
       console.warn('[push] registrationError', err);
     });
 
-    // Con la app en primer plano Android no muestra el banner FCM solo.
-    // Dentro de la app los avisos son silenciosos (campana / badge); solo se replican llamadas.
+    // En primer plano la llamada ya está en pantalla y el resto queda en la campana.
     // Si ya estás dentro del chat del remitente → no banner (doble aviso).
     await PushNotifications.addListener('pushNotificationReceived', (ev) => {
+      if (!isNativeAndroidApp() && !isNativeIosApp()) return;
       const title = String(ev.title || 'LiveBoom');
       const body = String(ev.body || '');
       const data = (ev.data || {}) as Record<string, string>;
       const channel = channelFromData(data);
-      if (channel !== 'calls' && isAppInForeground()) return;
-      // Dentro de la app la llamada entrante ya suena en pantalla.
-      if (data.type === 'call_incoming' && isAppInForeground()) return;
+      // Dentro de la app la llamada ya suena en pantalla. El resto de avisos solo van a la campana.
+      if (isAppInForeground()) return;
       if (
         channel === 'messages' &&
         shouldSuppressMobileChatTrayNotify({
@@ -144,6 +148,10 @@ export async function registerPushNotifications(uid: string | null | undefined):
       }
     });
 
+    if (isNativeIosApp()) {
+      await listenIosFcmToken(uid);
+    }
+
     await PushNotifications.register();
     registeredUid = uid;
     console.log('[push] register() called for', uid.slice(0, 8));
@@ -152,6 +160,50 @@ export async function registerPushNotifications(uid: string | null | undefined):
   } finally {
     registering = false;
   }
+}
+
+type IosFcmPlugin = {
+  getToken: () => Promise<{ token: string }>;
+  addListener: (
+    eventName: 'tokenReceived' | 'notificationActionPerformed',
+    listener: (event: { token?: string; notification?: { data?: unknown } }) => void,
+  ) => Promise<{ remove: () => Promise<void> }>;
+};
+
+const IosFcm = registerPlugin<IosFcmPlugin>('FirebaseMessaging');
+
+async function saveIosFcmToken(uid: string): Promise<void> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      const { token } = await IosFcm.getToken();
+      const fcm = String(token || '').trim();
+      if (!fcm) continue;
+      if (fcm === lastTokenSaved && registeredUid === uid) return;
+      await persistToken(uid, fcm);
+      return;
+    } catch (err) {
+      console.warn('[push] ios fcm token', attempt, err);
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
+    }
+  }
+}
+
+async function listenIosFcmToken(uid: string): Promise<void> {
+  await IosFcm.addListener('tokenReceived', (event) => {
+    const fcm = String(event.token || '').trim();
+    if (!fcm || (fcm === lastTokenSaved && registeredUid === uid)) return;
+    void persistToken(uid, fcm).catch((err) => {
+      console.warn('[push] save ios token', err);
+    });
+  });
+  await IosFcm.addListener('notificationActionPerformed', (event) => {
+    const data = event.notification?.data;
+    const href =
+      data && typeof data === 'object' && 'href' in data ? String((data as { href?: string }).href || '') : '';
+    if (href && typeof window !== 'undefined') {
+      window.location.assign(href.startsWith('/') ? href : `/${href}`);
+    }
+  });
 }
 
 /** Dispara push al API (fire-and-forget). */

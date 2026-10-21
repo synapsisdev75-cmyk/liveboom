@@ -400,6 +400,7 @@ export function ReelsRow({
           reels={viewerReels}
           initialIndex={viewerIndex}
           storyMode={viewerStoryMode}
+          holdToPause={viewerStoryMode}
           immersiveLandscapeLayout
           collapsibleCaption
           hideMediaInfo={mode === 'reels'}

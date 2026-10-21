@@ -16,6 +16,7 @@ import {
   notifyFriendRequestSystem,
   notifyPrivateMessageSystem,
   notifyFriendLiveSystem,
+  notifyPostSystem,
 } from '../../lib/systemNotifications';
 import { api } from '../../lib/api';
 import { subscribeFriendsLive } from '../../lib/friendsLiveFeed';
@@ -50,6 +51,20 @@ type NotiItem = {
   postId?: string;
 };
 
+function loadSeenIds(key: string): Set<string> {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(key) || '[]');
+    return new Set(Array.isArray(raw) ? raw.map((id) => String(id)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSeenIds(key: string, ids: Set<string>) {
+  const list = [...ids].slice(-80);
+  sessionStorage.setItem(key, JSON.stringify(list));
+}
+
 /** Campanita con solicitudes, lives/posts de amigos y mensajes en tiempo real. */
 export function NotificationBell() {
   const profile = useAuthStore((state) => state.profile);
@@ -68,6 +83,9 @@ export function NotificationBell() {
   const knownLive = useRef<Set<string> | null>(null);
   const knownMsgAt = useRef<Map<string, string>>(new Map());
   const dismissedMsgIds = useRef<Set<string>>(new Set());
+  const hiddenRequestIds = useRef<Set<string>>(loadSeenIds('lb-bell-seen-requests'));
+  const itemsRef = useRef<NotiItem[]>([]);
+  const requestsRef = useRef<FriendRequest[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -94,10 +112,12 @@ export function NotificationBell() {
         }
         knownRequestIds.current = new Set(list.map((item) => item.id));
       }
-      setRequests(list);
+      setRequests(list.filter((item) => !hiddenRequestIds.current.has(item.id)));
       setItems((current) => {
         const without = current.filter((item) => item.kind !== 'request');
-        const notes = list.map((item) => ({
+        const notes = list
+          .filter((item) => !hiddenRequestIds.current.has(item.id))
+          .map((item) => ({
           id: `req-${item.id}`,
           kind: 'request' as const,
           text: `@${item.username} te envió solicitud de amistad`,
@@ -122,7 +142,13 @@ export function NotificationBell() {
         const latest = notes[0];
         if (latest && Date.now() - latest.at < 90_000) {
           if (latest.alertMeta.kind === 'friend_accepted') playFriendRequestAlert();
-          else playPostAlert();
+          else {
+            playPostAlert();
+            void notifyPostSystem({
+              title: 'Nueva publicación',
+              body: latest.text || 'Alguien publicó en LiveBoom',
+            });
+          }
         }
         return [...notes, ...without].slice(0, 40);
       });
@@ -253,6 +279,24 @@ export function NotificationBell() {
   }, [profile?.firebaseUid]);
 
   useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    requestsRef.current = requests;
+  }, [requests]);
+
+  useEffect(() => {
+    if (!isMessagesPath(location.pathname)) return;
+    setItems((current) => {
+      for (const item of current) {
+        if (item.kind === 'message') dismissedMsgIds.current.add(item.id);
+      }
+      return current.filter((item) => item.kind !== 'message');
+    });
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (!open || !btnRef.current) {
       setAnchor(null);
       return;
@@ -327,6 +371,32 @@ export function NotificationBell() {
       dismissedMsgIds.current.add(item.id);
     }
   }
+
+  function hideSeenFromBell() {
+    const seenItems = itemsRef.current;
+    const seenRequests = requestsRef.current;
+    if (!seenItems.length && !seenRequests.length) return;
+    for (const item of seenItems) {
+      if (item.id.startsWith('msg-')) dismissedMsgIds.current.add(item.id);
+    }
+    for (const req of seenRequests) hiddenRequestIds.current.add(req.id);
+    saveSeenIds('lb-bell-seen-requests', hiddenRequestIds.current);
+    setItems([]);
+    setRequests([]);
+    if (!profile) return;
+    for (const item of seenItems) {
+      if (item.id.startsWith('alert-')) {
+        void deleteLiveAlert(profile.firebaseUid, item.id.slice('alert-'.length)).catch(() => undefined);
+      } else if (item.id.startsWith('post-alert-')) {
+        void deletePostAlert(profile.firebaseUid, item.id.slice('post-alert-'.length)).catch(() => undefined);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (open) return;
+    hideSeenFromBell();
+  }, [open]);
 
   function notificationTarget(item: NotiItem) {
     if (item.alertMeta) {

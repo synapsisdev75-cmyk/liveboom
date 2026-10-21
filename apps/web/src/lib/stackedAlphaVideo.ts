@@ -1,18 +1,29 @@
 /**
  * Reproducción transparente de regalos en WebKit (iPhone, iPad y Safari de Mac).
- * WebKit no aplica el alfa de WebM VP9 y pinta el fondo; para esos navegadores el backend
- * genera un MP4 con el color arriba y la máscara abajo, que aquí se compone en WebGL.
+ * WebKit no aplica el alfa del WebM y pinta un fondo blanco. El archivo de iPhone
+ * trae el color arriba y la máscara abajo; aquí se aplica esa máscara y el fondo
+ * queda transparente, como el video con alfa en Android.
  */
 
-let cachedNeed: boolean | null = null;
-let broken = false;
+import { Capacitor } from '@capacitor/core';
 
-/** Si la versión stacked no carga (red / CORS), los siguientes regalos vuelven al WebM. */
+let cachedNeed: boolean | null = null;
+
+/**
+ * En iPhone el WebM no tiene alfa: se ve el fondo blanco. No hay vuelta a ese
+ * archivo. Si la versión con máscara falla, ese regalo termina y el siguiente
+ * vuelve a intentar la máscara.
+ */
 export function markStackedAlphaBroken() {
-  broken = true;
+  /* se conserva la firma; ya no cambia el modo de reproducción */
 }
 
 function isWebKitWithoutWebmAlpha(): boolean {
+  try {
+    if (Capacitor.getPlatform() === 'ios') return true;
+  } catch {
+    /* sin runtime nativo */
+  }
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
   const iOS =
@@ -20,16 +31,6 @@ function isWebKitWithoutWebmAlpha(): boolean {
     (/Macintosh/i.test(ua) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
   if (iOS) return true;
   return /Safari\//.test(ua) && /AppleWebKit\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS|Android/i.test(ua);
-}
-
-function webglAvailable(): boolean {
-  try {
-    const gl = document.createElement('canvas').getContext('webgl', { premultipliedAlpha: true });
-    gl?.getExtension('WEBGL_lose_context')?.loseContext();
-    return Boolean(gl);
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -41,13 +42,17 @@ export function stackedAlphaRequestUrl(url: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}lbcors=1`;
 }
 
-/** true en iPhone / iPad / Safari: usar la versión stacked alpha si el regalo la tiene. */
+/** true en iPhone / iPad / Safari: usar la versión con máscara si el regalo la tiene. */
 export function needsStackedAlphaVideo(): boolean {
-  if (broken) return false;
   if (cachedNeed != null) return cachedNeed;
-  cachedNeed = typeof document !== 'undefined' && isWebKitWithoutWebmAlpha() && webglAvailable();
+  cachedNeed = typeof document !== 'undefined' && isWebKitWithoutWebmAlpha();
   return cachedNeed;
 }
+
+export type StackedAlphaRenderer = {
+  draw: (video: HTMLVideoElement) => boolean;
+  dispose: () => void;
+};
 
 const VERTEX = `
 attribute vec2 aPos;
@@ -65,14 +70,31 @@ varying vec2 vUv;
 void main() {
   float y = min(vUv.y * 0.5, 0.5 - uHalfTexel);
   vec3 color = texture2D(uTex, vec2(vUv.x, y)).rgb;
-  float alpha = texture2D(uTex, vec2(vUv.x, max(0.5 + vUv.y * 0.5, 0.5 + uHalfTexel))).r;
+  float raw = texture2D(uTex, vec2(vUv.x, max(0.5 + vUv.y * 0.5, 0.5 + uHalfTexel))).r;
+  float alpha = smoothstep(0.07, 0.2, raw);
   gl_FragColor = vec4(color * alpha, alpha);
 }`;
 
-export type StackedAlphaRenderer = {
-  draw: (video: HTMLVideoElement) => boolean;
-  dispose: () => void;
-};
+/** El centro de muchos regalos es transparente; se mira varios puntos del cuadro. */
+function frameHasGift(gl: WebGLRenderingContext, w: number, h: number): boolean {
+  const pixel = new Uint8Array(4);
+  const spots = [
+    [0.5, 0.55],
+    [0.5, 0.72],
+    [0.35, 0.5],
+    [0.65, 0.5],
+    [0.5, 0.35],
+  ];
+  for (const spot of spots) {
+    const sx = spot[0] ?? 0.5;
+    const sy = spot[1] ?? 0.5;
+    const x = Math.min(w - 1, Math.max(0, Math.floor(w * sx)));
+    const y = Math.min(h - 1, Math.max(0, Math.floor(h * sy)));
+    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    if ((pixel[3] ?? 0) > 12) return true;
+  }
+  return false;
+}
 
 function compile(gl: WebGLRenderingContext, type: number, source: string): WebGLShader | null {
   const shader = gl.createShader(type);
@@ -86,9 +108,12 @@ function compile(gl: WebGLRenderingContext, type: number, source: string): WebGL
   return shader;
 }
 
-export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAlphaRenderer | null {
-  const gl = canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false });
-  if (!gl) return null;
+type GpuState = {
+  texture: WebGLTexture;
+  uHalfTexel: WebGLUniformLocation | null;
+};
+
+function bindGpu(gl: WebGLRenderingContext): GpuState | null {
   const vs = compile(gl, gl.VERTEX_SHADER, VERTEX);
   const fs = compile(gl, gl.FRAGMENT_SHADER, FRAGMENT);
   const program = gl.createProgram();
@@ -107,14 +132,32 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
   const texture = gl.createTexture();
+  if (!texture) return null;
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-  const uHalfTexel = gl.getUniformLocation(program, 'uHalfTexel');
   gl.clearColor(0, 0, 0, 0);
+  return { texture, uHalfTexel: gl.getUniformLocation(program, 'uHalfTexel') };
+}
+
+export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAlphaRenderer | null {
+  const gl = canvas.getContext('webgl', {
+    alpha: true,
+    premultipliedAlpha: true,
+    antialias: false,
+    powerPreference: 'high-performance',
+  });
+  if (!gl) return null;
+  let gpu = bindGpu(gl);
+  if (!gpu) return null;
+  let boundW = 0;
+  let boundH = 0;
+  const frame = document.createElement('canvas');
+  const frameCtx = frame.getContext('2d', { alpha: false });
+  if (!frameCtx) return null;
 
   return {
     draw(video) {
@@ -123,28 +166,41 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
       if (vw < 2 || vh < 4 || video.readyState < 2) return false;
       const w = vw;
       const h = Math.floor(vh / 2);
+      if (frame.width !== vw || frame.height !== vh) {
+        frame.width = vw;
+        frame.height = vh;
+      }
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
+        gpu = bindGpu(gl);
+        if (!gpu) return false;
       }
-      gl.viewport(0, 0, w, h);
+      if (!gpu) return false;
+      if (boundW !== w || boundH !== h) {
+        gl.viewport(0, 0, w, h);
+        boundW = w;
+        boundH = h;
+      }
       try {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'SecurityError') markStackedAlphaBroken();
+        frameCtx.drawImage(video, 0, 0, vw, vh);
+      } catch {
         return false;
       }
-      gl.uniform1f(uHalfTexel, 0.5 / vh);
+      gl.bindTexture(gl.TEXTURE_2D, gpu.texture);
+      try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+      } catch {
+        return false;
+      }
+      gl.uniform1f(gpu.uHalfTexel, 0.5 / vh);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (!frameHasGift(gl, w, h)) return true;
+      canvas.classList.add('is-ready');
       return true;
     },
     dispose() {
-      gl.deleteTexture(texture);
-      gl.deleteBuffer(buffer);
-      gl.deleteProgram(program);
-      gl.deleteShader(vs);
-      gl.deleteShader(fs);
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     },
   };

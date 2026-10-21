@@ -2,24 +2,30 @@ import { isAppInForeground } from './chatNotifyContext';
 import {
   cancelNativeSystemNotification,
   isNativeAndroidApp,
+  isNativeIosApp,
   showNativeSystemNotification,
 } from './nativeLiveMedia';
 
-/** Notificaciones del sistema Android (barra / pantalla bloqueada) para APK. */
+/** Notificaciones del sistema (banner + sonido) en Android e iPhone. */
 
 const CALL_NOTIF_ID = 88001;
 let lastMessageNotifAt = 0;
 let lastFriendNotifAt = 0;
+let lastPostNotifAt = 0;
+
+function isNativeNotifyApp() {
+  return isNativeAndroidApp() || isNativeIosApp();
+}
 
 export async function notifyIncomingCallSystem(input: {
   name: string;
   username?: string | null;
   video: boolean;
 }): Promise<void> {
-  if (!isNativeAndroidApp()) return;
-  // La app con pantalla de llamada nativa ya recibe la llamada con foto por push.
+  if (!isNativeNotifyApp() || isAppInForeground()) return;
+  // En Android la pantalla nativa ya muestra la llamada con foto. En iPhone el aviso queda para segundo plano.
   const { hasNativeCallUi } = await import('./nativeCallUi');
-  if (hasNativeCallUi()) return;
+  if (isNativeAndroidApp() && hasNativeCallUi()) return;
   const who = input.name || (input.username ? `@${input.username}` : 'Alguien');
   await showNativeSystemNotification({
     id: CALL_NOTIF_ID,
@@ -30,7 +36,7 @@ export async function notifyIncomingCallSystem(input: {
 }
 
 export async function clearIncomingCallSystem(opts: { callId?: string; callEnded?: boolean } = {}): Promise<void> {
-  if (!isNativeAndroidApp()) return;
+  if (!isNativeNotifyApp()) return;
   await cancelNativeSystemNotification(CALL_NOTIF_ID);
   const { endNativeIncomingCall } = await import('./nativeCallUi');
   await endNativeIncomingCall({ callId: opts.callId, release: Boolean(opts.callEnded) });
@@ -42,7 +48,7 @@ export async function notifyPrivateMessageSystem(input: {
   chatId?: string | null;
   peerUid?: string | null;
 }): Promise<void> {
-  if (!isNativeAndroidApp() || isAppInForeground()) return;
+  if (!isNativeNotifyApp() || isAppInForeground()) return;
   const { shouldSuppressMobileChatTrayNotify } = await import('./chatNotifyContext');
   if (
     shouldSuppressMobileChatTrayNotify({
@@ -65,7 +71,7 @@ export async function notifyPrivateMessageSystem(input: {
 export async function notifyFriendRequestSystem(input: {
   username: string;
 }): Promise<void> {
-  if (!isNativeAndroidApp() || isAppInForeground()) return;
+  if (!isNativeNotifyApp() || isAppInForeground()) return;
   const now = Date.now();
   if (now - lastFriendNotifAt < 2500) return;
   lastFriendNotifAt = now;
@@ -76,11 +82,23 @@ export async function notifyFriendRequestSystem(input: {
   });
 }
 
+export async function notifyPostSystem(input: { title: string; body: string }): Promise<void> {
+  if (!isNativeNotifyApp() || isAppInForeground()) return;
+  const now = Date.now();
+  if (now - lastPostNotifAt < 2000) return;
+  lastPostNotifAt = now;
+  await showNativeSystemNotification({
+    channel: 'general',
+    title: input.title || 'Nueva publicación',
+    body: input.body.slice(0, 140) || 'Alguien publicó en LiveBoom',
+  });
+}
+
 export async function notifyFriendLiveSystem(input: {
   name: string;
   username?: string;
 }): Promise<void> {
-  if (!isNativeAndroidApp() || isAppInForeground()) return;
+  if (!isNativeNotifyApp() || isAppInForeground()) return;
   const now = Date.now();
   if (now - lastFriendNotifAt < 2000) return;
   lastFriendNotifAt = now;

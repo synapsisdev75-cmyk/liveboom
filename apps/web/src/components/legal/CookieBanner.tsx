@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useT } from '../../i18n';
@@ -9,6 +10,11 @@ export function CookieBanner() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    try {
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') return;
+    } catch {
+      /* web */
+    }
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) setVisible(true);
   }, []);

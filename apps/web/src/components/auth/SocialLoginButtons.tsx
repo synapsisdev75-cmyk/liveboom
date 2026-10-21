@@ -1,3 +1,5 @@
+import { isNativeIosApp } from '../../lib/nativeLiveMedia';
+
 type SocialLoginButtonsProps = {
   busy: boolean;
   isEs: boolean;
@@ -13,6 +15,7 @@ export function SocialLoginButtons({
   onGoogle,
   onApple,
 }: SocialLoginButtonsProps) {
+  const ios = isNativeIosApp();
   return (
     <div className="lb-auth-social">
       <button
@@ -23,7 +26,7 @@ export function SocialLoginButtons({
         onClick={onGoogle}
       >
         <GoogleIcon />
-        <span>{googleLabel}</span>
+        <span>{ios ? 'Google' : googleLabel}</span>
       </button>
       <button
         type="button"
@@ -33,7 +36,7 @@ export function SocialLoginButtons({
         onClick={onApple}
       >
         <AppleIcon />
-        <span>{isEs ? 'Continuar con Apple' : 'Continue with Apple'}</span>
+        <span>{ios ? 'Apple' : isEs ? 'Continuar con Apple' : 'Continue with Apple'}</span>
       </button>
     </div>
   );

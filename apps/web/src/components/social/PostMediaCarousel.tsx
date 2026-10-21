@@ -284,6 +284,7 @@ export function PostMediaCarousel({
       ? createPortal(
           <div
             className="fixed inset-0 z-[100] touch-none overflow-hidden overscroll-none bg-black"
+            data-lb-edge-page="overlay"
             role="dialog"
             aria-modal
             aria-label="Publicación"

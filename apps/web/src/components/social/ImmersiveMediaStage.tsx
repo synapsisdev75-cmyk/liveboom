@@ -20,6 +20,13 @@ export type ImmersivePointerGesture = {
   startedOnControl: boolean;
 };
 
+/** Carta del video anterior o siguiente. Solo Explorar la usa. */
+export type DeckPeekMedia = {
+  url: string;
+  kind: 'video' | 'image';
+  poster?: string | null;
+};
+
 type Props = {
   mediaWidth: number;
   mediaHeight: number;
@@ -35,12 +42,21 @@ type Props = {
   /** Rail de acciones al lado del media en PC (Explorar, Publicaciones, Clips). */
   landscapeRailAside?: boolean;
   embedded?: boolean;
+  /** El contenido sigue el dedo en Boom Clip, Flash Boom y Explorar. */
+  fingerFollow?: { vertical?: boolean; horizontal?: boolean };
+  /**
+   * Solo Explorar: al arrastrar en vertical, el video anterior y el siguiente
+   * entran pegados como cartas. Sin esta prop el gesto queda igual.
+   */
+  cardDeck?: { prev?: DeckPeekMedia | null; next?: DeckPeekMedia | null } | null;
   onSwipeStart?: (x: number, y: number) => void;
   onSwipeEnd?: (x: number, y: number) => void;
   /** Pointer unificado (touch/mouse/lápiz) con eje bloqueado. */
   onPointerGesture?: (info: ImmersivePointerGesture) => void;
   /** Arrastre en vivo (tras bloquear eje), antes de soltar. Opcional: deslizar encadenado. */
   onPointerDrag?: (info: { dx: number; dy: number; axis: 'horizontal' | 'vertical' }) => void;
+  /** Flash Boom: true al tocar el medio, false al soltar. No se dispara en botones. */
+  onHoldChange?: (holding: boolean) => void;
   onWheel?: (deltaY: number) => void;
   children: ReactNode;
   /** Controles superpuestos (seek zones, etc.) */
@@ -63,6 +79,45 @@ function isInteractiveHit(target: EventTarget | null) {
 }
 
 /** Rail / mute / comentarios: no son gesto. Zonas `data-lb-gesture-pass` sí (swipe), pero el click nativo debe llegar al botón. */
+function DeckPeekCard({ item, place }: { item: DeckPeekMedia; place: 'prev' | 'next' }) {
+  const poster = item.poster && !item.poster.startsWith('data:') ? item.poster : undefined;
+  const [frameReady, setFrameReady] = useState(false);
+  return (
+    <div
+      className={`lb-explore-deck__peek pointer-events-none absolute inset-x-0 h-full overflow-hidden bg-black ${
+        place === 'next' ? 'top-full' : 'bottom-full'
+      }`}
+      aria-hidden
+    >
+      {item.kind === 'image' ? (
+        <img src={item.url} alt="" draggable={false} className="h-full w-full object-cover" />
+      ) : (
+        <>
+          {poster ? (
+            <img
+              src={poster}
+              alt=""
+              draggable={false}
+              className={`absolute inset-0 h-full w-full object-cover ${frameReady ? 'opacity-0' : ''}`}
+            />
+          ) : null}
+          <video
+            src={item.url}
+            poster={poster}
+            muted
+            playsInline
+            preload="auto"
+            controls={false}
+            className={`h-full w-full object-cover ${poster && !frameReady ? 'opacity-0' : ''}`}
+            tabIndex={-1}
+            onLoadedData={() => setFrameReady(true)}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 function isImmersiveControlTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
   if (target.closest('[data-lb-gesture-pass]')) return false;
@@ -86,7 +141,10 @@ export function ImmersiveMediaStage({
   onSwipeEnd,
   onPointerGesture,
   onPointerDrag,
+  onHoldChange,
   onWheel,
+  fingerFollow,
+  cardDeck = null,
   children,
   mediaOverlay,
   topChrome,
@@ -95,6 +153,9 @@ export function ImmersiveMediaStage({
   fillMode = 'auto',
 }: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
+  const deckRef = useRef<HTMLDivElement>(null);
+  const deckBusyRef = useRef(false);
+  const deckSettlingRef = useRef(false);
   const mediaBoxRef = useRef<HTMLDivElement>(null);
   const [fillCover, setFillCover] = useState(false);
   const [deviceLandscape, setDeviceLandscape] = useState(false);
@@ -227,6 +288,17 @@ export function ImmersiveMediaStage({
     }
   });
 
+  useLayoutEffect(() => {
+    if (!deckSettlingRef.current) return;
+    const node = deckRef.current;
+    if (node) {
+      node.style.transition = 'none';
+      node.style.transform = '';
+    }
+    deckSettlingRef.current = false;
+    deckBusyRef.current = false;
+  }, [mediaUrl]);
+
   const pointerRef = useRef<{
     id: number;
     x: number;
@@ -235,15 +307,107 @@ export function ImmersiveMediaStage({
     onControl: boolean;
     interactive: boolean;
   } | null>(null);
+  const holdTimerRef = useRef(0);
+  const holdingRef = useRef(false);
+
+  function setHolding(next: boolean) {
+    if (holdingRef.current === next) return;
+    holdingRef.current = next;
+    onHoldChange?.(next);
+  }
+
+  function clearHoldTimer() {
+    window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = 0;
+  }
+
+  function edgeBackActive() {
+    return document.documentElement.dataset.lbEdgeBack === '1';
+  }
+
+  function motionEl() {
+    return cardDeck ? deckRef.current : stageRef.current;
+  }
+
+  function paintFollow(axis: 'horizontal' | 'vertical' | null, dx: number, dy: number) {
+    const el = motionEl();
+    if (!el || !fingerFollow || !axis) return;
+    if (axis === 'vertical' && fingerFollow.vertical) {
+      let y = dy;
+      if (cardDeck) {
+        const limit = el.getBoundingClientRect().height || window.innerHeight;
+        if (y < 0 && !cardDeck.next) y *= 0.32;
+        if (y > 0 && !cardDeck.prev) y *= 0.32;
+        const cap = (y < 0 && cardDeck.next) || (y > 0 && cardDeck.prev) ? limit : limit * 0.28;
+        y = Math.max(-cap, Math.min(cap, y));
+      }
+      el.style.transition = 'none';
+      el.style.transform = `translate3d(0, ${y}px, 0)`;
+      return;
+    }
+    if (axis === 'horizontal' && fingerFollow.horizontal) {
+      const node = cardDeck ? stageRef.current : el;
+      if (!node) return;
+      node.style.transition = 'none';
+      node.style.transform = `translate3d(${dx}px, 0, 0)`;
+    }
+  }
+
+  function releaseFollow() {
+    const el = motionEl();
+    if (!el || !el.style.transform) return;
+    el.style.transition = cardDeck
+      ? 'transform 0.28s cubic-bezier(0.22, 0.8, 0.2, 1)'
+      : 'transform 0.2s ease-out';
+    el.style.transform = '';
+    window.setTimeout(() => {
+      if (motionEl() === el) el.style.transition = '';
+    }, cardDeck ? 300 : 220);
+  }
+
+  function slideDeck(dir: 1 | -1, done: () => void) {
+    const el = deckRef.current;
+    if (!el) {
+      done();
+      return;
+    }
+    deckBusyRef.current = true;
+    deckSettlingRef.current = true;
+    el.style.transition = 'transform 0.26s cubic-bezier(0.22, 0.8, 0.2, 1)';
+    el.style.transform = `translate3d(0, ${dir * -100}%, 0)`;
+    window.setTimeout(() => {
+      done();
+      window.setTimeout(() => {
+        if (!deckSettlingRef.current) {
+          deckBusyRef.current = false;
+          return;
+        }
+        const node = deckRef.current;
+        if (node) {
+          node.style.transition = 'none';
+          node.style.transform = '';
+        }
+        deckSettlingRef.current = false;
+        deckBusyRef.current = false;
+      }, 48);
+    }, 250);
+  }
 
   function endPointerGesture(event: PointerEvent<HTMLDivElement>) {
     const gesture = pointerRef.current;
     if (!gesture || gesture.id !== event.pointerId) return;
+    const stolen = edgeBackActive();
     pointerRef.current = null;
+    clearHoldTimer();
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       /* already released */
+    }
+    if (stolen || gesture.onControl) {
+      releaseFollow();
+      setHolding(false);
+      return;
     }
     const dx = event.clientX - gesture.x;
     const dy = event.clientY - gesture.y;
@@ -256,26 +420,117 @@ export function ImmersiveMediaStage({
         : absX > absY
           ? 'horizontal'
           : 'vertical');
+    const endX = event.clientX;
+    const endY = event.clientY;
     const isTap = !gesture.axis && absX < HORIZONTAL_SEEK_THRESHOLD_PX && absY < HORIZONTAL_SEEK_THRESHOLD_PX;
-    onPointerGesture?.({
+    const info: ImmersivePointerGesture = {
       dx,
       dy,
       axis,
       isTap,
       startedOnControl: gesture.onControl,
-    });
-    if (!gesture.onControl) onSwipeEnd?.(event.clientX, event.clientY);
+    };
+    const deckDir =
+      cardDeck && axis === 'vertical' && absY >= 36 && absY > absX
+        ? dy < 0 && cardDeck.next
+          ? 1
+          : dy > 0 && cardDeck.prev
+            ? -1
+            : 0
+        : 0;
+    const finish = () => {
+      onPointerGesture?.(info);
+      if (!gesture.onControl) onSwipeEnd?.(endX, endY);
+      setHolding(false);
+    };
+    if (deckDir !== 0) {
+      slideDeck(deckDir as 1 | -1, finish);
+      return;
+    }
+    releaseFollow();
+    finish();
   }
 
-  return (
+  const stageTree = (
     <div
       ref={stageRef}
       className={`lb-immersive-stage relative flex min-h-0 flex-1 flex-col overflow-hidden ${
         embedded ? 'h-full min-h-full' : 'h-[100dvh] max-h-[100dvh]'
       }`}
+      style={{ touchAction: 'none' }}
       data-fill={mediaCover ? 'cover' : 'contain'}
       data-device-orientation={deviceLandscape ? 'landscape' : 'portrait'}
       data-rail={parkRailOutside ? 'letterbox' : deviceLandscape ? 'inside' : undefined}
+      onPointerDown={(event) => {
+        if (deckBusyRef.current) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const onControl = isImmersiveControlTarget(event.target);
+        const interactive = isInteractiveHit(event.target);
+        pointerRef.current = {
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          axis: null,
+          onControl,
+          interactive,
+        };
+        if (!interactive) {
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!onControl) onSwipeStart?.(event.clientX, event.clientY);
+        clearHoldTimer();
+        if (!onControl && onHoldChange) {
+          const pointerId = event.pointerId;
+          holdTimerRef.current = window.setTimeout(() => {
+            const current = pointerRef.current;
+            if (!current || current.id !== pointerId || current.axis || current.onControl) return;
+            if (edgeBackActive()) return;
+            setHolding(true);
+          }, 160);
+        }
+      }}
+      onPointerMove={(event) => {
+        const gesture = pointerRef.current;
+        if (!gesture || gesture.id !== event.pointerId || edgeBackActive()) return;
+        const dx = event.clientX - gesture.x;
+        const dy = event.clientY - gesture.y;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+        if (!gesture.axis) {
+          if (absX < GESTURE_AXIS_LOCK_PX && absY < GESTURE_AXIS_LOCK_PX) return;
+          gesture.axis = absX > absY ? 'horizontal' : 'vertical';
+          clearHoldTimer();
+          setHolding(false);
+          if (gesture.interactive && !gesture.onControl) {
+            try {
+              event.currentTarget.setPointerCapture(event.pointerId);
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        paintFollow(gesture.axis, dx, dy);
+        if (!gesture.onControl) onPointerDrag?.({ dx, dy, axis: gesture.axis });
+        if (gesture.axis === 'horizontal' || gesture.axis === 'vertical') event.preventDefault();
+      }}
+      onPointerUp={endPointerGesture}
+      onPointerCancel={endPointerGesture}
+      onWheel={(event) => {
+        if (!onWheel) return;
+        event.preventDefault();
+        if (!cardDeck) {
+          onWheel(event.deltaY);
+          return;
+        }
+        if (deckBusyRef.current || Math.abs(event.deltaY) < 24) return;
+        const dir = event.deltaY > 0 ? 1 : -1;
+        if (dir > 0 ? !cardDeck.next : !cardDeck.prev) return;
+        slideDeck(dir, () => onWheel(event.deltaY));
+      }}
     >
       {mediaUrl && !mediaCover ? (
         <div className="lb-immersive-backdrop pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
@@ -314,58 +569,6 @@ export function ImmersiveMediaStage({
         className={`lb-immersive-stage__center relative z-[1] flex min-h-0 flex-1 items-center justify-center ${
           mediaCover ? 'px-0' : 'px-[max(0.25rem,env(safe-area-inset-left))]'
         }`}
-        style={{ touchAction: 'none' }}
-        onPointerDown={(event) => {
-          if (event.pointerType === 'mouse' && event.button !== 0) return;
-          const onControl = isImmersiveControlTarget(event.target);
-          const interactive = isInteractiveHit(event.target);
-          pointerRef.current = {
-            id: event.pointerId,
-            x: event.clientX,
-            y: event.clientY,
-            axis: null,
-            onControl,
-            interactive,
-          };
-          // Capturar el puntero en el escenario redirige el click del ratón y Boom/mute/comentar no llegan.
-          // Tap en botón: sin capture. Swipe en zona gesto: capture al bloquear eje.
-          if (!interactive) {
-            try {
-              event.currentTarget.setPointerCapture(event.pointerId);
-            } catch {
-              /* ignore */
-            }
-          }
-          if (!onControl) onSwipeStart?.(event.clientX, event.clientY);
-        }}
-        onPointerMove={(event) => {
-          const gesture = pointerRef.current;
-          if (!gesture || gesture.id !== event.pointerId) return;
-          const dx = event.clientX - gesture.x;
-          const dy = event.clientY - gesture.y;
-          const absX = Math.abs(dx);
-          const absY = Math.abs(dy);
-          if (!gesture.axis) {
-            if (absX < GESTURE_AXIS_LOCK_PX && absY < GESTURE_AXIS_LOCK_PX) return;
-            gesture.axis = absX > absY ? 'horizontal' : 'vertical';
-            if (gesture.interactive && !gesture.onControl) {
-              try {
-                event.currentTarget.setPointerCapture(event.pointerId);
-              } catch {
-                /* ignore */
-              }
-            }
-          }
-          if (gesture.axis === 'horizontal') event.preventDefault();
-          if (!gesture.onControl) onPointerDrag?.({ dx, dy, axis: gesture.axis });
-        }}
-        onPointerUp={endPointerGesture}
-        onPointerCancel={endPointerGesture}
-        onWheel={(event) => {
-          if (!onWheel) return;
-          event.preventDefault();
-          onWheel(event.deltaY);
-        }}
       >
         <div
           className={
@@ -418,6 +621,16 @@ export function ImmersiveMediaStage({
       ) : null}
 
       {bottomChrome}
+    </div>
+  );
+
+  if (!cardDeck) return stageTree;
+
+  return (
+    <div ref={deckRef} className="lb-explore-deck relative h-full min-h-0 w-full flex-1">
+      {cardDeck.prev ? <DeckPeekCard item={cardDeck.prev} place="prev" /> : null}
+      {stageTree}
+      {cardDeck.next ? <DeckPeekCard item={cardDeck.next} place="next" /> : null}
     </div>
   );
 }

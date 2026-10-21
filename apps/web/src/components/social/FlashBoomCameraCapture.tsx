@@ -382,7 +382,10 @@ export function FlashBoomCameraCapture({
   const reviewing = Boolean(previewFile && previewUrl);
 
   const panel = (
-    <div className="lb-camera-capture fixed inset-0 z-[120] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden overscroll-none bg-black">
+    <div
+      className="lb-camera-capture fixed inset-0 z-[120] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden overscroll-none bg-black"
+      data-lb-edge-page="overlay"
+    >
       <div
         className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
         style={{ paddingTop: 'max(0.6rem, var(--lb-safe-top))' }}

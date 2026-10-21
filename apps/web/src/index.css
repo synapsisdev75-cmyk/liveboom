@@ -106,6 +106,15 @@
   background: #000;
 }
 
+/* Explorar: la carta del video siguiente no muestra el botón de play del sistema. */
+.lb-explore-deck__peek video::-webkit-media-controls,
+.lb-explore-deck__peek video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .lb-immersive-backdrop__media {
   position: absolute;
   inset: -18%;
@@ -690,98 +699,78 @@ html[data-lb-theme] .lb-media-stage__ambient-media {
   --lb-safe-right: env(safe-area-inset-right, 0px);
   --lb-safe-bottom: env(safe-area-inset-bottom, 0px);
   --lb-safe-left: env(safe-area-inset-left, 0px);
-  /* Incluye burbuja líquida que sobresale (solo móvil/tablet; lg oculta la nav) */
-  --lb-bottom-nav-h: 5.35rem;
+  /* Pastilla flotante del iPhone (incluye el margen sobre el home indicator). */
+  --lb-bottom-nav-h: calc(4.85rem + var(--lb-safe-bottom));
   /* Espacio bajo el contenido hasta que desaparece la bottom nav (lg) */
   --lb-main-pad-bottom: calc(7.75rem + var(--lb-safe-bottom));
 }
 
-/* Bottom nav líquido — móvil / tablet (< lg). Desktop: sidebar.
-   Estilo sólido (sin glass): el cristal edge-to-edge es solo del header superior. */
+/* Menú iPhone: pastilla flotante. Tablet/desktop usan el sidebar. */
 .lb-liquid-nav {
   pointer-events: none;
 }
 
-.lb-liquid-nav__shell {
+.lb-iphone-dock {
   pointer-events: auto;
-  filter: drop-shadow(0 -8px 22px rgba(0, 0, 0, 0.32));
+  width: min(calc(100% - 1.25rem), 28rem);
+  margin: 0 auto max(0.4rem, var(--lb-safe-bottom));
+  padding: 0.35rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, #1c1c1e 82%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
-.lb-liquid-nav__curve-fill,
-.lb-liquid-nav__bar-fill {
-  fill: var(--lb-bg-sidebar);
-  background: var(--lb-bg-sidebar);
-  transition: fill 0.2s ease, background-color 0.2s ease;
+html[data-lb-theme='light'] .lb-iphone-dock {
+  background: color-mix(in srgb, #ffffff 88%, transparent);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
 }
 
-html[data-lb-theme='light'] .lb-liquid-nav__curve-fill,
-html[data-lb-theme='light'] .lb-liquid-nav__bar-fill {
-  fill: var(--lb-surface);
-  background: var(--lb-surface);
+.lb-iphone-dock__list {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.lb-liquid-nav__bubble {
-  color: #fff;
-  background: linear-gradient(
-    135deg,
-    var(--lb-accent-primary) 0%,
-    color-mix(in srgb, var(--lb-accent-primary) 55%, var(--lb-accent-secondary)) 52%,
-    var(--lb-accent-secondary) 100%
-  );
-  border: 1.5px solid color-mix(in srgb, var(--lb-accent-secondary) 75%, #fff);
-  box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--lb-accent-primary) 85%, #fff),
-    0 0 10px 1px color-mix(in srgb, var(--lb-accent-primary) 70%, transparent),
-    0 0 22px 3px color-mix(in srgb, var(--lb-accent-secondary) 55%, transparent),
-    0 10px 22px color-mix(in srgb, var(--lb-accent-primary) 42%, transparent),
-    0 0 0 0.35rem var(--lb-bg-sidebar);
+.lb-iphone-dock__item {
+  display: grid;
+  min-height: 2.75rem;
+  place-items: center;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.92);
 }
 
-.lb-liquid-nav__bubble-icon {
-  color: #fff;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, #fff 55%, transparent));
-  pointer-events: none;
+.lb-iphone-dock__item.is-active {
+  background: rgba(255, 255, 255, 0.16);
 }
 
-.lb-liquid-nav__icon--idle {
-  color: color-mix(in srgb, var(--lb-text) 55%, transparent);
+html[data-lb-theme='light'] .lb-iphone-dock__item {
+  color: #111;
 }
 
-.lb-liquid-nav__icon--active {
-  color: transparent;
-  transform: translateY(-1.05rem);
+html[data-lb-theme='light'] .lb-iphone-dock__item.is-active {
+  background: rgba(0, 0, 0, 0.08);
 }
 
-.lb-liquid-nav__label--idle {
-  color: color-mix(in srgb, var(--lb-text) 48%, transparent);
+.lb-iphone-dock__icon {
+  position: relative;
+  display: grid;
+  height: 2.75rem;
+  width: 2.75rem;
+  place-items: center;
 }
 
-.lb-liquid-nav__label--active {
-  color: var(--lb-accent-secondary);
-}
-
-html[data-lb-theme='light'] .lb-liquid-nav__bubble {
-  border-color: color-mix(in srgb, var(--lb-accent-primary) 70%, #fff);
-  box-shadow:
-    0 0 0 1.5px color-mix(in srgb, var(--lb-accent-primary) 75%, #fff),
-    0 0 10px 1px color-mix(in srgb, var(--lb-accent-primary) 45%, transparent),
-    0 0 20px 3px color-mix(in srgb, var(--lb-accent-secondary) 35%, transparent),
-    0 10px 20px color-mix(in srgb, var(--lb-accent-primary) 28%, transparent),
-    0 0 0 0.35rem var(--lb-surface);
-}
-
-html[data-lb-theme='light'] .lb-liquid-nav__icon--idle {
-  color: color-mix(in srgb, var(--lb-text) 62%, transparent);
-}
-
-html[data-lb-theme='light'] .lb-liquid-nav__label--active {
-  color: var(--lb-accent-primary);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lb-liquid-nav__icon--active {
-    transition: none;
-  }
+.lb-iphone-dock__avatar {
+  width: 1.65rem !important;
+  height: 1.65rem !important;
+  border-radius: 999px;
 }
 
 @media (min-width: 1024px) and (orientation: landscape), (min-width: 1024px) and (pointer: fine), (min-width: 1024px) and (pointer: none) {
@@ -921,10 +910,16 @@ aside.chat-scroll::-webkit-scrollbar {
 }
 
 .lb-chat-thread-scroll {
-  display: flex;
-  flex-direction: column-reverse;
+  display: block;
+  flex: 1 1 auto;
+  height: 0;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
   overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -1381,6 +1376,38 @@ html[data-lb-theme='light'] .gift-box-item video {
   outline: 0;
   box-shadow: none;
   mix-blend-mode: normal;
+}
+
+/* Hasta el primer cuadro compuesto, el canvas de iOS es un rectángulo blanco. */
+canvas.lb-gift-stacked-canvas {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: transparent !important;
+}
+
+canvas.lb-gift-stacked-canvas:not(.is-ready) {
+  opacity: 0;
+}
+
+.lb-gift-stacked-clip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  overflow: hidden;
+  opacity: 0.02;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.lb-gift-stacked-source {
+  display: block;
+  pointer-events: none;
+  background: transparent;
 }
 
 .lb-gift-burst-video::-webkit-media-controls,
@@ -2436,7 +2463,106 @@ input[type='datetime-local'] {
   width: 100%;
 }
 
-/* Inicio: columna central con regla única de ancho */
+.lb-phone-welcome {
+  display: flex;
+  min-height: calc(100dvh - var(--lb-bottom-nav-h) - 6.5rem);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  padding: 1.25rem 1.35rem 0.5rem;
+  text-align: center;
+}
+
+.lb-phone-welcome__marks {
+  display: grid;
+  grid-template-columns: repeat(4, 3.25rem);
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.lb-phone-welcome__mark {
+  display: grid;
+  height: 3.25rem;
+  width: 3.25rem;
+  place-items: center;
+  border-radius: 1rem;
+  color: #fff;
+}
+
+.lb-phone-welcome__mark.is-live {
+  background: #7c3aed;
+}
+
+.lb-phone-welcome__mark.is-clip {
+  background: #0891b2;
+}
+
+.lb-phone-welcome__mark.is-chat {
+  background: #db2777;
+}
+
+.lb-phone-welcome__mark.is-gift {
+  background: #ea580c;
+}
+
+.lb-phone-welcome__title {
+  max-width: 18rem;
+  font-size: clamp(1.65rem, 7vw, 2rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.lb-phone-welcome__text {
+  max-width: 22rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.lb-phone-welcome__primary,
+.lb-phone-welcome__secondary {
+  display: grid;
+  width: min(100%, 22rem);
+  min-height: 3rem;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.lb-phone-welcome__primary {
+  margin-top: 0.85rem;
+  background: #1877f2;
+  color: #fff;
+}
+
+.lb-phone-welcome__secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+html[data-lb-theme='light'] .lb-phone-welcome__title {
+  color: #111;
+}
+
+html[data-lb-theme='light'] .lb-phone-welcome__text {
+  color: #3f3f46;
+}
+
+html[data-lb-theme='light'] .lb-phone-welcome__secondary {
+  background: rgba(0, 0, 0, 0.06);
+  color: #111;
+}
+
+@media (min-width: 768px) {
+  .lb-phone-welcome {
+    display: none;
+  }
+}
+
 .lb-home-center {
   margin-left: auto;
   margin-right: auto;
@@ -2692,7 +2818,12 @@ input[type='datetime-local'] {
 html:has(.lb-auth-page),
 html:has(.lb-auth-page) body,
 html:has(.lb-auth-page) #root {
-  height: 100%;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -2732,6 +2863,7 @@ html:has(.lb-legal-page) #root {
   position: relative;
   display: flex;
   flex-direction: column;
+  width: 100%;
   min-height: 100dvh;
   height: 100dvh;
   max-height: 100dvh;
@@ -3199,6 +3331,12 @@ html:has(.lb-legal-page) #root {
   }
 }
 
+@media (max-width: 767px) {
+  .lb-auth-top__logo img {
+    height: clamp(3rem, 11dvh, 5rem) !important;
+  }
+}
+
 .lb-auth-main {
   position: relative;
   z-index: 10;
@@ -3243,6 +3381,12 @@ html:has(.lb-legal-page) #root {
   align-items: flex-start;
   padding-top: 0.15rem;
   padding-bottom: 0.35rem;
+}
+
+.lb-auth-card input,
+.lb-auth-card select,
+.lb-auth-card textarea {
+  font-size: 1rem;
 }
 
 .lb-auth-top--mobile {
@@ -3472,9 +3616,20 @@ html:has(.lb-legal-page) #root {
 .lb-auth-terms {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
   font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: start;
   color: rgba(212, 212, 216, 0.85);
+}
+
+.lb-auth-terms input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.05rem;
+  flex: none;
+  accent-color: #22d3ee;
 }
 
 .lb-auth-terms a {
@@ -3605,6 +3760,55 @@ html:has(.lb-legal-page) #root {
   font-weight: 700;
   line-height: 1.15;
   transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+html.lb-ios-native .lb-auth-social__btn {
+  gap: 0.45rem;
+  padding: 0 0.7rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background: rgba(8, 12, 28, 0.42);
+  color: #fff;
+  font-size: clamp(0.78rem, 1.6vw, 0.9rem);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 0 14px rgba(34, 211, 238, 0.38),
+    0 0 26px rgba(255, 77, 184, 0.32),
+    inset 0 0 12px rgba(255, 255, 255, 0.06);
+}
+
+.lb-apple-id-btn {
+  display: inline-flex;
+  width: 100%;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: #111111;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.lb-apple-id-btn:disabled {
+  opacity: 0.6;
+}
+
+.lb-apple-id-access {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.lb-apple-id-access__hint {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(212, 212, 216, 0.78);
 }
 
 .lb-auth-social__btn span {
@@ -3829,6 +4033,15 @@ html:has(.lb-legal-page) #root {
 @media (max-width: 767px) {
   .lb-auth-shell {
     flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lb-auth-main {
+    align-self: center;
+    width: min(100%, 22.5rem);
+    max-width: min(100%, 22.5rem);
+    margin-inline: auto;
   }
 
   .lb-auth-hero {
@@ -3838,10 +4051,20 @@ html:has(.lb-legal-page) #root {
 
 @media (max-width: 767px) and (orientation: portrait) {
   .lb-auth-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
     height: 100dvh;
     max-height: 100dvh;
-    min-height: 100dvh;
+    min-height: 0;
     overflow: hidden;
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
   }
 
   .lb-auth-hero {
@@ -3849,16 +4072,30 @@ html:has(.lb-legal-page) #root {
   }
 
   .lb-auth-shell {
-    height: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    align-self: center;
+    justify-content: center;
+    width: 100%;
+    max-width: min(100%, 24rem);
+    height: auto;
+    max-height: 100%;
     min-height: 0;
-    padding: 0.55rem 0.75rem 0.65rem;
+    margin-inline: auto;
+    padding: 0;
+    overflow: hidden;
   }
 
   .lb-auth-main {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
+    align-self: center;
     width: 100%;
-    max-width: min(100%, 22rem);
+    max-width: 100%;
+    height: auto;
     max-height: 100%;
+    margin-inline: auto;
     overflow: hidden;
     justify-content: center;
     padding: 0;
@@ -3867,19 +4104,23 @@ html:has(.lb-legal-page) #root {
   .lb-auth-card-wrap {
     display: flex;
     align-items: center;
-    width: min(100%, 22rem);
+    justify-content: center;
+    width: 100%;
     max-width: 100%;
-    height: 100%;
+    height: auto;
     max-height: 100%;
     margin-inline: auto;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 0.1rem;
   }
 
   .lb-auth-card {
     width: 100%;
     max-height: 100%;
-    overflow: hidden;
+    margin-inline: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: clamp(0.5rem, 1.5dvh, 1rem) clamp(0.7rem, 3.2vw, 1.1rem);
   }
 
@@ -3906,7 +4147,7 @@ html:has(.lb-legal-page) #root {
   .lb-auth-cta,
   .lb-auth-social__btn,
   .lb-auth-create {
-    min-height: clamp(2.15rem, 5.2dvh, 2.85rem);
+    min-height: 2.75rem;
   }
 
   .lb-auth-create {
@@ -3921,8 +4162,23 @@ html:has(.lb-legal-page) #root {
   }
 
   .lb-auth-social {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
+}
+
+html[data-lb-keyboard='open'] .lb-auth-page {
+  height: calc(var(--lb-vv-height, 100dvh) - var(--lb-keyboard-inset, 0px));
+  max-height: calc(var(--lb-vv-height, 100dvh) - var(--lb-keyboard-inset, 0px));
+  align-items: center;
+  justify-content: center;
+}
+
+html[data-lb-keyboard='open'] .lb-auth-shell,
+html[data-lb-keyboard='open'] .lb-auth-main,
+html[data-lb-keyboard='open'] .lb-auth-card-wrap {
+  width: 100%;
+  max-height: 100%;
+  margin-inline: auto;
 }
 
 @media (max-width: 767px) and (orientation: landscape) {
@@ -4345,6 +4601,61 @@ html:has(.lb-legal-page) #root {
   .lb-auth-card > footer > div {
     gap: 0.05rem 0.45rem;
   }
+}
+
+/* Acceso en la app de iPhone: pantalla completa del teléfono. Android y la web no cambian. */
+html.lb-ios-native:has(.lb-auth-page),
+html.lb-ios-native:has(.lb-auth-page) body,
+html.lb-ios-native:has(.lb-auth-page) #root,
+html.lb-ios-native .lb-auth-page {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: 100%;
+  max-height: 100dvh;
+  min-height: 0;
+  margin: 0;
+}
+
+html.lb-ios-native .lb-auth-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  letter-spacing: normal;
+  word-spacing: 0.06em;
+}
+
+html.lb-ios-native .lb-auth-page :where(h1, h2, p, span, label, button, a, input) {
+  letter-spacing: normal;
+  word-spacing: 0.06em;
+}
+
+html.lb-ios-native .lb-auth-hero {
+  display: none;
+}
+
+html.lb-ios-native .lb-auth-shell,
+html.lb-ios-native .lb-auth-main,
+html.lb-ios-native .lb-auth-card-wrap,
+html.lb-ios-native .lb-auth-card {
+  width: 100%;
+  max-width: min(100%, 24rem);
+  margin-inline: auto;
+  align-self: center;
+}
+
+html.lb-ios-native[data-lb-keyboard='open'] .lb-auth-page {
+  height: calc(100dvh - var(--lb-keyboard-inset, 0px));
+  max-height: calc(100dvh - var(--lb-keyboard-inset, 0px));
 }
 
 .lb-signed-out {
@@ -10878,6 +11189,13 @@ body {
 /* Color emoji en captions (Publicación / Boom Clip / Flash Boom). */
 .lb-emoji-text {
   font-family: 'Segoe UI Emoji', 'Noto Color Emoji', 'Apple Color Emoji', 'Twemoji Mozilla', sans-serif;
+}
+
+/* En iPhone, Apple Color Emoji abre huecos entre las palabras. La fuente del sistema ya pinta los emoji. */
+html.lb-ios-native .lb-emoji-text {
+  font-family: inherit;
+  letter-spacing: normal;
+  word-spacing: normal;
 }
 
 .lb-emoji-text.lb-chat-list-preview {

@@ -17,6 +17,7 @@ import {
 } from '../../lib/storyAuthorNav';
 import { PostPhotoViewer } from '../social/PostPhotoViewer';
 import { PostVideoPlayer } from '../social/PostVideoPlayer';
+import type { DeckPeekMedia } from '../social/ImmersiveMediaStage';
 import { originalPostPath } from '../social/RepostPostCard';
 import type { MediaOverlayItem } from '../../lib/mediaOverlays';
 import type { PostTextStyle, TextStyleRange } from '../../lib/postTextStyle';
@@ -58,8 +59,10 @@ type Props = {
   reels: ReelFeedItem[];
   initialIndex: number;
   onClose?: () => void;
-  /** Flash Boom: auto-avance al terminar cada video. */
+  /** Flash Boom: auto-avance al terminar cada video. Boom Clip también puede usarlo para pasar de autor. */
   storyMode?: boolean;
+  /** Solo Flash Boom: mantener el dedo pausa el video o la foto. */
+  holdToPause?: boolean;
   /** Boom Clip / Flash Boom: Ver más / Ver menos en la descripción. */
   collapsibleCaption?: boolean;
   /** Embebido en página (Explorar): sin portal ni botón cerrar. */
@@ -125,6 +128,7 @@ export function ReelFeedViewer({
   initialIndex,
   onClose,
   storyMode = false,
+  holdToPause = false,
   embedded = false,
   immersiveLandscapeLayout = true,
   collapsibleCaption = false,
@@ -400,6 +404,15 @@ export function ReelFeedViewer({
   const nextReel = reels[index + 1];
   const peekCover = chainSwipe ? chainPeekCovers(containMedia) : false;
 
+  function peekCard(item: ReelFeedItem | undefined): DeckPeekMedia | null {
+    if (!exploreFastNav || !item?.mediaUrl) return null;
+    if (item.mediaType === 'photo') return { url: item.mediaUrl, kind: 'image' };
+    return { url: item.mediaUrl, kind: 'video', poster: item.thumbUrl || null };
+  }
+  const exploreCardDeck = exploreFastNav
+    ? { prev: peekCard(reels[index - 1]), next: peekCard(reels[index + 1]) }
+    : null;
+
   const player = (
     <>
       {reel.mediaType === 'photo' ? (
@@ -423,11 +436,13 @@ export function ReelFeedViewer({
           immersiveLandscapeLayout={immersiveLandscapeLayout}
           publicationCaption={collapsibleCaption}
           storyMode={storyMode}
+          holdToPause={holdToPause}
           repostByUsername={isRepost ? reel.username : null}
           originalUsername={isRepost ? originUsername : null}
           originalHref={originHref}
           overlays={reel.overlays}
           railExtra={railExtra}
+          exploreCardDeck={exploreCardDeck}
         />
       ) : (
         <PostVideoPlayer
@@ -467,6 +482,7 @@ export function ReelFeedViewer({
           userNavigation={userNavigation}
           reelPosition={storyPosition}
           storyMode={storyMode}
+          holdToPause={holdToPause}
           itemSideNav={storyMode}
           durationBar={durationBar}
           durationSec={reel.durationSec}
@@ -502,6 +518,7 @@ export function ReelFeedViewer({
           }
           railExtra={railExtra}
           hideOverlayInfo={hideMediaInfo}
+          exploreCardDeck={exploreCardDeck}
         />
       )}
       {storyMode && !embedded ? (

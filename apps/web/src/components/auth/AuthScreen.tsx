@@ -39,11 +39,11 @@ export function AuthScreen() {
   const isEs = t.locale === 'es';
 
   function socialBirthYear(): number | undefined | null {
-    if (mode !== 'register') return undefined;
     if (!acceptedTerms) {
       setLocalError(t('auth.mustAccept'));
       return null;
     }
+    if (mode !== 'register') return undefined;
     const year = Number(birthYear);
     if (!Number.isFinite(year) || year < minBirthYear || year > maxBirthYear) {
       setLocalError(t('auth.invalidBirthYear'));
@@ -60,7 +60,7 @@ export function AuthScreen() {
     event.preventDefault();
     setLocalError(null);
     setResetNotice(null);
-    if (mode === 'register' && !acceptedTerms) {
+    if (!acceptedTerms) {
       setLocalError(t('auth.mustAccept'));
       return;
     }
@@ -103,25 +103,17 @@ export function AuthScreen() {
   async function onGoogle() {
     setLocalError(null);
     setResetNotice(null);
-    if (mode === 'register') {
-      const year = socialBirthYear();
-      if (year === null) return;
-      await signInGoogle(year).catch(() => undefined);
-      return;
-    }
-    await signInGoogle().catch(() => undefined);
+    const year = socialBirthYear();
+    if (year === null) return;
+    await signInGoogle(year).catch(() => undefined);
   }
 
   async function onApple() {
     setLocalError(null);
     setResetNotice(null);
-    if (mode === 'register') {
-      const year = socialBirthYear();
-      if (year === null) return;
-      await signInApple(year).catch(() => undefined);
-      return;
-    }
-    await signInApple().catch(() => undefined);
+    const year = socialBirthYear();
+    if (year === null) return;
+    await signInApple(year).catch(() => undefined);
   }
 
   return (

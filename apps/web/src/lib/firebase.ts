@@ -1,5 +1,12 @@
+import { Capacitor } from '@capacitor/core';
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  getAuth,
+  GoogleAuthProvider,
+  initializeAuth,
+  OAuthProvider,
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getDataConnect } from 'firebase/data-connect';
@@ -15,7 +22,10 @@ const firebaseConfig = {
 };
 
 export const firebaseApp = initializeApp(firebaseConfig);
-export const auth = getAuth(firebaseApp);
+/** WKWebView cuelga el arranque si Auth espera IndexedDB. En iPhone/Android usamos localStorage. */
+export const auth = Capacitor.isNativePlatform()
+  ? initializeAuth(firebaseApp, { persistence: browserLocalPersistence })
+  : getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
 export const storage = getStorage(firebaseApp);
 export const dataConnect = getDataConnect(firebaseApp, connectorConfig);

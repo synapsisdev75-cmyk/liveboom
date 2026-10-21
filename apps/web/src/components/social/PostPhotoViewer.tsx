@@ -15,7 +15,7 @@ import { buildPostShareUrl } from '../../lib/shareContent';
 import { useIsDesktop } from '../../hooks/useBreakpoint';
 import { useAuthStore } from '../../store/authStore';
 import { PostActionRail } from './PostActionRail';
-import { ImmersiveMediaStage } from './ImmersiveMediaStage';
+import { ImmersiveMediaStage, type DeckPeekMedia } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { PostComments } from './PostVideoPlayer';
 import { PublicationCaptionOverlay } from './PublicationCaption';
@@ -74,6 +74,8 @@ type Props = {
   publicationCaption?: boolean;
   /** Flash Boom / Boom Clip: barra de progreso + auto-avance (5 s en foto). */
   storyMode?: boolean;
+  /** Solo Flash Boom: pausa mientras el dedo está puesto. */
+  holdToPause?: boolean;
   repostByUsername?: string | null;
   originalUsername?: string | null;
   originalHref?: string | null;
@@ -82,6 +84,8 @@ type Props = {
   embedded?: boolean;
   /** Acción extra del consumidor en la barra lateral (solo Explorar). */
   railExtra?: ReactNode;
+  /** Solo Explorar: carta del video anterior y del siguiente al arrastrar. */
+  exploreCardDeck?: { prev?: DeckPeekMedia | null; next?: DeckPeekMedia | null } | null;
 };
 
 /**
@@ -109,12 +113,14 @@ export function PostPhotoViewer({
   immersiveLandscapeLayout = false,
   publicationCaption = false,
   storyMode = false,
+  holdToPause = false,
   repostByUsername = null,
   originalUsername = null,
   originalHref = null,
   overlays = [],
   embedded = false,
   railExtra = null,
+  exploreCardDeck = null,
 }: Props) {
   const t = useT();
   const profile = useAuthStore((state) => state.profile);
@@ -145,6 +151,7 @@ export function PostPhotoViewer({
   });
   const swipeRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
   const [storyProgress, setStoryProgress] = useState(0);
+  const [pressHeld, setPressHeld] = useState(false);
   const photoElapsedRef = useRef(0);
   const photoLastTickRef = useRef<number | null>(null);
   const wheelLockRef = useRef(0);
@@ -156,13 +163,14 @@ export function PostPhotoViewer({
     setCommentsOpen(false);
     setGiftsOpen(false);
     setStoryProgress(0);
+    setPressHeld(false);
     photoElapsedRef.current = 0;
     photoLastTickRef.current = null;
   }, [src, postId]);
 
   useEffect(() => {
     if (!storyMode || !expanded) return;
-    if (commentsOpen || giftsOpen || optionsOpen || shareOpen) {
+    if (commentsOpen || giftsOpen || optionsOpen || shareOpen || pressHeld) {
       photoLastTickRef.current = null;
       return;
     }
@@ -182,7 +190,7 @@ export function PostPhotoViewer({
     };
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-  }, [storyMode, expanded, commentsOpen, giftsOpen, optionsOpen, shareOpen, src, postId]);
+  }, [storyMode, expanded, commentsOpen, giftsOpen, optionsOpen, shareOpen, pressHeld, src, postId]);
 
   const shareUrl =
     authorUsername && postId ? buildPostShareUrl(authorUsername, postId, authorUid) : null;
@@ -307,6 +315,7 @@ export function PostPhotoViewer({
     expanded && typeof document !== 'undefined' ? (
       <div
         className="fixed inset-0 z-[100] touch-none overflow-hidden overscroll-none bg-black"
+        data-lb-edge-page="overlay"
         role="dialog"
         aria-modal
         aria-label="Publicación"
@@ -319,6 +328,13 @@ export function PostPhotoViewer({
           landscapeRailAside
           fillMode={publicationFillMode}
           insets={{ top: 56, bottom: publicationCaption ? 132 : 100, left: 4, right: 4, actionRail: 56 }}
+          onHoldChange={holdToPause ? setPressHeld : undefined}
+          fingerFollow={
+            navigation || userNavigation
+              ? { vertical: Boolean(navigation), horizontal: Boolean(userNavigation) }
+              : undefined
+          }
+          cardDeck={exploreCardDeck}
           onSwipeStart={(x, y) => {
             if (!navigation && !userNavigation) return;
             swipeRef.current = { x, y, active: true };

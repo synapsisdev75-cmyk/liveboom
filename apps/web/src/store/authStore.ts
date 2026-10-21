@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   deleteUser,
   GoogleAuthProvider,
+  OAuthProvider,
   onAuthStateChanged,
   sendEmailVerification,
   signInWithCredential,
@@ -32,6 +33,9 @@ type NativeGoogleAuthPlugin = {
     /** Android: false = Google Sign-In clásico (celulares sin Credential Manager). */
     useCredentialManager?: boolean;
   }) => Promise<{ credential?: { idToken?: string | null } | null }>;
+  signInWithApple: () => Promise<{
+    credential?: { idToken?: string | null; nonce?: string | null } | null;
+  }>;
   signOut: () => Promise<void>;
 };
 
@@ -337,6 +341,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   hydrate: () => {
     let unsubDoc: (() => void) | null = null;
     let cancelled = false;
+    const watchdog = window.setTimeout(() => {
+      if (get().ready) return;
+      const user = auth.currentUser;
+      if (user && !needsEmailVerification(user)) set({ firebaseUser: user, ready: true });
+      else set({ ready: true });
+    }, 8000);
     const activate = (user: FirebaseUser) => {
       unsubDoc?.();
       unsubDoc = null;
@@ -379,6 +389,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
     return () => {
       cancelled = true;
+      window.clearTimeout(watchdog);
       if (activateSession === activate) activateSession = null;
       unsubDoc?.();
       unsubAuth();
@@ -438,7 +449,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signInEmail: async (email, password) => {
     set({ busy: true, error: null });
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       if (needsEmailVerification(cred.user)) {
         set({ firebaseUser: null, profile: null, pendingVerifyUser: cred.user });
         return;
@@ -570,14 +581,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signInApple: async (birthYear) => {
     set({ busy: true, error: null });
     try {
-      if (Capacitor.isNativePlatform()) {
-        const message =
-          'Inicio con Apple en la app requiere configuración nativa (Apple Sign-In). Usa Google o correo por ahora.';
-        set({ error: message });
-        throw new Error(message);
+      let user: FirebaseUser;
+      if (Capacitor.getPlatform() === 'ios') {
+        const native = await FirebaseAuthentication.signInWithApple();
+        const idToken = String(native.credential?.idToken || '').trim();
+        const rawNonce = String(native.credential?.nonce || '').trim();
+        if (!idToken) {
+          throw new Error('Apple no devolvió un token.');
+        }
+        const provider = new OAuthProvider('apple.com');
+        const cred = await signInWithCredential(
+          auth,
+          provider.credential({ idToken, rawNonce: rawNonce || undefined }),
+        );
+        user = cred.user;
+      } else {
+        const cred = await signInWithPopup(auth, appleProvider);
+        user = cred.user;
       }
-      const cred = await signInWithPopup(auth, appleProvider);
-      const user = cred.user;
       if (birthYear && Number.isFinite(birthYear)) {
         storePendingBirthYear(user.uid, birthYear);
       }

@@ -345,9 +345,68 @@ export async function prepareNativeLiveWebView(): Promise<void> {
   }
 }
 
+async function requestIosCameraAndMicrophone(): Promise<AvPermissionResult> {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    return { camera: false, microphone: false };
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+  const camera = stream.getVideoTracks().some((track) => track.readyState === 'live');
+  const microphone = stream.getAudioTracks().some((track) => track.readyState === 'live');
+  stream.getTracks().forEach((track) => track.stop());
+  return { camera, microphone };
+}
+
+/** iPhone: cámara, micrófono, notificaciones y ubicación, en ese orden para que iOS muestre cada aviso. */
+async function requestIosEssentialPermissions(): Promise<EssentialPermissionResult> {
+  let camera = false;
+  let microphone = false;
+  let notifications = false;
+  try {
+    const av = await requestIosCameraAndMicrophone();
+    camera = av.camera;
+    microphone = av.microphone;
+  } catch {
+    /* el usuario puede rechazar el aviso */
+  }
+  try {
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+    const perm = await PushNotifications.requestPermissions();
+    notifications = perm.receive === 'granted';
+  } catch {
+    notifications = false;
+  }
+  if (typeof navigator !== 'undefined' && navigator.geolocation) {
+    await new Promise<void>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => resolve(),
+        () => resolve(),
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+      );
+    });
+  }
+  return {
+    camera,
+    microphone,
+    notifications,
+    media: true,
+    bluetooth: true,
+    overlay: true,
+  };
+}
+
 export async function ensureNativeLiveAvPermissions(): Promise<AvPermissionResult> {
   if (!Capacitor.isNativePlatform()) {
     return { camera: true, microphone: true };
+  }
+  if (isNativeIosApp()) {
+    try {
+      return await requestIosCameraAndMicrophone();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err || '');
+      throw new Error(
+        message || 'Activa la cámara y el micrófono en Ajustes → LiveBoom.',
+      );
+    }
   }
   await prepareNativeLiveWebView();
   let result: AvPermissionResult;
@@ -410,6 +469,24 @@ export async function ensureNativeScreenSharePermissions(opts?: {
 export async function ensureNativeEssentialPermissions(
   options: { force?: boolean } = {},
 ): Promise<EssentialPermissionResult> {
+  if (isNativeIosApp()) {
+    if (!options.force && essentialRequestedOnce) {
+      return {
+        camera: true,
+        microphone: true,
+        notifications: true,
+        media: true,
+        bluetooth: true,
+        overlay: true,
+      };
+    }
+    if (essentialRequestInFlight) return essentialRequestInFlight;
+    essentialRequestInFlight = requestIosEssentialPermissions().finally(() => {
+      essentialRequestedOnce = true;
+      essentialRequestInFlight = null;
+    });
+    return essentialRequestInFlight;
+  }
   if (!isNativeAndroidApp()) {
     return {
       camera: true,
@@ -1351,6 +1428,7 @@ export async function showNativeSystemNotification(input: {
   id?: number;
   imageUrl?: string | null;
 }): Promise<number | null> {
+  if (isNativeIosApp()) return showIosSystemNotification(input);
   if (!isNativeAndroidApp()) return null;
   try {
     const imageUrl = String(input.imageUrl || '').trim();
@@ -1367,8 +1445,49 @@ export async function showNativeSystemNotification(input: {
   }
 }
 
+/** Banner + sonido en el iPhone, el mismo aviso que la bandeja de Android. */
+async function showIosSystemNotification(input: {
+  title: string;
+  body: string;
+  id?: number;
+}): Promise<number | null> {
+  try {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    let perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== 'granted') {
+      perm = await LocalNotifications.requestPermissions();
+    }
+    if (perm.display !== 'granted') return null;
+    const id = input.id && input.id > 0 ? input.id : Math.floor(Date.now() % 2147483646) + 1;
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id,
+          title: input.title,
+          body: input.body,
+          sound: 'default',
+          schedule: { at: new Date(Date.now() + 1000) },
+        },
+      ],
+    });
+    return id;
+  } catch {
+    return null;
+  }
+}
+
 export async function cancelNativeSystemNotification(id: number): Promise<void> {
-  if (!isNativeAndroidApp() || id < 0) return;
+  if (id < 0) return;
+  if (isNativeIosApp()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      await LocalNotifications.cancel({ notifications: [{ id }] });
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  if (!isNativeAndroidApp()) return;
   try {
     await LiveMedia.cancelNotification({ id });
   } catch {

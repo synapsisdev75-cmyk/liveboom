@@ -19,10 +19,37 @@ let ctx: ChatNotifyContext = {
   documentVisible: typeof document === 'undefined' || document.visibilityState === 'visible',
 };
 
+/** null hasta que Capacitor informe si la app nativa está abierta. */
+let nativeAppActive: boolean | null = null;
+
+function syncDocumentVisible() {
+  const pageVisible = typeof document !== 'undefined' && document.visibilityState === 'visible';
+  const visible = nativeAppActive === false ? false : pageVisible;
+  ctx = { ...ctx, documentVisible: visible };
+}
+
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
-    ctx = { ...ctx, documentVisible: document.visibilityState === 'visible' };
+    syncDocumentVisible();
   });
+}
+
+if (typeof window !== 'undefined') {
+  void import('@capacitor/core')
+    .then(({ Capacitor }) => {
+      if (!Capacitor.isNativePlatform()) return;
+      return import('@capacitor/app').then(({ App }) => {
+        void App.getState().then((state) => {
+          nativeAppActive = state.isActive;
+          syncDocumentVisible();
+        });
+        void App.addListener('appStateChange', ({ isActive }) => {
+          nativeAppActive = isActive;
+          syncDocumentVisible();
+        });
+      });
+    })
+    .catch(() => undefined);
 }
 
 export function isMessagesPath(pathname: string) {
@@ -47,6 +74,7 @@ function matchesOpenChat(input: { chatId?: string | null; peerUid?: string | nul
 
 /** App visible en pantalla (no en segundo plano ni pestaña oculta). */
 export function isAppInForeground() {
+  if (nativeAppActive === false) return false;
   return typeof document !== 'undefined' && document.visibilityState === 'visible';
 }
 

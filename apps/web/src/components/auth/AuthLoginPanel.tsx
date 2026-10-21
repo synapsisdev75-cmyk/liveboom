@@ -184,21 +184,25 @@ export function AuthLoginPanel({
             </button>
           ) : null}
 
-          {mode === 'register' ? (
-            <label className="lb-auth-terms">
-              <input
-                type="checkbox"
-                checked={acceptedTerms}
-                onChange={(e) => onAcceptedTerms(e.target.checked)}
-              />
-              <span>
-                {labels.acceptPrefix}{' '}
-                <Link to="/legal/terminos">{labels.terms}</Link>, {labels.andTheMasculine}{' '}
-                <Link to="/legal/privacidad">{labels.privacy}</Link> {labels.andThe}{' '}
-                <Link to="/legal/cookies">{labels.cookies}</Link>.
-              </span>
-            </label>
-          ) : null}
+          <label className="lb-auth-terms">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => onAcceptedTerms(e.target.checked)}
+            />
+            <span>
+              {labels.acceptPrefix}{' '}
+              <Link to="/legal/terminos">{labels.terms}</Link>, {labels.andTheMasculine}{' '}
+              <Link to="/legal/privacidad">{labels.privacy}</Link>
+              {mode === 'register' ? (
+                <>
+                  {' '}
+                  {labels.andThe} <Link to="/legal/cookies">{labels.cookies}</Link>
+                </>
+              ) : null}
+              .
+            </span>
+          </label>
 
           {localError ? (
             <p className="lb-auth-msg lb-auth-msg--error" role="alert">

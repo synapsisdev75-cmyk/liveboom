@@ -124,18 +124,30 @@ async function sendPushToUsers({
           priority: 'high',
           notification: androidNotification,
         },
-        apns: hasImage
-          ? {
-              payload: {
-                aps: {
-                  'mutable-content': 1,
+        apns: {
+          headers: {
+            'apns-priority': '10',
+            'apns-push-type': 'alert',
+          },
+          payload: {
+            aps: {
+              alert: {
+                title: String(title || 'LiveBoom').slice(0, 80),
+                body: String(body || '').slice(0, 180),
+              },
+              sound: 'default',
+              badge: 1,
+              ...(hasImage ? { 'mutable-content': 1 } : {}),
+            },
+          },
+          ...(hasImage
+            ? {
+                fcmOptions: {
+                  imageUrl: safeImage.slice(0, 500),
                 },
-              },
-              fcmOptions: {
-                imageUrl: safeImage.slice(0, 500),
-              },
-            }
-          : undefined,
+              }
+            : {}),
+        },
       });
       sent += res.successCount;
       failed += res.failureCount;

@@ -22,6 +22,40 @@ html {
   max-width: 100%;
 }
 
+.lb-route-stack {
+  position: relative;
+  min-height: 100%;
+  height: 100%;
+}
+
+.lb-route-stack__under {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  transform: scale(0.96);
+  transform-origin: center center;
+}
+
+html[data-lb-edge-back='1'] .lb-route-stack__under {
+  visibility: visible;
+  transform: scale(calc(0.96 + 0.04 * var(--lb-edge-p, 0)));
+}
+
+.lb-route-stack__under video,
+.lb-route-stack__under audio {
+  display: none !important;
+}
+
+html.lb-ios-native [data-lb-edge-page='route'] {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-primary, #0a0a0b);
+  min-height: 100%;
+}
+
 html,
 body,
 #root {
@@ -29,6 +63,7 @@ body,
   height: var(--lb-vv-height);
   max-height: var(--lb-vv-height);
   overflow: hidden;
+  background: #000;
 }
 
 .lb-shell {
@@ -41,6 +76,15 @@ body,
 html[data-lb-keyboard='open'] .lb-shell {
   height: var(--lb-vv-height);
   max-height: var(--lb-vv-height);
+}
+
+html.lb-ios-native,
+html.lb-ios-native body,
+html.lb-ios-native #root,
+html.lb-ios-native .lb-shell {
+  height: 100dvh !important;
+  max-height: none !important;
+  min-height: 100dvh !important;
 }
 
 /* APK: el WebView ya se encoge con el teclado. No recortar otra vez con visualViewport. */

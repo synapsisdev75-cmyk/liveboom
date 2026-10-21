@@ -10,6 +10,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Radio,
   Search,
 } from 'lucide-react';
 import { FlashBoomRow } from '../components/feed/FlashBoomRow';
@@ -459,9 +460,41 @@ function HomePublicationCard({
   );
 }
 
+function PhoneWelcome() {
+  return (
+    <section className="lb-phone-welcome md:hidden">
+      <div className="lb-phone-welcome__marks" aria-hidden>
+        <span className="lb-phone-welcome__mark is-live">
+          <Radio size={22} />
+        </span>
+        <span className="lb-phone-welcome__mark is-clip">
+          <Play size={22} />
+        </span>
+        <span className="lb-phone-welcome__mark is-chat">
+          <MessageCircle size={22} />
+        </span>
+        <span className="lb-phone-welcome__mark is-gift">
+          <Gift size={22} />
+        </span>
+      </div>
+      <h1 className="lb-phone-welcome__title">Empieza a usar LiveBoom</h1>
+      <p className="lb-phone-welcome__text">
+        Transmite en vivo, mira Boom Clips y Flash Boom, y habla con tu comunidad. Todo en una sola app.
+      </p>
+      <Link to="/registro" className="lb-phone-welcome__primary">
+        Empezar
+      </Link>
+      <Link to="/login" className="lb-phone-welcome__secondary">
+        Ya tengo cuenta
+      </Link>
+    </section>
+  );
+}
+
 export function HomeView() {
   const t = useT();
   const ready = useAuthStore((s) => s.ready);
+  const firebaseUser = useAuthStore((s) => s.firebaseUser);
   const profile = useAuthStore((s) => s.profile);
   const navigate = useNavigate();
   const [streams, setStreams] = useState<ActiveLiveFeedItem[]>([]);
@@ -796,8 +829,16 @@ export function HomeView() {
     { id: 'cerca', label: t('feed.nearby') },
   ];
 
+  const showPhoneWelcome = ready && !firebaseUser && !profile;
+
   return (
-    <div className="lb-page lb-home-center flex min-w-0 flex-col gap-4 sm:gap-5">
+    <>
+      {showPhoneWelcome ? <PhoneWelcome /> : null}
+      <div
+        className={`lb-page lb-home-center flex min-w-0 flex-col gap-4 sm:gap-5 ${
+          showPhoneWelcome ? 'max-md:hidden' : ''
+        }`}
+      >
       {/* 1. Tabs + buscar + campana */}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <nav className="flex min-w-0 max-w-full items-center gap-0.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] sm:gap-1 [&::-webkit-scrollbar]:hidden">
@@ -1000,6 +1041,7 @@ export function HomeView() {
           reels={flashViewer.reels}
           initialIndex={flashViewer.index}
           storyMode={flashViewer.storyMode}
+          holdToPause={flashViewer.storyMode}
           immersiveLandscapeLayout={flashViewer.storyMode}
           collapsibleCaption
           durationBar={!flashViewer.storyMode}
@@ -1053,6 +1095,7 @@ export function HomeView() {
         />
       ) : null}
     </div>
+    </>
   );
 }
 

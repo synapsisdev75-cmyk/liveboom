@@ -1,9 +1,11 @@
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const src = 'c:/Users/empre/Desktop/liveboom/apps/web/public/brand/icon-1024.png';
-const res = 'c:/Users/empre/Desktop/liveboom/apps/capacitor-android/android/app/src/main/res';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const src = path.join(root, '../web/public/brand/icon-1024.png');
+const res = path.join(root, 'android/app/src/main/res');
 const sizes = [
   ['mipmap-mdpi', 48],
   ['mipmap-hdpi', 72],

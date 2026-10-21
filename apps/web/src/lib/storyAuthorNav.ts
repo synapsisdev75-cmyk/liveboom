@@ -57,7 +57,7 @@ export function classifyStoryGesture(dx: number, dy: number): StoryGesture | nul
   if (absX >= 56 && absX > absY * 1.15) {
     return dx < 0 ? 'user-next' : 'user-prev';
   }
-  if (absY >= 48 && absY > absX * 1.15) {
+  if (absY >= 36 && absY > absX * 1.15) {
     return dy < 0 ? 'item-next' : 'item-prev';
   }
   return null;

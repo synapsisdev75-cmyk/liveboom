@@ -177,6 +177,21 @@ export const useCallStore = create<CallState>((set, get) => ({
       activeStartedAt: null,
       lastError: null,
     });
+    const me = useAuthStore.getState().profile;
+    if (me?.firebaseUid && peer.uid && peer.uid !== me.firebaseUid) {
+      void import('../lib/pushNotifications').then(({ enqueuePushNotify }) => {
+        enqueuePushNotify({
+          recipientUids: [peer.uid],
+          title: video ? 'Videollamada entrante' : 'Llamada entrante',
+          body: `${me.displayName || 'Alguien'} te está llamando en LiveBoom`,
+          channel: 'calls',
+          type: 'call',
+          href: me.handle ? `/mensajes?con=${encodeURIComponent(me.handle)}` : '/mensajes',
+          chatId,
+          fromUid: me.firebaseUid,
+        });
+      });
+    }
   },
 
   beginIncomingAccepted: ({ chatId, callId, peer, video, token, serverUrl, connectedAtMs }) => {

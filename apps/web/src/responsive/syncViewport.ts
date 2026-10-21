@@ -22,6 +22,7 @@ function isTextEntry(el: EventTarget | null) {
 function readSize() {
   const root = document.documentElement;
   const android = root.classList.contains('lb-android-native');
+  const iosNative = root.classList.contains('lb-ios-native');
   const vv = window.visualViewport;
   const width = Math.round(vv?.width ?? window.innerWidth);
   const innerH = Math.round(window.innerHeight);
@@ -31,7 +32,7 @@ function readSize() {
   const editing = isTextEntry(document.activeElement);
   // APK: adjustResize ya encoge el WebView. Si además usamos visualViewport,
   // queda una franja negra entre el compositor y el teclado.
-  const height = android ? innerH : vvH;
+  const height = android || iosNative ? Math.max(innerH, vvH, 1) : Math.max(vvH, innerH, 1);
   const keyboard = android ? (editing ? overlap : 0) : overlap;
   return { width, height, keyboard, editing, android };
 }

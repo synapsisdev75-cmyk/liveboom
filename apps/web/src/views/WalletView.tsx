@@ -17,7 +17,8 @@ import {
   type ResolvedCoinPackage,
 } from '../lib/coinPackages';
 import { confirmBlastPurchase } from '../lib/blastPurchaseClient';
-import { isNativeApp } from '../lib/wompiCheckout';
+import { isIosStorePurchaseOnly, isNativeApp } from '../lib/wompiCheckout';
+import { AppleIdAccessButton } from '../components/wallet/AppleIdAccessButton';
 import { normalizeBlastBalances } from '../lib/blastBalances';
 import {
   fetchWalletPurchases,
@@ -475,6 +476,17 @@ export function WalletView() {
                 </div>
               ) : null}
               <div className="mt-5 flex flex-col gap-2.5 sm:flex-row">
+                {isIosStorePurchaseOnly() ? (
+                  <div className="lb-apple-id-access w-full sm:max-w-sm">
+                    <AppleIdAccessButton
+                      onClick={() => openBuy()}
+                      label="Continuar con Apple ID"
+                    />
+                    <p className="lb-apple-id-access__hint">
+                      Compra BLAST con tu Apple ID. El cargo aparece en tu factura de Apple.
+                    </p>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setOpenWithdraw(true)}
@@ -764,10 +776,24 @@ export function WalletView() {
             <h2 className="lb-wallet-payments-title mb-3 text-[11px] font-bold uppercase tracking-[0.16em]">
               Métodos de pago aceptados
             </h2>
-            <PaymentMethodsStrip />
-            <p className="mt-2 text-[11px] text-zinc-600">
-              Pagos procesados de forma segura con Wompi (PSE, tarjetas y billeteras).
-            </p>
+            {isIosStorePurchaseOnly() ? (
+              <div className="lb-apple-id-access rounded-2xl border border-white/[0.08] bg-[#14151c] p-4">
+                <AppleIdAccessButton
+                  onClick={() => openBuy()}
+                  label="Continuar con Apple ID"
+                />
+                <p className="lb-apple-id-access__hint">
+                  En iPhone, BLAST se paga solo con Apple ID. No se usa Wompi ni tarjetas externas.
+                </p>
+              </div>
+            ) : (
+              <>
+                <PaymentMethodsStrip />
+                <p className="mt-2 text-[11px] text-zinc-600">
+                  Pagos procesados de forma segura con Wompi (PSE, tarjetas y billeteras).
+                </p>
+              </>
+            )}
           </section>
         </>
       ) : (

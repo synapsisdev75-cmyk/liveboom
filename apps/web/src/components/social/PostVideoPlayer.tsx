@@ -86,7 +86,7 @@ import {
 } from '../../lib/storyAuthorNav';
 import { COMMENT_EMOJI_SIZE, COMMENT_EMOJI_SIZE_COMPACT } from '../../lib/liveboomEmojis';
 import { PostActionRail } from './PostActionRail';
-import { ImmersiveMediaStage, type ImmersivePointerGesture } from './ImmersiveMediaStage';
+import { ImmersiveMediaStage, type DeckPeekMedia, type ImmersivePointerGesture } from './ImmersiveMediaStage';
 import { PublicationMedia } from './PublicationMedia';
 import { profileHref } from '../../lib/profileFirestore';
 import { useAuthStore } from '../../store/authStore';
@@ -148,6 +148,8 @@ type Props = {
   };
   /** Modo Flash Boom / Boom Clip: auto-avance + barras de progreso. */
   storyMode?: boolean;
+  /** Solo Flash Boom: pausa mientras el dedo está puesto. */
+  holdToPause?: boolean;
   /** Toque izquierdo/derecho cambia de ítem (no seek ±10s). */
   itemSideNav?: boolean;
   /** Duración conocida del clip (s); respaldo si el video aún no reporta duration. */
@@ -183,6 +185,8 @@ type Props = {
   fastNavPrevUrl?: string | null;
   fastNavNextUrl?: string | null;
   fastNavNext2Url?: string | null;
+  /** Solo Explorar: carta del video anterior y del siguiente al arrastrar. */
+  exploreCardDeck?: { prev?: DeckPeekMedia | null; next?: DeckPeekMedia | null } | null;
   onFirstFrame?: () => void;
   /** Acción extra del consumidor en la barra lateral (solo Explorar). */
   railExtra?: ReactNode;
@@ -410,6 +414,7 @@ export function PostVideoPlayer({
   reelPosition,
   userNavigation,
   storyMode = false,
+  holdToPause = false,
   itemSideNav = false,
   durationSec: durationSecProp = null,
   embedded = false,
@@ -430,6 +435,7 @@ export function PostVideoPlayer({
   fastNavPrevUrl = null,
   fastNavNextUrl = null,
   fastNavNext2Url = null,
+  exploreCardDeck = null,
   onFirstFrame,
   railExtra = null,
   hideOverlayInfo = false,
@@ -512,7 +518,9 @@ export function PostVideoPlayer({
     caption?.trim() ||
     (authorUsername ? `Mira este video de @${authorUsername} en LiveBoom` : 'Mira este video en LiveBoom');
   const videoAspect = useVideoAspect(skipRemoteAspectProbe ? null : src);
-  const storyHeld = commentsPanelOpen || giftsOpen || railSheetOpen;
+  const [pressHeld, setPressHeld] = useState(false);
+  const sheetHeld = commentsPanelOpen || giftsOpen || railSheetOpen;
+  const storyHeld = sheetHeld || pressHeld;
   const captionStyled = textStyleProps(captionTextStyle, captionTextStyleRanges);
   useTextStyleFonts(captionTextStyle, captionTextStyleRanges);
 
@@ -588,6 +596,7 @@ export function PostVideoPlayer({
     setStoryProgress(0);
     setKnownDuration(0);
     setUserPaused(false);
+    setPressHeld(false);
     setCommentsPanelOpen(false);
     setGiftsOpen(false);
     setSeekHint(null);
@@ -1103,7 +1112,7 @@ export function PostVideoPlayer({
         }
         return;
       }
-      if (info.axis === 'vertical' && reelNavigation && absY >= 48 && absY > absX) {
+      if (info.axis === 'vertical' && reelNavigation && absY >= 36 && absY > absX) {
         lockGestureClicks();
         if (info.dy < 0) reelNavigation.onNext();
         else reelNavigation.onPrev();
@@ -1328,6 +1337,7 @@ export function PostVideoPlayer({
         className={`${
           embedded ? 'absolute inset-0 z-10' : 'fixed inset-0 z-[100] h-[100dvh] max-h-[100dvh]'
         } overflow-hidden overscroll-none bg-black`}
+        data-lb-edge-page={embedded ? undefined : 'overlay'}
       >
         <ImmersiveMediaStage
           mediaWidth={immersiveW}
@@ -1347,7 +1357,14 @@ export function PostVideoPlayer({
           }}
           onPointerGesture={handlePointerGesture}
           onPointerDrag={chain ? handlePointerDrag : undefined}
+          onHoldChange={holdToPause ? setPressHeld : undefined}
           onWheel={reelNavigation ? handleWheelNavigate : undefined}
+          fingerFollow={
+            reelNavigation || userNavigation
+              ? { vertical: Boolean(reelNavigation), horizontal: Boolean(userNavigation) }
+              : undefined
+          }
+          cardDeck={fastNav ? exploreCardDeck : null}
           mediaOverlay={
             <>
               <MediaOverlayLayer overlays={overlays} />

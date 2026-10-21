@@ -39,6 +39,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogConfigStore } from '../../store/catalogConfigStore';
 import { PaymentMethodsStrip } from './PaymentMethodsStrip';
+import { AppleIdAccessButton } from './AppleIdAccessButton';
 
 type RechargeNote =
   | { kind: 'success'; coins?: number }
@@ -414,14 +415,22 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
           {note ? <RechargeStatus note={note} /> : null}
 
           <div className="flex flex-col gap-2 pb-[env(safe-area-inset-bottom)] sm:flex-row sm:justify-end sm:pb-0">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void pay()}
-              className="w-full rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-3 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105 disabled:opacity-60 sm:w-auto sm:py-2"
-            >
-              {busy ? (iosPurchase ? 'Abriendo Apple…' : 'Abriendo Wompi…') : iosPurchase ? 'Comprar con Apple' : 'Recargar BLAST'}
-            </button>
+            {iosPurchase ? (
+              <AppleIdAccessButton
+                busy={busy}
+                onClick={() => void pay()}
+                label="Continuar con Apple ID"
+              />
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void pay()}
+                className="w-full rounded-full bg-gradient-to-r from-cyan-500 to-fuchsia-500 px-6 py-3 font-bold text-white shadow-[0_0_15px_rgba(0,240,255,0.5)] transition-transform hover:scale-105 disabled:opacity-60 sm:w-auto sm:py-2"
+              >
+                {busy ? 'Abriendo Wompi…' : 'Recargar BLAST'}
+              </button>
+            )}
           </div>
         </div>
       </div>

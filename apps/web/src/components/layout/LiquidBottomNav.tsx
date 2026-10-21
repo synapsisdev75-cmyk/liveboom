@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { domAnimation, LazyMotion, m, useMotionValueEvent, useSpring } from 'framer-motion';
 import { requestGoHome } from '../../lib/goHome';
 import { prefetchRoute } from '../../lib/routePrefetch';
 import { useAuthStore } from '../../store/authStore';
+import { UserAvatar } from '../profile/UserAvatar';
 import { useUnreadMessageCount } from '../social/MessageInboxBadge';
 
 type NavItem = {
@@ -74,10 +76,80 @@ type Props = {
   items: NavItem[];
 };
 
+function isIosShell() {
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('lb-ios-native')) {
+    return true;
+  }
+  try {
+    return Capacitor.getPlatform() === 'ios';
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Bottom nav líquido (burbuja + dip) — solo teléfono (&lt; md).
- * Tablet/desktop: menú izquierdo (sidebar).
- * Sin cristal ni hide animado: el glass edge-to-edge va solo en el header superior.
+ * Pastilla flotante de iPhone y iPad. Android conserva la barra líquida.
+ * Tablet/desktop web: menú izquierdo.
+ */
+function IosDockNav({
+  items,
+  activeIndex,
+}: {
+  items: NavItem[];
+  activeIndex: number;
+}) {
+  const profile = useAuthStore((s) => s.profile);
+  return (
+    <nav className="lb-liquid-nav lb-iphone-dock-wrap fixed inset-x-0 bottom-0 z-40 md:hidden" aria-label="Navegación principal">
+      <div className="lb-iphone-dock">
+        <ul className="lb-iphone-dock__list">
+          {items.map((item, index) => {
+            const Icon = item.icon;
+            const messages = item.to === '/mensajes';
+            const profileItem = item.id === 'profile';
+            const active = index === activeIndex;
+            return (
+              <li key={item.id} className="min-w-0 flex-1">
+                <NavLink
+                  to={item.to}
+                  end={item.id === 'home'}
+                  onClick={() => {
+                    if (item.id === 'home') requestGoHome();
+                  }}
+                  onPointerEnter={() => prefetchRoute(item.to)}
+                  onFocus={() => prefetchRoute(item.to)}
+                  className={`lb-iphone-dock__item${active ? ' is-active' : ''}`}
+                  aria-label={item.label}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <span className="lb-iphone-dock__icon">
+                    {profileItem ? (
+                      <UserAvatar
+                        uid={profile?.firebaseUid}
+                        src={profile?.avatarUrl}
+                        username={profile?.handle}
+                        displayName={profile?.displayName}
+                        size={26}
+                        className="lb-iphone-dock__avatar"
+                      />
+                    ) : (
+                      <Icon size={22} strokeWidth={active ? 2.4 : 1.9} />
+                    )}
+                    {messages ? <NavUnreadBadge className="absolute -right-1.5 -top-1" /> : null}
+                  </span>
+                </NavLink>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </nav>
+  );
+}
+
+/**
+ * Bottom nav líquido (burbuja + dip) — Android y web estrecha.
+ * iPhone/iPad usan la pastilla. Tablet/desktop: menú izquierdo.
  */
 export function LiquidBottomNav({ items }: Props) {
   const location = useLocation();
@@ -103,6 +175,10 @@ export function LiquidBottomNav({ items }: Props) {
   const bubbleLeft = `calc(${(activeIndex + 0.5) * (100 / count)}% - 1.375rem)`;
   const activeItem = items[activeIndex] ?? items[0];
   const ActiveIcon = activeItem?.icon;
+
+  if (isIosShell()) {
+    return <IosDockNav items={items} activeIndex={activeIndex} />;
+  }
 
   return (
     <nav className="lb-liquid-nav fixed inset-x-0 bottom-0 z-40 md:hidden" aria-label="Navegación principal">

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 type Options = {
   containerRef: RefObject<HTMLElement | null>;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
   enabled?: boolean;
   /** Distancia en px para disparar recarga */
   threshold?: number;
@@ -74,7 +74,12 @@ export function usePullToRefresh({
       if (pullPxRef.current >= threshold) {
         setRefreshing(true);
         setPullPx(threshold);
-        onRefreshRef.current();
+        void Promise.resolve(onRefreshRef.current()).finally(() => {
+          pullingRef.current = false;
+          pullPxRef.current = 0;
+          setPullPx(0);
+          setRefreshing(false);
+        });
       } else {
         resetPull();
       }
@@ -100,6 +105,6 @@ export function usePullToRefresh({
 
 export function useAppReload() {
   return useCallback(() => {
-    window.location.reload();
+    window.dispatchEvent(new Event('liveboom:app-refresh'));
   }, []);
 }

@@ -1003,6 +1003,30 @@ html[data-lb-theme='light'] .lb-shell-mobile-layer__scrim {
   html[data-lb-chat-thread='open'] .lb-chat-thread-head {
     padding-top: env(safe-area-inset-top, 0px);
   }
+
+  /* iPhone: la lista queda detrás del hilo para el desliz de volver. */
+  html.lb-ios-native[data-lb-chat-thread='open'] .lb-messages-shell {
+    position: relative;
+  }
+
+  html.lb-ios-native[data-lb-chat-thread='open'] .lb-messages-shell > .lb-chat-pane[data-lb-edge-under] {
+    display: flex !important;
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    max-width: none;
+    pointer-events: none;
+  }
+
+  html.lb-ios-native[data-lb-chat-thread='open'] .lb-messages-shell > .lb-chat-pane[data-lb-edge-page='overlay'] {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    max-width: none;
+    background: #0a0a0b;
+  }
 }
 
 html[data-lb-theme='light'] .lb-shell-header {
@@ -3322,6 +3346,17 @@ html[data-lb-theme='light'] .lb-auth-page .lb-auth-social__btn {
   background: #fff;
   color: #18181b;
   box-shadow: none;
+}
+
+html.lb-ios-native[data-lb-theme] .lb-auth-page .lb-auth-social__btn,
+html.lb-ios-native[data-lb-theme='light'] .lb-auth-page .lb-auth-social__btn {
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background: rgba(8, 12, 28, 0.42);
+  color: #fff;
+  box-shadow:
+    0 0 14px rgba(34, 211, 238, 0.38),
+    0 0 26px rgba(255, 77, 184, 0.32),
+    inset 0 0 12px rgba(255, 255, 255, 0.06);
 }
 
 /* Cámara in-app (Flash Boom, publicaciones, collage, chat): sigue el tema claro. */

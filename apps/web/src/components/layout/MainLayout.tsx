@@ -613,6 +613,7 @@ export function MainLayout() {
         ) : null}
         <div
           key={location.pathname}
+          data-lb-edge-page="route"
           className={
             immersiveMain
               ? 'flex h-full min-h-0 flex-col'

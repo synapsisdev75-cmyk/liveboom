@@ -403,6 +403,7 @@ export function FlashBoomRow() {
           reels={viewerReels}
           initialIndex={viewerIndex}
           storyMode
+          holdToPause
           immersiveLandscapeLayout
           collapsibleCaption
           onClose={() => setViewerReels(null)}

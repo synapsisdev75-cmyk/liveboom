@@ -41,7 +41,13 @@ export function BootSplash() {
   const [timedOut, setTimedOut] = useState(false);
   const [warmPhase, setWarmPhase] = useState<'idle' | 'running' | 'settled'>('idle');
   const [warmTimedOut, setWarmTimedOut] = useState(false);
+  const [forceHide, setForceHide] = useState(false);
   const onHome = pathname === '/inicio';
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setForceHide(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const onFeed = () => setFeedReady(true);
@@ -65,7 +71,7 @@ export function BootSplash() {
 
   const waitingFeed = Boolean(ready && profile && onHome && !feedReady && !timedOut);
   const waitingWarm = Boolean(onHome && warmPhase === 'running' && !warmTimedOut);
-  const visible = !ready || waitingFeed || waitingWarm;
+  const visible = !forceHide && (!ready || waitingFeed || waitingWarm);
 
   // Barra real: hitos de sesión / feed / warm (nunca baja).
   useEffect(() => {

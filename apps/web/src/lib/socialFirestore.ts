@@ -64,6 +64,7 @@ import {
 } from './mediaOverlays';
 import { resolveMentionUsers } from './mentionUsers';
 import { extractMentionHandles } from './textEntities';
+import { assertAllowedContent } from './objectionableContent';
 import {
   addCommentBoom as addCommentBoomService,
   getCommentBoomCount as getCommentBoomCountService,
@@ -2057,6 +2058,7 @@ export async function sendChatMessage(
   },
 ) {
   const body = text.trim().slice(0, MAX_CHAT_MESSAGE_LENGTH);
+  assertAllowedContent(body);
   const mediaUrl = extras?.mediaUrl || null;
   const linkUrl = extras?.linkUrl?.trim() || null;
   const giftId = extras?.giftId?.trim() || null;
@@ -3399,6 +3401,7 @@ export async function createPost(input: {
   const overlayPayload = serializeMediaOverlays(input.overlays || []);
   const captionMax = isStory ? FLASH_BOOM_CAPTION_MAX : isBoomClip ? BOOM_CLIP_CAPTION_MAX : 2000;
   const captionText = input.caption.trim().slice(0, captionMax);
+  assertAllowedContent(captionText);
   const textStyle = captionText ? parsePostTextStyle(input.textStyle) : null;
   const textStyleRanges = captionText
     ? textStyleRangesForTrimmed(input.caption, input.textStyleRanges, captionMax)
@@ -4040,6 +4043,7 @@ export async function addPostComment(
   textStyleRanges?: TextStyleRange[],
 ) {
   const body = text.trim().slice(0, 500);
+  assertAllowedContent(body);
   const mediaUrl = String(media?.mediaUrl || '').trim();
   const mediaType = media?.mediaType || (mediaUrl ? inferCommentMediaType(mediaUrl) : null);
   if (!body && !mediaUrl) throw new Error('Escribe un comentario');

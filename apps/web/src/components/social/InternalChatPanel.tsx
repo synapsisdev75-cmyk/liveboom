@@ -1,4 +1,5 @@
 import { useBackLayer } from '../../lib/backLayer';
+import { isNativeIosApp } from '../../lib/nativeLiveMedia';
 import {
   ArrowDownLeft,
   ArrowLeft,
@@ -980,6 +981,7 @@ export function InternalChatPanel({
   const holdTimerRef = useRef(0);
   const lastMsgCount = useRef(0);
   const threadScrollKey = useRef('');
+  const stickToLatestRef = useRef(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const attachFileRef = useRef<HTMLInputElement>(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
@@ -994,7 +996,7 @@ export function InternalChatPanel({
   const recordCancelRef = useRef(false);
   const seenGiftAnimRef = useRef<Set<string>>(new Set());
   const giftReplayLockRef = useRef<Set<string>>(new Set());
-  const [giftAnimPlayedIds, setGiftAnimPlayedIds] = useState<Set<string>>(() => new Set());
+  const [, setGiftAnimPlayedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const uid = profile?.firebaseUid;
@@ -1416,28 +1418,25 @@ export function InternalChatPanel({
     }
 
     const pinLatest = () => {
-      bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end', inline: 'nearest' });
-      if (el.classList.contains('lb-chat-thread-scroll')) {
-        el.scrollTop = 0;
-      } else {
-        el.scrollTop = el.scrollHeight;
-      }
+      if (!stickToLatestRef.current) return;
+      el.scrollTop = el.scrollHeight;
     };
 
     const firstOpen = threadScrollKey.current !== key;
     if (firstOpen) {
+      stickToLatestRef.current = true;
       pinLatest();
       threadScrollKey.current = key;
       const timers = [32, 80, 160, 360, 800].map((ms) => window.setTimeout(pinLatest, ms));
       return () => timers.forEach((id) => window.clearTimeout(id));
     }
-    if (el.scrollTop < 120) pinLatest();
+    if (stickToLatestRef.current) pinLatest();
   }, [messages, chatId, activeUid]);
 
   const scrollChatToBottom = useCallback((smooth = false) => {
     const el = chatScrollRef.current;
     if (el?.classList.contains('lb-chat-thread-scroll')) {
-      el.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
       return;
     }
     if (el) {
@@ -1860,12 +1859,12 @@ export function InternalChatPanel({
   }
 
   function replayOfflineGiftOnce(message: ChatMessage) {
-    if (!message.giftId || message.mine) return;
-    if (giftAnimPlayedIds.has(message.id) || giftReplayLockRef.current.has(message.id)) return;
-    markGiftAnimPlayed(message.id);
+    if (!message.giftId) return;
     animateGiftInChat(
       message.giftId,
-      activeFriend?.displayName || activeFriend?.username || undefined,
+      message.mine
+        ? profile?.displayName || profile?.handle || undefined
+        : activeFriend?.displayName || activeFriend?.username || undefined,
       parseChatGiftMultiplier(message.text),
     );
   }
@@ -2160,6 +2159,9 @@ export function InternalChatPanel({
   const chatOpen = Boolean(activeFriend);
   // Page móvil: lista O hilo. Desktop: lista siempre + hilo.
   const mobileHideList = isPage && chatOpen;
+  // iPhone: el hilo tapa la lista y el desliz del borde la deja ver, como en un chat de iOS.
+  const iosPhoneChat =
+    isNativeIosApp() && isPage && !isFloating && chatOpen && chatBreakpoint === 'phone';
 
   if (compact) {
     return (
@@ -2213,6 +2215,7 @@ export function InternalChatPanel({
       }`}
       style={chatThemeStyle(listTheme)}
       {...chatThemeAttrs(listTheme)}
+      data-lb-edge-under={iosPhoneChat ? '1' : undefined}
     >
       <div className="shrink-0 px-4 pb-2 pt-4">
         <div className="flex items-center justify-between gap-2">
@@ -2454,11 +2457,12 @@ export function InternalChatPanel({
 
   const threadPane = activeFriend ? (
       <div
-        className={`lb-chat-pane lb-chat-themed relative min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-[#0a0a0b] ${
+        className={`lb-chat-pane lb-chat-themed lb-chat-thread relative min-h-0 min-w-0 flex-1 flex-col overflow-visible bg-[#0a0a0b] ${
           isPage ? (chatOpen ? 'flex' : 'hidden md:flex') : 'flex'
         }`}
         style={chatThemeStyle(threadTheme)}
         {...chatThemeAttrs(threadTheme)}
+        data-lb-edge-page={iosPhoneChat ? 'overlay' : undefined}
       >
         <ChatBackgroundRenderer background={threadTheme.background} />
         <div className="lb-chat-thread-head">
@@ -2595,11 +2599,16 @@ export function InternalChatPanel({
           <div ref={callDockRef} id="lb-chat-call-dock" className="lb-chat-call-dock" />
         </div>
 
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div id="lb-chat-call-host" ref={callHostRef} className="lb-chat-call-host" />
         <div
           ref={chatScrollRef}
-          className="chat-scroll lb-chat-thread-scroll flex-1 overflow-y-auto px-4 py-4"
+          className="chat-scroll lb-chat-thread-scroll min-h-0 flex-1 overflow-y-auto px-4 py-4"
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            stickToLatestRef.current = fromBottom < 140;
+          }}
           style={{
             paddingLeft: 'max(1rem, var(--lb-safe-left))',
             paddingRight: 'max(1rem, var(--lb-safe-right))',
@@ -2631,12 +2640,7 @@ export function InternalChatPanel({
               const isGift = !gone && Boolean(message.giftId);
               const giftItem = isGift ? findLiveGift(message.giftId) : null;
               const giftMult = isGift ? parseChatGiftMultiplier(message.text) : 1;
-              const canReplayGift =
-                isGift &&
-                !message.mine &&
-                Boolean(message.giftId) &&
-                !giftAnimPlayedIds.has(message.id) &&
-                !giftReplayLockRef.current.has(message.id);
+              const canReplayGift = isGift && Boolean(message.giftId);
               const plainText =
                 !gone &&
                 !isAudio &&
