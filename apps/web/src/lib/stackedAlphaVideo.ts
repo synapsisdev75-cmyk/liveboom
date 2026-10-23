@@ -73,14 +73,22 @@ float expandLimited(float c) {
 }
 
 void main() {
-  float y = min(vUv.y * 0.5, 0.5 - uHalfTexel);
-  vec3 color = texture2D(uTex, vec2(vUv.x, y)).rgb;
-  vec3 mask = texture2D(uTex, vec2(vUv.x, max(0.5 + vUv.y * 0.5, 0.5 + uHalfTexel))).rgb;
-  float raw = expandLimited(dot(mask, vec3(0.299, 0.587, 0.114)));
-  // En el iPhone real el 4:2:0 levanta un poco el negro de la máscara; el simulador no.
-  float alpha = smoothstep(0.0, 0.04, raw);
-  vec3 rgb = vec3(expandLimited(color.r), expandLimited(color.g), expandLimited(color.b));
-  gl_FragColor = vec4(rgb * alpha, alpha);
+  float yColor = min(vUv.y * 0.5, 0.5 - uHalfTexel);
+  float yMask = max(0.5 + vUv.y * 0.5, 0.5 + uHalfTexel);
+  vec3 color = texture2D(uTex, vec2(vUv.x, yColor)).rgb;
+  vec3 mask = texture2D(uTex, vec2(vUv.x, yMask)).rgb;
+  float raw = expandLimited(min(min(mask.r, mask.g), mask.b));
+
+  // El MP4 stacked guarda el RGB sobre blanco; sin esto el humo y el brillo
+  // se ven como manchas blancas en el iPhone.
+  vec3 fg = clamp((color - vec3(1.0 - raw)) / max(raw, 0.001), 0.0, 1.0);
+  float maxc = max(fg.r, max(fg.g, fg.b));
+  float minc = min(fg.r, min(fg.g, fg.b));
+  float sat = maxc - minc;
+  float whitePlate = smoothstep(0.78, 0.94, maxc) * (1.0 - smoothstep(0.06, 0.20, sat));
+  float alpha = raw * (1.0 - whitePlate * (1.0 - smoothstep(0.62, 0.95, raw)));
+  if (raw < 0.85 && maxc < 0.03) alpha = 0.0;
+  gl_FragColor = vec4(fg * alpha, alpha);
 }`;
 
 /** El centro de muchos regalos es transparente; se mira varios puntos del cuadro. */
@@ -213,7 +221,7 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
         boundH = h;
       }
       if (!upload(video)) return false;
-      gl.uniform1f(gpu.uHalfTexel, 0.5 / vh);
+      gl.uniform1f(gpu.uHalfTexel, 2.5 / vh);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       if (!frameHasGift(gl, w, h)) return true;
