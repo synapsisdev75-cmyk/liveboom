@@ -1394,14 +1394,15 @@ canvas.lb-gift-stacked-canvas:not(.is-ready) {
 
 .lb-gift-stacked-clip {
   position: fixed;
-  left: 0;
+  left: -4000px;
   top: 0;
-  width: 8px;
-  height: 8px;
+  width: max-content;
+  height: max-content;
   overflow: hidden;
-  opacity: 0.02;
+  opacity: 1;
   pointer-events: none;
   z-index: 0;
+  transform: translate3d(0, 0, 0);
 }
 
 .lb-gift-stacked-source {

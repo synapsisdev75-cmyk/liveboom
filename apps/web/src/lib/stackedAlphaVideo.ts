@@ -67,12 +67,20 @@ precision mediump float;
 uniform sampler2D uTex;
 uniform float uHalfTexel;
 varying vec2 vUv;
+
+float expandLimited(float c) {
+  return clamp((c - 16.0 / 255.0) * (255.0 / 219.0), 0.0, 1.0);
+}
+
 void main() {
   float y = min(vUv.y * 0.5, 0.5 - uHalfTexel);
   vec3 color = texture2D(uTex, vec2(vUv.x, y)).rgb;
-  float raw = texture2D(uTex, vec2(vUv.x, max(0.5 + vUv.y * 0.5, 0.5 + uHalfTexel))).r;
-  float alpha = smoothstep(0.07, 0.2, raw);
-  gl_FragColor = vec4(color * alpha, alpha);
+  vec3 mask = texture2D(uTex, vec2(vUv.x, max(0.5 + vUv.y * 0.5, 0.5 + uHalfTexel))).rgb;
+  float raw = expandLimited(dot(mask, vec3(0.299, 0.587, 0.114)));
+  // En el iPhone real el 4:2:0 levanta un poco el negro de la máscara; el simulador no.
+  float alpha = smoothstep(0.0, 0.04, raw);
+  vec3 rgb = vec3(expandLimited(color.r), expandLimited(color.g), expandLimited(color.b));
+  gl_FragColor = vec4(rgb * alpha, alpha);
 }`;
 
 /** El centro de muchos regalos es transparente; se mira varios puntos del cuadro. */
@@ -148,6 +156,7 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
     alpha: true,
     premultipliedAlpha: true,
     antialias: false,
+    preserveDrawingBuffer: false,
     powerPreference: 'high-performance',
   });
   if (!gl) return null;
@@ -156,8 +165,33 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
   let boundW = 0;
   let boundH = 0;
   const frame = document.createElement('canvas');
-  const frameCtx = frame.getContext('2d', { alpha: false });
+  const frameCtx = frame.getContext('2d', { alpha: false, willReadFrequently: false });
   if (!frameCtx) return null;
+
+  const upload = (video: HTMLVideoElement) => {
+    gl.bindTexture(gl.TEXTURE_2D, gpu!.texture);
+    try {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+      return true;
+    } catch {
+      /* iOS a veces no deja pasar el video directo a WebGL */
+    }
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (frame.width !== vw || frame.height !== vh) {
+      frame.width = vw;
+      frame.height = vh;
+    }
+    frameCtx.fillStyle = '#000';
+    frameCtx.fillRect(0, 0, vw, vh);
+    try {
+      frameCtx.drawImage(video, 0, 0, vw, vh);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   return {
     draw(video) {
@@ -166,10 +200,6 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
       if (vw < 2 || vh < 4 || video.readyState < 2) return false;
       const w = vw;
       const h = Math.floor(vh / 2);
-      if (frame.width !== vw || frame.height !== vh) {
-        frame.width = vw;
-        frame.height = vh;
-      }
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
@@ -182,17 +212,7 @@ export function createStackedAlphaRenderer(canvas: HTMLCanvasElement): StackedAl
         boundW = w;
         boundH = h;
       }
-      try {
-        frameCtx.drawImage(video, 0, 0, vw, vh);
-      } catch {
-        return false;
-      }
-      gl.bindTexture(gl.TEXTURE_2D, gpu.texture);
-      try {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
-      } catch {
-        return false;
-      }
+      if (!upload(video)) return false;
       gl.uniform1f(gpu.uHalfTexel, 0.5 / vh);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

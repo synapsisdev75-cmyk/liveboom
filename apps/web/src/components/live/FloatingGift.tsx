@@ -30,18 +30,20 @@ import {
 import { TRANSPARENT_VIDEO_POSTER } from '../../lib/videoPoster';
 import { GiftComboBadge } from './GiftComboBadge';
 
-/** El video stacked solo alimenta al canvas WebGL; no se muestra. */
-const STACKED_SOURCE_STYLE: CSSProperties = {
-  position: 'absolute',
-  width: 1,
-  height: 1,
-  opacity: 0,
-  pointerEvents: 'none',
-};
-
 /** Fallback cuando el catálogo no trae width/height: todas las animaciones de regalo son 9:16. */
 const GIFT_ANIM_FALLBACK_W = 720;
 const GIFT_ANIM_FALLBACK_H = 1280;
+
+/**
+ * El video stacked solo alimenta al canvas. Se deja a tamaño real y fuera
+ * de pantalla: si mide 1px, iOS en el aparato decodifica un cuadro minúsculo
+ * y el fondo sale con estelas blancas.
+ */
+const STACKED_SOURCE_STYLE: CSSProperties = {
+  width: GIFT_ANIM_FALLBACK_W,
+  height: GIFT_ANIM_FALLBACK_H,
+  pointerEvents: 'none',
+};
 
 function resolveGiftMediaSize(
   width?: number,
@@ -348,22 +350,19 @@ function GiftVideoBurst({
     const startPlayback = () => {
       if (doneRef.current) return;
       syncSize();
-      video.volume = Math.min(1, Math.max(0, volume));
+      const level = Math.min(1, Math.max(0, volume));
       video.muted = true;
+      video.defaultMuted = true;
+      video.volume = level;
       const playPromise = video.play();
       void Promise.resolve(playPromise)
         .then(() => {
           video.muted = false;
-          video.volume = Math.min(1, Math.max(0, volume));
-          return video.play();
-        })
-        .catch(() => {
-          video.muted = false;
-          video.volume = Math.min(1, Math.max(0, volume));
-          return video.play();
+          video.volume = level;
         })
         .catch(() => {
           video.muted = true;
+          video.volume = 0;
           return video.play();
         })
         .catch((error) => {
@@ -382,7 +381,13 @@ function GiftVideoBurst({
         startPlayback();
       }
     };
-    const onLoadedMeta = () => syncSize();
+    const onLoadedMeta = () => {
+      syncSize();
+      if (stacked && video.videoWidth > 2 && video.videoHeight > 2) {
+        video.style.width = `${video.videoWidth}px`;
+        video.style.height = `${video.videoHeight}px`;
+      }
+    };
     const onError = () => {
       console.warn('[gift-video] load failed', playSrc);
       if (stacked) markStackedAlphaBroken();
@@ -457,7 +462,9 @@ function GiftVideoBurst({
       const { width, height } = ctx.canvas;
       ctx.clearRect(0, 0, width, height);
       if (stacked) {
-        ctx.drawImage(video, 0, 0, video.videoWidth, Math.floor(video.videoHeight / 2), 0, 0, width, height);
+        const masked = stackedCanvasRef.current;
+        if (!masked || !masked.classList.contains('is-ready') || masked.width < 2) return;
+        ctx.drawImage(masked, 0, 0, width, height);
       } else {
         ctx.drawImage(video, 0, 0, width, height);
       }
@@ -500,29 +507,50 @@ function GiftVideoBurst({
         </div>
       ) : null}
       {stacked ? (
+        <div className="lb-gift-stacked-clip" aria-hidden>
+          <video
+            ref={videoRef}
+            src={playSrc}
+            crossOrigin="anonymous"
+            poster={TRANSPARENT_VIDEO_POSTER}
+            className="lb-gift-stacked-source"
+            style={STACKED_SOURCE_STYLE}
+            playsInline
+            muted
+            autoPlay
+            preload="auto"
+            disablePictureInPicture
+            disableRemotePlayback
+            controls={false}
+            onEnded={finish}
+          />
+        </div>
+      ) : null}
+      {stacked ? (
         <canvas
           ref={stackedCanvasRef}
-          className={burstMediaClass}
+          className={`${burstMediaClass} lb-gift-stacked-canvas`}
           style={burstMediaStyle}
           aria-hidden
         />
       ) : null}
-      <video
-        ref={videoRef}
-        src={playSrc}
-        crossOrigin={stacked ? 'anonymous' : undefined}
-        poster={TRANSPARENT_VIDEO_POSTER}
-        className={stacked ? 'lb-gift-stacked-source' : burstMediaClass}
-        style={stacked ? STACKED_SOURCE_STYLE : burstMediaStyle}
-        playsInline
-        muted
-        autoPlay
-        preload="auto"
-        disablePictureInPicture
-        disableRemotePlayback
-        controls={false}
-        onEnded={finish}
-      />
+      {stacked ? null : (
+        <video
+          ref={videoRef}
+          src={playSrc}
+          poster={TRANSPARENT_VIDEO_POSTER}
+          className={burstMediaClass}
+          style={burstMediaStyle}
+          playsInline
+          muted
+          autoPlay
+          preload="auto"
+          disablePictureInPicture
+          disableRemotePlayback
+          controls={false}
+          onEnded={finish}
+        />
+      )}
       {senderName ? (
         <span className="absolute bottom-[12%] z-[61] text-[11px] font-semibold text-cyan-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]">
           {senderName}
