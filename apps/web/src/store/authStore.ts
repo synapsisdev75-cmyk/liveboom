@@ -55,6 +55,25 @@ async function nativeGoogleSignIn() {
   return FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
 }
 
+/** Si el nativo no responde (iPad sin ventana), no dejar busy=true para siempre. */
+function withNativeAuthTimeout<T>(promise: Promise<T>, label: string, ms = 45_000): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} no respondió. Cierra la app e inténtalo de nuevo.`));
+    }, ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 type AuthState = {
   ready: boolean;
   firebaseUser: FirebaseUser | null;
@@ -552,7 +571,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       let user: FirebaseUser;
       if (Capacitor.isNativePlatform()) {
         // WebView no soporta signInWithPopup: usamos plugin nativo + credential Firebase.
-        const native = await nativeGoogleSignIn();
+        const native = await withNativeAuthTimeout(nativeGoogleSignIn(), 'Google');
         const idToken = String(native.credential?.idToken || '').trim();
         if (!idToken) {
           throw new Error(
@@ -583,7 +602,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       let user: FirebaseUser;
       if (Capacitor.getPlatform() === 'ios') {
-        const native = await FirebaseAuthentication.signInWithApple();
+        const native = await withNativeAuthTimeout(FirebaseAuthentication.signInWithApple(), 'Apple');
         const idToken = String(native.credential?.idToken || '').trim();
         const rawNonce = String(native.credential?.nonce || '').trim();
         if (!idToken) {
