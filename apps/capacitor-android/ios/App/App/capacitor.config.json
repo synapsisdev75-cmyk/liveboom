@@ -1,0 +1,66 @@
+{
+	"appId": "com.liveboom.app",
+	"appName": "LiveBoom",
+	"webDir": "../web/dist",
+	"server": {
+		"url": "https://liveboomapp.com",
+		"cleartext": false,
+		"errorPath": "offline.html",
+		"androidScheme": "https",
+		"iosScheme": "https"
+	},
+	"android": {
+		"allowMixedContent": true,
+		"adjustMarginsForEdgeToEdge": "disable"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 900,
+			"launchAutoHide": true,
+			"backgroundColor": "#0a0a0b",
+			"androidSplashResourceName": "splash",
+			"androidScaleType": "CENTER",
+			"showSpinner": false,
+			"splashFullScreen": true,
+			"splashImmersive": true,
+			"launchFadeOutDuration": 200
+		},
+		"StatusBar": {
+			"overlaysWebView": true,
+			"style": "DARK"
+		},
+		"FirebaseAuthentication": {
+			"skipNativeAuth": true,
+			"providers": [
+				"google.com",
+				"apple.com"
+			],
+			"authDomain": "liveboom-app.firebaseapp.com"
+		},
+		"PushNotifications": {
+			"presentationOptions": [
+				"badge",
+				"sound",
+				"alert"
+			]
+		},
+		"FirebaseMessaging": {
+			"presentationOptions": [
+				"alert",
+				"badge",
+				"sound"
+			]
+		}
+	},
+	"packageClassList": [
+		"FirebaseAuthenticationPlugin",
+		"FirebaseMessagingPlugin",
+		"AppPlugin",
+		"CAPBrowserPlugin",
+		"LocalNotificationsPlugin",
+		"PushNotificationsPlugin",
+		"SplashScreenPlugin",
+		"StatusBarPlugin",
+		"AppleIAPPlugin"
+	]
+}
