@@ -39,7 +39,10 @@ class GoogleAuthProviderHandler: NSObject {
             }
             return
         }
-        let config = GIDConfiguration(clientID: clientId, serverClientID: clientId)
+        // skipNativeAuth + Firebase JS: el idToken debe llevar aud = Web client ID.
+        // Si serverClientID = CLIENT_ID de iOS, signInWithCredential falla (error en Review).
+        let serverClientId = self.googleWebClientID() ?? clientId
+        let config = GIDConfiguration(clientID: clientId, serverClientID: serverClientId)
         GIDSignIn.sharedInstance.configuration = config
         let scopes = call.getArray("scopes", String.self) ?? []
         let bridgeController = self.pluginImplementation.getPlugin().bridge?.viewController
@@ -97,6 +100,22 @@ class GoogleAuthProviderHandler: NSObject {
             self.pluginImplementation.handleFailedSignIn(message: message, error: nil)
         }
         #endif
+    }
+
+    /// Web OAuth client de Firebase Auth (Google provider). Preferir GoogleService-Info WEB_CLIENT_ID.
+    private func googleWebClientID() -> String? {
+        if let fromPlist = Bundle.main.object(forInfoDictionaryKey: "GIDServerClientID") as? String {
+            let trimmed = fromPlist.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+           let dict = NSDictionary(contentsOfFile: path),
+           let web = dict["WEB_CLIENT_ID"] as? String {
+            let trimmed = web.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        // Fallback: Web client ID del proveedor Google en Firebase Auth (liveboom-app).
+        return "1092886082330-cb81jgp4gm9m3qsvdguut7gitl9s2bpi.apps.googleusercontent.com"
     }
 
     private func resolvePresentingController(prefer preferred: UIViewController?) -> UIViewController? {

@@ -120,13 +120,24 @@ extension AppleAuthProviderHandler: ASAuthorizationControllerDelegate, ASAuthori
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
         guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            self.pluginImplementation.handleFailedSignIn(
+                message: "Apple no devolvió una credencial válida.",
+                error: nil
+            )
             return
         }
         guard let nonce = currentNonce else {
-            fatalError("Invalid state: A login callback was received, but no login request was sent.")
+            self.pluginImplementation.handleFailedSignIn(
+                message: "Apple Sign-In en estado inválido. Inténtalo de nuevo.",
+                error: nil
+            )
+            return
         }
         guard let appleIDToken = appleIDCredential.identityToken else {
-            print("Unable to fetch identity token")
+            self.pluginImplementation.handleFailedSignIn(
+                message: "Apple no devolvió un token.",
+                error: nil
+            )
             return
         }
         var authorizationCode: String?
@@ -134,7 +145,10 @@ extension AppleAuthProviderHandler: ASAuthorizationControllerDelegate, ASAuthori
             authorizationCode = String(data: authorizationCodeData, encoding: .utf8)
         }
         guard let idTokenString = String(data: appleIDToken, encoding: .utf8) else {
-            print("Unable to serialize token string from data: \(appleIDToken.debugDescription)")
+            self.pluginImplementation.handleFailedSignIn(
+                message: "No se pudo leer el token de Apple.",
+                error: nil
+            )
             return
         }
         var displayName: String?

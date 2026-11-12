@@ -141,10 +141,15 @@ let activateSession: ((user: FirebaseUser) => void) | null = null;
 
 function mapAuthError(error: unknown): string {
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+  const msg = error instanceof Error ? error.message : String((error as { message?: string })?.message || '');
   if (code.includes('email-already-in-use')) return t('auth.emailInUse');
   if (code.includes('invalid-email')) return emailCheckMessage('invalid_format');
   if (code.includes('too-many-requests')) return emailCheckMessage('too_many_requests');
   if (code.includes('invalid-credential') || code.includes('wrong-password')) {
+    // iOS Google/Apple: invalid-credential suele ser token/audiencia, no correo/clave.
+    if (Capacitor.getPlatform() === 'ios' && /google|apple|oauth|id.?token|audience|client/i.test(msg)) {
+      return 'No se pudo verificar Google/Apple. Cierra la hoja e inténtalo otra vez.';
+    }
     return t('auth.badCredentials');
   }
   if (code.includes('weak-password')) return t('auth.weakPassword');
@@ -164,10 +169,9 @@ function mapAuthError(error: unknown): string {
   if (code.includes('unauthorized-domain')) {
     return t('auth.unauthorizedDomain');
   }
-  if (code.includes('permission-denied') || /insufficient permissions/i.test(String((error as Error)?.message || ''))) {
+  if (code.includes('permission-denied') || /insufficient permissions/i.test(msg)) {
     return t('auth.permissionDenied');
   }
-  const msg = error instanceof Error ? error.message : '';
   if (isCredentialManagerUnsupported(error)) {
     return 'Este celular no permite iniciar con Google desde la app. Actualiza Google Play Services o crea tu cuenta con correo y contraseña.';
   }
@@ -590,7 +594,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const profile = await syncWithBackend(user);
       set({ firebaseUser: user, profile });
     } catch (error) {
-      set({ error: mapAuthError(error) });
+      const mapped = mapAuthError(error);
+      // Cancelar la hoja de Google no es un fallo de la app (Review lo marca como “error”).
+      if (/cancel|cerró|closed/i.test(mapped)) {
+        set({ error: null });
+      } else {
+        set({ error: mapped });
+      }
       throw error;
     } finally {
       set({ busy: false });
@@ -625,15 +635,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ firebaseUser: user, profile });
     } catch (error) {
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
-      if (code.includes('popup-closed') || code.includes('cancelled-popup')) {
-        set({ error: 'Se cerró la ventana de Apple.' });
+      const mapped = mapAuthError(error);
+      if (
+        code.includes('popup-closed') ||
+        code.includes('cancelled-popup') ||
+        /cancel|cerró|closed|1001/i.test(`${code} ${mapped}`)
+      ) {
+        // ASAuthorizationError.canceled = 1001 — no mostrar error rojo a Review.
+        set({ error: null });
       } else if (code.includes('operation-not-allowed') || code.includes('auth/operation-not-allowed')) {
         set({
           error:
             'Apple Sign-In aún no está habilitado en Firebase. Actívalo en Authentication → Sign-in method.',
         });
-      } else if (!get().error) {
-        set({ error: mapAuthError(error) || 'No se pudo iniciar sesión con Apple.' });
+      } else {
+        set({ error: mapped || 'No se pudo iniciar sesión con Apple.' });
       }
       throw error;
     } finally {
