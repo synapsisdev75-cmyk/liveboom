@@ -97,6 +97,7 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<RechargeNote | null>(null);
   const [applePrices, setApplePrices] = useState<Record<string, string>>({});
+  const [appleCatalogReady, setAppleCatalogReady] = useState(false);
   const iosPurchase = isIosStorePurchaseOnly();
 
   useEffect(() => {
@@ -123,16 +124,36 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
     applyTopup(paid);
     setNote({ kind: 'success', coins: Math.max(0, Math.floor(Number(paid.coins) || 0)) });
     void applyWalletSummary();
+    void syncProfile();
   }
 
   useEffect(() => {
     if (!iosPurchase) return undefined;
     let cancelled = false;
+    setAppleCatalogReady(false);
     void loadAppleBlastPrices(packs.map((pack) => pack.coins))
       .then((prices) => {
-        if (!cancelled) setApplePrices(prices);
+        if (cancelled) return;
+        setApplePrices(prices);
+        setAppleCatalogReady(true);
+        if (!Object.keys(prices).length) {
+          setNote({
+            kind: 'error',
+            text: 'Apple aún no devolvió precios. Revisa los productos BLAST en App Store Connect.',
+          });
+        }
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        if (cancelled) return;
+        setAppleCatalogReady(true);
+        setNote({
+          kind: 'error',
+          text:
+            error instanceof Error
+              ? error.message
+              : 'No se pudieron cargar los precios de Apple.',
+        });
+      });
     const stop = watchUnfinishedApplePurchases((paid) => {
       if (!cancelled) showAppleCredit(paid);
     });
@@ -211,14 +232,20 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
   async function pay() {
     if (iosPurchase) {
       const pack = packs.find((item) => item.id === selected);
-      if (!pack) return;
+      if (!pack) {
+        setNote({ kind: 'error', text: 'Elige un paquete de BLAST.' });
+        return;
+      }
       setBusy(true);
       setNote(null);
       try {
         const paid = await purchaseAppleBlast(pack.coins);
         showAppleCredit(paid);
       } catch (error) {
-        if (applePurchaseWasCancelled(error)) return;
+        if (applePurchaseWasCancelled(error)) {
+          setNote(null);
+          return;
+        }
         setNote({
           kind: 'error',
           text: error instanceof Error ? error.message : 'No se pudo completar la compra de Apple',
@@ -418,8 +445,15 @@ export function CoinPackagesModal({ onClose, initialPackageId }: Props) {
             {iosPurchase ? (
               <AppleIdAccessButton
                 busy={busy}
+                disabled={!appleCatalogReady}
                 onClick={() => void pay()}
-                label="Continuar con Apple ID"
+                label={
+                  busy
+                    ? 'Comprando con Apple…'
+                    : !appleCatalogReady
+                      ? 'Cargando precios de Apple…'
+                      : 'Continuar con Apple ID'
+                }
               />
             ) : (
               <button

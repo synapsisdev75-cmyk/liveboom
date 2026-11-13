@@ -14,6 +14,8 @@ type AuthLoginPanelProps = {
   password: string;
   showPassword: boolean;
   birthYear: string;
+  /** Registro siempre; en iOS nativo también en login (18+ para Google/Apple). */
+  showBirthYear?: boolean;
   minBirthYear: number;
   maxBirthYear: number;
   acceptedTerms: boolean;
@@ -60,6 +62,7 @@ export function AuthLoginPanel({
   password,
   showPassword,
   birthYear,
+  showBirthYear = false,
   minBirthYear,
   maxBirthYear,
   acceptedTerms,
@@ -133,6 +136,19 @@ export function AuthLoginPanel({
                 placeholder={labels.birthYear}
               />
             </div>
+          ) : showBirthYear ? (
+            <AuthInput
+              id="lb-auth-year-login"
+              label={labels.birthYear}
+              required
+              type="number"
+              inputMode="numeric"
+              min={minBirthYear}
+              max={maxBirthYear}
+              value={birthYear}
+              onChange={(e) => onBirthYear(e.target.value)}
+              placeholder={labels.birthYear}
+            />
           ) : null}
 
           <AuthInput
@@ -252,7 +268,7 @@ export function AuthLoginPanel({
           onApple={onApple}
         />
 
-        {mode === 'register' ? <p className="lb-auth-hint">{labels.googleBirthHint}</p> : null}
+        {showBirthYear ? <p className="lb-auth-hint">{labels.googleBirthHint}</p> : null}
 
         {mode === 'login' ? (
           <Link to="/registro" className="lb-auth-create">

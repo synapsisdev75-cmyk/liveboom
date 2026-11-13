@@ -6,6 +6,7 @@ import { AuthVisualStage } from './AuthVisualStage';
 import { AuthLoginPanel } from './AuthLoginPanel';
 import { LanguageDropdown } from '../i18n/LanguageDropdown';
 import { ageFromBirthYear } from '../../lib/birthDate';
+import { isNativeIosApp } from '../../lib/nativeLiveMedia';
 import { auth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
 import { useT } from '../../i18n';
@@ -22,6 +23,9 @@ export function AuthScreen() {
   const t = useT();
   const location = useLocation();
   const mode: 'login' | 'register' = location.pathname.startsWith('/registro') ? 'register' : 'login';
+  const iosNative = isNativeIosApp();
+  /** iOS nativo: año de nacimiento también en login (Google/Apple 18+). */
+  const requireSocialAge = mode === 'register' || iosNative;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,10 +43,10 @@ export function AuthScreen() {
   const isEs = t.locale === 'es';
 
   function socialBirthYear(): number | undefined | null {
-    // Apple exige que “Iniciar sesión con Apple” abra al toque. El pie ya dice
-    // que al continuar se aceptan Términos. No bloquear el botón de Apple.
+    // Apple: el botón SIWA sigue tocable; la edad se valida al pulsar (igual Google).
+    // El pie ya indica que al continuar se aceptan Términos.
     if (!acceptedTerms) setAcceptedTerms(true);
-    if (mode !== 'register') return undefined;
+    if (!requireSocialAge) return undefined;
     const year = Number(birthYear);
     if (!Number.isFinite(year) || year < minBirthYear || year > maxBirthYear) {
       setLocalError(t('auth.invalidBirthYear'));
@@ -146,6 +150,7 @@ export function AuthScreen() {
             password={password}
             showPassword={showPassword}
             birthYear={birthYear}
+            showBirthYear={requireSocialAge}
             minBirthYear={minBirthYear}
             maxBirthYear={maxBirthYear}
             acceptedTerms={acceptedTerms}
